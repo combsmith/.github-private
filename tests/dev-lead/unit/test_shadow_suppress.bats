@@ -12,14 +12,12 @@ LIB="$SCRIPT_DIR/scripts/lib/shadow-suppress.sh"
 setup() {
   # Sourced fresh per test so exports don't leak across cases.
   unset DEV_LEAD_SHADOW_MODE DEV_LEAD_DRY_RUN
-  SHADOW_OUTPUT_FILE="$(mktemp)"; export SHADOW_OUTPUT_FILE
-  rm -f "$SHADOW_OUTPUT_FILE"   # absence-before, presence-after = was written
+  # $BATS_TEST_TMPDIR is unique per test and auto-cleaned on exit/failure, so the
+  # path starts absent (absence-before, presence-after = was written) with no
+  # manual mktemp/rm bookkeeping.
+  SHADOW_OUTPUT_FILE="$BATS_TEST_TMPDIR/shadow-output.txt"; export SHADOW_OUTPUT_FILE
   # shellcheck source=/dev/null
   source "$LIB"
-}
-
-teardown() {
-  rm -f "$SHADOW_OUTPUT_FILE" 2>/dev/null || true
 }
 
 # ── shadow_mode_active() truth table ─────────────────────────────────────────
