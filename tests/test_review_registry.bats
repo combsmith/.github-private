@@ -15,6 +15,27 @@ setup() {
   source "$REPO_ROOT/scripts/lib/review-registry.sh"
   POST_SCRIPT="$REPO_ROOT/scripts/post-pr-review.sh"
   VERDICT_FILE="$BATS_TEST_TMPDIR/verdict.json"
+
+  # Gate 4 (#1766) enumerates the PR's review threads for any approve verdict —
+  # including under DRY_RUN, so a dry run faithfully previews the real downgrade.
+  # These contract tests must stay hermetic (no real network), so stub gh with a
+  # clean, fully-enumerated, zero-unresolved thread set: gate 4 clears and the
+  # verdict is surfaced unchanged, exactly as these contracts intend.
+  STUB_BIN="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$STUB_BIN"
+  cat > "$STUB_BIN/gh" <<'GHEOF'
+#!/bin/bash
+if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
+  case "$*" in
+    *reviewThreads*) printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+    *)               printf '%s' '{}' ;;
+  esac
+  exit 0
+fi
+exit 0
+GHEOF
+  chmod +x "$STUB_BIN/gh"
+  export PATH="$STUB_BIN:$PATH"
 }
 
 # write_verdict <decision> <risk> [body]
@@ -137,7 +158,9 @@ write_verdict() {
 #     explicit no-op),
 #   - risk LOW|MEDIUM|HIGH round-trips and HIGH is treated specially,
 #   - the idempotency marker format is unchanged.
-# DRY_RUN=true exits before any gh/network call, so these run hermetically.
+# DRY_RUN=true still short-circuits the real review/merge posting; the only
+# network touch is gate 4's review-thread enumeration (#1766), which the setup
+# gh stub answers with a clean thread set, so these run hermetically.
 # ===========================================================================
 
 # --- decision vocabulary: approve | escalate (AC #2) -----------------------

@@ -507,6 +507,33 @@ clear_automated_hold_label() {
   ensure_hold_label_absent "$pr_url"
 }
 
+# Mechanical enforcement of decision gate 4 (#1766). Gate 4 — "No unresolved
+# review threads requesting changes" (prompts/shared.md) — was prompt-advisory
+# only, and the cascade posted APPROVED on PR #1742 over 15 unresolved threads.
+# Here an APPROVE verdict is IMPOSSIBLE while any review thread is unresolved, or
+# while the thread set cannot be enumerated (API failure / pagination /
+# permissions) — an unknown count must never read as zero. In either case the
+# decision is rewritten to escalate BEFORE any approval is posted. This runs at
+# the single point both the tier-2 and tier-3 cascade paths funnel through, and
+# ahead of the DRY_RUN branch so the downgrade is visible in dry runs too.
+if [ "$DECISION" = "approve" ]; then
+  # shellcheck source=lib/unresolved-review-thread-gate.sh
+  source "$POST_PR_SCRIPT_DIR/lib/unresolved-review-thread-gate.sh"
+  URT_SNAPSHOT=$(urtg_fetch_review_threads "$PR_URL")
+  URT_RC=0
+  check_unresolved_review_threads "$URT_SNAPSHOT" || URT_RC=$?
+  if [ "$URT_RC" -eq 1 ]; then
+    URT_COUNT=$(printf '%s' "$URT_SNAPSHOT" | jq -r '[ (.reviewThreads // [])[] | select(.isResolved != true) ] | length' 2>/dev/null || echo "One or more")
+    echo "    gate4: $URT_COUNT unresolved review thread(s) — downgrading approve → escalate (#1766)"
+    DECISION="escalate"
+    BODY=$(printf -- '- **blocker (decision gate 4)**: %s unresolved review thread(s) request changes and must be resolved before this PR can be approved. Resolve each open thread (or push a commit that addresses it and mark the thread resolved); the cascade will then re-review.' "$URT_COUNT")
+  elif [ "$URT_RC" -ne 0 ]; then
+    echo "    gate4: review threads could not be enumerated (rc=$URT_RC) — failing closed, downgrading approve → escalate (#1766)"
+    DECISION="escalate"
+    BODY='- **blocker (decision gate 4)**: the PR review-thread state could not be enumerated (API failure, pagination beyond one page, or permissions), so approval is withheld (fail-closed). An unknown thread count must not be treated as zero. The cascade will re-review once the thread set is readable.'
+  fi
+fi
+
 if [[ "$DRY_RUN" = "true" ]]; then
   echo "=== DRY RUN: Would post review ==="
   echo "Decision: $DECISION"
