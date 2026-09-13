@@ -182,7 +182,9 @@ jobs:
           # link rather than a silent green bridge (#1733 AC#4). Best-effort: a
           # posting hiccup must not fail the bridge — the dispatch already succeeded
           # and the run is discoverable from the logged link above.
-          body="$(printf '🔎 **Feature ideation dispatched.** The BMAD Analyst runs in a separate workflow run: %s\n\nThis Idea is only enhanced if that run succeeds — a failed run means it was **not** handed off. (claude-code-action cannot run on a `discussion` event, so it is bridged to `workflow_dispatch`.)' "${run_url}")"
+          body="$(printf '%s\n\n%s' \
+            '🔎 **Feature ideation dispatched.** The BMAD Analyst runs in a separate workflow run: '"${run_url}" \
+            'This Idea is only enhanced if that run succeeds — a failed run means it was **not** handed off. (claude-code-action cannot run on a `discussion` event, so it is bridged to `workflow_dispatch`.)')"
           gh api graphql \
             -f discussionId="${DISCUSSION_NODE_ID}" \
             -f body="${body}" \
