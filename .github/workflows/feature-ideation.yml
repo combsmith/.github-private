@@ -183,12 +183,12 @@ jobs:
           # posting hiccup must not fail the bridge — the dispatch already succeeded
           # and the run is discoverable from the logged link above.
           body="$(printf '%s\n\n%s' \
-            '🔎 **Feature ideation dispatched.** The BMAD Analyst runs in a separate workflow run: '"${run_url}" \
+            "🔎 **Feature ideation dispatched.** The BMAD Analyst runs in a separate workflow run: ${run_url}" \
             'This Idea is only enhanced if that run succeeds — a failed run means it was **not** handed off. (claude-code-action cannot run on a `discussion` event, so it is bridged to `workflow_dispatch`.)')"
           gh api graphql \
             -f discussionId="${DISCUSSION_NODE_ID}" \
             -f body="${body}" \
-            -f query='mutation($discussionId: ID!, $body: String!) { addDiscussionComment(input: {discussionId: $discussionId, body: $body}) { comment { id } } }' \
+            -f query="mutation(\$discussionId: ID!, \$body: String!) { addDiscussionComment(input: {discussionId: \$discussionId, body: \$body}) { comment { id } } }" \
             || echo "::warning::Could not post the dispatched-run link to discussion #${DISCUSSION_NUMBER} (non-fatal); run: ${run_url}"
 
   # ── #571 input resolution — keep `inputs` out of the reusable `with:` ────────
