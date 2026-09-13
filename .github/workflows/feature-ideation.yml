@@ -184,7 +184,7 @@ jobs:
           # and the run is discoverable from the logged link above.
           body="$(printf '%s\n\n%s' \
             "🔎 **Feature ideation dispatched.** The BMAD Analyst runs in a separate workflow run: ${run_url}" \
-            'This Idea is only enhanced if that run succeeds — a failed run means it was **not** handed off. (claude-code-action cannot run on a `discussion` event, so it is bridged to `workflow_dispatch`.)')"
+            "This Idea is only enhanced if that run succeeds — a failed run means it was **not** handed off. (claude-code-action cannot run on a \`discussion\` event, so it is bridged to \`workflow_dispatch\`.)")"
           gh api graphql \
             -f discussionId="${DISCUSSION_NODE_ID}" \
             -f body="${body}" \
