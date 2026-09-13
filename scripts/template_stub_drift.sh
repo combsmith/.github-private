@@ -84,6 +84,17 @@ readonly -a TEMPLATE_DRIFT_FILES=(
 # would false-positive on the template's richer ci.yml default, so it is excluded
 # here — mirroring how AGENTS.md documents the lint.yml / token-report.yml /
 # pr-review-sweep.yml exceptions.
+#
+# .github/dependabot.yml in the .github-private repo is intentionally customized
+# to include the github-actions ecosystem for org-private automation needs (see
+# AGENTS.md #1435 for why repo-template must NOT include github-actions). This
+# repo maintains its own Dependabot config, distinct from the seeded baseline.
+#
+# .github/workflows/sonarcloud.yml in repo-template currently carries outdated
+# third-party action SHAs (known-red under #1448). Until repo-template is
+# re-seeded with updated action versions, this allowlist excludes it from the
+# drift check to unblock downstream workflows while that issue is being resolved.
+#
 # Add a path here ONLY with a recorded rationale.
 readonly -a TEMPLATE_DRIFT_ALLOWLIST=(
   ".github/workflows/ci.yml"
