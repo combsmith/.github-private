@@ -60,18 +60,29 @@ urtg_fetch_review_threads() {
   # shellcheck disable=SC2016  # $url is a GraphQL variable placeholder, not shell
   local _gql='query($url:URI!){resource(url:$url){...on PullRequest{reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}}}}}'
   local _raw
-  _raw=$(gh api graphql -f query="$_gql" -f url="$pr_url" 2>/dev/null) || true
+  if ! _raw=$(gh api graphql -f query="$_gql" -f url="$pr_url"); then
+    log_unresolved_gate_warn "review-threads GraphQL query failed — failing closed"
+    printf '%s' "$_fail"
+    return 0
+  fi
   if [[ -z "$_raw" ]]; then
     log_unresolved_gate_warn "review-threads GraphQL query returned no data — failing closed"
     printf '%s' "$_fail"
     return 0
   fi
+  # A well-formed reviewThreads connection MUST carry both pageInfo.hasNextPage
+  # and nodes. A response missing either is malformed/partial — treat it as an
+  # incomplete enumeration (complete:false → the pure check fails closed) rather
+  # than coalescing the gaps into a complete empty set that could allow approval.
   printf '%s' "$_raw" | jq -c '
     (.data?.resource?.reviewThreads?) as $rt
-    | if $rt == null then {complete: false, reviewThreads: []}
+    | if ($rt == null
+          or ($rt.pageInfo?.hasNextPage == null)
+          or ($rt.nodes == null))
+      then {complete: false, reviewThreads: []}
       else {
-        complete: (($rt.pageInfo?.hasNextPage // false) | not),
-        reviewThreads: ($rt.nodes // [])
+        complete: ($rt.pageInfo.hasNextPage | not),
+        reviewThreads: $rt.nodes
       } end
   ' 2>/dev/null || printf '%s' "$_fail"
 }

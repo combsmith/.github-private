@@ -41,6 +41,7 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
         clean)      printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
         unresolved) printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false}]}}}}' ;;
         paginated)  printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":true},"nodes":[{"isResolved":true}]}}}}' ;;
+        malformed)  printf '%s' '{"data":{"resource":{"reviewThreads":{"nodes":[{"isResolved":true}]}}}}' ;;
         apifail)    exit 1 ;;
       esac
       exit 0
@@ -97,7 +98,8 @@ GHEOF
   export MAX_REVIEW_CYCLES="3"
 }
 
-teardown() { rm -rf "$TEST_DIR"; }
+# No teardown needed: TEST_DIR is $BATS_TEST_TMPDIR, which BATS creates per-test
+# and removes automatically after each test.
 
 write_verdict() {
   # $1 = decision, $2 = risk
@@ -138,6 +140,18 @@ write_verdict() {
 
 @test "AC2: approve verdict + graphql API failure → fail closed, NOT approved (#1766)" {
   export URT_GQL_MODE="apifail"
+  local vf; vf=$(write_verdict approve LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 0 ]
+  [ ! -s "$APPROVE_LOG" ]
+  grep -qi 'could not be enumerated' "$COMMENT_OUT"
+}
+
+# ── AC2: malformed response (missing pageInfo) ⇒ fail closed to escalate ────
+
+@test "AC2: approve verdict + reviewThreads missing pageInfo → fail closed, NOT approved (#1766)" {
+  export URT_GQL_MODE="malformed"
   local vf; vf=$(write_verdict approve LOW)
   run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
   echo "$output" >&2

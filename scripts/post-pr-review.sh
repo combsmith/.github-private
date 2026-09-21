@@ -526,11 +526,15 @@ if [ "$DECISION" = "approve" ]; then
     URT_COUNT=$(printf '%s' "$URT_SNAPSHOT" | jq -r '[ (.reviewThreads // [])[] | select(.isResolved != true) ] | length' 2>/dev/null || echo "One or more")
     echo "    gate4: $URT_COUNT unresolved review thread(s) — downgrading approve → escalate (#1766)"
     DECISION="escalate"
-    BODY=$(printf -- '- **blocker (decision gate 4)**: %s unresolved review thread(s) request changes and must be resolved before this PR can be approved. Resolve each open thread (or push a commit that addresses it and mark the thread resolved); the cascade will then re-review.' "$URT_COUNT")
+    # Prepend the gate blocker to the original review body so the escalation
+    # carries the full review summary and findings, not just the gate note.
+    BODY=$(printf -- '- **blocker (decision gate 4)**: %s unresolved review thread(s) request changes and must be resolved before this PR can be approved. Resolve each open thread (or push a commit that addresses it and mark the thread resolved); the cascade will then re-review.\n\n---\n\n%s' "$URT_COUNT" "$BODY")
   elif [ "$URT_RC" -ne 0 ]; then
     echo "    gate4: review threads could not be enumerated (rc=$URT_RC) — failing closed, downgrading approve → escalate (#1766)"
     DECISION="escalate"
-    BODY='- **blocker (decision gate 4)**: the PR review-thread state could not be enumerated (API failure, pagination beyond one page, or permissions), so approval is withheld (fail-closed). An unknown thread count must not be treated as zero. The cascade will re-review once the thread set is readable.'
+    # Prepend the gate blocker to the original review body so the escalation
+    # carries the full review summary and findings, not just the gate note.
+    BODY=$(printf -- '- **blocker (decision gate 4)**: the PR review-thread state could not be enumerated (API failure, pagination beyond one page, or permissions), so approval is withheld (fail-closed). An unknown thread count must not be treated as zero. The cascade will re-review once the thread set is readable.\n\n---\n\n%s' "$BODY")
   fi
 fi
 

@@ -89,5 +89,8 @@ write_snapshot() {
   run timeout 25 bash "$REVIEW_SCRIPT" "$PR_URL"
   [[ "$output" != *'"reason":"already-reviewed-at-head"'* ]]
   [[ "$output" == *"re-running cascade"* ]]
-  [ "$status" -ne 100 ]
+  # The break-glass re-review runs the cascade to completion in DRY_RUN and exits
+  # 1 (not the 100 same-SHA no-op sentinel). Assert the exact code so an
+  # unexpected failure (e.g. 127 command-not-found) can't masquerade as success.
+  [ "$status" -eq 1 ]
 }
