@@ -60,6 +60,7 @@ setup() {
   run template_drift_covered
   [ "$status" -eq 0 ]
   # A repinned caller stub, an inline verbatim stub, and each verbatim baseline.
+  # Note: sonarcloud.yml and dependabot.yml are allowlisted and thus excluded from this set.
   [[ "$output" == *".github/workflows/dev-lead.yml"* ]]
   [[ "$output" == *".github/CODEOWNERS"* ]]
   [[ "$output" == *"CLAUDE.md"* ]]
@@ -103,6 +104,21 @@ setup() {
 
 @test "template_drift_allowlisted: ci.yml is allowlisted" {
   run template_drift_allowlisted ".github/workflows/ci.yml"
+  [ "$status" -eq 0 ]
+}
+
+@test "template_drift_allowlisted: sonarcloud.yml is allowlisted" {
+  run template_drift_allowlisted ".github/workflows/sonarcloud.yml"
+  [ "$status" -eq 0 ]
+}
+
+@test "template_drift_allowlisted: dependabot.yml is allowlisted" {
+  run template_drift_allowlisted ".github/dependabot.yml"
+  [ "$status" -eq 0 ]
+}
+
+@test "template_drift_allowlisted: copilot-setup-steps.yml is allowlisted" {
+  run template_drift_allowlisted ".github/workflows/copilot-setup-steps.yml"
   [ "$status" -eq 0 ]
 }
 

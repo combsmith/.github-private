@@ -95,6 +95,10 @@ readonly -a TEMPLATE_DRIFT_FILES=(
 # re-seeded with updated action versions, this allowlist excludes it from the
 # drift check to unblock downstream workflows while that issue is being resolved.
 #
+# .github/workflows/copilot-setup-steps.yml in repo-template has drifted from
+# the standards-derived baseline and requires upstream re-seeding (#1448). Until
+# that is completed, this allowlist excludes it to unblock downstream workflows.
+#
 # Add a path here ONLY with a recorded rationale.
 readonly -a TEMPLATE_DRIFT_ALLOWLIST=(
   ".github/workflows/ci.yml"
@@ -106,6 +110,7 @@ readonly -a TEMPLATE_DRIFT_ALLOWLIST=(
   # and should not block the drift guard (#1448).
   ".github/workflows/sonarcloud.yml"
   ".github/dependabot.yml"
+  ".github/workflows/copilot-setup-steps.yml"
 )
 
 # template_drift_allowlisted <path> — return 0 if the path is an allowlisted,
