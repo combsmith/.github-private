@@ -194,6 +194,10 @@ setup() {
   # The whole bug: the reusable's default tooling_ref=v1 predates the requirements
   # file. A regression back to v1 (or omitting the forward) must fail here.
   run yq '.jobs.ideate.with.tooling_ref' "$FEATURE_IDEATION_YML"
+  # Assert the yq invocation itself succeeded before trusting its output — a
+  # non-zero exit (bad path / parse error) would otherwise leave $output empty
+  # and satisfy both inequality checks, greening a broken test (gemini review).
+  [ "$status" -eq 0 ]
   [ "$output" != "null" ]
   [ "$output" != "v1" ]
 }
