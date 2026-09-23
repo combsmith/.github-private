@@ -78,15 +78,98 @@ jobs:
     timeout-minutes: 30
 
     # Minimum permissions — Copilot receives its own separate token for its operations.
+    # Add `packages: read` if pulling from GitHub Packages (GHCR or npm private registry).
     permissions:
       contents: read
 
     steps:
       # ── REQUIRED ──────────────────────────────────────────────────────────────
+      # Checkout the repository so dependency manifests (package.json, go.mod, etc.)
+      # are available for the install steps below.
+      # Note: fetch-depth is always overridden by the agent — set it here only if
+      # your install steps need history (rare).
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # ── NODE.JS / NPM ──────────────────────────────────────────────────────────
+      # Uncomment for repos using npm (TypeScript, React, Electron, Google Apps Script).
+      # Use node-version-file: .nvmrc if the repo maintains a .nvmrc; otherwise pin
+      # the version to match the CI pipeline and the org standard (Node.js 22 LTS).
+      #
+      # - name: Set up Node.js
+      #   uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      #   with:
+      #     node-version: "22"           # or: node-version-file: .nvmrc
+      #     cache: "npm"
+      #
+      # - name: Install Node.js dependencies
+      #   run: npm ci --ignore-scripts
+
+      # ── NODE.JS / PNPM ────────────────────────────────────────────────────────
+      # Uncomment for repos using pnpm (e.g., broodly TypeScript layer).
+      # pnpm must be set up before setup-node when using pnpm cache.
+      #
+      # - name: Set up pnpm
+      #   uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      #
+      # - name: Set up Node.js (pnpm)
+      #   uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      #   with:
+      #     node-version: "22"
+      #     cache: "pnpm"
+      #
+      # - name: Install Node.js dependencies (pnpm)
+      #   run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # ── GO ────────────────────────────────────────────────────────────────────
+      # Uncomment for repos with Go code (e.g., broodly API layer).
+      # Pin go-version to match go.mod to avoid silent toolchain upgrades.
+      # For monorepos, set cache-dependency-path to the correct go.sum path.
+      #
+      # - name: Set up Go
+      #   uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      #   with:
+      #     go-version: "stable"         # or: go-version-file: go.mod
+      #     cache-dependency-path: go.sum
+      #
+      # - name: Download Go dependencies
+      #   run: go mod download
+
+      # ── PYTHON ────────────────────────────────────────────────────────────────
+      # Uncomment for repos with Python code.
+      # Pin python-version to a specific minor version for reproducibility.
+      #
+      # - name: Set up Python
+      #   uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      #   with:
+      #     python-version: "3.12"       # pin to match your runtime
+      #     cache: "pip"
+      #
+      # - name: Install Python dependencies
+      #   run: pip install -r requirements.txt
+
+      # ── OPTIONAL: Additional build artifacts ──────────────────────────────────
+      # If the agent needs pre-built artifacts to run tests (e.g., a Next.js build,
+      # a compiled binary, or generated types), add a build step here.
+      # Keep it minimal — the agent will run its own build steps when needed.
+      #
+      # - name: Build
+      #   run: npm run build
+
+      # ── OPTIONAL: gh-aw MCP extension ────────────────────────────────────────
+      # Installs GitHub Advanced Workflows (gh-aw), a GitHub-developed MCP server
+      # that gives Copilot cloud agent extended GitHub API access (web search,
+      # enhanced PR tools, and more). Used by github/copilot-sdk, TryGhost/Ghost,
+      # and github/awesome-copilot. Recommended for any repo doing heavy GitHub
+      # platform work (issue triage, PR automation, release management).
+      # Pin the version to a specific SHA for supply-chain safety.
+      #
+      # - name: Install gh-aw MCP extension
+      #   uses: github/gh-aw/actions/setup-cli@ce1794953e0ec42adc41b6fca05e02ab49ee21c3
+      #   with:
+      #     version: v0.49.3
 
       # ── REQUIRED ──────────────────────────────────────────────────────────────
       # Environment verification — always runs last. Fails loud if something is
