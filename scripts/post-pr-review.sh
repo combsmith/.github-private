@@ -863,9 +863,19 @@ COMMENT_END
     echo "Escalating to human review..."
 
     # Post the gate blocker message if present (e.g., gate 4 downgrade reason) so
-    # the author knows why approval was withheld.
-    if [[ "$BODY" == *"blocker"* ]]; then
-      gh pr comment "$PR_URL" --body "$BODY" 2>/dev/null || true
+    # the author knows why approval was withheld. Match the exact deterministic
+    # prefix the gate prepends (line 275/281) rather than substring matching
+    # natural-language text; "blocker" is common in review language.
+    if [[ "$BODY" == *"- **blocker (decision gate"* ]]; then
+      # Strip any embedded cascade marker before posting as a plain comment —
+      # the marker format ties this to a decision (approve/escalate), and when
+      # gate 4 downgrades approve → escalate, the old marker still says
+      # decision=approved. A decision=approved marker in a comment then
+      # masquerades as a standing approval verdict (review-one-pr.sh idempotency
+      # scans comments for decision= markers). The marker is in the original
+      # verdict body; strip it before reposting (same pattern as line 434).
+      BODY_FOR_COMMENT=$(printf '%s' "$BODY" | sed 's/<!-- pr-review-agent v1 sha=[a-f0-9][^>]*-->//g')
+      gh pr comment "$PR_URL" --body "$BODY_FOR_COMMENT" 2>/dev/null || true
     fi
     # AC3 (#1754): add the hold label only when it is absent, and CONFIRM it is
     # present before returning 101. Re-escalating an already-held PR must not

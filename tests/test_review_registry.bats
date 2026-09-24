@@ -32,9 +32,6 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   esac
   exit 0
 fi
-if [ "$1" = "pr" ]; then
-  exit 0
-fi
 echo "Unmapped gh command: $*" >&2
 exit 1
 GHEOF
