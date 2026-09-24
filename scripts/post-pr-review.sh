@@ -867,14 +867,15 @@ COMMENT_END
     # prefix the gate prepends (line 275/281) rather than substring matching
     # natural-language text; "blocker" is common in review language.
     if [[ "$BODY" == *"- **blocker (decision gate"* ]]; then
-      # Strip any embedded cascade marker before posting as a plain comment —
-      # the marker format ties this to a decision (approve/escalate), and when
-      # gate 4 downgrades approve → escalate, the old marker still says
-      # decision=approved. A decision=approved marker in a comment then
-      # masquerades as a standing approval verdict (review-one-pr.sh idempotency
-      # scans comments for decision= markers). The marker is in the original
-      # verdict body; strip it before reposting (same pattern as line 434).
-      BODY_FOR_COMMENT=$(printf '%s' "$BODY" | sed 's/<!-- pr-review-agent v1 sha=[a-f0-9][^>]*-->//g')
+      # Re-stamp as an escalation verdict instead of posting markerless: the
+      # same-SHA idempotency no-op in review-one-pr.sh keys on a bot marker at
+      # head (decision=(approved|escalated)), and a markerless comment lets the
+      # next trigger re-run the cascade and post a duplicate blocker at the
+      # same SHA. decision=escalated does not match standing-approval/
+      # carry-forward/miss-rate scans, which all require decision=approved.
+      BODY_WITHOUT_OLD_MARKER=$(printf '%s' "$BODY" | sed 's/<!-- pr-review-agent v1 sha=[a-f0-9][^>]*-->//g')
+      BODY_FOR_COMMENT="<!-- pr-review-agent v1 sha=$PR_HEAD_SHA decision=escalated risk=$RISK -->
+$BODY_WITHOUT_OLD_MARKER"
       gh pr comment "$PR_URL" --body "$BODY_FOR_COMMENT" 2>/dev/null || true
     fi
     # AC3 (#1754): add the hold label only when it is absent, and CONFIRM it is
