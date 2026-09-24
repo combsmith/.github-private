@@ -74,16 +74,20 @@ urtg_fetch_review_threads() {
   # and nodes. A response missing either is malformed/partial — treat it as an
   # incomplete enumeration (complete:false → the pure check fails closed) rather
   # than coalescing the gaps into a complete empty set that could allow approval.
+  # Reject any response with a top-level errors field (GraphQL error).
   printf '%s' "$_raw" | jq -c '
-    (.data?.resource?.reviewThreads?) as $rt
-    | if ($rt == null
-          or ($rt.pageInfo?.hasNextPage == null)
-          or ($rt.nodes == null))
-      then {complete: false, reviewThreads: []}
-      else {
-        complete: ($rt.pageInfo.hasNextPage | not),
-        reviewThreads: $rt.nodes
-      } end
+    if (.errors != null and (.errors | length) > 0) then {complete: false, reviewThreads: []}
+    else
+      (.data?.resource?.reviewThreads?) as $rt
+      | if ($rt == null
+            or ($rt.pageInfo?.hasNextPage == null)
+            or ($rt.nodes | type) != "array")
+        then {complete: false, reviewThreads: []}
+        else {
+          complete: ($rt.pageInfo.hasNextPage | not),
+          reviewThreads: $rt.nodes
+        } end
+    end
   ' 2>/dev/null || printf '%s' "$_fail"
 }
 
@@ -100,12 +104,13 @@ check_unresolved_review_threads() {
   # → return 2. A snapshot that is not a complete enumeration ("incomplete") or
   # not an object ("err") also fails closed. Otherwise emit the count of threads
   # whose isResolved is not exactly true (a thread missing the field is treated
-  # as unresolved — fail closed per-thread).
+  # as unresolved — fail closed per-thread). reviewThreads MUST be an array.
   local verdict
   verdict=$(printf '%s' "$json" | jq -r '
     if (type != "object") then "err"
     elif (.complete != true) then "incomplete"
-    else ([ (.reviewThreads // [])[] | select(.isResolved != true) ] | length | tostring)
+    elif ((.reviewThreads | type) != "array") then "err"
+    else ([ (.reviewThreads)[] | select(.isResolved != true) ] | length | tostring)
     end
   ' 2>/dev/null) || {
     log_unresolved_gate_warn "could not parse review-threads snapshot — failing closed (blocking approval)"

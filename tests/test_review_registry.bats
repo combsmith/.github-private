@@ -28,11 +28,15 @@ setup() {
 if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   case "$*" in
     *reviewThreads*) printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
-    *)               printf '%s' '{}' ;;
+    *)               echo "Unmapped graphql query: $*" >&2; exit 1 ;;
   esac
   exit 0
 fi
-exit 0
+if [ "$1" = "pr" ]; then
+  exit 0
+fi
+echo "Unmapped gh command: $*" >&2
+exit 1
 GHEOF
   chmod +x "$STUB_BIN/gh"
   export PATH="$STUB_BIN:$PATH"

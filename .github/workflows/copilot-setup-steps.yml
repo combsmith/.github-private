@@ -131,7 +131,7 @@ jobs:
       # - name: Set up Go
       #   uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
       #   with:
-      #     go-version: "stable"         # or: go-version-file: go.mod
+      #     go-version-file: go.mod
       #     cache-dependency-path: go.sum
       #
       # - name: Download Go dependencies
@@ -158,15 +158,16 @@ jobs:
       # - name: Build
       #   run: npm run build
 
-      # ── OPTIONAL: gh-aw MCP extension ────────────────────────────────────────
-      # Installs GitHub Advanced Workflows (gh-aw), a GitHub-developed MCP server
-      # that gives Copilot cloud agent extended GitHub API access (web search,
-      # enhanced PR tools, and more). Used by github/copilot-sdk, TryGhost/Ghost,
+      # ── OPTIONAL: gh-aw CLI installer ────────────────────────────────────────
+      # Installs GitHub Advanced Workflows (gh-aw), a GitHub CLI extension for
+      # advanced GitHub operations. Used by github/copilot-sdk, TryGhost/Ghost,
       # and github/awesome-copilot. Recommended for any repo doing heavy GitHub
       # platform work (issue triage, PR automation, release management).
       # Pin the version to a specific SHA for supply-chain safety.
+      # Note: this is a CLI installation only. For Copilot web/API MCP tools,
+      # additional MCP configuration is required (see MCP documentation).
       #
-      # - name: Install gh-aw MCP extension
+      # - name: Install gh-aw CLI
       #   uses: github/gh-aw/actions/setup-cli@ce1794953e0ec42adc41b6fca05e02ab49ee21c3
       #   with:
       #     version: v0.49.3

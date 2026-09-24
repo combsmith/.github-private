@@ -78,9 +78,13 @@ if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   exit 0
 fi
 
-# api --paginate for prior-item cleanup → empty arrays.
+# api --paginate for prior-item cleanup → empty arrays, except /reviews readback.
 if [ "$1" = "api" ]; then
-  printf '%s' '[]'
+  if [[ "$args" == *"/reviews"* ]]; then
+    printf '%s' '[{"state":"APPROVED","user":{"login":"donpetry-bot"},"commit_id":"'"$SHA"'"}]'
+  else
+    printf '%s' '[]'
+  fi
   exit 0
 fi
 

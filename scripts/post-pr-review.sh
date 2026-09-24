@@ -862,6 +862,11 @@ COMMENT_END
     # Escalate to human via CODEOWNERS — avoid hard-coding a single reviewer.
     echo "Escalating to human review..."
 
+    # Post the gate blocker message if present (e.g., gate 4 downgrade reason) so
+    # the author knows why approval was withheld.
+    if [[ "$BODY" == *"blocker"* ]]; then
+      gh pr comment "$PR_URL" --body "$BODY" 2>/dev/null || true
+    fi
     # AC3 (#1754): add the hold label only when it is absent, and CONFIRM it is
     # present before returning 101. Re-escalating an already-held PR must not
     # unlabel-then-relabel (four toggles in one day on an unchanged PR was the
