@@ -10,7 +10,11 @@
 #     required-files, org-standards-ref) — only if your repo genuinely needs
 #     a different policy.
 #   • You MUST NOT change: trigger events, the `uses:` line, or the job name
-#     (used as a required status check).
+#     (used as a required status check). NOTE: `merge_group` is part of the
+#     standard trigger set — it is required so this stub's `agent-shield /
+#     AgentShield` check reports on a merge queue's `gh-readonly-queue/*` ref
+#     (see standards/ci-standards.md). Do not drop it on sync and do not flag it
+#     as drift.
 #   • If you need different behaviour beyond the inputs, open a PR against
 #     the reusable in the central repo.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -24,6 +28,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  merge_group:
 
 permissions:
   contents: read

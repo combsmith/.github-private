@@ -876,12 +876,13 @@ COMMENT_END
       BODY_WITHOUT_OLD_MARKER=$(printf '%s' "$BODY" | sed 's/<!-- pr-review-agent v1 sha=[a-f0-9][^>]*-->//g')
       BODY_FOR_COMMENT="<!-- pr-review-agent v1 sha=$PR_HEAD_SHA decision=escalated risk=$RISK -->
 $BODY_WITHOUT_OLD_MARKER"
-      gh pr comment "$PR_URL" --body "$BODY_FOR_COMMENT" 2>/dev/null || true
-      # A gate downgrade invalidates any prior agent approval at an earlier SHA.
-      # The just-posted escalation carries the newest marker so it is preserved;
-      # everything older (notably a stale APPROVED review) is superseded, closing
-      # the window where standing-approval/carry-forward could act on it.
-      mark_prior_agent_items_obsolete "$PR_URL"
+      if gh pr comment "$PR_URL" --body "$BODY_FOR_COMMENT"; then
+        # A gate downgrade invalidates any prior agent approval at an earlier SHA.
+        # The just-posted escalation carries the newest marker so it is preserved;
+        # everything older (notably a stale APPROVED review) is superseded, closing
+        # the window where standing-approval/carry-forward could act on it.
+        mark_prior_agent_items_obsolete "$PR_URL"
+      fi
     fi
     # AC3 (#1754): add the hold label only when it is absent, and CONFIRM it is
     # present before returning 101. Re-escalating an already-held PR must not

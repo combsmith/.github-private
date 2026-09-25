@@ -212,8 +212,8 @@ _run_fetch() {
   chmod +x "$MOCK_BIN/gh"
   run bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
   [ "$status" -eq 0 ]
-  echo "$output" | jq -e '.complete == false'
-  echo "$output" | jq -e '.reviewThreads == []'
+  echo "$stdout" | jq -e '.complete == false'
+  echo "$stdout" | jq -e '.reviewThreads == []'
 }
 
 @test "fetch: gh emits empty output → complete:false (fail closed on no data)" {
@@ -223,8 +223,8 @@ _run_fetch() {
   chmod +x "$MOCK_BIN/gh"
   run bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
   [ "$status" -eq 0 ]
-  echo "$output" | jq -e '.complete == false'
-  echo "$output" | jq -e '.reviewThreads == []'
+  echo "$stdout" | jq -e '.complete == false'
+  echo "$stdout" | jq -e '.reviewThreads == []'
 }
 
 @test "fetch: gh emits non-JSON garbage → complete:false (fail closed on parse error)" {
