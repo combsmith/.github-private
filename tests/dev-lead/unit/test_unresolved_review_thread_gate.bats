@@ -17,7 +17,7 @@
 #         pagination) → fail closed (escalate). An unknown count is never zero.
 
 setup() {
-  export SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME%/*}")" && pwd)/../../../scripts"
+  export SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_FILENAME%/*}")" && pwd)/../../scripts"
   GATE="$SCRIPT_DIR/lib/unresolved-review-thread-gate.sh"
 }
 
