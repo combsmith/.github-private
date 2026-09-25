@@ -135,3 +135,72 @@ _run_check() {
   _run_check '[]'
   [ "$status" -eq 2 ]
 }
+
+# ────────────────────────────────────────────────────────────────────
+# NORMALIZATION (urtg_fetch_review_threads) — raw GraphQL → snapshot
+#
+# The fetch helper turns a raw reviewThreads GraphQL response into the
+# {complete, reviewThreads} snapshot the pure check consumes. A response
+# missing pageInfo, hasNextPage, or nodes (or carrying a GraphQL errors
+# field, or a second page) is not a complete enumeration and MUST normalize
+# to complete:false so the check fails closed rather than under-counting.
+# gh is stubbed on PATH so the helper stays offline.
+# ────────────────────────────────────────────────────────────────────
+
+_mock_gh() {
+  # _mock_gh <raw_json> — install a `gh` shim on PATH that emits <raw_json>.
+  MOCK_BIN="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$MOCK_BIN"
+  printf '#!/usr/bin/env bash\ncat <<'\''__RAW__'\''\n%s\n__RAW__\n' "$1" > "$MOCK_BIN/gh"
+  chmod +x "$MOCK_BIN/gh"
+}
+
+_run_fetch() {
+  # _run_fetch <raw_json> — stub gh to emit <raw_json>, run urtg_fetch_review_threads.
+  _mock_gh "$1"
+  run bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
+}
+
+@test "fetch: well-formed single-page response → complete:true, threads passed through" {
+  _run_fetch '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":true}]}}}}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.complete == true'
+  echo "$output" | jq -e '.reviewThreads == [{"isResolved":true}]'
+}
+
+@test "fetch: response missing pageInfo → complete:false (fail closed)" {
+  _run_fetch '{"data":{"resource":{"reviewThreads":{"nodes":[{"isResolved":false}]}}}}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.complete == false'
+  echo "$output" | jq -e '.reviewThreads == []'
+}
+
+@test "fetch: response missing hasNextPage → complete:false (fail closed)" {
+  _run_fetch '{"data":{"resource":{"reviewThreads":{"pageInfo":{},"nodes":[]}}}}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.complete == false'
+}
+
+@test "fetch: response missing nodes → complete:false (fail closed)" {
+  _run_fetch '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false}}}}}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.complete == false'
+}
+
+@test "fetch: response with GraphQL errors field → complete:false (fail closed)" {
+  _run_fetch '{"errors":[{"message":"boom"}],"data":null}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.complete == false'
+}
+
+@test "fetch: hasNextPage true (second page) → complete:false (fail closed)" {
+  _run_fetch '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":true},"nodes":[{"isResolved":true}]}}}}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.complete == false'
+}
+
+@test "fetch→check: missing pageInfo normalizes to complete:false and the check fails closed (rc 2)" {
+  _mock_gh '{"data":{"resource":{"reviewThreads":{"nodes":[]}}}}'
+  run bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; s=\$(urtg_fetch_review_threads 'https://github.com/o/r/pull/1'); check_unresolved_review_threads \"\$s\""
+  [ "$status" -eq 2 ]
+}
