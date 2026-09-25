@@ -110,9 +110,15 @@ jobs:
       # ── NODE.JS / PNPM ────────────────────────────────────────────────────────
       # Uncomment for repos using pnpm (e.g., broodly TypeScript layer).
       # pnpm must be set up before setup-node when using pnpm cache.
+      # pnpm/action-setup@v4 requires a pnpm version: either declare
+      # "packageManager": "pnpm@<x.y.z>" in package.json (preferred), or add a
+      # `with: { version: <x.y.z> }` here. Without one the step fails with
+      # "Multiple versions of pnpm specified" / "No pnpm version is specified".
       #
       # - name: Set up pnpm
       #   uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      #   # with:
+      #   #   version: 9   # omit if package.json declares packageManager
       #
       # - name: Set up Node.js (pnpm)
       #   uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

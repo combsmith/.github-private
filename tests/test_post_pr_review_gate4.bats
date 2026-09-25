@@ -31,6 +31,7 @@ setup() {
 
   cat > "$TEST_DIR/bin/gh" <<'GHEOF'
 #!/bin/bash
+args="$*"
 printf '%s\n' "$*" >> "$GH_LOG"
 
 # GraphQL: the unresolved-review-thread enumeration.
@@ -81,7 +82,14 @@ fi
 # api --paginate for prior-item cleanup → empty arrays, except /reviews readback.
 if [ "$1" = "api" ]; then
   if [[ "$args" == *"/reviews"* ]]; then
-    printf '%s' '[{"state":"APPROVED","user":{"login":"donpetry-bot"},"commit_id":"'"$SHA"'"}]'
+    # verify_approval_landed reads back with `--paginate --slurp | jq 'add'`, so a
+    # slurp request must return an array-of-pages that `jq 'add'` flattens into the
+    # reviews array; non-slurp callers still get the flat array.
+    if [[ "$args" == *"--slurp"* ]]; then
+      printf '%s' '[[{"state":"APPROVED","user":{"login":"donpetry-bot"},"commit_id":"'"$SHA"'"}]]'
+    else
+      printf '%s' '[{"state":"APPROVED","user":{"login":"donpetry-bot"},"commit_id":"'"$SHA"'"}]'
+    fi
   else
     printf '%s' '[]'
   fi
