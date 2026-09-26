@@ -210,10 +210,10 @@ _run_fetch() {
   mkdir -p "$MOCK_BIN"
   printf '#!/usr/bin/env bash\nexit 1\n' > "$MOCK_BIN/gh"
   chmod +x "$MOCK_BIN/gh"
-  run bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
+  run --separate-stderr bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
   [ "$status" -eq 0 ]
-  echo "$stdout" | jq -e '.complete == false'
-  echo "$stdout" | jq -e '.reviewThreads == []'
+  echo "$output" | jq -e '.complete == false'
+  echo "$output" | jq -e '.reviewThreads == []'
 }
 
 @test "fetch: gh emits empty output → complete:false (fail closed on no data)" {
@@ -221,10 +221,10 @@ _run_fetch() {
   mkdir -p "$MOCK_BIN"
   printf '#!/usr/bin/env bash\necho -n ""\n' > "$MOCK_BIN/gh"
   chmod +x "$MOCK_BIN/gh"
-  run bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
+  run --separate-stderr bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
   [ "$status" -eq 0 ]
-  echo "$stdout" | jq -e '.complete == false'
-  echo "$stdout" | jq -e '.reviewThreads == []'
+  echo "$output" | jq -e '.complete == false'
+  echo "$output" | jq -e '.reviewThreads == []'
 }
 
 @test "fetch: gh emits non-JSON garbage → complete:false (fail closed on parse error)" {
@@ -232,7 +232,7 @@ _run_fetch() {
   mkdir -p "$MOCK_BIN"
   printf '#!/usr/bin/env bash\necho "not json at all {{{"\n' > "$MOCK_BIN/gh"
   chmod +x "$MOCK_BIN/gh"
-  run bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
+  run --separate-stderr bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.complete == false'
   echo "$output" | jq -e '.reviewThreads == []'
