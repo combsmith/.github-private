@@ -54,6 +54,13 @@ _labels_init() {
   fi
 }
 
+# Gate 4 (#1766): clean review-thread enumeration so approve verdicts reach the
+# AC4 body checks instead of failing closed on an unreadable thread set.
+if [ "$sub1" = "api" ] && [ "$sub2" = "graphql" ]; then
+  printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+  exit 0
+fi
+
 if [ "$sub1" = "api" ]; then
   method="GET"; path=""; jqf=""; slurp="false"; prev=""
   for a in "$@"; do

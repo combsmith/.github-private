@@ -101,6 +101,7 @@ GHEOF
   chmod +x "$TEST_DIR/bin/gh"
   export PATH="$TEST_DIR/bin:$PATH"
 
+  export BOT_USER="donpetry-bot"   # matches the /reviews readback stub author
   export PR_HEAD_SHA="$SHA"
   export DRY_RUN="false"
   # Enable the AI-delegation escalate path so a downgrade posts a fix-request
@@ -116,8 +117,8 @@ GHEOF
 write_verdict() {
   # $1 = decision, $2 = risk
   local f="$TEST_DIR/verdict.json"
-  jq -n --arg d "$1" --arg r "$2" \
-    '{decision:$d, risk:$r, summary:"s", findings:[], body:("<!-- pr-review-agent v1 sha=x decision=approved risk=" + $r + " -->\n\n## Automated review — APPROVED ✓")}' > "$f"
+  jq -n --arg d "$1" --arg r "$2" --arg s "$SHA" \
+    '{decision:$d, risk:$r, summary:"s", findings:[], body:("<!-- pr-review-agent v1 sha=" + $s + " decision=approved risk=" + $r + " -->\n\n## Automated review — APPROVED ✓")}' > "$f"
   echo "$f"
 }
 
