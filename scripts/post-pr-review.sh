@@ -864,7 +864,7 @@ COMMENT_END
 
     # Post the gate blocker message if present (e.g., gate 4 downgrade reason) so
     # the author knows why approval was withheld. Match the exact deterministic
-    # prefix the gate prepends (line 275/281) rather than substring matching
+    # prefix the gate-4 block above prepends rather than substring matching
     # natural-language text; "blocker" is common in review language.
     if [[ "$BODY" == *"- **blocker (decision gate"* ]]; then
       # Re-stamp as an escalation verdict instead of posting markerless: the
