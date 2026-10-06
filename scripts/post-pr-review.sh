@@ -613,6 +613,67 @@ if [[ "$DECISION" = "approve" ]]; then
     exit 100
   fi
 
+  # Atomic re-check: immediately before posting approval, verify the thread state
+  # has not changed (issue #1766 race condition). A thread opened between the initial
+  # gate check and this re-check must block approval. This is not a full re-review —
+  # only the gate 4 check is re-run; if threads are now unresolved, approval is
+  # downgraded to escalation.
+  URT_RECHECK_SNAPSHOT=$(urtg_fetch_review_threads "$PR_URL")
+  URT_RECHECK_RC=0
+  check_unresolved_review_threads "$URT_RECHECK_SNAPSHOT" || URT_RECHECK_RC=$?
+  if [[ "$URT_RECHECK_RC" -eq 1 ]]; then
+    URT_RECHECK_COUNT=$(printf '%s' "$URT_RECHECK_SNAPSHOT" | jq -r '[ (.reviewThreads // [])[] | select(.isResolved != true) ] | length' 2>/dev/null || echo "One or more")
+    echo "    gate4 (recheck): $URT_RECHECK_COUNT unresolved review thread(s) detected after initial check — downgrading approve → escalate (#1766)"
+    DECISION="escalate"
+    BODY=$(printf -- '- **blocker (decision gate 4)**: %s unresolved review thread(s) request changes and must be resolved before this PR can be approved (a thread was opened after initial review). Resolve each open thread (or push a commit that addresses it and mark the thread resolved); the cascade will then re-review.\n\n---\n\n%s' "$URT_RECHECK_COUNT" "$BODY")
+  elif [[ "$URT_RECHECK_RC" -ne 0 ]]; then
+    echo "    gate4 (recheck): review threads could not be re-enumerated (rc=$URT_RECHECK_RC) — failing closed, downgrading approve → escalate (#1766)"
+    DECISION="escalate"
+    BODY=$(printf -- '- **blocker (decision gate 4)**: the PR review-thread state could not be re-enumerated immediately before approval (API failure, pagination beyond one page, or permissions), so approval is withheld (fail-closed). An unknown thread count must not be treated as zero. The cascade will re-review once the thread set is readable.\n\n---\n\n%s' "$BODY")
+  fi
+
+  if [[ "$DECISION" != "approve" ]]; then
+    echo "Escalating to human review (gate 4 recheck downgrade)..."
+
+    # Post the gate blocker message with escalation verdict.
+    BODY_WITHOUT_OLD_MARKER=$(printf '%s' "$BODY" | sed 's/<!-- pr-review-agent v1 sha=[a-f0-9][^>]*-->//g')
+    BODY_FOR_ESCALATION="<!-- pr-review-agent v1 sha=$PR_HEAD_SHA decision=escalated risk=$RISK -->
+$BODY_WITHOUT_OLD_MARKER"
+    if gh pr comment "$PR_URL" --body "$BODY_FOR_ESCALATION"; then
+      mark_prior_agent_items_obsolete "$PR_URL"
+    fi
+
+    # Add the hold label and escalation artifact.
+    if ! ensure_hold_label_present "$PR_URL"; then
+      echo "::error::escalation (gate4-recheck): could not confirm needs-human-review present on $PR_URL after $LABEL_MAX_ATTEMPTS attempts — failing so the escalation is retried (#1754)"
+      exit 1
+    fi
+
+    ESC_RESET_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    ESC_BODY=$(cat <<ESC_END
+$ESCALATION_COMMENT_MARKER
+<!-- pr-review-agent human-escalation reset=$ESC_RESET_TS -->
+## Automated review — escalated to human
+
+The automated review cascade escalated this PR to a human reviewer (risk: $RISK, reviewed commit \`$PR_HEAD_SHA\`).
+
+Why: unresolved review thread(s) were detected during the atomic re-check immediately before approval posting. A thread was opened after the initial gate check but before approval could be posted, so the PR cannot be approved (decision gate 4, #1766).
+
+_This note is updated in place on re-escalation; it is not re-posted._
+ESC_END
+)
+    if ! upsert_escalation_comment "$PR_URL" "$ESC_BODY"; then
+      echo "::error::escalation (gate4-recheck): no human-escalation comment could be confirmed on $PR_URL — exiting 100 (no-op) so the escalated count is not overstated (#1754)"
+      exit 100
+    fi
+
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    bash "$SCRIPT_DIR/request-codeowners-review.sh" "$PR_URL" || true
+
+    echo "Escalated to human review"
+    exit 101
+  fi
+
   # Tier 4 (#2495): record that adjudication produced this approval. Appended
   # after the marker checks above, so it cannot affect them.
   if [[ -n "$ADJ_NOTE" ]]; then
