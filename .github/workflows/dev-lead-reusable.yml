@@ -215,6 +215,7 @@ jobs:
       # ALL PR/issue output when active. Sourced from the caller's shadow_mode
       # input (default false ⇒ today's behaviour). Nothing sets it yet.
       DEV_LEAD_SHADOW_MODE: ${{ inputs.shadow_mode }}
+      SHADOW_OUTPUT_FILE: /tmp/dev-lead-shadow-output-${{ github.run_id }}.txt
       DEEP_TIMEOUT_SEC: ${{ vars.DEEP_TIMEOUT_SEC || '' }}
       ACTION_TIMEOUT_SEC: ${{ vars.ACTION_TIMEOUT_SEC || '' }}
       GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY_WRITER || secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}

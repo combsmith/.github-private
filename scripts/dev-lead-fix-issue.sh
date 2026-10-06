@@ -569,9 +569,9 @@ main() {
   if check_existing_pr; then
     echo "::notice::Existing open PR found for issue #${ISSUE_NUMBER} — skipping (dedup)"
     # Dedup comment fires before the dry-run early-exit below, so it is the one
-    # posting site not covered by forced dry-run — gate it on shadow explicitly.
-    if shadow_mode_active; then
-      echo "[shadow] would post dedup comment for issue #${ISSUE_NUMBER} (suppressed)"
+    # posting site not covered by forced dry-run — gate it on shadow or dry-run.
+    if shadow_mode_active || [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+      echo "[shadow/dry-run] would post dedup comment for issue #${ISSUE_NUMBER} (suppressed)"
     else
       gh issue comment "$ISSUE_NUMBER" --repo "$REPO" \
         --body "<!-- dev-lead-issue-dedup -->Already working on this: an open PR exists for issue #${ISSUE_NUMBER}." 2>/dev/null || true
