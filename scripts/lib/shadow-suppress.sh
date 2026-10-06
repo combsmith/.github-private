@@ -19,12 +19,15 @@
 #                         today; anything else (incl. unrecognized) => suppress.
 #   SHADOW_OUTPUT_FILE    where suppressed output is recorded (optional).
 
-# shadow_mode_active — fail-closed predicate.
-#   rc 1 (inactive => post, today's behaviour) only for the recognized-falsy set:
-#        "" | false | 0 | no | off  (any case).
-#   rc 0 (active => suppress) for everything else, including "true" AND any
-#        unexpected/garbage value: if the run cannot positively determine that
-#        shadow is OFF, it suppresses (AC#4).
+# shadow_mode_active()
+#   Fail-closed predicate: returns 0 (active/suppress) for unrecognized values,
+#   1 (inactive/post) only for recognized-falsy: "" | false | 0 | no | off
+#   (case-insensitive). If shadow mode status cannot be positively determined
+#   as OFF, suppression is enabled (fail-closed safety AC#4).
+#
+# Returns:
+#   0 if shadow mode is active (suppress output)
+#   1 if shadow mode is inactive (post as normal)
 shadow_mode_active() {
   local v="${DEV_LEAD_SHADOW_MODE:-}"
   v="$(printf '%s' "$v" | tr '[:upper:]' '[:lower:]')"
@@ -34,8 +37,22 @@ shadow_mode_active() {
   esac
 }
 
-# shadow_apply_suppression — turn an active shadow run into the "post nothing"
-# state. Idempotent; a no-op when shadow is inactive.
+# shadow_apply_suppression()
+#   Enable shadow-mode output suppression by forcing DEV_LEAD_DRY_RUN=true,
+#   which disables all PR/issue posting sites. Records a suppression notice
+#   to the run log and an optional output file. Idempotent: no-op if shadow
+#   mode is inactive (DEV_LEAD_SHADOW_MODE is recognized-falsy).
+#
+# Environment variables (read):
+#   DEV_LEAD_SHADOW_MODE - shadow mode flag (recognized-falsy = inactive)
+#   SHADOW_OUTPUT_FILE   - optional path to record suppressed output (default: /tmp/dev-lead-shadow-output.txt)
+#
+# Environment variables (written):
+#   DEV_LEAD_SHADOW_MODE - normalized to "true" if suppression activated
+#   DEV_LEAD_DRY_RUN     - set to "true" to disable all posting sites
+#
+# Returns:
+#   Always 0 (success)
 shadow_apply_suppression() {
   shadow_mode_active || return 0
 
