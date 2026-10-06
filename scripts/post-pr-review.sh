@@ -613,22 +613,26 @@ if [[ "$DECISION" = "approve" ]]; then
     exit 100
   fi
 
-  # Atomic re-check: immediately before posting approval, verify the thread state
+  # Re-check before approval: immediately before posting approval, verify the thread state
   # has not changed (issue #1766 race condition). A thread opened between the initial
   # gate check and this re-check must block approval. This is not a full re-review —
   # only the gate 4 check is re-run; if threads are now unresolved, approval is
-  # downgraded to escalation.
+  # downgraded to escalation. Note: a TOCTOU race window remains between this check
+  # and the approval POST; the re-check narrows but does not eliminate it (#1766).
   URT_RECHECK_SNAPSHOT=$(urtg_fetch_review_threads "$PR_URL")
   URT_RECHECK_RC=0
   check_unresolved_review_threads "$URT_RECHECK_SNAPSHOT" || URT_RECHECK_RC=$?
+  RECHECK_ESCALATION_REASON=""
   if [[ "$URT_RECHECK_RC" -eq 1 ]]; then
     URT_RECHECK_COUNT=$(printf '%s' "$URT_RECHECK_SNAPSHOT" | jq -r '[ (.reviewThreads // [])[] | select(.isResolved != true) ] | length' 2>/dev/null || echo "One or more")
     echo "    gate4 (recheck): $URT_RECHECK_COUNT unresolved review thread(s) detected after initial check — downgrading approve → escalate (#1766)"
     DECISION="escalate"
+    RECHECK_ESCALATION_REASON="unresolved review thread(s) were detected during the re-check immediately before approval posting. A thread was opened after the initial gate check, so the PR cannot be approved"
     BODY=$(printf -- '- **blocker (decision gate 4)**: %s unresolved review thread(s) request changes and must be resolved before this PR can be approved (a thread was opened after initial review). Resolve each open thread (or push a commit that addresses it and mark the thread resolved); the cascade will then re-review.\n\n---\n\n%s' "$URT_RECHECK_COUNT" "$BODY")
   elif [[ "$URT_RECHECK_RC" -ne 0 ]]; then
     echo "    gate4 (recheck): review threads could not be re-enumerated (rc=$URT_RECHECK_RC) — failing closed, downgrading approve → escalate (#1766)"
     DECISION="escalate"
+    RECHECK_ESCALATION_REASON="the PR review-thread state could not be re-enumerated immediately before approval (API failure, pagination, or permissions). An unknown thread count must not be treated as zero, so approval is withheld (fail-closed)"
     BODY=$(printf -- '- **blocker (decision gate 4)**: the PR review-thread state could not be re-enumerated immediately before approval (API failure, pagination beyond one page, or permissions), so approval is withheld (fail-closed). An unknown thread count must not be treated as zero. The cascade will re-review once the thread set is readable.\n\n---\n\n%s' "$BODY")
   fi
 
@@ -657,7 +661,7 @@ $ESCALATION_COMMENT_MARKER
 
 The automated review cascade escalated this PR to a human reviewer (risk: $RISK, reviewed commit \`$PR_HEAD_SHA\`).
 
-Why: unresolved review thread(s) were detected during the atomic re-check immediately before approval posting. A thread was opened after the initial gate check but before approval could be posted, so the PR cannot be approved (decision gate 4, #1766).
+Why: $RECHECK_ESCALATION_REASON (decision gate 4, #1766).
 
 _This note is updated in place on re-escalation; it is not re-posted._
 ESC_END
