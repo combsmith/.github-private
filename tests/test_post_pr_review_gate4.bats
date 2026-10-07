@@ -24,6 +24,7 @@ setup() {
   mkdir -p "$TEST_DIR/bin"
   cd "$TEST_DIR"
 
+  export GQL_COUNT="$TEST_DIR/gql_count"
   export APPROVE_LOG="$TEST_DIR/approve.log"
   export COMMENT_OUT="$TEST_DIR/comment.txt"
   export GH_LOG="$TEST_DIR/gh.log"
@@ -36,6 +37,14 @@ printf '%s\n' "$*" >> "$GH_LOG"
 
 # GraphQL: the unresolved-review-thread enumeration.
 if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
+  # Changing-snapshot mode: the first enumeration (initial gate) is clean, every
+  # later one (pre-POST recheck) uses $URT_GQL_RECHECK_MODE.
+  if [ -n "${URT_GQL_RECHECK_MODE:-}" ] && [[ "$args" == *reviewThreads* ]]; then
+    n=$(cat "$GQL_COUNT" 2>/dev/null || echo 0)
+    n=$((n + 1))
+    echo "$n" > "$GQL_COUNT"
+    if [ "$n" -ge 2 ]; then URT_GQL_MODE="$URT_GQL_RECHECK_MODE"; else URT_GQL_MODE="clean"; fi
+  fi
   case "$*" in
     *reviewThreads*)
       case "${URT_GQL_MODE:-clean}" in
@@ -75,6 +84,10 @@ if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
     prev="$a"
   done
   meta='{"mergeStateStatus":"CLEAN","body":"b","closingIssuesReferences":[],"labels":[]}'
+  # Escalation path confirms the hold label by reading it back; pretend it sticks.
+  if [ -n "${HOLD_LABEL_PRESENT:-}" ]; then
+    meta='{"mergeStateStatus":"CLEAN","body":"b","closingIssuesReferences":[],"labels":[{"name":"needs-human-review"}]}'
+  fi
   if [ -n "$jqf" ]; then printf '%s' "$meta" | jq -r "$jqf"; else printf '%s' "$meta"; fi
   exit 0
 fi
@@ -189,6 +202,33 @@ write_verdict() {
   grep -q 'APPROVE' "$APPROVE_LOG"
   # No fix-request comment.
   [ ! -s "$COMMENT_OUT" ]
+}
+
+# ── Pre-POST recheck: clean at the initial gate, blocked at the recheck ──────
+
+@test "recheck: clean initial snapshot then unresolved thread → NOT approved, recheck escalation posted (#1766)" {
+  export URT_GQL_RECHECK_MODE="unresolved"
+  export HOLD_LABEL_PRESENT=1
+  local vf; vf=$(write_verdict approve LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 101 ]
+  [ ! -s "$APPROVE_LOG" ]
+  [[ "$output" == *"gate4 (recheck)"* ]]
+  grep -qi 'unresolved review thread' "$COMMENT_OUT"
+  grep -qi 're-check immediately before approval' "$COMMENT_OUT"
+}
+
+@test "recheck: clean initial snapshot then incomplete (paginated) → NOT approved, fail-closed escalation posted (#1766)" {
+  export URT_GQL_RECHECK_MODE="paginated"
+  export HOLD_LABEL_PRESENT=1
+  local vf; vf=$(write_verdict approve LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 101 ]
+  [ ! -s "$APPROVE_LOG" ]
+  [[ "$output" == *"could not be re-enumerated"* ]]
+  grep -qi 'could not be re-enumerated' "$COMMENT_OUT"
 }
 
 # ── The gate only governs approvals: an escalate verdict is untouched ────────
