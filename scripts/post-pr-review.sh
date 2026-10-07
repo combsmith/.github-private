@@ -290,7 +290,7 @@ upsert_escalation_comment() {
 
 # mark_prior_agent_items_obsolete <pr_url>
 #   Dismiss stale prior agent reviews and collapse prior agent comments,
-#   keeping only the most recent agent review/comment at the current head SHA.
+#   keeping only the globally newest agent review/comment by timestamp.
 #   Preserves human reviews unchanged. After successfully posting a new review/comment,
 #   identify agent items by the body marker `<!-- pr-review-agent v1 sha=<HEX> -->`.
 #   The newest agent item by timestamp (which is the just-posted one) is preserved.
