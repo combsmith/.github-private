@@ -92,6 +92,9 @@ CLAUDEEOF
 }
 
 # write_snapshot <marker-body>
+#   Write a PR snapshot JSON file to SNAPSHOT with the given marker-body comment.
+#   The snapshot includes headRefOid, status check result, review decision, and
+#   a bot-authored comment containing the marker-body. Used for idempotency testing.
 write_snapshot() {
   local marker_body="$1"
   local comments

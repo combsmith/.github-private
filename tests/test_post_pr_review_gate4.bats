@@ -114,6 +114,10 @@ GHEOF
 # No teardown needed: TEST_DIR is $BATS_TEST_TMPDIR, which BATS creates per-test
 # and removes automatically after each test.
 
+# write_verdict <decision> <risk>
+#   Write a verdict JSON file to TEST_DIR/verdict.json with the given decision
+#   and risk level, return the file path. The verdict includes the PR_HEAD_SHA
+#   marker and a sample approval message.
 write_verdict() {
   # $1 = decision, $2 = risk
   local f="$TEST_DIR/verdict.json"

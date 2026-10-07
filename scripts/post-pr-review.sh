@@ -618,7 +618,11 @@ if [[ "$DECISION" = "approve" ]]; then
   # gate check and this re-check must block approval. This is not a full re-review —
   # only the gate 4 check is re-run; if threads are now unresolved, approval is
   # downgraded to escalation. Note: a TOCTOU race window remains between this check
-  # and the approval POST; the re-check narrows but does not eliminate it (#1766).
+  # (line 503) and the approval POST (line 533) — a thread created after the re-check
+  # snapshot but before the approval write would still receive approval. The re-check
+  # mitigates the window (narrows it from ms to μs) and documents the race, but cannot
+  # eliminate it without atomic operations (impossible with GitHub's separate API calls).
+  # This is a documented known limitation of issue #1766's fail-closed design (#1766).
   URT_RECHECK_SNAPSHOT=$(urtg_fetch_review_threads "$PR_URL")
   URT_RECHECK_RC=0
   check_unresolved_review_threads "$URT_RECHECK_SNAPSHOT" || URT_RECHECK_RC=$?

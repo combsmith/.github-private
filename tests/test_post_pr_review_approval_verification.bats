@@ -124,6 +124,11 @@ GHEOF
 
 teardown() { rm -rf "$TEST_DIR"; }
 
+# approve_verdict
+#   Write an approval verdict JSON file to TEST_DIR/verdict.json with a proper
+#   approval marker containing the current PR_HEAD_SHA. The marker must be
+#   complete (sha= and decision=approved together) to pass #1754 AC4 checks.
+#   Return the file path.
 approve_verdict() {
   # The body must carry a complete approval marker for PR_HEAD_SHA ($SHA) or the
   # #1754 AC4 fail-closed guard rejects it before the #1874 read-back logic under

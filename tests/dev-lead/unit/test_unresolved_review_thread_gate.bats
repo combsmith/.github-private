@@ -25,6 +25,10 @@ teardown() {
   unset SCRIPT_DIR
 }
 
+# _run_check <threads_json>
+#   Run check_unresolved_review_threads with the given threads JSON in a
+#   subprocess to isolate the test. The exit code indicates the check result
+#   (0 = no unresolved threads, 1 = unresolved threads, 2 = incomplete snapshot).
 _run_check() {
   # _run_check <threads_json>
   run bash -c "source '$GATE'; check_unresolved_review_threads \"\$1\"" _ "$1"
@@ -147,6 +151,9 @@ _run_check() {
 # gh is stubbed on PATH so the helper stays offline.
 # ────────────────────────────────────────────────────────────────────
 
+# _mock_gh <raw_json>
+#   Install a `gh` shim on PATH that emits the given raw_json response.
+#   Used to stub the GitHub CLI for testing the fetch and check functions.
 _mock_gh() {
   # _mock_gh <raw_json> — install a `gh` shim on PATH that emits <raw_json>.
   MOCK_BIN="$BATS_TEST_TMPDIR/bin"
@@ -155,6 +162,9 @@ _mock_gh() {
   chmod +x "$MOCK_BIN/gh"
 }
 
+# _run_fetch <raw_json>
+#   Stub gh to emit the given raw_json response and run urtg_fetch_review_threads.
+#   Executes in a subprocess to isolate the mocked gh from other tests.
 _run_fetch() {
   # _run_fetch <raw_json> — stub gh to emit <raw_json>, run urtg_fetch_review_threads.
   _mock_gh "$1"

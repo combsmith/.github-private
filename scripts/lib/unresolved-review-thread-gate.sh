@@ -35,10 +35,14 @@
 
 set -euo pipefail
 
+# log_unresolved_gate_info
+#   Echo an info-level message to stderr with [unresolved-review-gate] prefix.
 log_unresolved_gate_info() {
   echo "[unresolved-review-gate] $*" >&2
 }
 
+# log_unresolved_gate_warn
+#   Echo a warning-level message to stderr with [unresolved-review-gate] WARNING prefix.
 log_unresolved_gate_warn() {
   echo "[unresolved-review-gate] WARNING: $*" >&2
 }

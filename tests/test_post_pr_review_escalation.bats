@@ -46,6 +46,9 @@ sub1="${1:-}"; sub2="${2:-}"
 # Model the PR's label set as a mutable file so add/remove-label are reflected
 # by a subsequent read — post-pr-review.sh now confirms label state after a
 # mutation (#1754). Lazily seed it from LABELS_JSON on first touch.
+# _labels_init
+#   Initialize the LABELS_FILE with LABELS_JSON if it does not exist. This
+#   ensures the mock gh command has a base labels state to work with.
 _labels_init() {
   if [ ! -f "${LABELS_FILE:-/dev/null}" ]; then
     local seed="${LABELS_JSON:-}"
@@ -170,12 +173,18 @@ GHEOF
 
 teardown() { rm -rf "$TEST_DIR"; }
 
+# write_escalate_verdict
+#   Write an escalation verdict JSON file to TEST_DIR/verdict.json and return
+#   the file path. Used for testing escalation behavior.
 write_escalate_verdict() {
   local f="$TEST_DIR/verdict.json"
   jq -n '{decision:"escalate", risk:"LOW", summary:"needs a human", body:"- some finding"}' > "$f"
   echo "$f"
 }
 
+# write_approve_verdict <body>
+#   Write an approval verdict JSON file to TEST_DIR/verdict.json with the given
+#   body content and return the file path. The verdict has decision="approve".
 write_approve_verdict() {
   # $1 = body content
   local f="$TEST_DIR/verdict.json"
@@ -443,6 +452,10 @@ The verdict was decision=approve in prose only."
 }
 
 # ── fix-request hold provenance ─────────────────────────────────────────────
+# fix_request_setup
+#   Configure the environment for fix-request tests, enabling AI delegation,
+#   setting review cycle to 1, risk to LOW, and initializing labels with
+#   the needs-human-review label.
 fix_request_setup() {
   export AI_DELEGATION_ENABLED="true"
   export REVIEW_CYCLE="1"
