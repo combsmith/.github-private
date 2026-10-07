@@ -289,17 +289,18 @@ upsert_escalation_comment() {
 }
 
 # mark_prior_agent_items_obsolete <pr_url>
-# After successfully posting a new review/comment, dismiss prior agent reviews
-# (state != DISMISSED) and collapse prior agent comments. Identifies agent
-# items by the body marker `<!-- pr-review-agent v1 sha=<HEX> -->`. The newest
-# agent item by timestamp (which is the just-posted one) is preserved.
-# Idempotent: prior comments already wrapped in a `<!-- pr-review-agent
-# superseded -->` sentinel are skipped to avoid recursive nesting.
+#   Dismiss stale prior agent reviews and collapse prior agent comments,
+#   keeping only the most recent agent review/comment at the current head SHA.
+#   Preserves human reviews unchanged. After successfully posting a new review/comment,
+#   identify agent items by the body marker `<!-- pr-review-agent v1 sha=<HEX> -->`.
+#   The newest agent item by timestamp (which is the just-posted one) is preserved.
+#   Idempotent: prior comments already wrapped in a `<!-- pr-review-agent
+#   superseded -->` sentinel are skipped to avoid recursive nesting.
 #
-# API failures here do NOT abort the workflow — the new post has already
-# landed. They DO emit ::warning:: annotations so silent stack-up of
-# duplicates becomes visible in the Actions UI rather than degrading
-# unnoticed (e.g., a permissions change on the dismissal endpoint).
+#   API failures here do NOT abort the workflow — the new post has already
+#   landed. They DO emit ::warning:: annotations so silent stack-up of
+#   duplicates becomes visible in the Actions UI rather than degrading
+#   unnoticed (e.g., a permissions change on the dismissal endpoint).
 mark_prior_agent_items_obsolete() {
   local pr_url="$1"
   local owner_repo pr_num

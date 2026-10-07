@@ -35,14 +35,18 @@
 
 set -euo pipefail
 
-# log_unresolved_gate_info
+# log_unresolved_gate_info <message...>
 #   Echo an info-level message to stderr with [unresolved-review-gate] prefix.
+#   Used for operational diagnostics (e.g., gate check results) that should appear
+#   in the GitHub Actions log without triggering alerts. All output goes to stderr.
 log_unresolved_gate_info() {
   echo "[unresolved-review-gate] $*" >&2
 }
 
-# log_unresolved_gate_warn
+# log_unresolved_gate_warn <message...>
 #   Echo a warning-level message to stderr with [unresolved-review-gate] WARNING prefix.
+#   Used for gate-blocking conditions (e.g., unresolved threads, fetch failures) that
+#   may indicate decisions being withheld or escalated. All output goes to stderr.
 log_unresolved_gate_warn() {
   echo "[unresolved-review-gate] WARNING: $*" >&2
 }
@@ -96,6 +100,17 @@ urtg_fetch_review_threads() {
 }
 
 # check_unresolved_review_threads <threads_json>
+#   Evaluate a threads snapshot (from urtg_fetch_review_threads) and return a
+#   verdict indicating whether approval may proceed. This is a pure check (no
+#   network I/O) that fails closed: an unknown or incomplete count is never
+#   treated as zero, to prevent approval while threads remain unresolved (issue
+#   #1766, decision gate 4).
+#
+#   Returns:
+#     0 = snapshot is complete AND zero unresolved threads → approval allowed
+#     1 = one or more unresolved review threads → withhold approval (escalate)
+#     2 = snapshot cannot be fully evaluated (incomplete, malformed, or missing)
+#         → fail closed (escalate). An unknown thread count must never read as zero.
 check_unresolved_review_threads() {
   local json="${1:-}"
 
