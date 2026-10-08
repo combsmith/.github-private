@@ -223,3 +223,10 @@ setup() {
   # …and it resolves the dispatched run it just fired (run list / run URL).
   grep -qE "gh run list|/actions/runs/" "$FEATURE_IDEATION_YML"
 }
+
+@test "feature-ideation.yml redispatch does not fabricate an empty run snapshot" {
+  # A failed pre-dispatch snapshot must NOT fall back to '[]' (that would link the
+  # newest pre-existing run); the lookup is skipped for the runs-page fallback.
+  ! grep -qF "|| echo '[]'" "$FEATURE_IDEATION_YML"
+  grep -qF '[ -n "${before_ids}" ] || break' "$FEATURE_IDEATION_YML"
+}
