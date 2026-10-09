@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/petry-projects/.github-private/config/ai-engines.schema.json",
+  "title": "AI engine configuration",
+  "description": "Providers, model catalog and per-task model chains for the review and dev-lead engines (#1973). Cross-reference checks (catalog membership, retired models, provider match, price rows, one-model chains) live in scripts/validate-ai-engines.py.",
+  "type": "object",
+  "required": ["version", "models", "providers", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "$comment": { "type": "string" },
+    "version": { "const": 1 },
+    "models": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "$ref": "#/$defs/modelId" },
+      "additionalProperties": { "$ref": "#/$defs/model" }
+    },
+    "providers": {
+      "type": "object",
+      "required": ["fallback_order", "claude", "gemini", "copilot"],
+      "additionalProperties": false,
+      "properties": {
+        "$comment": { "type": "string" },
+        "fallback_order": {
+          "description": "Default cross-provider fallback order; the first enabled entry is the primary. AI_ENGINES overrides it.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/providerName" },
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true
+        },
+        "claude": { "$ref": "#/$defs/provider" },
+        "gemini": { "$ref": "#/$defs/provider" },
+        "copilot": { "$ref": "#/$defs/provider" }
+      }
+    },
+    "tasks": {
+      "type": "object",
+      "required": ["triage", "deep", "audit", "action", "single", "duck"],
+      "additionalProperties": false,
+      "properties": {
+        "$comment": { "type": "string" },
+        "triage": { "$ref": "#/$defs/task" },
+        "deep": { "$ref": "#/$defs/task" },
+        "audit": { "$ref": "#/$defs/task" },
+        "action": { "$ref": "#/$defs/task" },
+        "single": { "$ref": "#/$defs/task" },
+        "duck": { "$ref": "#/$defs/task" }
+      }
+    }
+  },
+  "$defs": {
+    "providerName": { "enum": ["claude", "gemini", "copilot"] },
+    "modelId": {
+      "description": "Same id rule as AI_MODELS_* entries (scripts/lib/engine-models.sh).",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]*$"
+    },
+    "notes": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      ]
+    },
+    "model": {
+      "type": "object",
+      "required": ["provider", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "$ref": "#/$defs/providerName" },
+        "status": { "enum": ["active", "preview", "retired"] },
+        "notes": { "$ref": "#/$defs/notes" }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "notes": { "$ref": "#/$defs/notes" }
+      }
+    },
+    "chain": {
+      "description": "Ordered model chain: primary first, then fallbacks.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/modelId" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "$comment": { "type": "string" },
+        "claude": { "$ref": "#/$defs/chain" },
+        "gemini": { "$ref": "#/$defs/chain" },
+        "copilot": { "$ref": "#/$defs/chain" },
+        "prefer": {
+          "description": "Reserved for per-task provider preference (Phase 2); not read yet.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/providerName" },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

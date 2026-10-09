@@ -34,6 +34,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/pr-review-sweep-metrics.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/run-attribution.sh"
 
 # Model family → current id resolver (#1979): name a family, never pin a version.
+# Also lists break-glass overrides of config/ai-engines.json (ai_engines_overrides).
 # shellcheck source=scripts/lib/engine-models.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/engine-models.sh"
 
@@ -333,8 +334,29 @@ workflow_source=$(gh api "repos/${WORKFLOW_REPO}/contents/.github/workflows/${WO
     generate_attribution_report "$attr_tsv" "PR-review run attribution (by role, across collapse)"
     rm -f "$attr_tsv" "$legacy_attr_jsonl"
   fi
+  # Break-glass overrides (#1973): an AI_MODELS_* key or AI_ENGINES that differs
+  # from config/ai-engines.json. Listed every day until it is folded back into
+  # the file, so a temporary override cannot live on silently. Deterministic —
+  # same truncation guarantee.
+  printf '## Engine configuration overrides\n\n'
+  if ! engine_overrides="$(ai_engines_overrides)"; then
+    engine_overrides=""
+    printf 'Could not read `config/ai-engines.json` — see the run log.\n\n'
+  elif [ -z "$engine_overrides" ]; then
+    printf 'None: every engine and model setting comes from `config/ai-engines.json`.\n\n'
+  else
+    printf 'These Actions variables override `config/ai-engines.json`. Fold each into the file through a normal release, then delete the variable.\n\n'
+    printf '%s\n' "$engine_overrides" | sed 's/^/- `/; s/$/`/'
+    printf '\n'
+  fi
 } > "$REPORT_FILE"
 rm -f "$ingress_attr_jsonl"
+
+if [ -n "${engine_overrides:-}" ]; then
+  while IFS= read -r line; do
+    echo "::warning::engine override differs from config/ai-engines.json: $line"
+  done <<< "$engine_overrides"
+fi
 
 echo "Duration percentiles — p50 $(fmt_dur "$dur_p50") / p95 $(fmt_dur "$dur_p95") across $dur_n run(s)"
 echo "Outcome mix (by event):"
