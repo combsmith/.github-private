@@ -38,14 +38,18 @@ if ! declare -F ai_engines_file_providers >/dev/null 2>&1 \
   source "$(dirname "${BASH_SOURCE[0]}")/engine-models.sh"
 fi
 
-# _ai_engine_default_chain — the file's enabled providers in fallback_order,
-# else AI_ENGINES_DEFAULT.
+# _ai_engine_default_chain — the file's enabled providers in fallback_order.
+# AI_ENGINES_DEFAULT is used only when the file cannot be read; a file that
+# enables nothing yields an empty chain (the validator rejects such a file) and
+# never re-enables the providers it turned off.
 _ai_engine_default_chain() {
-  local c=""
-  if declare -F ai_engines_file_providers >/dev/null 2>&1; then
-    c="$(ai_engines_file_providers 2>/dev/null)" || c=""
+  local c
+  if declare -F ai_engines_file_providers >/dev/null 2>&1 \
+     && c="$(ai_engines_file_providers 2>/dev/null)"; then
+    printf '%s' "$c"
+    return 0
   fi
-  printf '%s' "${c:-$AI_ENGINES_DEFAULT}"
+  printf '%s' "$AI_ENGINES_DEFAULT"
 }
 
 # _ai_engine_file_disabled — the providers the file disables (space-separated).

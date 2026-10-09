@@ -211,6 +211,7 @@ jobs:
             tests/test_eval_health_notify.bats \
             tests/test_consumer_manifest.bats \
             tests/test_validate_ai_engines.bats \
+            tests/dev-lead/unit/test_ai_engines_config.bats \
             tests/test_downstream_impact_map.bats \
             tests/test_downstream_impact_assemble.bats \
             tests/test_downstream_impact_triage_inline.bats \

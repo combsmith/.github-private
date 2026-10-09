@@ -131,8 +131,9 @@ while IFS= read -r value; do
       continue ;;
   esac
   resolved=$(realpath -m "$REPO_ROOT/$value")
-  if [ "${resolved#"${lib_root}/"}" = "$resolved" ] && [ "${resolved#"${prompts_root}/"}" = "$resolved" ] \
-     && [ "${resolved#"${config_root}/"}" = "$resolved" ]; then
+  if [[ "$value" == *..* ]] \
+     || { [[ "${resolved#"${lib_root}/"}" == "$resolved" ]] && [[ "${resolved#"${prompts_root}/"}" == "$resolved" ]] \
+          && [[ "${resolved#"${config_root}/"}" == "$resolved" ]]; }; then
     err "surface_sources value contains path traversal: $value"
     continue
   fi

@@ -779,12 +779,13 @@ current concrete id at run time; do **not** hard-pin `claude-<family>-<version>`
 ids across the tree (#1979, companion
 [`petry-projects/.github#1199`](https://github.com/petry-projects/.github/issues/1199)).
 A model swap should be one edit to the chains in
-[`scripts/lib/engine-models.sh`](./scripts/lib/engine-models.sh), not a hunt for
+[`config/ai-engines.json`](./config/ai-engines.json) (validated by
+`scripts/validate-ai-engines.py`), not a hunt for
 scattered ids.
 
 - **Resolve with `ai_model_for_family <family>`** (`scripts/lib/engine-models.sh`):
   it returns the current id for the family, honouring `CLAUDE_<TIER>_MODEL_CHAIN`
-  then `AI_MODELS_CLAUDE` then the built-in default. A shell caller sources the lib
+  then `AI_MODELS_CLAUDE` then `config/ai-engines.json`. A shell caller sources the lib
   and calls the function; a workflow adds a resolve step that writes the id to a
   step output. In gh-aw front-matter, `engine:` names the runner engine (e.g.
   `claude`) and the model family is named in `models:` (e.g.
