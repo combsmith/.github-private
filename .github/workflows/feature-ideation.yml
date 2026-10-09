@@ -155,10 +155,9 @@ jobs:
           # Snapshot the EXISTING workflow_dispatch run ids BEFORE we fire ours, so we
           # identify our run by the new id that appears — not by a createdAt timestamp,
           # whose 1s resolution could tie our run with an operator's manual dispatch in
-          # the same second and link the wrong run (race flagged in review). Since
-          # concurrency: feature-ideation serialises every run of this workflow, no
-          # OTHER bridge dispatch can fire inside this window, so the freshly-appearing
-          # id is ours.
+          # the same second and link the wrong run (race flagged in review). Best effort:
+          # concurrency serialises run EXECUTION, not dispatch creation, so a manual
+          # workflow_dispatch fired inside this short window could still be picked.
           before_ids="$(gh run list --repo "${REPO}" \
             --workflow feature-ideation.yml --event workflow_dispatch \
             --json databaseId --jq '[.[].databaseId]' 2>/dev/null || true)"
@@ -171,7 +170,7 @@ jobs:
           # so we can link it without waiting. We deliberately do NOT wait for it to
           # finish: a bridge-watch would deadlock (the run can't start until this job,
           # holding the concurrency group, ends). We pick the newest run whose id was
-          # NOT in the pre-dispatch snapshot — deterministically ours.
+          # NOT in the pre-dispatch snapshot — almost always ours.
           run_url=""
           # If the snapshot failed (before_ids empty) we cannot tell our run from an
           # existing one, so skip the specific-run lookup and use the fallback page.
