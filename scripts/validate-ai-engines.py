@@ -126,7 +126,8 @@ def check_references(config, globs) -> list:
     for model, entry in models.items():
         if entry["status"] == "retired" or not providers[entry["provider"]]["enabled"]:
             continue
-        bare = model.split("/", 1)[1] if "/" in model else model
+        # Only the Copilot path strips a vendor prefix before pricing a run.
+        bare = model.split("/", 1)[1] if entry["provider"] == "copilot" and "/" in model else model
         if not any(glob_matches(g, model) or glob_matches(g, bare) for g in globs):
             problems.append(
                 f"models.{model}: provider {entry['provider']} is enabled but the model has "

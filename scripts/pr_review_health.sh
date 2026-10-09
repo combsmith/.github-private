@@ -342,19 +342,21 @@ workflow_source=$(gh api "repos/${WORKFLOW_REPO}/contents/.github/workflows/${WO
   if ! engine_overrides="$(ai_engines_overrides)"; then
     engine_overrides=""
     printf 'Could not read `config/ai-engines.json` — see the run log.\n\n'
-  elif [ -z "$engine_overrides" ]; then
+  else
     model_problems="$(ai_models_problems)"
+    if [ -n "$engine_overrides" ]; then
+      printf 'These Actions variables override `config/ai-engines.json`. Fold each into the file through a normal release, then delete the variable.\n\n'
+      printf '%s\n' "$engine_overrides" | sed 's/^/- `/; s/$/`/'
+      printf '\n'
+    fi
     if [ -n "$model_problems" ]; then
       printf 'Invalid engine model overrides (ignored):\n\n'
       printf '%s\n' "$model_problems" | sed 's/^/- `/; s/$/`/'
       printf '\n'
-    else
+    fi
+    if [ -z "$engine_overrides" ] && [ -z "$model_problems" ]; then
       printf 'None: every engine and model setting comes from `config/ai-engines.json`.\n\n'
     fi
-  else
-    printf 'These Actions variables override `config/ai-engines.json`. Fold each into the file through a normal release, then delete the variable.\n\n'
-    printf '%s\n' "$engine_overrides" | sed 's/^/- `/; s/$/`/'
-    printf '\n'
   fi
 } > "$REPORT_FILE"
 rm -f "$ingress_attr_jsonl"

@@ -109,7 +109,7 @@ jobs:
           # differs from config/ai-engines.json (#1973).
           AI_MODELS_GEMINI: ${{ vars.AI_MODELS_GEMINI }}
           AI_MODELS_COPILOT: ${{ vars.AI_MODELS_COPILOT }}
-          AI_ENGINES: ${{ vars.AI_ENGINES }}
+          AI_ENGINES: ${{ vars.AI_ENGINES || vars.DEV_LEAD_ENGINES || '' }}
         run: bash scripts/pr_review_health.sh
 
       - name: Truncate report if needed

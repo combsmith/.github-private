@@ -321,8 +321,10 @@ ai_models_problems() {
 # the same normalisation engine-chain.sh applies (case, separators). Prints
 # nothing when no override differs; returns 1 when the file cannot be read.
 ai_engines_overrides() {
-  local p k var c d spec chain="" t file
+  local p k var c d spec chain="" t file disabled
   local -a toks=()
+  # Read the file first, so an unreadable one is an error even with no override set.
+  ai_engines_config_load || return 1
   for p in claude gemini copilot; do
     var="$(_ai_models_var "$p")"
     for k in $(_ai_models_keys "$p"); do
@@ -339,8 +341,11 @@ ai_engines_overrides() {
   spec="${AI_ENGINES:-${DEV_LEAD_ENGINES:-}}"
   [ -n "${spec//[[:space:],]/}" ] || return 0
   file="$(ai_engines_file_providers)" || return 1
+  disabled="$(ai_engines_file_disabled)" || return 1
   IFS=$' \t' read -r -a toks <<< "$(printf '%s' "$spec" | tr ',\n\r\t' '    ' | tr '[:upper:]' '[:lower:]')"
   for t in ${toks[@]+"${toks[@]}"}; do
+    # A provider the file disables never runs, so it is not part of the effective chain.
+    [[ " $disabled " != *" $t "* ]] || continue
     [[ " $chain " == *" $t "* ]] || chain="${chain:+$chain }$t"
   done
   [ "$chain" = "$file" ] || printf "AI_ENGINES=%s → %s (file: %s)\n" "$spec" "$chain" "$file"
