@@ -19,11 +19,11 @@
 #                         today; anything else (incl. unrecognized) => suppress.
 #   SHADOW_OUTPUT_FILE    where suppressed output is recorded (optional).
 
-# shadow_mode_active()
-#   Fail-closed predicate: returns 0 (active/suppress) for unrecognized values,
-#   1 (inactive/post) only for recognized-falsy: "" | false | 0 | no | off
-#   (case-insensitive). If shadow mode status cannot be positively determined
-#   as OFF, suppression is enabled (fail-closed safety AC#4).
+# shadow_mode_active — fail-closed predicate for shadow-mode status.
+# Returns 0 (active/suppress) for unrecognized values, 1 (inactive/post) only
+# for recognized-falsy: "" | false | 0 | no | off (case-insensitive). If
+# shadow mode status cannot be positively determined as OFF, suppression is
+# enabled (fail-closed safety AC#4).
 #
 # Returns:
 #   0 if shadow mode is active (suppress output)
@@ -37,11 +37,11 @@ shadow_mode_active() {
   esac
 }
 
-# shadow_apply_suppression()
-#   Enable shadow-mode output suppression by forcing DEV_LEAD_DRY_RUN=true,
-#   which disables all PR/issue posting sites. Records a suppression notice
-#   to the run log and an optional output file. Idempotent: no-op if shadow
-#   mode is inactive (DEV_LEAD_SHADOW_MODE is recognized-falsy).
+# shadow_apply_suppression — enable shadow-mode output suppression.
+# Forces DEV_LEAD_DRY_RUN=true, which disables all PR/issue posting sites.
+# Records a suppression notice to the run log and an optional output file.
+# Idempotent: no-op if shadow mode is inactive (DEV_LEAD_SHADOW_MODE is
+# recognized-falsy).
 #
 # Environment variables (read):
 #   DEV_LEAD_SHADOW_MODE - shadow mode flag (recognized-falsy = inactive)
