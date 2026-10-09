@@ -220,8 +220,8 @@ setup() {
   # the dispatched run, keyed to the discussion node id from the event.
   grep -qF "addDiscussionComment" "$FEATURE_IDEATION_YML"
   grep -qE "github\.event\.discussion\.node_id" "$FEATURE_IDEATION_YML"
-  # …and it resolves the dispatched run it just fired (run list / run URL).
-  grep -qE "gh run list|/actions/runs/" "$FEATURE_IDEATION_YML"
+  # …and the comment text interpolates the dispatched run's URL.
+  grep -qF 'The BMAD Analyst runs in a separate workflow run: ${run_url}' "$FEATURE_IDEATION_YML"
 }
 
 @test "feature-ideation.yml redispatch does not fabricate an empty run snapshot" {

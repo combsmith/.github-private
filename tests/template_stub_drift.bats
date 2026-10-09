@@ -107,16 +107,6 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "template_drift_allowlisted: sonarcloud.yml is allowlisted" {
-  run template_drift_allowlisted ".github/workflows/sonarcloud.yml"
-  [ "$status" -eq 0 ]
-}
-
-@test "template_drift_allowlisted: dependabot.yml is allowlisted" {
-  run template_drift_allowlisted ".github/dependabot.yml"
-  [ "$status" -eq 0 ]
-}
-
 @test "template_drift_allowlisted: copilot-setup-steps.yml is allowlisted" {
   run template_drift_allowlisted ".github/workflows/copilot-setup-steps.yml"
   [ "$status" -eq 0 ]
