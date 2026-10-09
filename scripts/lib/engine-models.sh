@@ -262,6 +262,7 @@ ai_models_replace_first() {
 # first model.
 ai_models_gemini_chain() {
   local key="${1:-}" group first c
+  ai_engines_config_load || return 1
   case "$key" in
     triage|action)      group="${GEMINI_FLASH_MODEL_CHAIN:-}"; first="${GEMINI_FLASH_MODEL:-}" ;;
     deep|audit|single)  group="${GEMINI_PRO_MODEL_CHAIN:-}";   first="${GEMINI_PRO_MODEL:-}" ;;
@@ -291,6 +292,7 @@ ai_models_gemini_chain() {
 # a child shell) is not mistaken for the caller's.
 ai_models_copilot_model() {
   local key="${1:-}" m=""
+  ai_engines_config_load || return 1
   if [ -n "${COPILOT_API_MODEL:-}" ] && [ "$COPILOT_API_MODEL" != "${COPILOT_API_MODEL_DEFAULTED:-}" ]; then
     m="$COPILOT_API_MODEL"
   else
@@ -409,6 +411,7 @@ ai_model_for_family() {
       printf '::warning::ai_model_for_family: unknown family %s (expected opus|sonnet|haiku)\n' "$family" >&2
       return 1 ;;
   esac
+  ai_engines_config_load || return 1
   chain="${!var:-}"
   # Only an EMPTY per-tier var counts as absent (engine.sh's ${VAR:-…} rule). A
   # set-but-malformed value (",") must not let AI_MODELS_CLAUDE win; it fails the
