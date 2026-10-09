@@ -86,7 +86,11 @@ source "$(dirname "$0")/lib/hold-label.sh"
 DEV_LEAD_PHASE="${DEV_LEAD_PHASE:-}"
 DLH_DIR=""
 if [ "$DEV_LEAD_PHASE" = "push" ]; then
-  DLH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dev-lead-handoff.XXXXXX")"
+  DLH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dev-lead-handoff.XXXXXX")" \
+    || { echo "::error::failed to create temporary directory" >&2; exit 1; }
+  # Registered at once so the dir is never orphaned; the restore_auto_merge trap
+  # below chains this cleanup rather than replacing it.
+  trap 'rm -rf "$DLH_DIR"' EXIT
   if tjh_restore "${DEV_LEAD_HANDOFF_FILE:-}" "${DEV_LEAD_HANDOFF_SHA256:-}" "$DLH_DIR" \
      && [ "$(jq -r '.intent // ""' "$DLH_DIR/state.json" 2>/dev/null)" = "${INTENT_TYPE:-}" ] \
      && [ "$(jq -r '.pr_number // ""' "$DLH_DIR/state.json" 2>/dev/null)" = "${PR_NUMBER:-}" ]; then
@@ -103,6 +107,7 @@ if [ "$DEV_LEAD_PHASE" = "push" ]; then
     export HEAD_SHA ACTOR TRIGGERING_REVIEWER COMMENT_BODY COMMENT_NODE_ID COMMENT_VERSION
   else
     echo "::error::push phase: the handoff from the dispatch job is missing, does not match its published digest, or names another pass — nothing will be pushed (#2143)"
+    rm -rf "$DLH_DIR"
     DLH_DIR=""
   fi
 fi
@@ -388,7 +393,7 @@ if [ "${DEV_LEAD_DRY_RUN:-false}" = "false" ] && [ -n "${PR_NUMBER:-}" ]; then
   # trap) puts it back however we exit; checkout_pr_in_worktree chains its own
   # cleanup onto this trap.
   # shellcheck disable=SC2154 # rc is set by the trap string itself
-  trap 'rc=$?; restore_auto_merge; hold_label_exit_guard "$rc"' EXIT
+  trap 'rc=$?; restore_auto_merge; [ -z "$DLH_DIR" ] || rm -rf "$DLH_DIR"; hold_label_exit_guard "$rc"' EXIT
   hold_auto_merge
   # Resolve HEAD_SHA after holding auto-merge: for issue_comment intents
   # (on-mention, fix-bot-comment) only pr_number is provided, not head_sha.

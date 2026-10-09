@@ -110,7 +110,7 @@ tjh_run_suite() {
   fi
   out=$(cd "$repo" && trg_scan_pass "$base") || trg_rc=$?
   (( trg_rc <= 1 )) || return 2
-  head=$(printf '%s\n' "$out" | head -1)
+  head="${out%%$'\n'*}"
   verdict="${head%%$'\t'*}"
   cmd="${head#*$'\t'}"
   tests=$(printf '%s\n' "$out" | sed '1d')
