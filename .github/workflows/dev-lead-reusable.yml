@@ -760,7 +760,7 @@ jobs:
     needs: [dispatch, test-suite]
     if: always() && needs.dispatch.outputs.handoff == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: write
       pull-requests: write
