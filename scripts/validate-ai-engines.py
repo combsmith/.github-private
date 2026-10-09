@@ -60,7 +60,7 @@ def price_globs(path: Path) -> list:
     """The model_glob column of the model-pricing.tsv rows in effect today (comments
     and short rows skipped, as scripts/lib/model-pricing.sh does)."""
     globs = []
-    today = datetime.date.today().isoformat()
+    today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
