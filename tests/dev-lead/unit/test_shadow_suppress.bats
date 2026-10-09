@@ -9,6 +9,8 @@
 SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
 LIB="$SCRIPT_DIR/scripts/lib/shadow-suppress.sh"
 
+# setup — initialize test environment for shadow-suppress unit tests.
+# Unsets shadow-related env vars, isolates output file to BATS temp dir, and sources the library.
 setup() {
   # Sourced fresh per test so exports don't leak across cases.
   unset DEV_LEAD_SHADOW_MODE DEV_LEAD_DRY_RUN

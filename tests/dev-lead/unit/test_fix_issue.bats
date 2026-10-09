@@ -6,6 +6,8 @@ FIX_ISSUE_SCRIPT="$SCRIPT_DIR/scripts/dev-lead-fix-issue.sh"
 STUB_ENGINES_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/engines"
 GH_STUBS_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/stubs"
 
+# setup — initialize test environment with stubs and env for fix-issue integration tests.
+# Creates temporary directories for test artifacts, stubs gh/engines, sets env defaults.
 setup() {
   export GITHUB_ENV="$(mktemp)"
   export GITHUB_OUTPUT="$(mktemp)"
@@ -49,6 +51,8 @@ GHEOF
   cd "$SCRIPT_DIR"
 }
 
+# teardown — clean up temporary test artifacts created in setup().
+# Removes env files and stub bin directory.
 teardown() {
   rm -f "$GITHUB_ENV" "$GITHUB_OUTPUT"
   rm -rf "$STUB_BIN_DIR"
