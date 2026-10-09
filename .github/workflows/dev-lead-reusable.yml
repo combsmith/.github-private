@@ -691,7 +691,7 @@ jobs:
   # Skipped (no runner) for every pass that did not hand off.
   test-suite:
     needs: dispatch
-    if: needs.dispatch.outputs.handoff == 'true'
+    if: needs.dispatch.outputs.handoff == 'true' && vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
     # At most two suite runs (the result, then the pre-pass head when the result is
     # red), each capped by the guard's own 1500 s limit, plus setup.
@@ -758,7 +758,7 @@ jobs:
   # does not push (tjh_verdict fails closed). Skipped (no runner) without a handoff.
   push:
     needs: [dispatch, test-suite]
-    if: always() && needs.dispatch.outputs.handoff == 'true'
+    if: always() && needs.dispatch.outputs.handoff == 'true' && vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
