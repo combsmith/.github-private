@@ -170,11 +170,11 @@ _config_with() {
 }
 
 @test "overrides: the health check prints the override section" {
-  grep -q 'ai_engines_overrides' "$SCRIPT_DIR/scripts/pr_review_health.sh"
+  grep -q 'engine_overrides="$(ai_engines_overrides)"' "$SCRIPT_DIR/scripts/pr_review_health.sh"
   local wf="$SCRIPT_DIR/.github/workflows/daily-pr-review-health.yml"
   grep -q 'AI_MODELS_GEMINI: ${{ vars.AI_MODELS_GEMINI }}' "$wf"
   grep -q 'AI_MODELS_COPILOT: ${{ vars.AI_MODELS_COPILOT }}' "$wf"
-  grep -q 'AI_ENGINES: ${{ vars.AI_ENGINES }}' "$wf"
+  grep -q 'AI_ENGINES: ${{ vars.AI_ENGINES || vars.DEV_LEAD_ENGINES' "$wf"
 }
 
 # ── Shipping the file ────────────────────────────────────────────────────────

@@ -45,9 +45,9 @@ draft 2020-12), and also fails when:
 
 - a task names a model that is missing from `models`, or is `retired`;
 - a model sits in another provider's chain;
-- a model of an enabled provider has no price row in
+- a non-retired model of an enabled provider has no price row in
   [`scripts/lib/model-pricing.tsv`](../scripts/lib/model-pricing.tsv) (a
-  vendor-prefixed id such as `openai/o4-mini` is priced by its bare name);
+  vendor-prefixed Copilot id such as `openai/o4-mini` is priced by its bare name);
 - `duck`, or any `copilot` chain, lists more than one model.
 
 Run it locally with `python3 scripts/validate-ai-engines.py` (needs
