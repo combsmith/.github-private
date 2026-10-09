@@ -756,9 +756,11 @@ jobs:
   # cancelled or timed-out test job still gets here, so a "Fixed" reply whose
   # commit does not land is retracted. That case has no verdict, so the script
   # does not push (tjh_verdict fails closed). Skipped (no runner) without a handoff.
+  # AGENTS_PAUSED suppresses only the push; cleanup (claim retraction, thread
+  # resolution) still runs to avoid leaving false "Fixed" claims standing (#2143).
   push:
     needs: [dispatch, test-suite]
-    if: always() && needs.dispatch.outputs.handoff == 'true' && vars.AGENTS_PAUSED != 'true'
+    if: always() && needs.dispatch.outputs.handoff == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -771,7 +773,7 @@ jobs:
     env:
       # Fail-safe default; the "Resolve persona identity" step sets the real one.
       BOT_USER: 'don-petry'
-      DEV_LEAD_DRY_RUN: ${{ vars.DEV_LEAD_DRY_RUN || 'false' }}
+      DEV_LEAD_DRY_RUN: ${{ (vars.AGENTS_PAUSED == 'true' || vars.DEV_LEAD_DRY_RUN == 'true') && 'true' || 'false' }}
       GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
 
     steps:
