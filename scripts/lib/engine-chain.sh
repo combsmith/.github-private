@@ -1,15 +1,18 @@
 # shellcheck shell=bash
 # scripts/lib/engine-chain.sh — the configured AI engine chain (AI_ENGINES).
 #
-# One org/repo Actions variable, AI_ENGINES, turns engines on or off and sets
-# their order, so switching providers needs no code change:
+# config/ai-engines.json (#1973) enables providers and sets the default order
+# (providers.fallback_order). One org/repo Actions variable, AI_ENGINES, is the
+# kill switch on top of it: it turns engines off and reorders them with no
+# release, but it cannot turn on a provider the file disables:
 #
-#   AI_ENGINES="claude,gemini,copilot"   the default
+#   AI_ENGINES="claude,gemini,copilot"   the default (the file's order)
 #   AI_ENGINES="claude,gemini"           Copilot off (never tried, not even as a fallback)
 #   AI_ENGINES="gemini,claude"           Gemini first, Claude as the fallback
 #   AI_ENGINES="claude"                  Claude only
 #
-#   - membership = enabled. An engine that is not listed is never used.
+#   - membership = enabled. An engine that is not listed is never used, nor is
+#                  one the file disables (reported by ai_engine_chain_problem).
 #   - order      = fallback preference, walked left to right on a rate limit.
 #   - first      = the primary engine, unless REVIEW_ENGINE / DEV_LEAD_ENGINE is
 #                  set explicitly (a legacy override; it is ignored, with a
@@ -22,9 +25,34 @@
 # reports it so validate_engines can warn once.
 #
 # Sourced by engine.sh, validate-engines.sh and review-batch.sh. Defines
-# functions only; runs nothing at source time and does not call `set`.
+# functions only; at source time it only sources engine-models.sh (the file
+# reader) when present, and does not call `set`.
 
+# The built-in order, used only when engine-models.sh is not next to this lib
+# (or the file cannot be read; engine.sh fails the step on that first).
 AI_ENGINES_DEFAULT="claude gemini copilot"
+
+if ! declare -F ai_engines_file_providers >/dev/null 2>&1 \
+   && [ -f "$(dirname "${BASH_SOURCE[0]}")/engine-models.sh" ]; then
+  # shellcheck source=scripts/lib/engine-models.sh
+  source "$(dirname "${BASH_SOURCE[0]}")/engine-models.sh"
+fi
+
+# _ai_engine_default_chain — the file's enabled providers in fallback_order,
+# else AI_ENGINES_DEFAULT.
+_ai_engine_default_chain() {
+  local c=""
+  if declare -F ai_engines_file_providers >/dev/null 2>&1; then
+    c="$(ai_engines_file_providers 2>/dev/null)" || c=""
+  fi
+  printf '%s' "${c:-$AI_ENGINES_DEFAULT}"
+}
+
+# _ai_engine_file_disabled — the providers the file disables (space-separated).
+_ai_engine_file_disabled() {
+  declare -F ai_engines_file_disabled >/dev/null 2>&1 || return 0
+  ai_engines_file_disabled 2>/dev/null || true
+}
 
 # _ai_engine_spec — the raw configured value (AI_ENGINES, else DEV_LEAD_ENGINES).
 _ai_engine_spec() {
@@ -53,29 +81,43 @@ _ai_engine_parse() {
 }
 
 # ai_engine_chain — the enabled engines in preference order, space-separated.
-# Empty or invalid configuration → the default chain.
+# Engines the file disables are dropped. Empty or invalid configuration, or one
+# that names only disabled engines → the default chain.
 ai_engine_chain() {
-  local parsed
+  local parsed disabled e kept=""
   if parsed="$(_ai_engine_parse "$(_ai_engine_spec)")" && [ -n "$parsed" ]; then
-    printf '%s' "$parsed"
-  else
-    printf '%s' "$AI_ENGINES_DEFAULT"
+    disabled="$(_ai_engine_file_disabled)"
+    for e in $parsed; do
+      [[ " $disabled " == *" $e "* ]] || kept="${kept:+$kept }$e"
+    done
   fi
+  printf '%s' "${kept:-$(_ai_engine_default_chain)}"
 }
 
 # ai_engine_chain_problem — prints a one-line description when the configured
-# value is unusable (unknown engine, or nothing but separators); prints nothing
-# when it is fine or unset.
+# value is unusable (unknown engine, nothing but separators, or an engine the
+# file disables); prints nothing when it is fine or unset.
 ai_engine_chain_problem() {
-  local spec parsed
+  local spec parsed disabled e off=""
   spec="$(_ai_engine_spec)"
   [ -n "$spec" ] || return 0
   if [ -z "${spec//[[:space:],]/}" ]; then
     printf "AI_ENGINES='%s' lists no engine — using the default chain '%s'" \
-      "$spec" "$AI_ENGINES_DEFAULT"
+      "$spec" "$(_ai_engine_default_chain)"
+    return 0
   elif ! parsed="$(_ai_engine_parse "$spec")" || [ -z "$parsed" ]; then
     printf "AI_ENGINES='%s' names an unknown engine (expected claude, gemini, copilot) — using the default chain '%s'" \
-      "$spec" "$AI_ENGINES_DEFAULT"
+      "$spec" "$(_ai_engine_default_chain)"
+    return 0
+  fi
+  disabled="$(_ai_engine_file_disabled)"
+  for e in $parsed; do
+    [[ " $disabled " != *" $e "* ]] || off="${off:+$off, }$e"
+  done
+  if [ -n "$off" ]; then
+    # AI_ENGINES narrows the file; it cannot turn a provider back on.
+    printf "AI_ENGINES='%s' names %s, which config/ai-engines.json has disabled — ignored (enable a provider in the file, not with AI_ENGINES); using '%s'" \
+      "$spec" "$off" "$(ai_engine_chain)"
   elif [[ "$spec" =~ ^[[:space:],] ]]; then
     # The workflows derive the primary with startsWith(vars.AI_ENGINES, …),
     # which cannot skip leading separators.

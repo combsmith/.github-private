@@ -242,8 +242,10 @@ jobs:
           # Cross-repo callers: github.token cannot read a private org repo — ensure
           # GH_PAT_WORKFLOWS is set as an org or repo secret in the calling repo.
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+          # config/ holds ai-engines.json, the engine defaults the scripts read (#1973).
           sparse-checkout: |
             scripts
+            config
             prompts/dev-lead
             personas/dev-lead
 
@@ -819,8 +821,10 @@ jobs:
           path: .dev-lead
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
           persist-credentials: false
+          # config/ holds ai-engines.json, the engine defaults the scripts read (#1973).
           sparse-checkout: |
             scripts
+            config
 
       - name: Resolve PR from check_run
         id: relay

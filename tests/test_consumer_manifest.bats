@@ -111,6 +111,21 @@ run_validator() {
   [ "$status" -ne 0 ]
 }
 
+@test "surface_sources value under config/ passes when it is an existing .json file (#1973)" {
+  jq '.surface_sources = {".github/workflows/pr-review.yml": ["config/ai-engines.json"]}' \
+    "$MANIFEST" > "$FIXTURE"
+  run_validator "$FIXTURE"
+  [ "$status" -eq 0 ]
+  jq '.surface_sources = {".github/workflows/pr-review.yml": ["config/nope.json"]}' \
+    "$MANIFEST" > "$FIXTURE"
+  run_validator "$FIXTURE"
+  [ "$status" -ne 0 ]
+  jq '.surface_sources = {".github/workflows/pr-review.yml": ["config/../scripts/engine.json"]}' \
+    "$MANIFEST" > "$FIXTURE"
+  run_validator "$FIXTURE"
+  [ "$status" -ne 0 ]
+}
+
 @test "a well-formed minimal manifest with real surfaces passes" {
   cat > "$FIXTURE" <<'JSON'
 {

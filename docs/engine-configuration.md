@@ -1,24 +1,100 @@
-# Engine configuration (AI_ENGINES)
+# Engine configuration (config/ai-engines.json, AI_ENGINES)
 
 pr-review and dev-lead can run on three LLM engines: **Claude**, **Gemini** and
-**Copilot**. Which engines are used, and in what order, is set with GitHub
-Actions **variables** (org or repo level). Switching providers needs no code
-change and no release: the next run picks the new value up.
+**Copilot**. Which engines are enabled, which models exist and which models each
+task uses are set in one versioned file,
+[`config/ai-engines.json`](../config/ai-engines.json) (#1973). A small set of
+GitHub Actions **variables** stays as a documented emergency override.
 
-The parsing lives in [`scripts/lib/engine-chain.sh`](../scripts/lib/engine-chain.sh).
+The engine chain is parsed in
+[`scripts/lib/engine-chain.sh`](../scripts/lib/engine-chain.sh), the model lists
+in [`scripts/lib/engine-models.sh`](../scripts/lib/engine-models.sh).
+
+## The config file
+
+`config/ai-engines.json` is the source of truth. It has three sections:
+
+- **`models`** — the catalog, keyed by model id. Each entry gives its
+  `provider` (`claude`, `gemini` or `copilot`), its `status` (`active`,
+  `preview` or `retired`) and optional `notes`, such as why a chain has its
+  fallbacks, the Sonnet 5 id history and the Fable 5 deprecation.
+- **`providers`** — `claude`, `gemini` and `copilot`, each with `enabled`, and
+  `fallback_order`, the default order across providers (its first enabled
+  entry is the primary).
+- **`tasks`** — `triage`, `deep`, `audit`, `action`, `single` and `duck`. Each
+  gives, per provider, an ordered chain: primary first, then fallbacks.
+  `tasks.<task>.prefer` (a provider list) is accepted for per-task provider
+  preference but not read yet.
+
+The file is read with `jq`, resolved relative to `engine-models.sh` (so it is
+found wherever the scripts are checked out). A missing, unreadable or malformed
+file is an `::error::` and fails the step: there are no built-in defaults to fall
+back to, because stale defaults are what this file replaces. `engine.sh` reads it
+once when it is sourced.
+
+**It ships like code.** The file is released with the `pr-review/*` and
+`dev-lead/*` channel tags, so a default-model change canaries on `next` before
+`ring0` and `stable`. An Actions variable changes every channel at once, which is
+why variables are only the emergency path.
+
+**It is checked at PR time.** The `validate-ai-engines` job in `lint.yml` runs
+[`scripts/validate-ai-engines.py`](../scripts/validate-ai-engines.py). It
+validates the file against
+[`config/ai-engines.schema.json`](../config/ai-engines.schema.json) (JSON Schema
+draft 2020-12), and also fails when:
+
+- a task names a model that is missing from `models`, or is `retired`;
+- a model sits in another provider's chain;
+- a model of an enabled provider has no price row in
+  [`scripts/lib/model-pricing.tsv`](../scripts/lib/model-pricing.tsv) (a
+  vendor-prefixed id such as `openai/o4-mini` is priced by its bare name);
+- `duck`, or any `copilot` chain, lists more than one model.
+
+Run it locally with `python3 scripts/validate-ai-engines.py` (needs
+`pip install 'jsonschema>=4'`).
+
+## Precedence
+
+For each task's chain, highest first:
+
+1. **A specific environment variable** — `CLAUDE_<TIER>_MODEL_CHAIN`,
+   `GEMINI_FLASH_MODEL(_CHAIN)`, `GEMINI_PRO_MODEL(_CHAIN)`, `COPILOT_API_MODEL`.
+   These are **internal**: they are kept for tests and the A/B runner. Do not
+   set them as Actions variables; use `AI_MODELS_*`.
+2. **`AI_MODELS_*`** — the break-glass override (below).
+3. **`config/ai-engines.json`**.
+
+For providers, the file decides which are enabled. `AI_ENGINES` is the kill
+switch and the fallback order: it can disable or reorder providers the file
+enables, but it **cannot enable** one the file disables (that is ignored with a
+`::warning::`).
+
+## Emergency path
+
+When a model breaks in production (retired, renamed, throttled):
+
+1. **Now:** set the `AI_MODELS_<PROVIDER>` variable (or `AI_ENGINES` to turn a
+   provider off). The next run picks it up on every channel.
+2. **Then:** land the same change in `config/ai-engines.json` through a normal
+   PR and release, and delete the variable once `stable` carries it.
+
+The daily PR-review health check (`scripts/pr_review_health.sh`) lists, under
+**Engine configuration overrides**, every `AI_MODELS_*` key and `AI_ENGINES`
+value that is set and differs from the file, so a temporary override is folded
+back instead of living on silently.
 
 ## Variables
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AI_ENGINES` | `claude,gemini,copilot` | Ordered list of **enabled** engines. An engine that is not listed is never used, not even as a fallback. The order is the fallback order, and the **first** entry is the primary engine. |
+| `AI_ENGINES` | the file's `providers.fallback_order` (`claude,gemini,copilot`) | Kill switch and fallback order. An engine that is not listed is never used, not even as a fallback. The order is the fallback order, and the **first** entry is the primary engine. It cannot enable an engine the file disables. |
 | `AI_DUCK_ENGINE` | automatic | Ordered list of engines for pr-review's rubber-duck second opinion, e.g. `gemini,claude`. Each entry is `claude`, `gemini` or `copilot`. If an engine returns no verdict, the next one runs. `none` alone turns the duck off. |
 | `AI_DUCK_MODEL` | engine default | Model id for the duck. Used only on the **first** engine in `AI_DUCK_ENGINE`. |
-| `AI_MODELS_CLAUDE` | see below | Claude's model list: one chain per task. |
-| `AI_MODELS_GEMINI` | see below | Gemini's model list, with the same keys. |
-| `AI_MODELS_COPILOT` | see below | Copilot's model list, with the same keys (one model per key). |
-| `GEMINI_FLASH_MODEL` | unset | Replaces only the first model of the Gemini `triage` and `action` chains. |
-| `GEMINI_PRO_MODEL` | unset | Replaces only the first model of the Gemini `deep`, `audit` and `single` chains. |
+| `AI_MODELS_CLAUDE` | unset (the file) | **Break-glass** override of Claude's chains, one per task. |
+| `AI_MODELS_GEMINI` | unset (the file) | **Break-glass** override of Gemini's chains, with the same keys. |
+| `AI_MODELS_COPILOT` | unset (the file) | **Break-glass** override of Copilot's models, with the same keys (one model per key). |
+| `GEMINI_FLASH_MODEL` | unset | **Deprecated** (internal). Replaces only the first model of the Gemini `triage` and `action` chains. |
+| `GEMINI_PRO_MODEL` | unset | **Deprecated** (internal). Replaces only the first model of the Gemini `deep`, `audit` and `single` chains. |
 | `REVIEW_ENGINE` | unset | **Legacy** primary override for pr-review. When set, it wins over the first `AI_ENGINES` entry, as long as `AI_ENGINES` enables it. Delete it to let `AI_ENGINES` decide. |
 | `DEV_LEAD_ENGINE` | unset | **Legacy** primary override for dev-lead; same rule as `REVIEW_ENGINE`. |
 | `DEV_LEAD_ENGINES` | unset | **Legacy** name for `AI_ENGINES` (dev-lead, #1546). Read only when `AI_ENGINES` is unset. |
@@ -27,15 +103,15 @@ The parsing lives in [`scripts/lib/engine-chain.sh`](../scripts/lib/engine-chain
 `claude,gemini`. Start the value with an engine name (no leading space): the
 workflows read the primary from the start of the value.
 
-## Model lists (AI_MODELS_*)
+## Break-glass model lists (AI_MODELS_*)
 
-Each provider's models live in one variable, so a retired or renamed model is a
-variable edit, not a code change. The parsing and the defaults are in
-[`scripts/lib/engine-models.sh`](../scripts/lib/engine-models.sh).
+Each provider has one variable that overrides its chains from the file, so a
+broken model can be replaced at once, before the file change is released. The
+parsing is in [`scripts/lib/engine-models.sh`](../scripts/lib/engine-models.sh).
 
 Each entry is `<key>=<model>[,<fallback>,…]`. Separate entries with `;` or new
 lines. Keys are case-insensitive and spaces around names are ignored. A key you
-leave out keeps its default. A chain is walked left to right on a rate limit,
+leave out keeps the file's chain. A chain is walked left to right on a rate limit,
 before the next engine in `AI_ENGINES` is tried.
 
 Every provider takes the same six keys, one per task:
@@ -53,9 +129,10 @@ Every provider takes the same six keys, one per task:
 because its GitHub Models client has no chain. A key limited to one model that is
 given several warns and uses the first.
 
-Defaults:
+Defaults (from `config/ai-engines.json` at the time of writing — the file is
+authoritative):
 
-| Key | `AI_MODELS_CLAUDE` | `AI_MODELS_GEMINI` | `AI_MODELS_COPILOT` |
+| Key | Claude | Gemini | Copilot |
 |---|---|---|---|
 | `triage` | `claude-haiku-4-5-20251001,claude-sonnet-5-5,claude-sonnet-5` | `gemini-3.8-flash,gemini-3.1-pro-preview` | `openai/o4-mini` |
 | `deep` | `claude-opus-5-5,claude-opus-4-8,claude-sonnet-5-5` | `gemini-3.1-pro-preview,gemini-3.8-flash` | `openai/o4-mini` |
@@ -84,7 +161,8 @@ AI_MODELS_COPILOT = deep=openai/gpt-5; duck=openai/gpt-5-mini
 ```
 
 A more specific variable still wins over `AI_MODELS_*`, so existing overrides
-keep working:
+keep working. These are **internal / deprecated** — kept for tests and the A/B
+runner (`model-ab.yml`), not for operators:
 
 - `CLAUDE_<TIER>_MODEL_CHAIN` replaces that Claude chain.
 - `GEMINI_FLASH_MODEL_CHAIN` replaces the Gemini `triage` and `action` chains.
@@ -118,9 +196,9 @@ the chains stay the single source of truth:
 | `haiku` | `triage` |
 
 Overrides are honoured with the same precedence engine.sh uses: the per-tier
-`CLAUDE_<TIER>_MODEL_CHAIN` env first, then `AI_MODELS_CLAUDE`, then the built-in
-default. An operator who supplies a concrete `claude-*` id still has it honoured
-verbatim. In gh-aw front-matter the model family is named in `models:` (e.g.
+`CLAUDE_<TIER>_MODEL_CHAIN` env first, then `AI_MODELS_CLAUDE`, then the chain
+in `config/ai-engines.json`. An operator who supplies a concrete `claude-*` id
+still has it honoured verbatim. In gh-aw front-matter the model family is named in `models:` (e.g.
 `models: { claude: [sonnet] }`), which accepts both a family and a full id;
 `engine:` selects the runner engine (`claude`), not the model. Workflow `model`
 inputs likewise accept a family or a full id.
@@ -146,8 +224,10 @@ table are allow-listed.
 | Duck on Gemini, then Claude if Gemini is throttled | `AI_DUCK_ENGINE=gemini,claude` |
 | Duck on Gemini only, no automatic fallback | `AI_DUCK_ENGINE=gemini,none` |
 | Turn the duck off | `AI_DUCK_ENGINE=none` |
-| Replace a retired Gemini deep-review model | `AI_MODELS_GEMINI=deep=<new-model>,gemini-3.8-flash` |
-| Pin Claude's deep review to Opus 4.8 | `AI_MODELS_CLAUDE=deep=claude-opus-4-8,claude-sonnet-5` |
+| Replace a retired Gemini deep-review model (emergency) | `AI_MODELS_GEMINI=deep=<new-model>,gemini-3.8-flash`, then the same change in `config/ai-engines.json` |
+| Pin Claude's deep review to Opus 4.8 (emergency) | `AI_MODELS_CLAUDE=deep=claude-opus-4-8,claude-sonnet-5`, then the same change in the file |
+| Change a default model | Edit `tasks.<task>.<provider>` in `config/ai-engines.json` (add the model to `models` first) |
+| Turn a provider off for good | `providers.<provider>.enabled=false` in the file |
 
 ## Behaviour
 
@@ -190,4 +270,5 @@ table are allow-listed.
   value.
 - **Model chains inside a provider** (for example Claude's deep tier
   `claude-opus-5-5 → claude-opus-4-8 → claude-sonnet-5-5`) are walked before any
-  cross-provider fallback. Set them with `AI_MODELS_*` (above).
+  cross-provider fallback. Set them in `config/ai-engines.json` (above), or
+  with `AI_MODELS_*` in an emergency.

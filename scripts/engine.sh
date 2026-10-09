@@ -43,6 +43,45 @@ set -euo pipefail
 # concurrent runs do not read each other's values.
 DEV_LEAD_SIDECAR_DIR="${DEV_LEAD_SIDECAR_DIR:-/tmp}"
 
+# Each provider's model list: the defaults in config/ai-engines.json, read by
+# lib/engine-models.sh, with AI_MODELS_CLAUDE / AI_MODELS_GEMINI /
+# AI_MODELS_COPILOT as break-glass overrides. Sourced before the engine chain,
+# which takes the enabled providers and their order from the same file.
+_ENGINE_MODELS_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-models.sh"
+if [ ! -f "$_ENGINE_MODELS_LIB" ]; then
+  echo "::error::engine.sh: missing $_ENGINE_MODELS_LIB (model lists and defaults)" >&2
+  return 1 2>/dev/null || exit 1
+fi
+# shellcheck source=lib/engine-models.sh
+source "$_ENGINE_MODELS_LIB"
+unset _ENGINE_MODELS_LIB
+# The defaults come from config/ai-engines.json (#1973). Read it once here:
+# the lookups below and in child $(…) shells reuse the table, and a missing or
+# malformed file fails the step instead of running on stale defaults.
+if ! ai_engines_config_load; then
+  return 1 2>/dev/null || exit 1
+fi
+if [ -z "${AI_MODELS_PROBLEM_REPORTED:-}" ]; then
+  _models_problems="$(ai_models_problems)"
+  if [ -n "$_models_problems" ]; then
+    while IFS= read -r _models_line; do
+      echo "::warning::$_models_line" >&2
+    done <<< "$_models_problems"
+    export AI_MODELS_PROBLEM_REPORTED=1
+  fi
+  unset _models_problems _models_line
+fi
+# Fable 5 is deprecated (#1901): warn once per run when a configured chain still
+# names a claude-fable-* model, but still honour it (a stop-gap, not a rejection).
+if [ -z "${AI_MODELS_FABLE_WARNED:-}" ]; then
+  _fable_warn="$(ai_models_fable_deprecation)"
+  if [ -n "$_fable_warn" ]; then
+    echo "::warning::$_fable_warn" >&2
+    export AI_MODELS_FABLE_WARNED=1
+  fi
+  unset _fable_warn
+fi
+
 # Configured engine chain (AI_ENGINES): which engines are enabled and in what
 # order. The primary is REVIEW_ENGINE when that is set AND enabled, otherwise
 # the first engine in AI_ENGINES — so a disabled engine is never used, even when
@@ -72,38 +111,6 @@ else
   REVIEW_ENGINE="${REVIEW_ENGINE:-claude}"
 fi
 export REVIEW_ENGINE
-
-# Each provider's model list (AI_MODELS_CLAUDE / AI_MODELS_GEMINI /
-# AI_MODELS_COPILOT) and its defaults live in lib/engine-models.sh, so a retired
-# or renamed model is an Actions-variable edit, not a code change.
-_ENGINE_MODELS_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-models.sh"
-if [ ! -f "$_ENGINE_MODELS_LIB" ]; then
-  echo "::error::engine.sh: missing $_ENGINE_MODELS_LIB (model lists and defaults)" >&2
-  return 1 2>/dev/null || exit 1
-fi
-# shellcheck source=lib/engine-models.sh
-source "$_ENGINE_MODELS_LIB"
-unset _ENGINE_MODELS_LIB
-if [ -z "${AI_MODELS_PROBLEM_REPORTED:-}" ]; then
-  _models_problems="$(ai_models_problems)"
-  if [ -n "$_models_problems" ]; then
-    while IFS= read -r _models_line; do
-      echo "::warning::$_models_line" >&2
-    done <<< "$_models_problems"
-    export AI_MODELS_PROBLEM_REPORTED=1
-  fi
-  unset _models_problems _models_line
-fi
-# Fable 5 is deprecated (#1901): warn once per run when a configured chain still
-# names a claude-fable-* model, but still honour it (a stop-gap, not a rejection).
-if [ -z "${AI_MODELS_FABLE_WARNED:-}" ]; then
-  _fable_warn="$(ai_models_fable_deprecation)"
-  if [ -n "$_fable_warn" ]; then
-    echo "::warning::$_fable_warn" >&2
-    export AI_MODELS_FABLE_WARNED=1
-  fi
-  unset _fable_warn
-fi
 
 # Cross-engine rubber-duck model (issue #773). The duck deliberately routes to
 # Copilot/o4-mini even when the primary engine is NOT copilot (e.g. the default

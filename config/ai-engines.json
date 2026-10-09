@@ -1,0 +1,116 @@
+{
+  "$schema": "./ai-engines.schema.json",
+  "$comment": "Source of truth for the review and dev-lead engines (#1973): which providers are enabled, which models exist, and each task's chain. Read by scripts/lib/engine-models.sh; validated by scripts/validate-ai-engines.py in lint.yml. Ships with the pr-review/* and dev-lead/* channel tags, so a change here canaries on next before ring0 and stable. AI_MODELS_* and AI_ENGINES override it in an emergency — fold the override back in here. See docs/engine-configuration.md.",
+  "version": 1,
+  "models": {
+    "claude-haiku-4-5-20251001": {
+      "provider": "claude",
+      "status": "active",
+      "notes": ["Triage primary; the haiku family's current id (ai_model_for_family haiku)."]
+    },
+    "claude-sonnet-5-5": {
+      "provider": "claude",
+      "status": "active",
+      "notes": [
+        "Default sonnet across triage, deep, action and duck (#1978, epic #1095 Phase 3).",
+        "In deep it is the last hop: deep's known-good hop is opus-4-8, so sonnet 5.5 alone is its sonnet tail (#1978 AC-2)."
+      ]
+    },
+    "claude-sonnet-5": {
+      "provider": "claude",
+      "status": "active",
+      "notes": [
+        "Known-good sonnet safety hop one behind sonnet 5.5 in triage and action.",
+        "The id is bare claude-sonnet-5: the claude-sonnet-5-0 spelling shipped by #1100 404s, so every hop to it silently fell through (#1957)."
+      ]
+    },
+    "claude-opus-5-5": {
+      "provider": "claude",
+      "status": "active",
+      "notes": [
+        "Deep primary since #1898 (epic #1895 Phase 2); audit and single primary since #1901 (epic #1895 Phase 3), replacing Fable 5.",
+        "Action's last (cross-family) hop since #1900 (epic #1895 Phase 3), replacing opus-4-8 once the deep-tier canary passed (#1899).",
+        "CLI/API default reasoning effort is medium (low/medium/high/xhigh/max); engine.sh's run_agentic pins --effort high for deep, audit and single so moving off Fable does not lower their effort."
+      ]
+    },
+    "claude-opus-4-8": {
+      "provider": "claude",
+      "status": "active",
+      "notes": [
+        "Known-good second hop behind opus-5-5 in deep, audit and single (#1957), so a throttled opus-5-5 degrades to the model it replaced.",
+        "Minimum cacheable prefix 4096 tokens."
+      ]
+    },
+    "claude-opus-4-7": {
+      "provider": "claude",
+      "status": "active",
+      "notes": ["Last hop of the audit and single chains."]
+    },
+    "claude-fable-5": {
+      "provider": "claude",
+      "status": "retired",
+      "notes": [
+        "Deprecated by #1901 (epic #1895 Phase 3): opus-5-5 outperforms it at lower cost, so no default chain names it.",
+        "Reasoning effort: the deep, audit and single tiers pin --effort high (engine.sh run_agentic) so replacing Fable with opus-5-5, whose default effort is medium, did not lower their effort.",
+        "A chain set through AI_MODELS_CLAUDE or CLAUDE_<TIER>_MODEL_CHAIN is still honoured as a stop-gap and warns once per run; its price rows stay for historical token records."
+      ]
+    },
+    "gemini-3.8-flash": {
+      "provider": "gemini",
+      "status": "active",
+      "notes": ["Triage and action primary; the known-working fallback of the quality tier."]
+    },
+    "gemini-3.1-pro-preview": {
+      "provider": "gemini",
+      "status": "preview",
+      "notes": ["Quality tier (deep, audit, single) since gemini-2.5-pro was withdrawn for new keys (#1960)."]
+    },
+    "gemini-2.5-pro": {
+      "provider": "gemini",
+      "status": "retired",
+      "notes": ["\"No longer available to new users … use models/gemini-3.1-pro-preview\": it broke every Gemini deep review while it sat in code (#1960)."]
+    },
+    "openai/o4-mini": {
+      "provider": "copilot",
+      "status": "active",
+      "notes": ["GitHub Models id. Copilot has no in-engine chain, so each task names one model."]
+    }
+  },
+  "providers": {
+    "fallback_order": ["claude", "gemini", "copilot"],
+    "claude": { "enabled": true },
+    "gemini": { "enabled": true },
+    "copilot": { "enabled": true }
+  },
+  "tasks": {
+    "triage": {
+      "claude": ["claude-haiku-4-5-20251001", "claude-sonnet-5-5", "claude-sonnet-5"],
+      "gemini": ["gemini-3.8-flash", "gemini-3.1-pro-preview"],
+      "copilot": ["openai/o4-mini"]
+    },
+    "deep": {
+      "claude": ["claude-opus-5-5", "claude-opus-4-8", "claude-sonnet-5-5"],
+      "gemini": ["gemini-3.1-pro-preview", "gemini-3.8-flash"],
+      "copilot": ["openai/o4-mini"]
+    },
+    "audit": {
+      "claude": ["claude-opus-5-5", "claude-opus-4-8", "claude-opus-4-7"],
+      "gemini": ["gemini-3.1-pro-preview", "gemini-3.8-flash"],
+      "copilot": ["openai/o4-mini"]
+    },
+    "action": {
+      "claude": ["claude-sonnet-5-5", "claude-sonnet-5", "claude-opus-5-5"],
+      "gemini": ["gemini-3.8-flash", "gemini-3.1-pro-preview"],
+      "copilot": ["openai/o4-mini"]
+    },
+    "single": {
+      "claude": ["claude-opus-5-5", "claude-opus-4-8", "claude-opus-4-7"],
+      "gemini": ["gemini-3.1-pro-preview", "gemini-3.8-flash"],
+      "copilot": ["openai/o4-mini"]
+    },
+    "duck": {
+      "$comment": "Gemini and Copilot have no duck chain: their duck is the first model of their triage chain.",
+      "claude": ["claude-sonnet-5-5"]
+    }
+  }
+}
