@@ -59,9 +59,9 @@ shadow_apply_suppression() {
   export DEV_LEAD_SHADOW_MODE="true"
   export DEV_LEAD_DRY_RUN="true"
 
-  local out="${SHADOW_OUTPUT_FILE:-/tmp/dev-lead-shadow-output.txt}"
+  export SHADOW_OUTPUT_FILE="${SHADOW_OUTPUT_FILE:-/tmp/dev-lead-shadow-output.txt}"
   printf '[shadow] PR-output suppression active for this run (%s)\n' \
-    "$(date -u +%FT%TZ 2>/dev/null || echo now)" >> "$out" 2>/dev/null || true
+    "$(date -u +%FT%TZ 2>/dev/null || echo now)" >> "$SHADOW_OUTPUT_FILE" 2>/dev/null || true
 
-  echo "::notice::shadow_mode active — all PR output suppressed for this run; output routed to the run log and ${out}."
+  echo "::notice::shadow_mode active — all PR output suppressed for this run; output routed to the run log and ${SHADOW_OUTPUT_FILE}."
 }
