@@ -34,6 +34,12 @@ source "$(dirname "$0")/lib/sync-stub-guard.sh"
 source "$(dirname "$0")/lib/channel-pin-guard.sh"
 # Test-regression guard (#2013): a pass may not push with the suite newly red.
 source "$(dirname "$0")/lib/test-regression-guard.sh"
+# Isolated test job (#2143): the suite runs in a job with no secrets. DEV_LEAD_PHASE
+# picks this run's part of a guarded pass — `work` (dispatch: run the model, commit,
+# hand off), `push` (push job: restore the commits, read the test job's verdict,
+# push, then everything after a push). Empty runs the whole pass in one process,
+# suite included (local runs and tests).
+source "$(dirname "$0")/lib/test-job-handoff.sh"
 # Review-thread deferral verifier (#2045): the thread-side sibling of the
 # `out-of-scope` disposition. A bot thread deferred to an open tracking issue that
 # links it is resolved by resolve_deferred_bot_threads.
@@ -71,6 +77,35 @@ source "$(dirname "$0")/lib/ci-status.sh"
 # Hold label (#2142): every escalation applies needs-human-review through the REST
 # labels API, logs the API's message on failure, and a failed hold fails the run.
 source "$(dirname "$0")/lib/hold-label.sh"
+
+# Push phase (#2143): read the work job's state back from the handoff before the
+# intent's inputs are read below. INTENT_TYPE, PR_NUMBER, the pre-pass head and the
+# pass start come from the dispatch job's outputs, so the claim-retraction sweep can
+# still run when the handoff is missing or refused; that case is handled before the
+# intent dispatch (dlh_enter_push_phase).
+DEV_LEAD_PHASE="${DEV_LEAD_PHASE:-}"
+DLH_DIR=""
+if [ "$DEV_LEAD_PHASE" = "push" ]; then
+  DLH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dev-lead-handoff.XXXXXX")"
+  if tjh_restore "${DEV_LEAD_HANDOFF_FILE:-}" "${DEV_LEAD_HANDOFF_SHA256:-}" "$DLH_DIR" \
+     && [ "$(jq -r '.intent // ""' "$DLH_DIR/state.json" 2>/dev/null)" = "${INTENT_TYPE:-}" ] \
+     && [ "$(jq -r '.pr_number // ""' "$DLH_DIR/state.json" 2>/dev/null)" = "${PR_NUMBER:-}" ]; then
+    _dlh() { jq -r --arg k "$1" '.[$k] // "" | tostring' "$DLH_DIR/state.json"; }
+    HEAD_SHA="$(_dlh head_sha)"
+    PASS_STARTED_AT="$(_dlh pass_started_at)"
+    ACTOR="$(_dlh actor)"
+    TRIGGERING_REVIEWER="$(_dlh triggering_reviewer)"
+    COMMENT_BODY="$(_dlh comment_body)"
+    COMMENT_NODE_ID="$(_dlh comment_node_id)"
+    COMMENT_VERSION="$(_dlh comment_version)"
+    BASE_REF="$(_dlh base_ref)"
+    [ -n "$BASE_REF" ] || unset BASE_REF
+    export HEAD_SHA ACTOR TRIGGERING_REVIEWER COMMENT_BODY COMMENT_NODE_ID COMMENT_VERSION
+  else
+    echo "::error::push phase: the handoff from the dispatch job is missing, does not match its published digest, or names another pass — nothing will be pushed (#2143)"
+    DLH_DIR=""
+  fi
+fi
 
 INTENT_TYPE="${INTENT_TYPE:-fix-reviews}"
 PR_NUMBER="${PR_NUMBER:-}"
@@ -110,7 +145,10 @@ trap hold_label_exit_guard EXIT
 # automation budget since the last human interaction, stop before any writes.
 # Checked before holding auto-merge so the escalation's auto-merge disable is not
 # undone by the restore_auto_merge EXIT trap. Only a human interaction resets it.
+# The push phase (#2143) finishes a pass the work job already admitted: stopping
+# here would leave that pass's claim replies standing with nothing pushed.
 if [ -n "${PR_NUMBER:-}" ] && [ "${DEV_LEAD_DRY_RUN:-false}" != "true" ] \
+   && [ "$DEV_LEAD_PHASE" != "push" ] \
    && enforce_pr_budget "$PR_NUMBER" "$REPO"; then
   echo "::warning::PR #${PR_NUMBER} automation budget exhausted — skipping ${INTENT_TYPE}"
   exit 0
@@ -390,6 +428,12 @@ fi
 # build_and_run <template_name>: loads a prompt template, substitutes variables, and runs the agent.
 build_and_run() {
   local template_name="$1"
+  # Push phase (#2143): the engine already ran in the work job, whose commits
+  # dlh_enter_push_phase restored; the pass continues from its commit_and_push.
+  if [ "${DEV_LEAD_PHASE:-}" = "push" ]; then
+    echo "::notice::push phase: the ${template_name} engine pass ran in the dispatch job — continuing from its result (#2143)"
+    return 0
+  fi
   local prompt_file="/tmp/dev-lead-${template_name}-prompt-$$.md"
   local template_path="${PROMPTS_DIR}/${template_name}.md"
   # Scope envsubst to only the variables declared in the <!-- VARIABLES: --> header.
@@ -3285,12 +3329,30 @@ commit_and_push() {
     # Test-regression guard (#2013): the `15a919e` shape adds a new test and breaks an
     # existing one WITHOUT editing it, so the tamper guard is silent. Run the suite;
     # refuse the push when a test that passed on the pre-pass head fails on the result.
+    # The suite is PR code, so in the workflow it never runs here (#2143): the work
+    # phase hands the result to the test-suite job and stops; the push phase reads
+    # that job's verdict, failing closed when there is none.
     case "$intent" in
       fix-reviews|fix-bot-comment|review-changes|human-pr)
         local trg_out trg_rc=0 trg_verdict trg_cmd trg_tests
-        trg_out=$(trg_scan_pass "${RESOLUTION_BASE_SHA:-}") || trg_rc=$?
+        case "${DEV_LEAD_PHASE:-}" in
+          work)
+            dlh_hand_off
+            echo "::error::Test-regression guard: could not hand the ${intent} pass to the test-suite job — refusing to push (#2143)" >&2
+            retract_unlanded_claims "$intent" failed || true
+            exit 1
+            ;;
+          push) trg_out=$(tjh_verdict "${DEV_LEAD_TEST_JOB_RESULT:-}" "${DEV_LEAD_TRG_RESULT:-}") || trg_rc=$? ;;
+          *)    trg_out=$(trg_scan_pass "${RESOLUTION_BASE_SHA:-}") || trg_rc=$? ;;
+        esac
         IFS=$'\t' read -r trg_verdict trg_cmd <<<"$(printf '%s\n' "$trg_out" | head -1)"
         trg_tests=$(printf '%s\n' "$trg_out" | sed '1d' | paste -sd ',' - | sed 's/,/, /g')
+        if [ "$trg_rc" -eq 2 ]; then
+          record_suite_summary "Test suite: NO VERDICT — ${trg_cmd}. NOT verified green. Push refused."
+          echo "::error::Test-regression guard: no verdict for the ${intent} pass (${trg_cmd}) — refusing to push (#2143)"
+          flag_test_unverified "$intent" "$trg_cmd"
+          return 4
+        fi
         record_suite_summary "$(trg_summary_line "$trg_verdict" "$trg_cmd")"
         if [ "$trg_rc" -ne 0 ]; then
           echo "::error::Test-regression guard: the ${intent} pass broke test(s) that passed on the pre-pass head [${trg_tests}] — refusing to push (#2013)"
@@ -3648,6 +3710,102 @@ The \`${intent}\` pass left the test suite failing on test(s) that passed on the
   return 0
 }
 
+# flag_test_unverified <intent> <reason> — the push job got no verdict from the
+# test-suite job (it failed, was cancelled, timed out, or reported nothing), so the
+# pass was not pushed (#2143). Same escalation as flag_test_regression.
+flag_test_unverified() {
+  local intent="$1" reason="$2"
+  _AM_NEEDS_RESTORE=0
+  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+    echo "[dry-run] test-regression guard: would flag PR #${PR_NUMBER} (${intent}) as unverified, add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}, disable auto-merge"
+    return 0
+  fi
+  local marker="<!-- dev-lead-test-unverified pr=${PR_NUMBER} intent=${intent} -->"
+  if gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" 2>/dev/null \
+       | jq -r '.[].body // ""' 2>/dev/null | grep -qF "$marker"; then
+    echo "::notice::PR #${PR_NUMBER} already flagged for an unverified test run for intent=${intent} — not reposting"
+  else
+    gh pr comment "$PR_NUMBER" --repo "$REPO" --body "${marker}
+## Test suite not verified — human attention needed
+
+The \`${intent}\` pass could not be checked against the test suite: ${reason}. Without a verdict dev-lead **did not push** this pass (#2143). Auto-merge has been disabled. Re-run the workflow, or apply the change by hand." \
+      || echo "::warning::could not post test-unverified flag comment on PR #${PR_NUMBER}"
+  fi
+  gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}" 2>/dev/null \
+    || echo "::warning::could not add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review} label on PR #${PR_NUMBER}"
+  gh pr merge "$PR_NUMBER" --repo "$REPO" --disable-auto 2>/dev/null \
+    || echo "::notice::auto-merge was not enabled on PR #${PR_NUMBER} (nothing to disable)"
+  return 0
+}
+
+# dlh_hand_off — work phase (#2143). The pass's result is committed and the no-op
+# and tamper guards have passed. Write the handoff for the test-suite job and the
+# dispatch job's outputs, keep auto-merge held for the push job, and end this run
+# WITHOUT pushing: the push job pushes, verifies, retracts and resolves. Exits 0 on
+# success; returns 1 when the handoff could not be written.
+dlh_hand_off() {
+  local dir="${DEV_LEAD_HANDOFF_DIR:-}" state sha result
+  if [ -z "$dir" ] || [ -z "${RESOLUTION_BASE_SHA:-}" ]; then
+    echo "::error::work phase: DEV_LEAD_HANDOFF_DIR or the pre-pass head is unset (#2143)" >&2
+    return 1
+  fi
+  result="$(git rev-parse HEAD 2>/dev/null)" || return 1
+  state=$(jq -n \
+    --arg intent "$INTENT_TYPE" --arg pr "${PR_NUMBER:-}" --arg head "${HEAD_SHA:-}" \
+    --arg base "$RESOLUTION_BASE_SHA" --arg result "$result" \
+    --arg psi "${PASS_START_ISO:-}" --arg psa "${PASS_STARTED_AT:-}" \
+    --arg actor "${ACTOR:-}" --arg trig "${TRIGGERING_REVIEWER:-}" \
+    --arg cbody "${COMMENT_BODY:-}" --arg cnid "${COMMENT_NODE_ID:-}" --arg cver "${COMMENT_VERSION:-}" \
+    --arg base_ref "${BASE_REF:-}" \
+    --arg am_restore "${_AM_NEEDS_RESTORE:-0}" --arg am_method "${_AM_MERGE_METHOD:-squash}" \
+    --arg am_title "${_AM_COMMIT_TITLE:-}" --arg am_msg "${_AM_COMMIT_MESSAGE:-}" --arg am_head "${_AM_HEAD_SHA:-}" \
+    '{v:1, intent:$intent, pr_number:$pr, head_sha:$head, base_sha:$base, result_sha:$result,
+      pass_start_iso:$psi, pass_started_at:$psa, actor:$actor, triggering_reviewer:$trig,
+      comment_body:$cbody, comment_node_id:$cnid, comment_version:$cver, base_ref:$base_ref,
+      am:{needs_restore:$am_restore, merge_method:$am_method, commit_title:$am_title,
+          commit_message:$am_msg, head_sha:$am_head}}') || return 1
+  sha=$(tjh_write "$dir" "$RESOLUTION_BASE_SHA" "$state") || return 1
+  {
+    echo "handoff=true"
+    echo "handoff_sha256=${sha}"
+    echo "intent=${INTENT_TYPE}"
+    echo "pr_number=${PR_NUMBER:-}"
+    echo "base_sha=${RESOLUTION_BASE_SHA}"
+    echo "pass_start_iso=${PASS_START_ISO:-}"
+  } > "$dir/outputs" || return 1
+  # Auto-merge stays held until the push job ends; it restores it from the state.
+  _AM_NEEDS_RESTORE=0
+  echo "::notice::${INTENT_TYPE}: result ${result} handed to the test-suite job; the push job pushes it on a passing verdict (#2143)"
+  exit 0
+}
+
+# dlh_enter_push_phase — push phase (#2143), run before the intent dispatch. Puts
+# the pass back where the work job left it: the pre-pass head and pass start the
+# claim sweep and resolution gate measure from, the auto-merge hold, and the
+# work job's exact commits in the PR worktree. When the handoff is missing or
+# refused nothing can be pushed: retract this pass's claim replies and fail.
+dlh_enter_push_phase() {
+  RESOLUTION_BASE_SHA="${DEV_LEAD_BASE_SHA:-}"
+  PASS_START_ISO="${DEV_LEAD_PASS_START_ISO:-}"
+  local result=""
+  if [ -n "$DLH_DIR" ]; then
+    result="$(jq -r '.result_sha // ""' "$DLH_DIR/state.json")"
+    _AM_NEEDS_RESTORE="$(jq -r '.am.needs_restore // "0"' "$DLH_DIR/state.json")"
+    _AM_MERGE_METHOD="$(jq -r '.am.merge_method // "squash"' "$DLH_DIR/state.json")"
+    _AM_COMMIT_TITLE="$(jq -r '.am.commit_title // ""' "$DLH_DIR/state.json")"
+    _AM_COMMIT_MESSAGE="$(jq -r '.am.commit_message // ""' "$DLH_DIR/state.json")"
+    _AM_HEAD_SHA="$(jq -r '.am.head_sha // ""' "$DLH_DIR/state.json")"
+    [ "$_AM_NEEDS_RESTORE" = "1" ] || _AM_NEEDS_RESTORE=0
+  fi
+  if [ -z "$DLH_DIR" ] || [ -z "$RESOLUTION_BASE_SHA" ] \
+     || ! tjh_apply_result "$DLH_DIR" "$result"; then
+    echo "::error::push phase: could not restore the ${INTENT_TYPE} pass's result ${result:-<unknown>} — nothing pushed (#2143)"
+    retract_unlanded_claims "$INTENT_TYPE" failed || true
+    exit 1
+  fi
+  echo "::notice::push phase: restored the ${INTENT_TYPE} pass's result ${result} (pre-pass head ${RESOLUTION_BASE_SHA}) (#2143)"
+}
+
 # flag_test_tamper <intent> <files> — the test-tamper guard refused the push
 # (#2013). Mirrors flag_noop_pr: one deduped human-attention comment, the
 # needs-human-review label, auto-merge disabled and its EXIT-trap restore
@@ -3928,6 +4086,10 @@ resolution_gate_open() {
   fi
   ri_may_resolve "$pre_sha" "$cur_sha"
 }
+
+if [ "$DEV_LEAD_PHASE" = "push" ]; then
+  dlh_enter_push_phase
+fi
 
 case "$INTENT_TYPE" in
   fix-reviews)

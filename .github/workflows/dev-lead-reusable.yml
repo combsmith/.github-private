@@ -133,7 +133,22 @@ jobs:
       actions: read
       checks: read
       statuses: read
+    # A guarded pass (fix-reviews, fix-bot-comment, review-changes) does not push
+    # from here (#2143): it hands its result to `test-suite` and `push` below.
+    outputs:
+      handoff: ${{ steps.handoff.outputs.handoff }}
+      handoff_sha256: ${{ steps.handoff.outputs.handoff_sha256 }}
+      artifact: ${{ steps.handoff.outputs.artifact }}
+      intent: ${{ steps.handoff.outputs.intent }}
+      pr_number: ${{ steps.handoff.outputs.pr_number }}
+      base_sha: ${{ steps.handoff.outputs.base_sha }}
+      pass_start_iso: ${{ steps.handoff.outputs.pass_start_iso }}
     env:
+      # The repo's test suite is PR code and never runs in this job, which holds
+      # the secrets (#2143). `work` makes the test-regression guard hand the pass's
+      # result to the test-suite job instead (scripts/lib/test-job-handoff.sh).
+      DEV_LEAD_PHASE: work
+      DEV_LEAD_HANDOFF_DIR: /tmp/dev-lead-handoff-${{ github.run_id }}
       # dev-lead's acting identity is DECLARED in personas/dev-lead/persona.yml
       # (runtime.identity.account) and resolved into BOT_USER by the "Resolve
       # persona identity" step below. This job-level value is the hardcoded
@@ -145,7 +160,8 @@ jobs:
       # Repo-named test command for the pre-push regression guard
       # (scripts/lib/test-regression-guard.sh, #2013). Mapped from a repository
       # variable — NOT a workflow_call input — so no channel-pin sequencing is
-      # needed. Empty => the guard auto-discovers (npm/make/pytest/bats).
+      # needed. Empty => the guard auto-discovers (npm/make/pytest/bats). The suite
+      # itself runs in the test-suite job, which maps the same variable (#2143).
       DEV_LEAD_TEST_CMD: ${{ vars.DEV_LEAD_TEST_CMD }}
       # The instant from which a maintainer's "no change needed" reply may resolve a
       # bot review thread (nochange_epoch_cutoff in dev-lead-fix-reviews.sh, #2079 /
@@ -632,6 +648,30 @@ jobs:
           REPO: ${{ github.repository }}
         run: bash .dev-lead/scripts/dev-lead-fix-reviews.sh
 
+      # ── hand off to the test-suite job (#2143) ────────────────────────────
+      # A guarded pass stopped before its push and wrote the handoff. Publish its
+      # digest as a job output: the test-suite job runs PR code and cannot change
+      # this job's outputs, so the push job only accepts the tarball this job wrote.
+      - name: Hand off to the test-suite job
+        id: handoff
+        env:
+          ARTIFACT: dev-lead-handoff-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          if [ -f "$DEV_LEAD_HANDOFF_DIR/outputs" ]; then
+            cat "$DEV_LEAD_HANDOFF_DIR/outputs" >> "$GITHUB_OUTPUT"
+            echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
+            echo "::notice::handed off to test-suite: $(grep '^handoff_sha256=' "$DEV_LEAD_HANDOFF_DIR/outputs")"
+          fi
+
+      - name: Upload handoff
+        if: steps.handoff.outputs.handoff == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.handoff.outputs.artifact }}
+          path: ${{ env.DEV_LEAD_HANDOFF_DIR }}/handoff.tar
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload token usage log
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -640,6 +680,156 @@ jobs:
           path: /tmp/token-usage-${{ github.run_id }}.jsonl
           if-no-files-found: ignore
           retention-days: 30
+
+  # ── test-suite ──────────────────────────────────────────────────────────────
+  # Runs the repo's test suite on a guarded pass's result (#2143). The suite is
+  # code from the PR branch, so this job holds NOTHING it could read: no secrets.*,
+  # `permissions: {}`, no checkout. It sees only the handoff tarball the dispatch
+  # job wrote (the pass's tree, the pre-pass tree, and the guard scripts) and its
+  # only output is the verdict. tests/dev-lead/unit/test_test_job_handoff.bats
+  # fails if this job gains a secret, a permission or a credentialed checkout.
+  # Skipped (no runner) for every pass that did not hand off.
+  test-suite:
+    needs: dispatch
+    if: needs.dispatch.outputs.handoff == 'true'
+    runs-on: ubuntu-latest
+    # At most two suite runs (the result, then the pre-pass head when the result is
+    # red), each capped by the guard's own 1500 s limit, plus setup.
+    timeout-minutes: 60
+    permissions: {}
+    env:
+      DEV_LEAD_TEST_CMD: ${{ vars.DEV_LEAD_TEST_CMD }}
+    outputs:
+      result: ${{ steps.suite.outputs.result }}
+    steps:
+      - name: Download handoff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.dispatch.outputs.artifact }}
+          path: ${{ runner.temp }}/handoff
+
+      # The `bats --recursive tests` fallback of the guard needs it (#2013).
+      - name: Install bats
+        run: sudo apt-get install -y bats
+
+      - name: Run the test suite on the pass's result
+        id: suite
+        env:
+          HANDOFF_SHA256: ${{ needs.dispatch.outputs.handoff_sha256 }}
+        run: |
+          set -euo pipefail
+          tarball="$RUNNER_TEMP/handoff/handoff.tar"
+          if [ "$(sha256sum "$tarball" | cut -d' ' -f1)" != "$HANDOFF_SHA256" ]; then
+            echo "::error::the handoff does not match the digest the dispatch job published — no verdict (#2143)"
+            exit 1
+          fi
+          guard="$RUNNER_TEMP/guard"
+          mkdir -p "$guard"
+          tar -xf "$tarball" -C "$guard" ./guard
+          source "$guard/guard/test-regression-guard.sh"
+          source "$guard/guard/test-job-handoff.sh"
+          log="$RUNNER_TEMP/suite.log"
+          rc=0
+          result="$(tjh_run_suite "$tarball" "$RUNNER_TEMP/suite" 2>"$log")" || rc=$?
+          cat "$log" >&2
+          if [ "$rc" -ne 0 ] || [ -z "$result" ]; then
+            echo "::error::the test suite could not be run on the handoff — no verdict (#2143)"
+            exit 1
+          fi
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+          # The run summary: the verdict, the failing tests, and how long the suite took.
+          {
+            trg_summary_line "$(jq -r .verdict <<<"$result")" "$(jq -r .cmd <<<"$result")"
+            jq -r '.tests[] | "- `\(.)`"' <<<"$result"
+            echo
+            echo '```'
+            cat "$log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::$(trg_summary_line "$(jq -r .verdict <<<"$result")" "$(jq -r .cmd <<<"$result")")"
+
+  # ── push ────────────────────────────────────────────────────────────────────
+  # Finishes a guarded pass (#2143): restores the dispatch job's exact commits,
+  # reads the test-suite verdict and pushes only when it allows, then runs
+  # everything that follows a push — push verification, the claim-retraction
+  # sweep, thread resolution, the terminal comment. `always()`: a failed,
+  # cancelled or timed-out test job still gets here, so a "Fixed" reply whose
+  # commit does not land is retracted. That case has no verdict, so the script
+  # does not push (tjh_verdict fails closed). Skipped (no runner) without a handoff.
+  push:
+    needs: [dispatch, test-suite]
+    if: always() && needs.dispatch.outputs.handoff == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      checks: read
+      statuses: read
+    env:
+      # Fail-safe default; the "Resolve persona identity" step sets the real one.
+      BOT_USER: 'don-petry'
+      DEV_LEAD_DRY_RUN: ${{ vars.DEV_LEAD_DRY_RUN || 'false' }}
+      GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+
+      - name: Checkout dev-lead scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: petry-projects/.github-private
+          ref: ${{ inputs.agent_ref }}
+          path: .dev-lead
+          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+          sparse-checkout: |
+            scripts
+            prompts/dev-lead
+            personas/dev-lead
+
+      - name: Protect dev-lead scripts from accidental git staging
+        run: echo ".dev-lead/" >> .git/info/exclude
+
+      - name: Resolve persona identity
+        run: |
+          if account="$(bash .dev-lead/scripts/lib/resolve-persona-identity.sh dev-lead .dev-lead/personas account)"; then
+            echo "BOT_USER=$account" >> "$GITHUB_ENV"
+            echo "resolved dev-lead identity: BOT_USER=$account"
+          else
+            echo "::warning::could not resolve dev-lead identity from manifest; using fallback BOT_USER=$BOT_USER"
+          fi
+
+      # A missing handoff must not stop the next step: it still retracts the
+      # pass's claim replies, then fails.
+      - name: Download handoff
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.dispatch.outputs.artifact }}
+          path: ${{ runner.temp }}/handoff
+
+      - name: Push the pass on the test-suite verdict
+        env:
+          DEV_LEAD_PHASE: push
+          INTENT_TYPE: ${{ needs.dispatch.outputs.intent }}
+          PR_NUMBER: ${{ needs.dispatch.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+          PROMPTS_DIR: .dev-lead/prompts/dev-lead
+          DEV_LEAD_HANDOFF_FILE: ${{ runner.temp }}/handoff/handoff.tar
+          DEV_LEAD_HANDOFF_SHA256: ${{ needs.dispatch.outputs.handoff_sha256 }}
+          DEV_LEAD_BASE_SHA: ${{ needs.dispatch.outputs.base_sha }}
+          DEV_LEAD_PASS_START_ISO: ${{ needs.dispatch.outputs.pass_start_iso }}
+          DEV_LEAD_TEST_JOB_RESULT: ${{ needs.test-suite.result }}
+          DEV_LEAD_TRG_RESULT: ${{ needs.test-suite.outputs.result }}
+        run: |
+          bash .dev-lead/scripts/dev-lead-fix-reviews.sh || rc=$?
+          [ "${rc:-0}" -eq 2 ] && exit 0
+          exit "${rc:-0}"
 
   # ── ci-relay ──────────────────────────────────────────────────────────────────
   # Handles check_run completed failure events. No LLM — resolves PR number and
