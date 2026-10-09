@@ -552,7 +552,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Python deps
-        run: pip3 install --quiet 'jsonschema>=4'
+        run: pip3 install --quiet "jsonschema==4.26.0" --only-binary=":all:"
 
       - name: Validate config/ai-engines.json
         run: python3 scripts/validate-ai-engines.py

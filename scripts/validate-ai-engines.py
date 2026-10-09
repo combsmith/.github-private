@@ -19,8 +19,10 @@ then checks what a schema cannot express:
 Every problem is reported as a `::error::` line. Exit 0 when valid, 1 otherwise.
 """
 import json
+import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -30,6 +32,17 @@ SINGLE_MODEL_PROVIDERS = ("copilot",)
 
 def error(msg: str) -> None:
     print(f"::error::ai-engines config invalid: {msg}", file=sys.stderr)
+
+
+def safe_path(arg: str, what: str) -> Path:
+    """Resolve a CLI-supplied path and confine it to the repo or the system temp dir
+    (the bats tests stage fixtures there), refusing traversal elsewhere."""
+    resolved = Path(os.path.realpath(arg))
+    roots = (os.path.realpath(REPO), os.path.realpath(tempfile.gettempdir()))
+    if not any(resolved == Path(r) or Path(r) in resolved.parents for r in roots):
+        error(f"{what} path {arg} is outside the repository and the temp dir")
+        sys.exit(1)
+    return resolved
 
 
 def load_json(path: Path, what: str):
@@ -112,9 +125,9 @@ def check_references(config, globs) -> list:
 
 
 def main(argv) -> int:
-    config_path = Path(argv[1]) if len(argv) > 1 else REPO / "config" / "ai-engines.json"
-    schema_path = Path(argv[2]) if len(argv) > 2 else REPO / "config" / "ai-engines.schema.json"
-    pricing_path = Path(argv[3]) if len(argv) > 3 else REPO / "scripts" / "lib" / "model-pricing.tsv"
+    config_path = safe_path(argv[1], "config") if len(argv) > 1 else REPO / "config" / "ai-engines.json"
+    schema_path = safe_path(argv[2], "schema") if len(argv) > 2 else REPO / "config" / "ai-engines.schema.json"
+    pricing_path = safe_path(argv[3], "pricing") if len(argv) > 3 else REPO / "scripts" / "lib" / "model-pricing.tsv"
 
     config = load_json(config_path, "config")
     schema = load_json(schema_path, "schema")
