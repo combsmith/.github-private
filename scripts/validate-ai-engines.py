@@ -10,7 +10,8 @@ then checks what a schema cannot express:
 
   - every model a task names is in `models` and not `retired`;
   - every model a task names belongs to the provider of the chain it is in;
-  - every non-retired model of an enabled provider has a price row in
+  - every non-retired model of an enabled provider has a price row (effective
+    today) in
     model-pricing.tsv (a vendor-prefixed id such as openai/o4-mini is priced by
     its bare name, as token records store it);
   - `duck`, and every `copilot` chain, holds one model (neither has an
@@ -18,6 +19,7 @@ then checks what a schema cannot express:
 
 Every problem is reported as a `::error::` line. Exit 0 when valid, 1 otherwise.
 """
+import datetime
 import json
 import os
 import re
@@ -55,9 +57,10 @@ def load_json(path: Path, what: str):
 
 
 def price_globs(path: Path) -> list:
-    """The model_glob column of model-pricing.tsv (comments and short rows skipped,
-    as scripts/lib/model-pricing.sh does)."""
+    """The model_glob column of the model-pricing.tsv rows in effect today (comments
+    and short rows skipped, as scripts/lib/model-pricing.sh does)."""
     globs = []
+    today = datetime.date.today().isoformat()
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
@@ -68,7 +71,10 @@ def price_globs(path: Path) -> list:
             continue
         cols = line.split("\t")
         if len(cols) >= 6 and cols[0]:
-            globs.append(cols[0])
+            # model-pricing.sh's price_for ignores a row until its effective_from
+            # date, so a future-dated row does not price a model running today.
+            if cols[1].strip() <= today:
+                globs.append(cols[0])
     return globs
 
 
