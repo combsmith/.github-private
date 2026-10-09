@@ -28,6 +28,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SINGLE_MODEL_TASKS = ("duck",)
 SINGLE_MODEL_PROVIDERS = ("copilot",)
+PROVIDERS = ("claude", "gemini", "copilot")
 
 
 def error(msg: str) -> None:
@@ -95,9 +96,18 @@ def check_references(config, globs) -> list:
     problems = []
     models = config["models"]
     providers = config["providers"]
+    if not any(entry["enabled"] for name, entry in providers.items() if name in PROVIDERS):
+        problems.append("providers: every provider is disabled; enable at least one")
     for task, chains in config["tasks"].items():
+        if not isinstance(chains, dict):
+            continue  # $comment
+        for provider in PROVIDERS:
+            # The duck runs on Claude only; the other tasks need a chain per enabled provider.
+            needed = provider == "claude" if task in SINGLE_MODEL_TASKS else True
+            if needed and providers[provider]["enabled"] and provider not in chains:
+                problems.append(f"tasks.{task}.{provider}: missing chain for enabled provider {provider}")
         for provider, chain in chains.items():
-            if provider not in ("claude", "gemini", "copilot"):
+            if provider not in PROVIDERS:
                 continue  # prefer, $comment
             for model in chain:
                 entry = models.get(model)

@@ -343,7 +343,14 @@ workflow_source=$(gh api "repos/${WORKFLOW_REPO}/contents/.github/workflows/${WO
     engine_overrides=""
     printf 'Could not read `config/ai-engines.json` — see the run log.\n\n'
   elif [ -z "$engine_overrides" ]; then
-    printf 'None: every engine and model setting comes from `config/ai-engines.json`.\n\n'
+    model_problems="$(ai_models_problems)"
+    if [ -n "$model_problems" ]; then
+      printf 'Invalid engine model overrides (ignored):\n\n'
+      printf '%s\n' "$model_problems" | sed 's/^/- `/; s/$/`/'
+      printf '\n'
+    else
+      printf 'None: every engine and model setting comes from `config/ai-engines.json`.\n\n'
+    fi
   else
     printf 'These Actions variables override `config/ai-engines.json`. Fold each into the file through a normal release, then delete the variable.\n\n'
     printf '%s\n' "$engine_overrides" | sed 's/^/- `/; s/$/`/'

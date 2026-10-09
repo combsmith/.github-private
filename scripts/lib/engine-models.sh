@@ -267,6 +267,7 @@ ai_models_gemini_chain() {
     deep|audit|single)  group="${GEMINI_PRO_MODEL_CHAIN:-}";   first="${GEMINI_PRO_MODEL:-}" ;;
     duck)
       c="$(ai_models_configured gemini duck)"
+      [ -n "$c" ] || c="$(ai_models_default gemini duck)" || return 1
       [ -n "$c" ] || { c="$(ai_models_gemini_chain triage)" || return 1; c="${c%%,*}"; }
       printf '%s' "$c"
       return 0 ;;
@@ -294,6 +295,7 @@ ai_models_copilot_model() {
     m="$COPILOT_API_MODEL"
   else
     m="$(ai_models_configured copilot "$key")"
+    [ -n "$m" ] || [ "$key" != duck ] || m="$(ai_models_default copilot duck)" || return 1
     [ -n "$m" ] || [ "$key" != duck ] || key=triage
     [ -n "$m" ] || m="$(ai_models_chain copilot "$key")" || return 1
   fi
