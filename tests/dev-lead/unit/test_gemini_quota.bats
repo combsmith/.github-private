@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Unit tests for Gemini quota metering (#2030):
-#   - scripts/lib/gemini-quota-caps.tsv  — per-key / per-model caps (data, shipped unfilled)
+#   - scripts/lib/gemini-quota-caps.tsv  — per-key / per-model caps (data; filled with the
+#                                          self-imposed Free Tier caps by #2146)
 #   - scripts/lib/gemini-quota.sh        — ledger-based metering + per-key cooldown memory
 #   - engine.sh check_provider_headroom gemini branch and the cooldown-aware rotation
 #
@@ -77,6 +78,16 @@ _caps() {
   } > "$GEMINI_QUOTA_CAPS"
 }
 
+# _shipped_caps_unknown [key_index [model]] — the test's caps file becomes a copy of the
+# SHIPPED one with cap rows edited back to `unknown`: every row, one key's rows, or one
+# row. The shipped file is filled (#2146), so the limits-unknown path needs this fixture.
+_shipped_caps_unknown() {
+  awk -F'\t' -v OFS='\t' -v k="${1:-}" -v m="${2:-}" '
+    /^[[:space:]]*#/ || NF < 6 || $1 == "setting" { print; next }
+    (k == "" || $1 == k) && (m == "" || $2 == m) { $3 = $4 = $5 = $6 = "unknown" }
+    { print }' "$SHIPPED_CAPS" > "$GEMINI_QUOTA_CAPS"
+}
+
 # _ledger_call <key_index> <model> <age_sec> [tokens]
 # Appends one gemini token_usage record <age_sec> seconds before NOW.
 _ledger_call() {
@@ -90,16 +101,15 @@ _ledger_call() {
 
 # ── the shipped caps file ─────────────────────────────────────────────────────
 
-@test "caps file: ships next to model-pricing.tsv with every limit unknown" {
+@test "caps file: ships next to model-pricing.tsv with rows for key indexes 1-4" {
   [ -f "$SHIPPED_CAPS" ]
+  [ -f "$(dirname "$SHIPPED_CAPS")/model-pricing.tsv" ]
   # Rows for key indexes 1-4.
   for idx in 1 2 3 4; do
     awk -F'\t' -v k="$idx" '$1 == k { f = 1 } END { exit !f }' "$SHIPPED_CAPS"
   done
-  # No data row carries a numeric tier/rpm/tpm/rpd: nothing is trusted until filled.
-  run awk -F'\t' '/^[[:space:]]*#/ || NF < 6 || $1 == "setting" { next }
-    { for (i = 3; i <= 6; i++) if ($i != "unknown") print }' "$SHIPPED_CAPS"
-  [ -z "$output" ]
+  # The values themselves are pinned by "#2146 AC1" below. Until #2146 this test
+  # asserted every limit was `unknown` (the file shipped unfilled).
 }
 
 @test "caps file: has a row for every model the default gemini chains use" {
@@ -113,8 +123,8 @@ _ledger_call() {
   done
 }
 
-@test "AC4: shipped (all-unknown) caps → conservative result 2, log names 'limits unknown', never ok" {
-  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+@test "AC4: all-unknown caps (the shipped file as #2030 shipped it) → conservative result 2, log names 'limits unknown', never ok" {
+  _shipped_caps_unknown
   export GOOGLE_API_KEY="fake-secret-a" GOOGLE_API_KEY_2="fake-secret-b"
   _ledger_call 1 gemini-3.8-flash 5
   _source_engine gemini
@@ -281,7 +291,7 @@ _ledger_call() {
 }
 
 @test "headroom: run_writer_with_fallback still proceeds on the constrained result (no actuation)" {
-  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  _shipped_caps_unknown
   export GOOGLE_API_KEY="fake-secret-a"
   export DEV_LEAD_ENGINES="gemini"
   export STUB_ENGINE_EXIT=0
@@ -523,4 +533,123 @@ _ledger_call() {
   run check_provider_headroom gemini
   [ "$status" -eq 0 ]
   [[ "$output" == *"usage 25% — ok"* ]]
+}
+
+# ── #2146: the shipped caps are the self-imposed Free Tier caps ───────────────
+# These tests read the SHIPPED file, so a changed number fails here first.
+
+# _all_four_keys — configure the four key slots the shipped caps file has rows for.
+_all_four_keys() {
+  export GOOGLE_API_KEY="fake-secret-a" GOOGLE_API_KEY_2="fake-secret-b"
+  export GOOGLE_API_KEY_3="fake-secret-c" GOOGLE_API_KEY_4="fake-secret-d"
+}
+
+@test "#2146 AC1: the shipped caps are exactly the self-imposed Free Tier caps for key indexes 1-4, no unknown left" {
+  local expected="" k
+  for k in 1 2 3 4; do
+    expected+="$(printf '%s\tgemini-3.8-flash\tpaid\t5\t250000\t20' "$k")"$'\n'
+    expected+="$(printf '%s\tgemini-3.1-pro-preview\tpaid\t0\t0\t0' "$k")"$'\n'
+  done
+  # Every data row, byte for byte: both models for each key index, nothing else.
+  run awk -F'\t' '/^[[:space:]]*#/ || !NF || $1 == "setting" { next } { print }' "$SHIPPED_CAPS"
+  [ "$output" = "${expected%$'\n'}" ]
+  # No `unknown` outside the comments: not in a cap row, not in a setting.
+  run grep -vE '^[[:space:]]*#' "$SHIPPED_CAPS"
+  [[ "$output" != *unknown* ]]
+  # The settings rows are the ones #2030 / #2041 shipped.
+  run awk -F'\t' '$1 == "setting" { print $2 "=" $3 }' "$SHIPPED_CAPS"
+  [ "$output" = "daily_reset_time=00:00"$'\n'"daily_reset_tz=America/Los_Angeles"$'\n'"default_cooldown_sec=60"$'\n'"history_days=7" ]
+}
+
+@test "#2146 AC1: the library reads the shipped caps as Flash 5/250000/20 and Pro excluded on every key" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  _source_engine gemini
+  local k
+  for k in 1 2 3 4; do
+    [ "$(gq_caps_for "$k" gemini-3.8-flash)" = "paid"$'\t'"5"$'\t'"250000"$'\t'"20" ]
+    [ "$(gq_caps_for "$k" gemini-3.1-pro-preview)" = "paid"$'\t'"0"$'\t'"0"$'\t'"0" ]
+    run gq_remaining "$k" gemini-3.8-flash
+    [ "$(jq -r .state <<< "$output")" = "available" ]
+    [ "$(jq -r .remaining_calls <<< "$output")" = "20" ]
+    run gq_remaining "$k" gemini-3.1-pro-preview
+    [ "$(jq -r .state <<< "$output")" = "unavailable" ]
+    [ "$(jq -r .remaining_calls <<< "$output")" = "0" ]
+  done
+  # The expected effect: 20 Flash requests per key per day, 80 across the four keys.
+  run gq_tier_view triage 1 2 3 4
+  [ "$(jq -r .status <<< "$output")" = "available" ]
+  [ "$(jq -r .remaining_calls <<< "$output")" = "80" ]
+}
+
+@test "#2146 AC3: Pro is never called on any key; deep, audit and single move to the Flash fallback" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  _all_four_keys
+  local model_log="$BATS_TEST_TMPDIR/model_record" tier chain k
+  export STUB_ENGINE_EXIT=0 STUB_ENGINE_RECORD_MODELS="$model_log"
+  _source_engine gemini
+
+  for tier in deep audit single; do
+    chain="$(ai_models_gemini_chain "$tier")"
+    [ "${chain%%,*}" = "gemini-3.1-pro-preview" ]   # Pro is still the tier's first choice
+    : > "$model_log"; : > "$KEY_RECORD"
+    run _gemini_chain_invoke "$chain" "$TEST_PROMPT" 30
+    [ "$status" -eq 0 ]
+    [ "$(cat "$model_log")" = "gemini-3.8-flash" ]     # one call, and it is Flash
+    for k in 1 2 3 4; do [[ "$output" == *"key index $k"*"unavailable"* ]]; done
+    [[ "$output" != *"fake-secret"* ]]
+    # The tier view says the same thing before any work runs.
+    run gq_tier_view "$tier" 1 2 3 4
+    [ "$(jq -r .status <<< "$output")" = "degraded" ]
+    [ "$(jq -r .degraded_to <<< "$output")" = "gemini-3.8-flash" ]
+  done
+
+  # Asked for Pro alone: no key is called at all.
+  : > "$model_log"; : > "$KEY_RECORD"
+  run _gemini_chain_invoke "gemini-3.1-pro-preview" "$TEST_PROMPT" 30
+  [ "$status" -eq 2 ]
+  [ ! -s "$KEY_RECORD" ]
+  [ ! -s "$model_log" ]
+}
+
+@test "#2146 AC3: with Flash throttled on every key, Pro is still not called (no tier falls back to it)" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  _all_four_keys
+  local model_log="$BATS_TEST_TMPDIR/model_record" tier
+  export STUB_ENGINE_RECORD_MODELS="$model_log"
+  export STUB_ENGINE_EXIT_BY_MODEL="gemini-3.8-flash=1|gemini-3.1-pro-preview=0"
+  export STUB_ENGINE_RESPONSE_BY_MODEL="gemini-3.8-flash=429 too many requests|gemini-3.1-pro-preview=ok"
+  _source_engine gemini
+
+  for tier in triage action deep audit single; do
+    : > "$model_log"; : > "$KEY_RECORD"; : > "$TOKEN_LOG_FILE"   # drop the previous tier's cooldowns
+    run _gemini_chain_invoke "$(ai_models_gemini_chain "$tier")" "$TEST_PROMPT" 30
+    [ "$status" -eq 2 ]
+    [ -s "$model_log" ]                                # Flash was tried …
+    ! grep -q "pro" "$model_log" || false              # … Pro never was, on any key
+  done
+}
+
+@test "#2146 AC4: a shipped row edited back to unknown takes the conservative limits-unknown path" {
+  _shipped_caps_unknown 1 gemini-3.8-flash
+  # The fixture is the shipped file with exactly that one row changed.
+  [ "$(grep -c "unknown"$'\t'"unknown"$'\t'"unknown"$'\t'"unknown" "$GEMINI_QUOTA_CAPS")" = "1" ]
+  [ "$(diff "$SHIPPED_CAPS" "$GEMINI_QUOTA_CAPS" | grep -c '^>')" = "1" ]
+  export GOOGLE_API_KEY="fake-secret-a"
+  export STUB_ENGINE_EXIT=0
+  _source_engine gemini
+
+  run check_provider_headroom gemini
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"limits unknown for key index 1"* ]]
+  [[ "$output" != *"— ok"* ]]
+  [[ "$output" != *"fake-secret"* ]]
+
+  run gq_remaining 1 gemini-3.8-flash
+  [ "$(jq -r .state <<< "$output")" = "unknown" ]
+  [ "$(jq -r .remaining_calls <<< "$output")" = "null" ]
+
+  # Not a hard block: the unknown key is still tried.
+  run _gemini_chain_invoke "gemini-3.8-flash" "$TEST_PROMPT" 30
+  [ "$status" -eq 0 ]
+  [ "$(cat "$KEY_RECORD")" = "fake-secret-a" ]
 }
