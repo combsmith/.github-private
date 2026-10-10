@@ -100,6 +100,7 @@ jobs:
             tests/test_rate_limit_samples.bats \
             tests/fleet_stub_drift.bats \
             tests/fleet_stub_remediate.bats \
+            tests/fleet_stub_registry.bats \
             tests/fleet_remediate_gate.bats \
             tests/template_stub_drift.bats \
             tests/canary_rollout.bats \
