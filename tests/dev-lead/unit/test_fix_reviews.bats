@@ -6009,7 +6009,10 @@ _setup_2013() {
   T2013_MUT="$BATS_TEST_TMPDIR/mutations"
   T2013_PATCH="$BATS_TEST_TMPDIR/patches"
   T2013_PUSH="$BATS_TEST_TMPDIR/pushes"
+  # Extra review comments (a JSON array) appended to the PR's listing (#2032).
+  T2013_EXTRA="$BATS_TEST_TMPDIR/extra-comments.json"
   : > "$T2013_MUT"; : > "$T2013_PATCH"; : > "$T2013_PUSH"
+  [ -s "$T2013_EXTRA" ] || echo '[]' > "$T2013_EXTRA"
   mkdir -p "$T2013_DIR/tests"
   rm -f /tmp/dev-lead-session-output.txt
 
@@ -6046,6 +6049,12 @@ case "\$ARGS" in
     echo "\$*" >> "$T2013_PATCH"
     echo '{}'
     ;;
+  # The earlier-claim sweep asks GitHub whether a not-on-ref commit exists (#2032).
+  # GitHub has never seen 9313650…: the lookup fails as an unknown commit does.
+  *"commits/931365099bfb2c283aecfb16b0f5f0b8d59436b2"*)
+    echo "gh: No commit found for SHA: 931365099bfb2c283aecfb16b0f5f0b8d59436b2 (HTTP 422)" >&2
+    exit 1
+    ;;
   *"resolveReviewThread"*)
     echo "\$*" >> "$T2013_MUT"
     echo '{"data":{"resolveReviewThread":{"thread":{"isResolved":true}}}}'
@@ -6060,7 +6069,8 @@ case "\$ARGS" in
     echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[{"id":"PRRT_2013","isResolved":false,"isOutdated":false,"origin":{"nodes":[{"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}]}}]}}}}}'
     ;;
   *"pulls/54/comments"*)
-    printf '%s\n' "[{\"id\":777,\"user\":{\"login\":\"donpetry-bot\"},\"created_at\":\"2099-01-01T00:00:00Z\",\"body\":\"\${reply}\"}]"
+    printf '%s\n' "[{\"id\":777,\"user\":{\"login\":\"donpetry-bot\"},\"created_at\":\"2099-01-01T00:00:00Z\",\"body\":\"\${reply}\"}]" \
+      | jq -c --slurpfile x "$T2013_EXTRA" '. + \$x[0]'
     ;;
   # Hold label (#2142): REST POST; T2013_LABEL_RC makes the API refuse it.
   *"issues/54/labels"*)
@@ -6237,6 +6247,30 @@ _run_2013() {
   [ ! -s "$T2013_PUSH" ]
   [[ "$output" == *"merge base with main unknown"* ]]
   [[ "$output" == *"needs-human-review"* ]]
+}
+
+# ── #2032: earlier passes' claim replies are swept at the start of a pass ─────
+# A run cancelled after its model replied never reached its own sweep (#2080:
+# commit 9313650… never reached the branch, yet its "Fixed" reply stood).
+
+@test "#2032: the pass retracts an earlier pass's unlanded claim before the engine runs" {
+  T2013_EXTRA="$BATS_TEST_TMPDIR/extra-comments.json"
+  jq -c -n '[{id: 881, user: {login: "donpetry-bot"}, created_at: "2000-01-01T00:00:00Z",
+    body: "Fixed in fix.txt.\n<!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\"v\":1,\"sha\":\"931365099bfb2c283aecfb16b0f5f0b8d59436b2\",\"files\":[\"fix.txt\"]} -->"}]' > "$T2013_EXTRA"
+  _setup_2013 HEAD "echo ENGINE-RAN >> '$BATS_TEST_TMPDIR/patches'; printf 'fixed\n' > fix.txt"
+  _run_2013 fix-reviews
+
+  grep -q "pulls/comments/881" "$T2013_PATCH"
+  grep -q "reason=not-on-ref" "$T2013_PATCH"
+  # Swept before the engine ran (before this pass posted anything).
+  local swept engine
+  swept=$(grep -n "pulls/comments/881" "$T2013_PATCH" | head -1 | cut -d: -f1)
+  engine=$(grep -n "ENGINE-RAN" "$T2013_PATCH" | head -1 | cut -d: -f1)
+  [ -n "$engine" ]
+  [ "$swept" -lt "$engine" ]
+  # This pass's own (landed) claim is untouched and its thread still resolves.
+  ! grep -q "pulls/comments/777" "$T2013_PATCH"
+  grep -q "PRRT_2013" "$T2013_MUT"
 }
 
 # ── review-changes / human-pr parity + test-regression guard (#2013) ───────────
