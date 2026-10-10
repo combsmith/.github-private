@@ -73,6 +73,13 @@ set -euo pipefail
 # reply must not itself become a fresh undispositioned blocker.
 readonly _MAINTAINER_GATE_AGENT_MARKERS='<!-- (pr-review-agent|pr-review-claim|persona:|dev-lead|dependency-advisory|maintainer-resolve)[^>]*-->'
 
+# This library's own directory, resolved ONCE at source time. dev-lead-fix-reviews.sh
+# is run by a relative path (`bash .dev-lead/scripts/...`) and later cds into the
+# PR worktree, so a function resolving BASH_SOURCE at call time gets a path that
+# no longer exists and every registry read fails closed (#2208, as #2152).
+_MAINTAINER_GATE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
+readonly _MAINTAINER_GATE_LIB_DIR
+
 log_info() {
   echo "[maintainer-gate] $*" >&2
 }
@@ -88,8 +95,7 @@ log_info() {
 #   verdict: an info comment we can't classify simply stays a blocker), never to
 #   clearing something it cannot classify.
 _maintainer_gate_info_patterns_json() {
-  local lib_dir patterns status
-  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local lib_dir="$_MAINTAINER_GATE_LIB_DIR" patterns status
   if [[ ! -f "$lib_dir/reviewer-sources.sh" ]]; then
     printf '%s' '{}'
     return 0
@@ -123,8 +129,7 @@ _maintainer_gate_info_patterns_json() {
 #   registry helper never leaks into the gate's caller. Returns 1 (echoing nothing)
 #   when the registry cannot be read. Each caller picks its own fail-closed default.
 _maintainer_gate_registry_value() {
-  local fn="${1:-}" lib_dir out status
-  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local fn="${1:-}" lib_dir="$_MAINTAINER_GATE_LIB_DIR" out status
   [[ -n "$fn" && -f "$lib_dir/reviewer-sources.sh" ]] || return 1
   set +e
   out="$(
