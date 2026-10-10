@@ -230,6 +230,10 @@ calling it a regression, and treat CI as authoritative.**
   agentic workflow compilation. It is not covered by the org template and must not be removed by template
   syncs. If the org template gains a `gh-aw-compile` equivalent, remove this exception and defer to the
   template instead.
+- **Exception:** The `validate-ai-engines` job in `lint.yml` (#1973) is a documented repo-specific addition
+  that runs `scripts/validate-ai-engines.py` against `config/ai-engines.json`; the `paths:` filters also carry
+  `config/**` for it. It is not covered by the org template and must not be removed by template syncs. If the
+  org template gains an equivalent, remove this exception and defer to the template instead.
 - **Exception:** the `lint.yml` `paths:` filters (pull_request and push) carry the repo-specific entry
   `docs/initiatives/agent-ingress-collapse-markets.md`, which is read by
   `tests/agent_ingress_markets_package.bats` (#2038). It must not be removed as template drift on a sync;

@@ -213,8 +213,10 @@ jobs:
           # then fall back to the inline AI_ENGINES logic.
           claude_enabled=true
           if [ -f .dev-lead-config/config/ai-engines.json ]; then
-            # config/ai-engines.json exists; check if claude provider is disabled.
-            if grep -q '"claude".*"enabled"\s*:\s*false' .dev-lead-config/config/ai-engines.json; then
+            # Parse (never grep) the file; fail closed — keep requiring the
+            # token — when .providers.claude.enabled cannot be resolved.
+            cfg_claude="$(jq -r '.providers.claude.enabled' .dev-lead-config/config/ai-engines.json 2>/dev/null || echo unknown)"
+            if [ "$cfg_claude" = false ]; then
               claude_enabled=false
             fi
           fi
@@ -794,18 +796,36 @@ jobs:
       issues: read
 
     steps:
+      - name: Checkout dev-lead config
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: petry-projects/.github-private
+          ref: ${{ inputs.agent_ref }}
+          path: .dev-lead-config
+          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+          persist-credentials: false
+          sparse-checkout: config
+
       - name: Engine token preflight (#1525)
         env:
           AI_ENGINES: ${{ vars.AI_ENGINES || vars.DEV_LEAD_ENGINES || '' }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
-          # Is Claude enabled? Only a valid AI_ENGINES list that omits claude turns it
-          # off; empty or invalid values fall back to the default chain, which includes
-          # claude (scripts/lib/engine-chain.sh — mirrored inline because this runs
-          # before the scripts are checked out).
+          # Is Claude enabled? config/ai-engines.json disabling Claude takes
+          # precedence; otherwise only a valid AI_ENGINES list that omits claude turns
+          # it off; empty or invalid values fall back to the default chain, which
+          # includes claude (scripts/lib/engine-chain.sh — mirrored inline because this
+          # runs before the scripts are checked out).
           claude_enabled=true
+          if [ -f .dev-lead-config/config/ai-engines.json ]; then
+            # Parse (never grep) the file; fail closed when unresolvable.
+            cfg_claude="$(jq -r '.providers.claude.enabled' .dev-lead-config/config/ai-engines.json 2>/dev/null || echo unknown)"
+            if [ "$cfg_claude" = false ]; then
+              claude_enabled=false
+            fi
+          fi
           spec="$(printf '%s' "${AI_ENGINES:-}" | tr '[:upper:],' '[:lower:] ')"
-          if [ -n "${spec//[[:space:]]/}" ]; then
+          if [ "$claude_enabled" = true ] && [ -n "${spec//[[:space:]]/}" ]; then
             set -f
             known=true; has_claude=false
             for e in $spec; do
@@ -819,7 +839,7 @@ jobs:
             if [ "$known" = true ] && [ "$has_claude" = false ]; then claude_enabled=false; fi
           fi
           if [ "$claude_enabled" = false ]; then
-            echo "claude not in AI_ENGINES (${AI_ENGINES}) — CLAUDE_CODE_OAUTH_TOKEN not required"
+            echo "claude disabled in config or not in AI_ENGINES (${AI_ENGINES}) — CLAUDE_CODE_OAUTH_TOKEN not required"
             exit 0
           fi
           if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
