@@ -165,16 +165,16 @@ jobs:
             -f target_discussion="${DISCUSSION_NUMBER}"
 
           # Resolve the dispatched run so the Idea carries a visible link to it.
-          # We look for the oldest run created AFTER dispatch_time. This correlates
-          # the run with the specific dispatch rather than selecting any run whose ID
-          # was not in a snapshot. We fall back to the workflow runs page if no such
-          # run appears within the polling window.
+          # We look for the newest run created AFTER dispatch_time. This correlates
+          # the run with the specific dispatch (most recent after dispatch) rather than
+          # selecting any run whose ID was not in a snapshot. We fall back to the
+          # workflow runs page if no such run appears within the polling window.
           run_url=""
           for _ in 1 2 3 4 5 6; do
             run_url="$(gh run list --repo "${REPO}" \
               --workflow feature-ideation.yml --event workflow_dispatch \
               --json databaseId,url,createdAt \
-              --jq "[.[] | select(.createdAt >= \"${dispatch_time}\")] | sort_by(.createdAt) | first | .url // empty" \
+              --jq "[.[] | select(.createdAt >= \"${dispatch_time}\")] | sort_by(.createdAt) | last | .url // empty" \
               2>/dev/null || true)"
             [ -n "${run_url}" ] && break
             sleep 5
