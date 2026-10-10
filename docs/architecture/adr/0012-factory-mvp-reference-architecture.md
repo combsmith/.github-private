@@ -1,0 +1,486 @@
+# 0012. Factory MVP reference architecture: a declared control plane, one run contract, one release
+
+## Status
+
+proposed
+
+## Context
+
+The agentic factory in this repo grew by emergent design and is now treated as a proof of concept.
+`docs/prd/agentic-software-factory.md` states what a production MVP must do. The review in
+`docs/architecture/factory-mvp-architecture-review.md` measured the POC against it at commit
+`aef61164` (2026-10-10) and analysed the options. This record states the decision; the options are
+in the review, §§4–11, and are not repeated here.
+
+The review found seven structural causes behind eleven recurring failure classes. Each is a
+decision the POC never made once, so it was made many times, locally:
+
+1. **Work-item state is implicit.** No file declares states or transitions. State is recomputed by
+   each script from labels, about eighty HTML-comment marker shapes, review objects and checks. The
+   only marker registry is one regex (`scripts/lib/maintainer-comment-gate.sh:74`).
+2. **Work is carried by events and concurrency slots.** A request exists only as a queued run, and
+   the platform drops both runs and scheduled ticks (`.github/workflows/dev-lead-reusable.yml:76-85`;
+   `.github/workflows/pr-review-sweep.yml:15-18`). Fifteen workflows exist to find and restart what
+   fell through. Nothing admits runs in one place.
+3. **The model holds the write credential and reports on itself.** In the two busiest roles the
+   harness polices claims afterwards (`.github/workflows/dev-lead-reusable.yml:173`;
+   `scripts/lib/addressed-claim-verify.sh`).
+4. **Agents act as the Maintainer.** One account is the human, dev-lead and eight personas
+   (ADR-0008). The loop ceiling keys on login and so cannot count them
+   (`scripts/lib/pr-automation-budget.sh:54-59`), the Maintainer cannot review their pull requests,
+   and the fleet and every session draw on one API quota.
+5. **There is no single unit of release.** Changes to dev-lead and pr-review are inert until a tag
+   moves (`AGENTS.md:25-33`); persona prompts and manifests are live at merge
+   (`.github/workflows/persona-runner.yml:23-24,39`). One fact is written in up to eight places
+   across two repos.
+6. **An approval is bound to a commit hash**, can be withheld or dismissed by several independent
+   gates, and one merge forces work on every open pull request
+   (`scripts/review-one-pr.sh:838-842`; `.github/workflows/auto-rebase.yml:25-30`).
+7. **Verification does not bind.** The `main` ruleset requires five checks (read live,
+   2026-10-10); the test suite, the validators and the evals are not among them. Decision logic sits in shell and inline workflow
+   steps that cannot run on the maintainer's machine (`AGENTS.md:174-181`).
+
+Three things the earlier records decided bear directly on this one.
+
+**ADR-0007** weighed and rejected an org-level GitHub App as *ingress* and a webhook-native runtime,
+"at the current fleet size", because both need a hosted endpoint, a second secret store and their
+own deduplication. That reasoning stands. This record uses a GitHub App as an *identity* whose
+tokens are minted inside Actions. It hosts nothing and does not reopen ADR-0007.
+
+**ADR-0008 and interaction model §12.2** put the personas and dev-lead on the owner account. The
+review engages with their reasoning point by point (review §6.4). Their stated objection to a
+distinct identity was a new machine user with a new long-lived token. A GitHub App has neither, and
+GitHub's terms permit only one free machine account, which the org already uses for the reviewer.
+
+**ADR-0010** recorded that ADR-0000 has no status for an ADR that extends another. That gap is felt
+here and is not fixed here.
+
+One platform fact changed during the review. A concurrency group's pending depth of one is now a
+default: GitHub documents `concurrency.queue: max`, up to 100 pending runs. It is a useful
+mitigation for the POC. It does not change this decision, because a deeper queue still loses a
+request when a tick is dropped, a dispatch fails or a run is killed.
+
+**This decision was attacked before it was proposed.** The review compares it with seven other
+systems (§13) and records an independent adversarial pass (§14). That pass found the first draft
+sound in four decisions and wrong in three ways: it committed to two mechanisms before measuring
+them, it removed brakes the POC has, and it had no stopping rule. The boundaries below include the
+changes it required. It also found two ceilings this decision does not raise, which are stated in
+Consequences.
+
+**Scope and precedence.** This record fixes the structure every new factory component follows. It
+supersedes no ADR by itself. An accepted ADR keeps governing the POC code path it describes until a
+follow-on ADR, named below, supersedes it in the same change that makes the new behaviour true in
+the running system. Flipping statuses on acceptance would make the log claim what the system does
+not yet do, which is the defect ADR-0008 was written to repair, in reverse.
+
+## Decision
+
+We will rebuild the factory's core as **a declared control plane, one run contract and one release**,
+on GitHub Actions, with no always-on component. We will introduce it beside the POC and cut over one
+repo and one intent family at a time. Terms are those of the PRD glossary.
+
+### 1. One self-contained tree, with decision logic that does no I/O
+
+We will keep the factory in one tree, `factory/`, in the hosting repo: Lifecycle, Role manifests,
+schemas, configuration, Kernel, adapters, Harness, Controller, release tooling and their tests. The
+Kernel is Python 3 using the standard library only. All I/O is in adapters. Shell is step glue.
+
+The boundaries a check can assert:
+
+- **No module under `factory/kernel/` performs I/O.** It imports nothing that opens a file, a
+  process, a socket or the environment, and it takes the clock as an argument.
+- **Nothing under `factory/` imports or sources a file outside `factory/`.**
+- **No decision logic in workflow YAML.** A `run:` block in a factory workflow is at most ten lines
+  and calls a module entry point.
+
+### 2. A declared Lifecycle and one State record
+
+We will define one Lifecycle per work-item type as versioned data under `factory/lifecycle/`, and
+keep one State record per work item together with an append-only Ledger in a store that only the
+Controller identity writes. The store starts as git; that choice is provisional (decision 11). The
+work item shows a projection of its State record. Labels are the human's input vocabulary.
+HTML-comment markers are not state.
+
+- **Every transition in the Ledger for a Release is declared in that Release's Lifecycle.** An
+  undeclared one fails a check and is reported.
+- **A state change and its ledger events are one commit.**
+- **No module under `factory/kernel/` takes a comment body as input.** Text written by third
+  parties becomes typed records in adapters and Roles that are enumerated in one list. The entries
+  in that list that read legacy markers may only shrink.
+- **The State record holds only what GitHub does not.** Reviews, checks, labels, merges and thread
+  resolution are read as facts at each evaluation and are never trusted from the record.
+- **Every non-terminal, non-held State carries a next evaluation time.**
+- **The projection on a work item is rewritten only when the decision changes,** and at most once
+  per item per stated interval. It contains no value that changes when the decision does not.
+
+### 3. Level-triggered Admission in one place
+
+We will admit every Run through one Controller that evaluates recorded state and current facts.
+Events are wake-ups. The sweep is sufficient without them: any decision reached on a wake is also
+reached by a sweep with no wake. Waking per event is a latency optimisation and is provisional
+(decision 11). The Controller runs in the hosting repo, one lane per work item, held from decision
+to applied Effects.
+
+- **A wake carries a schema version and a work item's identity, and nothing else.** The Kernel's
+  admission function takes no event payload.
+- **`factory-controller.yml` is the only workflow that invokes an Engine or references an LLM
+  credential.**
+- **At most one Run that can produce Effects is active per work item,** by the lane. Org-wide
+  limits are leases taken by a ledger commit; a push that loses the race re-decides.
+- **Hold, budget, duplication and concurrency are evaluated in the admission function and nowhere
+  else.** A human Pause and an automatic pause are different stores, so automation cannot clear the
+  human one.
+- **A missing or failed capacity reading admits nothing.** It yields a deferral with a reason.
+
+Three brakes sit outside the Kernel, so that a defect in the Kernel cannot disable them:
+
+- **A human Pause holds when factory code is broken.** The entry shim's caller jobs are conditioned
+  on a pause variable that the platform evaluates before any factory code runs.
+- **A ceiling on admitted Runs, per work item and per org in a rolling window, is enforced outside
+  `factory/kernel/`,** from a count the Kernel does not write, with its own tests.
+- **The count of automated actions since the last human decision is computed from GitHub's record
+  of actors,** not from the Ledger.
+
+And the ingress bounds what a wake can cost:
+
+- **The ingress job drops events authored by a factory identity** in its job-level `if:`, and holds
+  a concurrency group per work item.
+
+### 4. One run contract; a job is a credential boundary
+
+We will give every Role one contract: a schema-versioned Task in, a schema-versioned Result out,
+with every side effect expressed as a requested Effect. Three jobs carry it: `run`, `verify`,
+`apply`.
+
+- **No job holds both an LLM credential and a credential that can write to GitHub.**
+- **No job that holds a write credential executes code from the work item's branch.** Only `verify`
+  does, and `verify` holds no secret.
+- **A Result that fails schema validation applies no Effect.**
+- **A statement that names a commit is written by `apply` from a commit it pushed and read back.**
+  The model's output schema has no field for a commit hash.
+- **A Role's permitted Effects are listed in its manifest and enforced by `apply`.** This is how
+  ADR-0005's write opt-in is enforced.
+- **`run` and `verify` declare `permissions: {}` and cannot write caches.** A lint asserts both.
+- **The checks that judge a model's diff run in a job that executes none of it,** and `apply`
+  re-derives the digest of what it pushes instead of trusting an earlier job.
+- **`apply` refuses, to a Hold, any change under `.github/`, to `CODEOWNERS`, or to the files that
+  define a consumer's setup and test commands,** unless the Role's manifest permits that Effect and
+  a human transition is recorded.
+- **Every Effect type declares a recovery key that is not text in a body.** For an Effect with no
+  natural idempotency key, an intent record is committed before the Effect is applied. If that
+  commit fails, nothing is applied.
+- **A lease is released by a job that runs under `if: always()`,** and the Lifecycle declares the
+  transition for a lease that has no Result.
+- **Feedback moves left; the verdict does not.** `run` executes the pre-flight checks and returns
+  their Findings to the author for a bounded number of repair turns. `verify` executes the same
+  checks, at the same pinned versions and configuration, and only its result counts toward a Gate.
+  The checks are defined once and are not a git hook, which the author could edit or skip.
+
+### 5. Agents have their own identity
+
+We will have every agent write through one factory GitHub App, with a token minted per Run and
+narrowed to the Role's permitted Effects, and have reviews submitted by the existing machine user.
+Code-owner review stays required. The owner account is the human's alone.
+
+- **No factory workflow references the owner account's token.**
+- **Every Effect in the Ledger has the App or the reviewer as its actor.**
+- **For every agent-authored pull request, author and approver differ, and the App is not a code
+  owner.**
+- **The count of automated actions since the last human decision does not consult a login list.**
+- **No factory secret is readable by a workflow that runs on a work-item branch.** The App key, the
+  reviewer's token and the LLM credential are environment secrets restricted to the default branch.
+  A test pull request proves this before any agent uses the App.
+
+### 6. One Release, one path
+
+We will release the factory as one line: immutable `factory/vX.Y.Z` tags and moving
+`factory/v<MAJOR>-next` and `factory/v<MAJOR>-stable` channels, on ADR-0002's mechanism. Workflows,
+Kernel, Harness, prompts, manifests, Lifecycle and configuration all ride it. Ring membership is one
+file in the Release. The hosting repo is always served by `stable`.
+
+- **Every Run records the Release it ran.**
+- **Inside a Release, factory files are read at `github.job_workflow_sha`,** never at a branch.
+- **The only factory files that run from the default branch are the entry shim in the hosting repo
+  and the one ingress file in each consumer.** Both are byte-frozen thin callers under ADR-0001:
+  every job `uses:` a pinned factory reusable and declares no `steps:` or `run:`. The shim has one
+  static caller job per channel and selects between them with a job-level `if:` on the output of a
+  pinned ring-resolution job and on the pause variable. Those two non-event predicates are the only
+  additions to ADR-0007's filter rule.
+- **A consumer repo carries exactly one factory file,** byte-identical to the template in the
+  Release it follows. It subscribes to no event that would run a copy of itself from a work-item
+  branch.
+- **Rollback executes no file from the Release being rolled back.**
+- **A candidate reaches `stable` only when the Ledger holds, for that Release, an eval result for
+  each production Intent whose inputs changed and verified Effects from the `next` ring.** A run
+  conclusion is not evidence, and a ring with no Runs of the candidate is not evidence.
+- **An Intent is cut over only after an eval set exists for it that exercises the production
+  path:** the approving Intent before review moves, the code-writing Intents before they move.
+
+### 7. An approval is bound to content
+
+We will keep GitHub's dismissal of stale approvals, bind each verdict to a content identity (a hash
+of the pull request's own diff against its merge base), and decide approval in one Kernel function.
+
+- **A verdict is re-issued without a Run only when the content identity equals the one reviewed.**
+  Any other case is a review.
+- **An approval is withdrawn only by the platform on new content or by a recorded Kernel transition
+  that cites a new unresolved finding,** and that transition also removes the pull request from the
+  merge queue. No Role dismisses its own approval.
+- **The factory updates a pull request's branch only when it conflicts with its base.**
+- **A merge without a standing independent approval has an Override record.**
+- **An approval is decided from Findings and human transitions** (decision 12). A human comment or
+  review thread is a Finding from a human Lens and always gates. This replaces the POC's rule that
+  every comment body needs a verified disposition.
+- **A human resolving a review thread in GitHub's interface is a declared human transition.**
+
+### 8. Verification binds
+
+We will make the factory's own verification a required check from the first commit of the tree.
+
+- **`factory / verify` is a required check on the hosting repo's protected branch.** It runs on
+  every pull request and on `merge_group`, with no path filter.
+- **A required check is hermetic:** it reads nothing outside the merge commit.
+- **The declared Lifecycle is checked mechanically** for termination, undeclared cycles, and Hold
+  and Pause semantics.
+
+### 9. One fact, one place
+
+- **The set of Roles is the listing of `factory/roles/`.** The consumers, each consumer's ring and
+  each Role's triggers are each written once under `factory/`.
+- **Any table of these in a document is generated, and a stale one fails `factory / verify`.**
+
+### 10. Migration
+
+- **For any repo and intent family, exactly one line serves it,** the POC or the factory, as
+  recorded in the ring file. A check derives this and fails on dual serving.
+- **The first factory component runs read-only:** it computes State and writes the Ledger and the
+  projection for every repo, and admits nothing, until its decisions have been compared with the
+  POC's on live traffic.
+- **From that point the POC takes defect fixes only.**
+- **A compensating workflow is retired in the change that makes it unnecessary, or keeps a recorded
+  reason to remain.** The number of compensating workflows does not rise during the migration.
+- **The migration has a budget and a stopping rule, set by the maintainer before the first factory
+  component runs:** a dated limit for the period in which two systems coexist, a policy for which
+  POC defects get a POC fix with a weekly cap, and a kill criterion. If the kill criterion is met,
+  the identity change and the configuration fixes are kept and unused factory code is deleted.
+  Until these three are written, this decision is not in force.
+- **Escaped defects (PRD SM-C1) are baselined before any step that raises the autonomy rate.**
+- **Three assumptions are settled on a canary repo before any cutover:** that a pull request
+  authored by the App needs no extra approval under the live ruleset, which sets
+  `require_extra_approval_for_unattributed_changes`; that the App can enable auto-merge and enter
+  the merge queue; and whether sending a wake counts against GitHub's content-creation limit.
+
+### 11. Two choices are provisional
+
+The git-backed store (decision 2) and waking per event (decision 3) are adopted provisionally. Every
+comparable orchestrator polls from one standing process and keeps control state it can rebuild
+(review §13), and one project abandoned files in git as its work ledger.
+
+- **The first factory component runs the same Kernel two ways at once:** on the wake path, and
+  under a poller that evaluates every open work item in one process on a schedule.
+- **The provisional choices are confirmed only if, over two weeks of that run:** wake handling uses
+  at most 10% of the org's job-minutes; reads per evaluation times peak wakes per hour is at most
+  3,000 GraphQL points; at most 5% of pushes to the store need three or more attempts and the store
+  receives at most 6 pushes a minute at the 95th percentile; and the 95th-percentile delay from a
+  change that produces no event to a decision is at most 15 minutes.
+- **If a threshold fails, a follow-on ADR replaces that mechanism.** Decisions 1 and 4 to 10 stand
+  either way, because the Kernel does no I/O.
+
+### 12. Lenses report through one contract; convergence is decided, not discussed
+
+The maintainer's working hypothesis is that a council of independent Lenses (models, tools and
+perspectives) produces a better outcome than one agent alone, across the whole lifecycle. The POC
+ran such a council through free-text discussion. The research supports the hypothesis under
+conditions (review §15), and those conditions are the boundaries here.
+
+We will treat every source of judgement on a work item, whether a Role, a third-party reviewer, a
+tool or a human, as a Lens that reports Findings in one schema, and we will decide Convergence in
+the Kernel.
+
+- **A Finding is a structured record:** its source, an identity that is not text, a location, a
+  severity, the content version it applies to, and its status.
+- **A third-party reviewer is integrated through a declared contract.** Its entry in the reviewer
+  registry names the structured surface its Findings are read from: a check run and its
+  annotations, code-scanning alerts, or review threads. A comment body is presentation for people.
+  Nothing parses one to decide, waits for one, or is gated by one. A reviewer with no structured
+  surface gates nothing and is not awaited.
+- **What people read is rendered from the records** by the Harness. No Role writes prose that
+  another component must interpret.
+- **Lenses do not address each other.** No Lens's output is another Lens's trigger. Each reports to
+  the Controller, and none sees another's verdict on a content version before giving its own.
+- **One author per change.** Lenses judge a change; they do not co-write it.
+- **Convergence is a Kernel function:** every Lens required for the item's class and stage has
+  reported on the current content version, and no blocking Finding is open. An item that has not
+  converged within its declared bound is placed on Hold.
+- **The required Lenses are declared per class of work item and stage, as data.**
+- **A Lens earns its place.** The Ledger records each Lens's Findings, the share acted on, the share
+  no other Lens raised, and its cost. A Lens joins a required set only with a measured marginal
+  contribution.
+
+This decision fixes the contract and the measure. It does not choose the council.
+
+### Follow-on ADRs this decision requires
+
+Numbers are assigned when each is written. Each lands with the migration step that makes it true.
+
+| Follow-on | Must decide | Effect on the log |
+|---|---|---|
+| **Agent identity** | The App's permissions; how tokens are narrowed per Role; the dispatch-only credential a consumer uses to send a wake; the reviewer credential's confinement; what interaction model §12.2 says afterwards. | Supersedes ADR-0008. |
+| **State record and Ledger** | The store's location and visibility (PRD OQ-8); schemas; retention; how legacy markers are read during migration. | New. No ADR governs this today. |
+| **Admission** | The wake schema; the one-job ingress; the sweep; Pause and Hold stores; the LLM capacity signal and its credential (PRD OQ-3); priority order. | Extends ADR-0007, including a `pull_request_target` subscription that ADR-0007 excludes and that is safe only because the ingress checks out nothing. ADR-0010's job-level concurrency key stays in use for the per-item group. Supersedes ADR-0009 when the router it names is retired. |
+| **Run contract** | Task, Result and Effect schemas; the sandbox; resume; whether an adopted runtime fills the inner half. | Extends ADR-0005. Supersedes ADR-0011, which should be accepted now as the interim rule. |
+| **Release unit and promotion** | The eval gate and its cost budget; ring membership; rollback; retirement of per-agent names. | Supersedes ADR-0002 and ADR-0006, restating what survives of each. |
+| **Kernel language and verification** | Type checking; size and complexity budgets; recorded-interface tests; when the legacy suite becomes required. | Supersedes ADR-0004, restating its principle. |
+| **Merge integrity** | The content identity; the gate function's inputs; advisory-reviewer deadlines; the Override record; merge-queue settings. | New. No ADR governs this today. |
+| **Factory home** | Whether the tree moves to its own repo (PRD OQ-5), decided at MVP exit. | New. |
+| **Council composition** | Which Lenses are required for each class of work item and stage (PRD OQ-12); how their Findings are aggregated; what counts as independent; the cost each stage may spend on its council. Decided from the Ledger's measure of each Lens, not in advance; review §16.6 proposes the set to start measuring from. | New. Extends ADR-0003, whose registry binds a review target to a rubric and is the nearest existing form of a Lens declaration. |
+
+ADR-0001 and ADR-0003 are kept without change. ADR-0000 is kept; adding a forward link for
+extension remains a separate decision.
+
+## Consequences
+
+- **The failure classes get structural answers rather than guards.** A lost event delays a work
+  item instead of deleting its request. "Fixed" is written by the component that pushed the commit.
+  The Maintainer can review an agent's pull request. A change to any artifact reaches production by
+  one gated path. "Why is this not approved" has one function to read.
+
+- **It is a rewrite of the core, in a second language, while the line keeps running.** Roughly
+  53,000 lines of shell and 70,000 lines of bats become legacy. Two systems coexist for months, and
+  the maintainer's load rises before it falls. The builders are largely the agents being replaced.
+
+- **Incident knowledge will be lost in translation.** The bats suite encodes years of specific
+  failures; one script cites 48 issues. Recorded-fixture replay recovers some of it. The read-only
+  comparison in §10 is the only measure of how much.
+
+- **GitHub Actions stays the queue and the timer.** This decision bets that reconciling from
+  recorded state makes dropped ticks and evicted runs harmless. It does not make them rare. Every
+  wake costs a runner start, and a lost wake waits for the next event or sweep. If the bet fails,
+  the off-Actions control plane ADR-0007 rejected is still to be built. The Kernel's lack of I/O is
+  what keeps that move cheap.
+
+- **Hub execution concentrates the blast radius.** A bad `stable` Release, or a broken entry shim,
+  stops every repo at once. ADR-0007 accepted that per repo; this accepts it per org. The shim's
+  byte freeze and the promotion gate are correspondingly load-bearing.
+
+- **A consumer's work runs in the hub.** Runs for a consumer's work items execute and log in the
+  hosting repo; the consumer's own Actions tab shows only the wake. `verify` runs the consumer's
+  tests on a hub runner, so each consumer must declare its setup and test commands, which the POC
+  infers.
+
+- **One Release removes per-role staging and rollback.** A prompt fix for one Role waits for the
+  whole gate, and a rollback reverts every Role. ADR-0006 made this trade for personas knowingly;
+  this makes it for the fleet. Two channels are also less staged exposure than the four ADR-0002
+  allows.
+
+- **Eval-gated promotion spends the scarcest resource.** Each eval case is a real model call against
+  the subscription window. Candidates must be batched and results cached, so "merged" and "live"
+  stay hours apart by design.
+
+- **The factory can wake itself.** Events authored by an App start workflows; events authored by
+  the default workflow token mostly do not, which ADR-0007 called a free brake. The POC's main
+  writer never had that brake, and after this decision nothing does. The three brakes outside the
+  Kernel (decision 3) replace it. They are small, and they are all that stands between a Kernel
+  defect and an org-wide loop that could spend a week's model budget in hours.
+
+- **This decision does not raise the factory's ceiling.** Output today is bounded by how many
+  changes the maintainer can audit and merge by hand, and beyond that by how often a change is
+  right the first time. A control plane makes approvals issue reliably. It does not make them
+  correct. The PRD's autonomy and defect targets cannot both be met on current first-pass
+  correctness (review §14.4). An acceptance signal the author cannot edit, and review depth, are
+  the next ceiling and are not decided here.
+
+- **The largest failure class is mostly policy, not structure.** Approvals fail to issue chiefly
+  because every comment from nine third-party reviewers must be dispositioned. Decision 7 narrows
+  what gates an approval. Without that change the control plane would reproduce the same deadlocks
+  in one place instead of five. That change can also be made without this decision, in weeks, and
+  doing so first is the cheapest test of how much of the rest is needed (review §14.5).
+
+- **The credential boundary ends at the hub.** A branch pushed by `apply` runs the consumer's own
+  `pull_request` workflows with that repo's secrets. Decision 5 keeps factory secrets out of that
+  path. It does not protect a consumer's own secrets from a model-authored change, which is why
+  `apply` refuses workflow changes without a human transition.
+
+- **Every wake costs runners the POC did not spend.** A comment that needs no work costs one job
+  today and three under this design, from a pool of twenty shared with all CI. Decision 11 exists
+  because that cost is unmeasured.
+
+- **The App's private key is a high-value secret,** and the reviewer remains a user account with a
+  long-lived token. The second is a standing exception to least privilege, confined to one job.
+
+- **Re-issuing an approval for unchanged content approves a commit no reviewer read.** A defect in
+  the content identity is an unreviewed merge. It fails closed on any doubt, and it must be watched.
+
+- **A git-backed Ledger is not a database.** It is contended under bursts, slow to query at volume,
+  and public unless placed in a private repo.
+
+- **The `run` job has no network containment.** A model that is successfully injected can still
+  read the LLM credential. An adopted runtime with a firewall would close this; building our own
+  does not.
+
+- **A council costs what it finds.** Every model Lens spends from the same scarce window, and the
+  research is plain that adding one can lower quality: a weaker reviewer made a stronger author's
+  work worse in a controlled study, and agents that cooperate on one piece of code succeed less
+  often than agents working alone (review §15). Decision 12 therefore measures each Lens and keeps
+  one author. It does not assume that more Lenses are better.
+
+- **Some current reviewers lose their say.** A third-party reviewer that offers only a summary
+  comment has no contract surface. Under decision 12 it becomes presentation for the maintainer and
+  input a Role may read, and it gates nothing.
+
+- **Nine more ADRs.** Five of them supersede accepted records. That ceremony is the price of a log
+  that says what the system does.
+
+- **Not addressed:** review depth, the reliability of third-party advisory reviewers beyond a
+  deadline, and an exact LLM capacity signal, which the platform does not offer.
+
+- **Reopen an off-Actions control plane** when a threshold in decision 11 fails; or, later, when
+  more than 5% of admitted Runs are lost or start later than the liveness limit for four weeks; or
+  the hub's run queue is the measured bottleneck on lead time; or API quota cannot be held under
+  the PRD's headroom target; or a timer finer than the sweep is required.
+- **Reopen the worker runtime, the capacity model and eval-gated promotion** when the model CLI's
+  headless default stops reading subscription credentials, which its documentation says will
+  happen.
+- **Reopen build versus adopt** when GitHub ships a generally available orchestrator that covers
+  admission and identity.
+- **Reopen runner budgeting** if the free plan's concurrency limit or the pricing of public-repo
+  minutes changes. Each reopening means a new ADR.
+
+## References
+
+- `docs/prd/agentic-software-factory.md` — the requirements this decision is measured against.
+- `docs/architecture/factory-mvp-architecture-review.md` — evidence (§§2–3), root causes (§4),
+  options and sub-decisions (§§5–6), target and trade-offs (§7), migration shape (§8), relationship
+  to earlier ADRs (§9), requirements the analysis changed (§10), platform facts and assumptions
+  (§11), comparison with other systems (§13), the adversarial review and the ceiling (§14), the
+  evidence on councils and convergence (§15), reviewer surfaces and a starting council (§16), where
+  a Lens runs (§17).
+- ADR-0000 (process) — immutability and supersede-not-edit, which the precedence rule above follows.
+- ADR-0001 (thin caller / reusable) — the boundary the entry shim and the ingress file keep.
+- ADR-0003 (review artifact contract and rubric registry) — the existing data contract that
+  decision 12 generalizes from review targets to Lenses.
+- ADR-0002 (channel tags and rings) — the mechanism decision 6 reuses with one name.
+- ADR-0004 (pure logic plus bats) — the principle decision 1 keeps and the binding it will replace.
+- ADR-0005 (advisory by default) — the opt-in decision 4 enforces.
+- ADR-0006 (shared-runtime personas) — "a persona is a caller of the shared runtime", generalized
+  to every Role.
+- ADR-0007 (one ingress per repo) — the file this keeps, the hosted receiver it rejected, and the
+  free loop brake this gives up knowingly.
+- ADR-0008 (personas post as the owner) and `docs/agentic-interaction-model.md` §12.2 — the
+  decisions the identity follow-on will supersede and reverse.
+- ADR-0010 (ingress concurrency; allowlist schema) — the missing `extended-by` status.
+- ADR-0011 (write-mode personas on a shared branch, proposed) — the interim rules decision 4 makes
+  structural.
+- `docs/postmortems/2026-06-pr-860-runaway.md` — why a loop bound must not depend on a reset the
+  loop can reach.
+- `scripts/lib/carry-forward.sh`, `.github/workflows/issue-triage-runner.yml`,
+  `.github/workflows/persona-runner-reusable.yml`, `scripts/initiative-planner/apply-plan.sh` — the
+  existing seams decisions 4 and 7 generalize.
+- `petry-projects/.github-private#2197 — The fleet and every session share one GitHub API quota
+  (don-petry, 5,000/hour) and the fleet alone uses about that much: it ran out on 2026-10-10 and
+  failed a workflow`.
+- `petry-projects/.github-private#1864 — Merge protections are unsatisfiable at N>1 open PRs: one
+  merge to main forces a full re-review of every other PR — ~154 forced re-reviews in 48h, zero
+  merges`.
+- `petry-projects/.github-private#1741 — [bug] 42% of dev-lead runs are cancelled before doing any
+  work — review findings sit unaddressed while the PR looks active`.
