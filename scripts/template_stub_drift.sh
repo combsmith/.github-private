@@ -57,6 +57,7 @@ source "${TEMPLATE_DRIFT_DIR}/fleet_stub_drift.sh"
 readonly -a TEMPLATE_DRIFT_FILES=(
   ".github/workflows/agent-shield.yml|--emit-workflow|agent-shield.yml"
   ".github/workflows/auto-rebase.yml|--emit-workflow|auto-rebase.yml"
+  ".github/workflows/copilot-setup-steps.yml|--emit-workflow|copilot-setup-steps.yml"
   ".github/workflows/dependabot-automerge.yml|--emit-workflow|dependabot-automerge.yml"
   ".github/workflows/dependabot-rebase.yml|--emit-workflow|dependabot-rebase.yml"
   ".github/workflows/dependency-audit.yml|--emit-workflow|dependency-audit.yml"
@@ -83,7 +84,6 @@ readonly -a TEMPLATE_DRIFT_FILES=(
 # would false-positive on the template's richer ci.yml default, so it is excluded
 # here — mirroring how AGENTS.md documents the lint.yml / token-report.yml /
 # pr-review-sweep.yml exceptions.
-#
 # Add a path here ONLY with a recorded rationale.
 readonly -a TEMPLATE_DRIFT_ALLOWLIST=(
   ".github/workflows/ci.yml"

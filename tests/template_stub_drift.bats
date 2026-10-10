@@ -60,7 +60,6 @@ setup() {
   run template_drift_covered
   [ "$status" -eq 0 ]
   # A repinned caller stub, an inline verbatim stub, and each verbatim baseline.
-  # Note: sonarcloud.yml and dependabot.yml are allowlisted and thus excluded from this set.
   [[ "$output" == *".github/workflows/dev-lead.yml"* ]]
   [[ "$output" == *".github/CODEOWNERS"* ]]
   [[ "$output" == *"CLAUDE.md"* ]]
