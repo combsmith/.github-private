@@ -76,6 +76,51 @@ EOF
   [[ "$output" == *"no duplicate top-level function declarations"* ]]
 }
 
+# --- Scanning ANOTHER tree (#2184): the rebase integrity gate runs this script
+# against the resolved PR worktree, not against the script's own repo. --------
+
+@test "gate: this repo's own tree copied elsewhere is clean when scanned from here (#2184)" {
+  # Reproduces PR 2180: the gate from one checkout scanning an identical tree in
+  # another directory failed on the allowlisted prompts/triage.md heading.
+  mkdir -p "$WORKDIR/tree"
+  cp -R "$REPO_ROOT/scripts" "$REPO_ROOT/prompts" "$REPO_ROOT/personas" "$WORKDIR/tree/"
+  DUPLICATE_DECL_PROMPTS_DIR="$WORKDIR/tree/prompts" \
+  DUPLICATE_DECL_PERSONAS_DIR="$WORKDIR/tree/personas" \
+    run bash "$GATE" "$WORKDIR/tree/scripts"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no duplicate top-level function declarations"* ]]
+}
+
+@test "gate: the allowlisted heading is allowed in another tree; a trailing slash on the dir changes nothing (#2184)" {
+  mkdir -p "$WORKDIR/tree/prompts" "$WORKDIR/tree/scripts"
+  printf '## Issue-type classification\n\ntext\n\n## Issue-type classification\n' > "$WORKDIR/tree/prompts/triage.md"
+  DUPLICATE_DECL_PROMPTS_DIR="$WORKDIR/tree/prompts" run bash "$GATE" "$WORKDIR/tree/scripts"
+  [ "$status" -eq 0 ]
+  DUPLICATE_DECL_PROMPTS_DIR="$WORKDIR/tree/prompts/" run bash "$GATE" "$WORKDIR/tree/scripts"
+  [ "$status" -eq 0 ]
+}
+
+@test "gate: a genuine duplicate heading in another tree is still flagged, named by its tree-relative path (#2184)" {
+  mkdir -p "$WORKDIR/tree/prompts/sub" "$WORKDIR/tree/scripts"
+  printf '## Same heading\n\ntext\n\n## Same heading\n' > "$WORKDIR/tree/prompts/sub/other.md"
+  # The allowlisted heading in a DIFFERENT file is not covered by the allowlist entry.
+  printf '## Issue-type classification\n\n## Issue-type classification\n' > "$WORKDIR/tree/prompts/not-triage.md"
+  DUPLICATE_DECL_PROMPTS_DIR="$WORKDIR/tree/prompts" run bash "$GATE" "$WORKDIR/tree/scripts"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'`prompts/sub/other.md` — duplicate markdown heading: `## Same heading`'* ]]
+  [[ "$output" == *'`prompts/not-triage.md`'* ]]
+  [[ "$output" != *"$WORKDIR/tree/prompts"* ]]
+}
+
+@test "gate: a duplicate persona key in another tree is named by its tree-relative path (#2184)" {
+  mkdir -p "$WORKDIR/tree/personas/x" "$WORKDIR/tree/scripts"
+  printf 'runtime:\n  reusable: a\n  reusable: b\n' > "$WORKDIR/tree/personas/x/persona.yml"
+  DUPLICATE_DECL_PERSONAS_DIR="$WORKDIR/tree/personas" run bash "$GATE" "$WORKDIR/tree/scripts"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'`personas/x/persona.yml`'* ]]
+  [[ "$output" != *"$WORKDIR/tree/personas"* ]]
+}
+
 @test "gate: flags the pre-fix fix-ci.md duplicate Phase headings" {
   mkdir -p "$WORKDIR/empty-scripts"
   DUPLICATE_DECL_PROMPTS_DIR="$SCOPE_FIXTURES/prompts-prefix" \

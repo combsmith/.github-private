@@ -157,7 +157,8 @@ jobs:
 
           aggregate="$workdir/token-usage-summary.json"
           # Only priced calls: audit records on the same channel (finding_verification,
-          # lsp_cold_start, gemini_key_cooldown #2030) are not LLM calls.
+          # lsp_cold_start, gemini_key_cooldown #2030, gemini_attempt /
+          # gemini_rejection_sample #2041) are not LLM calls.
           jq -s '
             map(select((.kind // "token_usage") == "token_usage")) |
             sort_by(.workflow) |
@@ -650,7 +651,59 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
           ORG: ${{ env.ORG }}
           LOOKBACK_DAYS: ${{ env.LOOKBACK_DAYS }}
+          # Collected Gemini ledger records for the per-tier availability report (#2041).
+          GEMINI_RECORDS_OUT: ${{ runner.temp }}/gemini-records.jsonl
         run: bash scripts/token_report.sh >> "$GITHUB_STEP_SUMMARY"
+
+      # Gemini availability per task tier (#2041). The per-day history store survives
+      # across fleet-monitor runs through actions/cache (a per-org, run-and-attempt-unique key,
+      # restored by org prefix); the snapshot is uploaded as the gemini-tier-snapshot artifact for the
+      # dry-run poller (#2029). Informational only: nothing gates or defers dispatch on
+      # it, and every step is non-blocking. The cache and artifact steps use
+      # continue-on-error (a storage hiccup must not fail the fleet monitor); the
+      # report step warns on failure instead.
+      - name: Restore Gemini tier history
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .gemini-tier-state
+          key: gemini-tier-history-${{ env.ORG }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            gemini-tier-history-${{ env.ORG }}-
+
+      - name: Gemini availability per task tier
+        env:
+          GEMINI_RECORDS_IN: ${{ runner.temp }}/gemini-records.jsonl
+          GEMINI_TIER_STATE_DIR: .gemini-tier-state
+          # The tier chains come from ai_models_gemini_chain: the same variables the
+          # engine callers export (dev-lead-reusable.yml, pr-review.yml).
+          AI_MODELS_GEMINI: ${{ vars.AI_MODELS_GEMINI || '' }}
+          GEMINI_FLASH_MODEL: ${{ vars.GEMINI_FLASH_MODEL || '' }}
+          GEMINI_PRO_MODEL: ${{ vars.GEMINI_PRO_MODEL || '' }}
+        # Non-blocking, but not silent: a failing report raises a warning instead
+        # of hiding behind continue-on-error.
+        run: |
+          bash scripts/gemini_tier_report.sh >> "$GITHUB_STEP_SUMMARY" \
+            || echo "::warning::Gemini tier report failed (informational, non-blocking; #2041)"
+
+      - name: Save Gemini tier history
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .gemini-tier-state
+          key: gemini-tier-history-${{ env.ORG }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload Gemini tier snapshot
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gemini-tier-snapshot
+          path: .gemini-tier-state/snapshot.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Annotate clean run
         if: env.HAS_FAILURES != 'true' && env.HAS_STUB_DRIFT != 'true'
