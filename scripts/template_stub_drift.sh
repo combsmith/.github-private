@@ -449,7 +449,7 @@ main() {
   local tsv row path flag arg content_n content_n1 expected_n expected_n1 committed guard_rc=0
   local content_head expected_head cls
   tsv="$(mktemp)"
-  trap 'rm -f "$tsv"' EXIT
+  trap "rm -f '$tsv'" EXIT
   for row in "${TEMPLATE_DRIFT_FILES[@]}"; do
     IFS='|' read -r path flag arg <<< "$row"
     template_drift_allowlisted "$path" && continue
@@ -501,7 +501,6 @@ main() {
   local rc=0
   template_drift_annotate "$tsv" "${n_ref:-}" "$head_sha" || rc=$?
   [ "$guard_rc" -eq 0 ] || { echo "::error::a resolved standards baseline (N, N-1 or HEAD) carries a legacy non-major-scoped reusable pin — see annotations above (#1448 AC #9)."; rc=1; }
-  rm -f "$tsv"
   return "$rc"
 }
 
