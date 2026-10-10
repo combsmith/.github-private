@@ -93,6 +93,15 @@ setup() {
   [[ "$output" == "a.txt" ]]
 }
 
+@test "brg_find_residue: a mode-only PR change restored to base is residue" {
+  chmod +x c.txt
+  _commit "chore: make c.txt executable"
+  git checkout -q origin/main -- c.txt
+  run brg_find_residue main
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "c.txt" ]]
+}
+
 @test "brg_find_residue: an agent COMMIT that reverts a PR file is not residue (eb763aa8 shape)" {
   git checkout -q origin/main -- a.txt
   _commit "fix: restore a.txt to main"

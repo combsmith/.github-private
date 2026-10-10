@@ -40,19 +40,25 @@ if ! declare -F git_history_deepen >/dev/null; then
   source "$(dirname "${BASH_SOURCE[0]}")/git-history.sh"
 fi
 
-# _brg_rev_blob <rev> <path> — echo the blob SHA of <path> at <rev>, or `absent`.
+# _brg_rev_blob <rev> <path> — echo "<mode> <blob SHA>" of <path> at <rev>, or
+# `absent`. The mode is part of the content so a mode-only change (chmod +x) is
+# not mistaken for "same as HEAD".
 _brg_rev_blob() {
-  git rev-parse --verify --quiet "${1}:${2}" 2>/dev/null || echo "absent"
+  local meta
+  meta=$(git --literal-pathspecs ls-tree "$1" -- "$2" 2>/dev/null | awk -F'\t' 'NR==1{split($1,a," "); print a[1], a[3]}')
+  echo "${meta:-absent}"
 }
 
-# _brg_worktree_blob <path> — echo the blob SHA the working-tree <path> would be
-# stored as, or `absent`.
+# _brg_worktree_blob <path> — echo "<mode> <blob SHA>" the working-tree <path>
+# would be stored as, or `absent`.
 _brg_worktree_blob() {
   local p="$1"
   if [[ -L "$p" ]]; then
-    printf '%s' "$(readlink -- "$p")" | git hash-object --stdin
+    printf '120000 %s\n' "$(printf '%s' "$(readlink -- "$p")" | git hash-object --stdin)"
   elif [[ -f "$p" ]]; then
-    git hash-object -- "$p"
+    local mode=100644
+    [[ -x "$p" ]] && mode=100755
+    printf '%s %s\n' "$mode" "$(git hash-object -- "$p")"
   else
     echo "absent"
   fi
