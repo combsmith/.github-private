@@ -49,3 +49,12 @@ beddd2cfaa173b620df231e9be476131100738e3:tests/dev-lead/unit/test_engine_error_c
 # key value in STUB_ENGINE_RESPONSE_BY_KEY that matched generic-api-key; the next commit
 # renamed the fixtures to low-entropy values. Test data, not a credential.
 94ef4eae37ae11c110d0dc55dcf77d1c7168ee02:tests/dev-lead/unit/test_engine_gemini_keys.bats:generic-api-key:134
+# commits 19314f9, f0978d8, 46f2971 (#2041 Gemini tier view): the redaction test in
+# test_gemini_tier_view.bats used a synthetic Google-key-shaped literal (first whole, then in
+# two halves) to prove _gq_redact_line scrubs it. The test now assembles it at run time, so the
+# literal exists only in these three earlier commits of the PR. Test data, not a credential.
+# The path-scoped [[allowlists]] entry in .gitleaks.toml targets the same fixture but is not
+# honoured by gitleaks v8.24.3; fingerprint ignores are the reliable fallback.
+19314f96201a376f37619565ed42ed7f2e7aa5e7:tests/dev-lead/unit/test_gemini_tier_view.bats:gcp-api-key:289
+f0978d814b7149848e4f39e2739ed4ad3b0233fd:tests/dev-lead/unit/test_gemini_tier_view.bats:generic-api-key:289
+46f2971cc48fcbfa1327de69234f66059e2d3291:tests/dev-lead/unit/test_gemini_tier_view.bats:generic-api-key:289
