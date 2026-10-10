@@ -1593,25 +1593,12 @@ resolve_dispositioned_comments() {
   all_comments=$(jq -s 'add // []' "$pages_file" 2>/dev/null || echo "[]")
   rm -f "$pages_file"
 
-  # Candidate ids: non-agent comments not already minimized RESOLVED. Same filter
-  # as the gate (login != our account, body not agent-marked, not resolved-minimized)
-  # so what the harness resolves is exactly what the gate blocks on.
+  # Candidate ids: comments in the gate's scope not already minimized RESOLVED.
+  # The gate's own definition (#2209: our account, registered markers, review
+  # requests and opt-outs are out of scope), so what the harness resolves is
+  # exactly what the gate blocks on.
   local candidate_ids
-  candidate_ids=$(printf '%s' "$all_comments" | jq -r \
-    --arg botuser "$bot_user" \
-    --arg markers "$_MAINTAINER_GATE_AGENT_MARKERS" '
-      def bot_stripped: ($botuser | if endswith("[bot]") then .[0:-5] else . end);
-      .[] | objects
-      | (.author?.login // "" | tostring) as $l
-      | select($l != $botuser and $l != bot_stripped)
-      | select(((.body // "") | test($markers)) | not)
-      | select(
-          ((.isMinimized // false) == true)
-          and (((.minimizedReason // "") | ascii_downcase) == "resolved")
-          | not
-        )
-      | .id
-    ' 2>/dev/null || true)
+  candidate_ids=$(maintainer_gate_open_comment_ids "$all_comments" "$bot_user" || true)
 
   # #2008: edits re-open a dispositioned comment. CodeRabbit edits ONE summary
   # comment in place. On PR #2000 a Security Architecture finding was appended
