@@ -33,8 +33,8 @@ POC never made once, so it was made many times, locally:
 
 **Recommendation: restructure on GitHub Actions around a declared control plane, one run contract
 and one release** (§7), recorded as ADR-0012. A level-triggered Controller reconciles each work item
-from recorded state, so a lost event delays work instead of deleting it. Every role runs under one
-contract in which the model requests effects and a separate job applies them. Agents write through
+from recorded state, so a lost event delays work instead of deleting it. Every role in scope for the MVP
+runs under one contract in which the model requests effects and a separate job applies them. Agents write through
 a GitHub App and the owner account becomes the human's alone. Everything ships as one release on one
 gated path. No always-on infrastructure is added, and the decision logic is written so that it could
 later run behind a hosted control plane unchanged.
@@ -512,11 +512,11 @@ no ADR governs a cause, that is stated: this section does not treat preference a
 | B. Status reported but not real | RC3 | RC1, RC7 | FR-4, FR-10, FR-11, FR-47 |
 | E. Quota and budget exhaustion | RC2 | RC4 | FR-35 to FR-39 |
 | C. Merged fix is not what runs | RC5 | RC7 | FR-45 to FR-53 |
-| F. Identity, credential, permission | RC4 | RC3 | FR-26, FR-29, FR-59 |
+| F. Identity, credential, permission | RC4 | RC3 | FR-26, FR-29, FR-60 |
 | G. Re-review churn, treadmill, runaway | RC6 | RC2, RC4 | FR-7, FR-17, FR-20, FR-34 |
 | I. Steering does not reach the agent | RC1 | RC4, RC5 | FR-22 to FR-25 |
 | J. Tests and evals miss the real thing | RC7 | — | FR-54 to FR-58 |
-| K. Automation that corrupts or destroys | RC3 | RC7 | FR-10, FR-14, FR-60 |
+| K. Automation that corrupts or destroys | RC3 | RC7 | FR-10, FR-14, FR-61 |
 | H. Timeout loses the work | RC2 | RC3 | FR-6 |
 
 ### 4.3 The decisions the MVP must make
@@ -583,7 +583,7 @@ does not have.
 | §6.7 Observability (FR-40 to FR-44) | **No** ledger; reports stay reconstructions. | Yes; a git-backed ledger, queryable with simple tooling. | Yes; a database, better queries, private by default. | Yes. |
 | §6.8 Release (FR-45 to FR-53) | **No.** Two regimes and per-agent names are structural. | Yes, except that an entry shim must run from the default branch (§10, item 2). | Worse on FR-46: the receiver is a second deployable with its own release path. | Worse again: three deployables. |
 | §6.9 Assurance (FR-54 to FR-58) | Partly. Checks can be made required; portability and unit-callability stay as they are. | Yes. | Yes, plus the hosted service needs its own tests. | Same. |
-| §6.10 Security (FR-59 to FR-62) | Partly. | Yes, with one stated exception for the reviewer credential (§6.4). | A second secret store and rotation path (ADR-0007, Context, fact 3). | Same, and the LLM credential leaves Actions. |
+| §6.10 Security (FR-60 to FR-63) | Partly. | Yes, with one stated exception for the reviewer credential (§6.4). | A second secret store and rotation path (ADR-0007, Context, fact 3). | Same, and the LLM credential leaves Actions. |
 
 ### 5.3 Against the non-functional requirements
 
@@ -799,7 +799,7 @@ mentions are skipped as self-comments (`petry-projects/.github-private#2027 — 
 ignores @dev-lead mentions from the maintainer, because the maintainer's account is dev-lead's own
 identity (self-comment skip)`); the shared quota ran out; and no measurement can tell a human action from an agent's (§2.2).
 
-| Option | FR-26 | FR-29, FR-30 | FR-37 | FR-59 | C-6 |
+| Option | FR-26 | FR-29, FR-30 | FR-37 | FR-60 | C-6 |
 |---|---|---|---|---|---|
 | a. Status quo (owner + one machine user) | No | Reviewer differs; owner cannot review | No | No | Fits |
 | b. A second machine user for the writer | Yes | Yes | Yes, a second 5,000/h | Long-lived PAT | **Barred** by the one-free-machine-account term |
@@ -815,7 +815,7 @@ visible output. The marker stays as a redundant guard.
 supersedes ADR-0008 and reverses interaction model §12.2. OQ-4: keep code-owner review. It is what
 makes reviewer independence a platform fact rather than a factory promise, and the price is that the
 reviewer stays a user account with a long-lived token. That token moves into the `apply` job of the
-review intent only, where no model runs. It is the one stated exception to FR-59.
+review intent only, where no model runs. It is the one stated exception to FR-60.
 
 **The cost that must not be buried.** Events authored with an App token start workflows; events
 authored with the default workflow token mostly do not. ADR-0007 called the latter a free loop
@@ -1124,7 +1124,7 @@ schema skew inside the factory impossible, which is why the wake can be the only
 interface. Nothing in the set contradicts another member.
 
 **Coverage.** Every requirement group has a home (§7.3). Requirements this architecture meets only
-with a stated qualification: FR-2, FR-15, FR-35, FR-46, FR-51, FR-55, FR-59, NFR-1 (§10).
+with a stated qualification: FR-2, FR-15, FR-35, FR-46, FR-51, FR-55, FR-60, NFR-1 (§10).
 
 **Gaps that remain.**
 
@@ -1279,12 +1279,14 @@ written will meet the same limits. "Achievable" states what the PRD now says.
 6. **FR-55, "held-out."** Every repo is public (C-2), so a held-out set is readable by anyone,
    including the agent that edits the prompt it scores. Either keep it in a private data repo, which
    touches the open half of C-4, or call it a convention guarded by code ownership.
-7. **FR-59, "scoped … and short-lived."** Conflicts with C-6 while code-owner review is
+7. **FR-60, "scoped … and short-lived."** Conflicts with C-6 while code-owner review is
    required: the reviewer must be a user account. One stated exception, confined to the `apply` job.
 8. **FR-51, "fully served within an hour."** Holds for Roles. Advisory reviewers need per-repo
    installs in vendor consoles that the factory does not control (`DG:scripts/bootstrap-new-repo.sh:1-45`). And "a new trigger requires
    no edit in the consumer" holds only if the one consumer file subscribes to a fixed superset of
-   events from the start, which the recommendation does.
+   events from the start, which the recommendation does. That superset cannot include "any workflow
+   finished": `workflow_run` must name workflows, so CI completion is heard only for repos whose CI
+   carries a standard name (finding 6 below); others fall back to the sweep.
 9. **FR-26, "attributable by actor alone."** Achievable at the grain of agent versus human. At the
    grain of Role it would need one App per Role, which is not recommended.
 10. **C-5 was out of date in two places.** One running plus one pending is now the default, not the
@@ -1325,7 +1327,7 @@ written will meet the same limits. "Achievable" states what the PRD now says.
 | A-2 | An App-authored pull request needs no extra approval. The ruleset page describes one for Copilot-authored pull requests. | §6.4 | One pull request on the canary repo in step 2. |
 | A-3 | An App can enable auto-merge and add a pull request to the queue. | §6.4, §6.9 | Same. |
 | A-4 | The queue evaluates reviews only on entry. Observed here (`scripts/lib/merge-queue-dequeue.sh:5-8`); the documentation is silent. Whether a push to a queued pull request removes it is also unstated. | §6.9 | Already observed; keep the dequeue. |
-| A-5 | An installation token can be minted with a subset of the App's permissions and repositories. Long-standing API behaviour; not re-read today. | FR-59 | Step 0. |
+| A-5 | An installation token can be minted with a subset of the App's permissions and repositories. Long-standing API behaviour; not re-read today. | FR-60 | Step 0. |
 | A-6 | A `uses:` reference to another repo cannot be an expression. The documentation states this for the local form. | §6.5 | A lint run. |
 | A-7 | `queue: max` is available to this org and accepted by its linters. | Step 0 | Try it on one lane. |
 | A-8 | The subscription token keeps working for `-p` once `--bare` becomes the default. If not, every Role needs an explicit opt-out or C-3 changes. | Everything that runs a model | Watch the changelog; pin the CLI version (the POC resolves `latest` at run time, `.github/workflows/dev-lead-reusable.yml:387-411`). |
@@ -1719,7 +1721,7 @@ poller at once and compare latency, runner minutes, API points per evaluation an
 | R5 | The comment-body boundary is restated so it can hold; resolving a thread is a human transition. The first response made third-party output input only; the maintainer then directed that reviewers be integrated through a contract, so structured Findings gate and comment bodies do not (§15.5) | Decisions 2, 7 and 12 |
 | R6 | Environment-scoped secrets; `run` and `verify` without permissions or cache writes; `apply` refuses changes to workflows, code owners and declared test commands without a human transition | Decisions 4 and 5 |
 | R7 | The migration has a dated limit, a POC defect policy and a kill criterion, set by the maintainer before step 1 | Decision 10 |
-| R8 | Escaped defects are baselined before any step raises autonomy; evals exist for the approving and code-writing Intents before their cutovers | Decisions 6 and 10; PRD NFR-3 with NFR-10, FR-63 |
+| R8 | Escaped defects are baselined before any step raises autonomy; evals exist for the approving and code-writing Intents before their cutovers | Decisions 6 and 10; PRD NFR-3 with NFR-10, FR-59 |
 | R9 | Reopen triggers for the model CLI's default, a native orchestrator from the platform vendor, and plan changes; the off-Actions trigger is evaluable from step 1 | Consequences |
 | R10 | Three assumptions are settled in step 0 on a canary repo | Decision 10 |
 
@@ -2176,7 +2178,7 @@ Four cautions set the boundary.
    to match its own code`). So each Lens runs twice. In the session its output is feedback. In
    `verify`, where the author controls nothing, its output is the verdict, and only that run counts
    toward a Gate. Both use the same pinned tool versions and configuration, so they agree.
-2. **Whatever must stay hidden stays right.** An acceptance signal the author cannot see (PRD FR-63)
+2. **Whatever must stay hidden stays right.** An acceptance signal the author cannot see (PRD FR-59)
    loses its value the moment it is fed back. Mutation-test survivors are fine to feed back. Holdout
    scenarios are not.
 3. **An outside reviewer in the session is one pass, not a conversation.** The evidence in §15.2 is

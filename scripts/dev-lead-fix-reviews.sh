@@ -22,6 +22,8 @@ source "$(dirname "$0")/lib/addressed-claim-verify.sh"
 source "$(dirname "$0")/lib/claim-landing.sh"
 # Test-tamper guard (#2013): a fix pass may not silently rewrite an existing test.
 source "$(dirname "$0")/lib/test-tamper-guard.sh"
+# Sync-stub guard (#2185): a bot pass may not edit a synced org-standard stub.
+source "$(dirname "$0")/lib/sync-stub-guard.sh"
 # Test-regression guard (#2013): a pass may not push with the suite newly red.
 source "$(dirname "$0")/lib/test-regression-guard.sh"
 # PR issue-comment disposition verifier (#1813): the issue-comment sibling of
@@ -105,6 +107,138 @@ if [ -n "${PR_NUMBER:-}" ] && [ "${DEV_LEAD_DRY_RUN:-false}" != "true" ] \
   exit 0
 fi
 
+# github_knows_commit <sha> — does GitHub have <sha> in this repo? A commit that was
+# pushed stays retrievable by its full SHA after a force-push; one never pushed is
+# unknown. Returns 0 known, 1 unknown (HTTP 404/422), 2 any other failure (#2032).
+github_knows_commit() {
+  local sha="${1:-}" out
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 2
+  if out=$(gh api "repos/${REPO}/commits/${sha}" --jq .sha 2>&1); then
+    return 0
+  fi
+  case "$out" in
+    *"No commit found"*|*"HTTP 404"*|*"HTTP 422"*) return 1 ;;
+  esac
+  return 2
+}
+
+# sweep_earlier_claims — the start-of-pass sweep over EARLIER passes' claim replies
+# (#2032). retract_unlanded_claims runs only inside the pass that posted a reply, so
+# a run cancelled or killed after its model replied (a concurrency cancel, a lost
+# runner, a budget kill; see #1741) left its false "Fixed" replies standing. Before
+# this pass posts anything, every claim reply OUR account posted before
+# PASS_START_ISO is checked against the remote head with cl_earlier_claim_verdict:
+#   - a claimed reply whose commit is not on the remote head, does not touch its
+#     claimed files, or was committed before the comment it answers is retracted;
+#   - a retracted reply whose claim now passes is restored (cl_restore_body), so a
+#     wrongly retracted fix recovers without a new commit.
+# It never retracts on an unknown reference: when the remote head cannot be read,
+# or a cited commit is missing from a checkout that is still shallow, it skips.
+# Best-effort: returns 1 on a listing/PATCH failure; the caller does not stop.
+sweep_earlier_claims() {
+  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+    echo "[dry-run] would sweep earlier passes' claim replies on PR #${PR_NUMBER:-}"
+    return 0
+  fi
+  [ -z "${PR_NUMBER:-}" ] && return 0
+  [ -z "${PASS_START_ISO:-}" ] && return 0
+
+  # At pass start nothing has been committed, so with no upstream (rc 1) the
+  # checked-out head IS the PR head. A failed fetch (rc 2) is indeterminate.
+  local ref="" ref_rc=0
+  ref=$(cl_remote_head) || ref_rc=$?
+  if [ -z "$ref" ] && [ "$ref_rc" -eq 1 ]; then
+    ref="${RESOLUTION_BASE_SHA:-}"
+  fi
+  if [ -z "$ref" ]; then
+    echo "::notice::sweep_earlier_claims: the remote head could not be read (rc ${ref_rc}) — earlier claim replies on PR #${PR_NUMBER} not checked (#2032)"
+    return 0
+  fi
+
+  local bot_user="${BOT_USER:-donpetry-bot}" comments rows
+  comments=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" 2>/dev/null | jq -s 'add // []' 2>/dev/null) || {
+    echo "::warning::sweep_earlier_claims: could not list review comments on PR #${PR_NUMBER} — earlier claim replies were NOT verified (#2032)"
+    return 1
+  }
+  rows=$(cl_select_earlier_claims "$comments" "$bot_user" "$PASS_START_ISO") || {
+    echo "::warning::sweep_earlier_claims: could not parse the review comments on PR #${PR_NUMBER} — earlier claim replies were NOT verified (#2032)"
+    return 1
+  }
+  [ -z "$rows" ] && return 0
+
+  local id state claim finding_at sha files facts on_ref touches commit_date own cumulative verdict
+  local body new_body deepened=false retracted=0 restored=0 failed=0 known_rc
+  while IFS=$'\x1f' read -r id state claim finding_at; do
+    [ -z "$id" ] && continue
+    sha=""
+    if [ -z "$claim" ]; then
+      verdict="unverifiable"
+    else
+      sha=$(printf '%s' "$claim" | jq -r '.sha // ""' 2>/dev/null || echo "")
+      files=$(printf '%s' "$claim" | jq -c '.files // []' 2>/dev/null || echo "[]")
+      # A commit missing from a shallow checkout is unknown, not "not landed".
+      if ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then
+        if [ "$deepened" = false ]; then
+          git_history_deepen "${BASE_REF:-main}"
+          deepened=true
+        fi
+        if ! git cat-file -e "${sha}^{commit}" 2>/dev/null \
+           && [ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo true)" != "false" ]; then
+          echo "::notice::sweep_earlier_claims: commit ${sha} of reply ${id} is not in this shallow checkout — left as is (#2032)"
+          continue
+        fi
+      fi
+      facts=$(acv_gather_commit_facts "$sha" "" "$ref")
+      on_ref=$(printf '%s' "$facts" | jq -r '.on_head // false' 2>/dev/null || echo "false")
+      commit_date=$(printf '%s' "$facts" | jq -r '.commit_date // ""' 2>/dev/null || echo "")
+      own=$(printf '%s' "$facts" | jq -r '.own_files[]? // empty' 2>/dev/null || echo "")
+      cumulative=$(printf '%s' "$facts" | jq -r '.cumulative_files[]? // empty' 2>/dev/null || echo "")
+      # The same own-then-cumulative rule the thread gate verified the claim with
+      # (resolve_addressed_bot_threads), so a claim it accepted is not retracted.
+      touches=false
+      acv_verify_intersection "$files" "$own" "$cumulative" >/dev/null && touches=true
+      verdict=$(cl_earlier_claim_verdict "$on_ref" "$touches" "$commit_date" "$finding_at") || true
+      # not-on-ref has two causes: never pushed (a false claim) or pushed and then
+      # rewritten by a rebase (a true claim under a new SHA). Ask GitHub; retract
+      # only a commit it has never seen, and leave the claim when it cannot say.
+      if [ "$state" = "claimed" ] && [ "$verdict" = "not-on-ref" ]; then
+        known_rc=0
+        github_knows_commit "$sha" || known_rc=$?
+        if [ "$known_rc" -eq 0 ]; then
+          echo "::notice::sweep_earlier_claims: commit ${sha} of reply ${id} is known to GitHub but not on the remote head (pushed, then rewritten) — left as is (#2032)"
+          continue
+        elif [ "$known_rc" -ne 1 ]; then
+          echo "::notice::sweep_earlier_claims: could not ask GitHub about commit ${sha} of reply ${id} — left as is (#2032)"
+          continue
+        fi
+      fi
+    fi
+
+    body=$(printf '%s' "$comments" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
+    if [ "$state" = "claimed" ] && [ "$verdict" != "kept" ]; then
+      new_body=$(cl_retract_body "$body" "$verdict")
+      if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+        retracted=$((retracted + 1))
+        echo "::warning::retracted earlier claim reply ${id} on PR #${PR_NUMBER} (${verdict}; cited ${sha:-<none>}, remote head ${ref}) (#2032)"
+      else
+        echo "::error::could not retract earlier claim reply ${id} on PR #${PR_NUMBER} (${verdict}) — a false 'Fixed' reply may remain (#2032)"
+        failed=1
+      fi
+    elif [ "$state" = "retracted" ] && [ "$verdict" = "kept" ]; then
+      new_body=$(cl_restore_body "$body" "$claim") || continue
+      if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+        restored=$((restored + 1))
+        echo "::notice::restored retracted claim reply ${id} on PR #${PR_NUMBER}: ${sha} is on the remote head ${ref} and touches its claimed files (#2032)"
+      else
+        echo "::warning::could not restore retracted claim reply ${id} on PR #${PR_NUMBER} (#2032)"
+        failed=1
+      fi
+    fi
+  done <<< "$rows"
+  echo "::notice::sweep_earlier_claims: retracted ${retracted}, restored ${restored} earlier claim reply(ies) on PR #${PR_NUMBER} (#2032)"
+  [ "$failed" -eq 0 ]
+}
+
 # Checkout the PR branch for modification (Requirement 1).
 # Use an isolated worktree so switching to the PR branch never overwrites the
 # agent's own prompts/scripts in the working tree (issue #448).
@@ -141,6 +275,9 @@ if [ "${DEV_LEAD_DRY_RUN:-false}" = "false" ] && [ -n "${PR_NUMBER:-}" ]; then
   # that never runs the engine still has a (empty) record; the engine run installs the
   # recording gh shim that fills it. A missing record disables the no-change path.
   PASS_REPLY_RECORD="$(mktemp "${TMPDIR:-/tmp}/dev-lead-replies.XXXXXX" 2>/dev/null || true)"
+  # Earlier passes' claim replies (#2032): a cancelled run never reached its own
+  # sweep. Check them against the remote head before this pass posts anything.
+  sweep_earlier_claims || true
   setup_git_identity
   # Backfill the five required description sections into a pre-existing PR whose
   # body still lacks them (#1805). Idempotent + marker-keyed, so open PRs heal on
@@ -1591,25 +1728,12 @@ resolve_dispositioned_comments() {
   all_comments=$(jq -s 'add // []' "$pages_file" 2>/dev/null || echo "[]")
   rm -f "$pages_file"
 
-  # Candidate ids: non-agent comments not already minimized RESOLVED. Same filter
-  # as the gate (login != our account, body not agent-marked, not resolved-minimized)
-  # so what the harness resolves is exactly what the gate blocks on.
+  # Candidate ids: comments in the gate's scope not already minimized RESOLVED.
+  # The gate's own definition (#2209: our account, registered markers, review
+  # requests and opt-outs are out of scope), so what the harness resolves is
+  # exactly what the gate blocks on.
   local candidate_ids
-  candidate_ids=$(printf '%s' "$all_comments" | jq -r \
-    --arg botuser "$bot_user" \
-    --arg markers "$_MAINTAINER_GATE_AGENT_MARKERS" '
-      def bot_stripped: ($botuser | if endswith("[bot]") then .[0:-5] else . end);
-      .[] | objects
-      | (.author?.login // "" | tostring) as $l
-      | select($l != $botuser and $l != bot_stripped)
-      | select(((.body // "") | test($markers)) | not)
-      | select(
-          ((.isMinimized // false) == true)
-          and (((.minimizedReason // "") | ascii_downcase) == "resolved")
-          | not
-        )
-      | .id
-    ' 2>/dev/null || true)
+  candidate_ids=$(maintainer_gate_open_comment_ids "$all_comments" "$bot_user" || true)
 
   # #2008: edits re-open a dispositioned comment. CodeRabbit edits ONE summary
   # comment in place. On PR #2000 a Security Architecture finding was appended
@@ -2911,6 +3035,33 @@ commit_and_push() {
         fi
         ;;
     esac
+    # Sync-stub guard (#2185): on a `standards-sync` PR, a bot-driven pass must not
+    # change a stub copied verbatim from petry-projects/.github/standards/ (the
+    # incubator#164 shape). Restoring a stub to what the sync commit wrote is
+    # allowed. Maintainer-driven intents (review-changes/human-pr, on-mention,
+    # human) are the explicit override and are not guarded. The PR is read only
+    # when the pass touched a stub; an unreadable PR fails closed only for header stubs.
+    case "$intent" in
+      fix-bot-comment|fix-reviews)
+        local ssg_pr="" ssg_out ssg_rc=0
+        if ssg_pass_touches_stubs "${RESOLUTION_BASE_SHA:-}" HEAD && [ -n "${PR_NUMBER:-}" ] && [ -n "${REPO:-}" ]; then
+          # Bounded retry: unreadable = non-zero exit or output that is not a JSON object.
+          local ssg_try
+          for ssg_try in 1 2 3; do
+            ssg_pr=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" 2>/dev/null) || ssg_pr=""
+            jq -e 'type == "object"' <<<"$ssg_pr" >/dev/null 2>&1 && break
+            ssg_pr=""
+            [ "$ssg_try" -lt 3 ] && sleep "${SSG_RETRY_SLEEP:-2}"
+          done
+        fi
+        ssg_out=$(ssg_evaluate "${RESOLUTION_BASE_SHA:-}" HEAD "$ssg_pr" "${HEAD_REF:-}") || ssg_rc=$?
+        if [ "$ssg_rc" -ne 0 ]; then
+          echo "::error::Sync-stub guard: the ${intent} pass changed a synced org-standard stub on a standards-sync PR ($(printf '%s\n' "$ssg_out" | head -1)) — refusing to push (#2185)"
+          flag_sync_stub_drift "$intent" "$(printf '%s\n' "$ssg_out" | sed '1d')"
+          return 4
+        fi
+        ;;
+    esac
     # Test-tamper guard (#2013): a bot-driven fix pass must not silently rewrite an
     # existing test to make its own change pass (the petry-projects/.github#1220
     # `13927fc` shape). Refuse the push and escalate, like the no-op guard (rc 3).
@@ -2970,8 +3121,8 @@ commit_and_push() {
     # rewritten branch, aborting if the remote moved beyond what we fetched.
     # A rejected push — or one the remote head does not reflect (#2013) — must not
     # leave this pass's "Fixed" replies standing: retract them before failing.
-    # (commit_and_push returns 3 for the no-op guard and 4 for the test-tamper and
-    # test-regression guards.)
+    # (commit_and_push returns 3 for the no-op guard and 4 for the sync-stub,
+    # test-tamper and test-regression guards.)
     push_no_clobber || {
       echo "::error::git push failed — check remote access and branch permissions" >&2
       retract_unlanded_claims "$intent" failed || true
@@ -3126,18 +3277,20 @@ retract_unlanded_claims() {
   fi
 
   local comments
-  if ! comments=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" 2>/dev/null | jq -s 'add // []' 2>/dev/null); then
+  comments=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" 2>/dev/null | jq -s 'add // []' 2>/dev/null) || {
     echo "::warning::retract_unlanded_claims: could not list review comments on PR #${PR_NUMBER} — this pass's claim replies were NOT verified (#2013)"
     return 1
-  fi
+  }
 
   local rows retracted=0 failed=0 id sha facts on_ref in_base reason body new_body
-  if ! rows=$(cl_select_pass_claims "$comments" "$bot_user" "$PASS_START_ISO"); then
+  rows=$(cl_select_pass_claims "$comments" "$bot_user" "$PASS_START_ISO") || {
     echo "::warning::retract_unlanded_claims: could not parse the review comments on PR #${PR_NUMBER} — this pass's claim replies were NOT verified (#2013)"
     return 1
-  fi
+  }
+  local rebased remapped=0
   while IFS=$'\t' read -r id sha; do
     [ -z "$id" ] && continue
+    body=$(printf '%s' "$comments" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
     if [ -z "$sha" ]; then
       reason="unverifiable"
     else
@@ -3148,8 +3301,30 @@ retract_unlanded_claims() {
       if reason=$(acv_claim_in_pass "$base" "$on_ref" "$in_base"); then
         continue
       fi
+      # #2032: the push guard rebased the cited commit onto a foreign commit, so
+      # the cited SHA never reached the remote. If its rebased successor did land
+      # (and is this pass's), the fix is on the branch: re-point the claim at the
+      # successor instead of retracting it, so the thread resolves this pass.
+      rebased=""
+      if [ "$reason" = "not-on-ref" ] && [ -n "$ref" ]; then
+        rebased=$(cl_map_sha "$sha" "${_PUSH_GUARD_REWRITES:-}") || rebased=""
+      fi
+      if [ -n "$rebased" ]; then
+        facts=$(acv_gather_commit_facts "$rebased" "$base" "$ref")
+        on_ref=$(printf '%s' "$facts" | jq -r '.on_head // false' 2>/dev/null || echo "false")
+        in_base=$(printf '%s' "$facts" | jq -r 'if .in_base == false then "false" else "true" end' 2>/dev/null || echo "true")
+        new_body=$(cl_rewrite_claim_sha "$body" "$rebased") || new_body=""
+        if acv_claim_in_pass "$base" "$on_ref" "$in_base" >/dev/null \
+           && [ -n "$new_body" ]; then
+          if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+            remapped=$((remapped + 1))
+            echo "::notice::claim reply ${id} on PR #${PR_NUMBER}: ${sha} was rebased onto a foreign commit and landed as ${rebased} — claim updated, not retracted (#2032)"
+            continue
+          fi
+          echo "::warning::could not update claim reply ${id} on PR #${PR_NUMBER} to the rebased commit ${rebased} — retracting it instead (#2032)"
+        fi
+      fi
     fi
-    body=$(printf '%s' "$comments" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
     new_body=$(cl_retract_body "$body" "$reason")
     if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
       retracted=$((retracted + 1))
@@ -3159,7 +3334,7 @@ retract_unlanded_claims() {
       failed=1
     fi
   done <<< "$rows"
-  echo "::notice::retract_unlanded_claims: retracted ${retracted} claim reply(ies) from this ${intent} pass on PR #${PR_NUMBER} (outcome=${outcome})"
+  echo "::notice::retract_unlanded_claims: retracted ${retracted} claim reply(ies) from this ${intent} pass on PR #${PR_NUMBER} (outcome=${outcome}; ${remapped} re-pointed at rebased commits)"
   # A listing or PATCH failure leaves a possibly-false claim standing: report it so
   # callers do not treat the pass as clean (resolution gate closes).
   [ "$failed" -eq 0 ]
@@ -3233,6 +3408,33 @@ The \`${intent}\` pass changed, deleted, or skipped **existing** test(s) to go w
 
 If the test really is wrong, a human should make that call, or the fix should carry a \`Test-Change-Justification:\` commit trailer that cites the reason (for example, the review comment that asked for it). Auto-merge has been disabled.${HOLD_LABEL_NOTE}" \
       || echo "::warning::could not post test-tamper flag comment on PR #${PR_NUMBER}"
+  fi
+  disable_auto_merge_for_hold "$REPO" "$PR_NUMBER" || true
+  return 0
+}
+
+# flag_sync_stub_drift <intent> <rows> — the sync-stub guard refused the push
+# (#2185). <rows> are `path\ttemplate` lines (empty when the scan was unknown).
+# Same escalation as flag_test_tamper; the comment answers the bot suggestion as
+# declined and points at each template in petry-projects/.github.
+flag_sync_stub_drift() {
+  local intent="$1" rows="$2"
+  _AM_NEEDS_RESTORE=0
+  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+    echo "[dry-run] sync-stub guard: would decline on PR #${PR_NUMBER} (${intent}), add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}, disable auto-merge"
+    return 0
+  fi
+  local marker="<!-- dev-lead-sync-stub-drift pr=${PR_NUMBER} intent=${intent} -->"
+  # Label first so the flag comment can say when the PR could not be held (#2142).
+  apply_hold_label "$REPO" "$PR_NUMBER" || true
+  if gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" 2>/dev/null \
+       | jq -r '.[].body // ""' 2>/dev/null | grep -qF "$marker"; then
+    echo "::notice::PR #${PR_NUMBER} already flagged for synced-stub drift for intent=${intent} — not reposting"
+    post_hold_failure_note "$REPO" "$PR_NUMBER"
+  else
+    gh pr comment "$PR_NUMBER" --repo "$REPO" --body "${marker}
+$(ssg_declined_body "$intent" "$rows")${HOLD_LABEL_NOTE}" \
+      || echo "::warning::could not post sync-stub flag comment on PR #${PR_NUMBER}"
   fi
   disable_auto_merge_for_hold "$REPO" "$PR_NUMBER" || true
   return 0
@@ -3521,7 +3723,7 @@ case "$INTENT_TYPE" in
         # marker and do not re-enable auto-merge or resolve threads.
         echo "::warning::fix-reviews produced a net-zero diff — flagged for human, not pushed (#1340)"
       elif [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::fix-reviews was refused by a test guard (tamper/regression) — flagged for human, not pushed (#2013)"
+        echo "::warning::fix-reviews was refused by a push guard (test tamper/regression or sync-stub) — flagged for human, not pushed (#2013/#2185)"
       else
         notify_coderabbit_resolve
         if has_hard_blockers; then
@@ -3619,7 +3821,7 @@ case "$INTENT_TYPE" in
         # re-enable auto-merge or resolve threads.
         echo "::warning::fix-bot-comment produced a net-zero diff — flagged for human, not pushed (#1340)"
       elif [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::fix-bot-comment was refused by a test guard (tamper/regression) — flagged for human, not pushed (#2013)"
+        echo "::warning::fix-bot-comment was refused by a push guard (test tamper/regression or sync-stub) — flagged for human, not pushed (#2013/#2185)"
       else
         notify_coderabbit_resolve
         if has_hard_blockers; then

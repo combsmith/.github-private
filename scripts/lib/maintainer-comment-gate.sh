@@ -27,13 +27,24 @@
 #   RESOLVED-minimized comment as addressed and withholds approval while ANY
 #   non-agent issue comment lacks that signal.
 #
-#   Scope: EVERY PR issue comment, from human maintainers and bots alike
-#   (codeant-ai, qodo-code-review, auto-rebase-conflict, and so on). No author is
-#   exempt for being a bot — a conflict report is a finding, a trial-ended notice
-#   has an operational consequence. The ONLY exclusion is our own automation's
-#   disposition/ack/note replies (so the agent never has to answer itself): our
-#   bot login, or a body carrying one of our automation markers (which includes
-#   the `<!-- dev-lead:comment-disposition ... -->` reply itself).
+#   Scope: every PR issue comment, from human maintainers and bots alike
+#   (codeant-ai, qodo-code-review, and so on), EXCEPT the exemption set recorded
+#   in ADR-0012 (#2209), which narrows #1813's "every PR issue comment":
+#     • our bot login;
+#     • a body carrying one of our registered automation markers — our own
+#       disposition/ack/note replies (so the agent never has to answer itself)
+#       and the `<!-- auto-rebase-conflict: ... -->` sentinel (the conflict
+#       already blocks the merge, so counting the comment gates it twice);
+#     • from an OWNER/MEMBER/COLLABORATOR only: a review request, matched on the
+#       whole trimmed body (`@<bot user>`, optionally `please review` with an
+#       optional `.`/`!`, optionally the Claude Code footer) and nothing looser;
+#     • from an OWNER/MEMBER/COLLABORATOR only: the explicit opt-out marker
+#       `<!-- maintainer:not-a-finding -->`;
+#     • a registered clean info-status bot comment (#1918).
+#   No author is exempt by login alone: don-petry is also the account dev-lead and
+#   the personas post from (ADR-0008). A steering comment stays in scope unless
+#   the maintainer opts it out. The definition is _MAINTAINER_GATE_SCOPE_JQ_DEFS,
+#   shared with dev-lead's candidate filter (maintainer_gate_open_comment_ids).
 #
 # It FAILS CLOSED: an inability to evaluate the snapshot must block, and is
 # reported DISTINCTLY (return 2 → a distinct verdict reason) so an undeterminable
@@ -41,7 +52,8 @@
 #
 # check_maintainer_comments <pr_snapshot_json> [bot_user]
 #   <pr_snapshot_json> — output of `gh pr view --json comments,...`; each comment
-#                        must carry {author.login, body, isMinimized, minimizedReason}.
+#                        must carry {author.login, authorAssociation, body,
+#                        isMinimized, minimizedReason}.
 #   [bot_user]         — the agent's own login (default donpetry-bot)
 # Returns:
 #   0 = every non-agent issue comment is minimized RESOLVED (or none exist)
@@ -71,7 +83,53 @@ set -euo pipefail
 # `maintainer-resolve` is the marker on the reply maintainer-resolve-comment.sh
 # posts when it dispositions a registered reviewer bot's comment (#1918) — that
 # reply must not itself become a fresh undispositioned blocker.
-readonly _MAINTAINER_GATE_AGENT_MARKERS='<!-- (pr-review-agent|pr-review-claim|persona:|dev-lead|dependency-advisory|maintainer-resolve)[^>]*-->'
+# `auto-rebase-conflict:` is the auto-rebase sentinel (#2209). A conflict already
+# blocks the merge, so the comment reporting it is not a second blocker.
+readonly _MAINTAINER_GATE_AGENT_MARKERS='<!-- (pr-review-agent|pr-review-claim|persona:|dev-lead|dependency-advisory|maintainer-resolve|auto-rebase-conflict:)[^>]*-->'
+
+# The gate's scope (#2209, ADR-0012) as jq definitions, shared by
+# check_maintainer_comments and maintainer_gate_open_comment_ids so the gate and
+# dev-lead's candidate filter cannot disagree. The caller binds $botuser and
+# $markers (_MAINTAINER_GATE_AGENT_MARKERS).
+#   trusted_author — authorAssociation is OWNER, MEMBER or COLLABORATOR. A missing
+#                    association is untrusted, so neither exemption below applies
+#                    and the comment blocks (fail closed).
+#   review_request — from a trusted author, the WHOLE trimmed body is the bot
+#                    mention, optionally `please review` (case-insensitive, with an
+#                    optional final `.`/`!`), optionally the Claude Code footer.
+#                    Anchored at both ends: any other text keeps it in scope.
+#   opted_out      — from a trusted author, the body carries
+#                    `<!-- maintainer:not-a-finding -->`.
+#   in_gate_scope  — not our bot login, no registered marker, and neither of the
+#                    two exemptions above.
+readonly _MAINTAINER_GATE_SCOPE_JQ_DEFS='
+  def gate_bot_bare: ($botuser | if endswith("[bot]") then .[0:-5] else . end);
+  def trusted_author:
+    ((.authorAssociation // "") | tostring | ascii_upcase) as $a
+    | ["OWNER", "MEMBER", "COLLABORATOR"] | index($a) != null;
+  def review_request:
+    trusted_author
+    and ((.body // "") | tostring | gsub("\\A\\s+|\\s+\\z"; "")
+         | test("\\A@(?i:" + (gate_bot_bare | gsub("(?<c>[^A-Za-z0-9_-])"; "\\\(.c)")) + ")"
+                + "(?:\\s+(?i:please\\s+review)[.!]?)?"
+                + "(?:\\s+---[ \\t]*\\r?\\n\\s*_Generated by \\[Claude Code\\]\\([^()\\s]+\\)_)?\\z"));
+  def opted_out:
+    trusted_author
+    and ((.body // "") | tostring | contains("<!-- maintainer:not-a-finding -->"));
+  def in_gate_scope:
+    (.author?.login // "" | tostring) as $l
+    | ($l != $botuser and $l != gate_bot_bare)
+      and (((.body // "") | tostring | test($markers)) | not)
+      and (review_request | not)
+      and (opted_out | not);
+'
+
+# This library's own directory, resolved ONCE at source time. dev-lead-fix-reviews.sh
+# is run by a relative path (`bash .dev-lead/scripts/...`) and later cds into the
+# PR worktree, so a function resolving BASH_SOURCE at call time gets a path that
+# no longer exists and every registry read fails closed (#2208, as #2152).
+_MAINTAINER_GATE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
+readonly _MAINTAINER_GATE_LIB_DIR
 
 log_info() {
   echo "[maintainer-gate] $*" >&2
@@ -88,8 +146,7 @@ log_info() {
 #   verdict: an info comment we can't classify simply stays a blocker), never to
 #   clearing something it cannot classify.
 _maintainer_gate_info_patterns_json() {
-  local lib_dir patterns status
-  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local lib_dir="$_MAINTAINER_GATE_LIB_DIR" patterns status
   if [[ ! -f "$lib_dir/reviewer-sources.sh" ]]; then
     printf '%s' '{}'
     return 0
@@ -123,8 +180,7 @@ _maintainer_gate_info_patterns_json() {
 #   registry helper never leaks into the gate's caller. Returns 1 (echoing nothing)
 #   when the registry cannot be read. Each caller picks its own fail-closed default.
 _maintainer_gate_registry_value() {
-  local fn="${1:-}" lib_dir out status
-  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local fn="${1:-}" lib_dir="$_MAINTAINER_GATE_LIB_DIR" out status
   [[ -n "$fn" && -f "$lib_dir/reviewer-sources.sh" ]] || return 1
   set +e
   out="$(
@@ -399,14 +455,49 @@ maintainer_gate_head_committer_date() {
     --jq '.data.resource.commits.nodes[0].commit.committer.date // empty' 2>/dev/null || true
 }
 
+# maintainer_gate_open_comment_ids <comments_array_json> [bot_user]
+#   dev-lead's candidate list for resolve_dispositioned_comments (#2209). Echoes one
+#   node id per line for every comment in the gate's scope (in_gate_scope) that is
+#   not minimized RESOLVED, so the harness never tries to disposition a comment the
+#   gate does not count. <comments_array_json> is the harness's issue-comment nodes,
+#   each {id, author{login}, authorAssociation, body, isMinimized, minimizedReason}.
+#   Filters out clean registered info-status comments matching check_maintainer_comments
+#   so the gate and candidate filter never disagree. Unreadable input echoes nothing
+#   and returns non-zero.
+maintainer_gate_open_comment_ids() {
+  local comments="${1:-}" bot_user="${2:-donpetry-bot}" info_patterns finding_re
+  info_patterns="$(_maintainer_gate_info_patterns_json)"
+  finding_re="$(_maintainer_gate_finding_re)"
+  printf '%s' "$comments" | jq -r \
+    --arg botuser "$bot_user" \
+    --arg markers "$_MAINTAINER_GATE_AGENT_MARKERS" \
+    --arg findre "$finding_re" \
+    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_SCOPE_JQ_DEFS"'
+      if type != "array" then error("not an array") else . end
+      | [ .[] | objects
+          | select(in_gate_scope)
+          | (.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $lbare
+          | ((.body // "") | tostring | test($findre)) as $findings
+          | select(
+              ($infopatterns[$lbare] // null) as $p
+              | ($p == null) or $findings or (((.body // "") | test($p)) | not)
+            )
+          | select(((.isMinimized // false) == true)
+                   and (((.minimizedReason // "") | ascii_downcase) == "resolved") | not)
+          | .id ]
+      | .[]
+    ' 2>/dev/null
+}
+
 # check_maintainer_comments <pr_snapshot_json> [bot_user]
 check_maintainer_comments() {
   local json="${1:-}"
   local bot_user="${2:-donpetry-bot}"
 
   # Count non-agent issue comments that are NOT yet resolved. A comment is
-  # "cleared" when it is authored by our own account, carries one of our
-  # automation markers (our disposition/ack/note replies), OR has been minimized
+  # "cleared" when it is outside the gate's scope (in_gate_scope: our own account,
+  # a registered marker, or a trusted author's exact review request or opt-out,
+  # #2209), OR has been minimized
   # with classifier RESOLVED (the harness's verified-disposition signal). Anything
   # else — a bot or human comment without a verified disposition — blocks.
   # A jq failure (malformed snapshot, or a value that can't be indexed with
@@ -447,13 +538,12 @@ check_maintainer_comments() {
     --arg botuser "$bot_user" \
     --arg findre "$finding_re" \
     --argjson registered "$registered" \
-    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_DISP_JQ_DEFS"'
+    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_DISP_JQ_DEFS$_MAINTAINER_GATE_SCOPE_JQ_DEFS"'
       (.comments // []) as $all
       | [ $all[] | objects
-        | (.author?.login // "" | tostring) as $l
-        | ($l | if endswith("[bot]") then .[0:-5] else . end) as $lbare
-        | select($l != $botuser and $l != bot_stripped)
-        | select(((.body // "") | test($markers)) | not)
+        | (.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $lbare
+        # #2209: our login, registered markers, review requests, opt-outs.
+        | select(in_gate_scope)
         | ((.body // "") | tostring | test($findre)) as $findings
         # Drop KNOWN CLEAN info-status comments: author is a registered source, its
         # body matches that source pattern, and it carries no finding-bearing

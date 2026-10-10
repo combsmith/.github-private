@@ -103,12 +103,13 @@ _run_check() {
   [ "$status" -eq 1 ]
 }
 
-# AC9(b): an undispositioned auto-rebase-conflict comment (authored by don-petry,
-# NOT one of our agent markers) blocks — a conflict report is a finding.
-@test "AC9b: undispositioned auto-rebase-conflict comment → 1 (block)" {
+# #2209 reverses #1813's AC9(b) for the auto-rebase-conflict sentinel: its marker
+# is registered, because the conflict already blocks the merge. Counting the
+# comment as well would gate the same state twice.
+@test "#2209: undispositioned auto-rebase-conflict sentinel → 0 (exempt by marker)" {
   local json='{"comments":[{"author":{"login":"don-petry"},"body":"<!-- auto-rebase-conflict:56d8ccc7 --> Auto-rebase failed — merge conflict.","createdAt":"2026-09-13T04:28:56Z","isMinimized":false,"minimizedReason":""}]}'
   _run_check "$json"
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 0 ]
 }
 
 # AC9(a): pushedDate is irrelevant; every comment minimized RESOLVED → passes.
@@ -540,6 +541,90 @@ _disp() {
   [ "$status" -eq 1 ]
 }
 
+# ────────────────────────────────────────────────────────────────────
+# #2178: a neutral bot overview (CodeAnt "PR Risk: Low Risk") carries no finding.
+# codeant-ai has no info_status_pattern, so the gate does not auto-clear it.
+# dev-lead dispositions it `informational` and the harness then minimizes it
+# RESOLVED. That disposition must clear the gate. A CodeAnt comment that carries a
+# finding still blocks until it gets a real disposition.
+# ────────────────────────────────────────────────────────────────────
+
+# The live body of petry-projects/.github PR #1269, comment IC_kwDORyesfc8AAAABauHIXQ.
+_codeant_low_risk_body() {
+  printf '%s' '## CodeAnt PR Risk: Low Risk
+
+- The PR appears safe to merge: audit and deployment share a per-tier current-major pin check and handle stale pins and failed tag lookups explicitly.
+- Regression tests cover stale and current pins, partial major rollouts, failed tag probes, and agreement between audit and deployment.
+
+**Assessed commit:** `685b1eeb36aa`'
+}
+
+@test "#2178: an undispositioned CodeAnt 'PR Risk: Low Risk' overview blocks (no pattern auto-clears it) → 1" {
+  _run_check "$(_edit_json codeant-ai "$(_codeant_low_risk_body)" false null)"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2178: a CodeAnt 'PR Risk: Low Risk' overview dispositioned informational and minimized RESOLVED clears → 0" {
+  _run_check "$(_edit_json codeant-ai "$(_codeant_low_risk_body)" true null "$(_disp 2026-10-01T19:23:54Z informational)")"
+  [ "$status" -eq 0 ]
+}
+
+@test "#2178: a CodeAnt comment carrying a finding, undispositioned, still blocks → 1" {
+  local body
+  body="$(_codeant_low_risk_body)"$'\n\n**Suggestion:** `resolve_pin` ignores a failed tag lookup and returns the stale major — check the exit status.'
+  _run_check "$(_edit_json codeant-ai "$body" false null)"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2178: a CodeAnt body with a **Suggestion:** is finding-bearing" {
+  source "$SCRIPT_DIR/lib/comment-disposition-verify.sh"
+  run cdv_body_has_findings "$(_codeant_low_risk_body)"$'\n\n**Suggestion:** check the exit status.'
+  [ "$status" -eq 0 ]
+}
+
+@test "#2178: a CodeAnt 'PR Risk: Medium Risk' body is finding-bearing" {
+  source "$SCRIPT_DIR/lib/comment-disposition-verify.sh"
+  run cdv_body_has_findings $'## CodeAnt PR Risk: Medium Risk\n\n- This needs attention before merging.'
+  [ "$status" -eq 0 ]
+}
+
+@test "#2178: the clean CodeAnt Low Risk body is not finding-bearing" {
+  source "$SCRIPT_DIR/lib/comment-disposition-verify.sh"
+  run cdv_body_has_findings "$(_codeant_low_risk_body)"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2178: a CodeAnt body with a suggestion dispositioned informational does NOT clear → 1" {
+  local body
+  body="$(_codeant_low_risk_body)"$'\n\n**Suggestion:** `resolve_pin` ignores a failed tag lookup.'
+  _run_check "$(_edit_json codeant-ai "$body" true null "$(_disp 2026-10-01T19:23:54Z informational)")"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2178: a bolded 'PR Risk: Low Risk' body is not finding-bearing" {
+  source "$SCRIPT_DIR/lib/comment-disposition-verify.sh"
+  run cdv_body_has_findings $'## CodeAnt **PR Risk: Low Risk**\n\n- The PR appears safe to merge.\n\n**Assessed commit:** `abc123`'
+  [ "$status" -eq 1 ]
+}
+
+@test "#2178: a bolded 'PR Risk: Medium Risk' body is finding-bearing" {
+  source "$SCRIPT_DIR/lib/comment-disposition-verify.sh"
+  run cdv_body_has_findings $'## CodeAnt **PR Risk: Medium Risk**\n\n- This needs attention before merging.'
+  [ "$status" -eq 0 ]
+}
+
+@test "#2178: 'PR Risk: Low Risky' (not exact Low Risk) is finding-bearing" {
+  source "$SCRIPT_DIR/lib/comment-disposition-verify.sh"
+  run cdv_body_has_findings $'## CodeAnt PR Risk: Low Risky\n\n- This requires attention.'
+  [ "$status" -eq 0 ]
+}
+
+@test "#2178: 'PR Risk: Low Risk ' (with trailing space) is not finding-bearing" {
+  source "$SCRIPT_DIR/lib/comment-disposition-verify.sh"
+  run cdv_body_has_findings $'## CodeAnt PR Risk: Low Risk \n\n- The PR appears safe.'
+  [ "$status" -eq 1 ]
+}
+
 @test "#2008: maintainer_gate_merge_edit_times merges lastEditedAt by comment id" {
   local bin="$BATS_TEST_TMPDIR/bin"; mkdir -p "$bin"
   cat > "$bin/gh" <<'SHIM'
@@ -571,6 +656,158 @@ SHIM
 }
 
 # ────────────────────────────────────────────────────────────────────
+# #2209 — review requests, the sentinel and the opt-out marker are not findings
+# ────────────────────────────────────────────────────────────────────
+
+# _one_comment <association> <body> — a one-comment, undispositioned snapshot.
+_one_comment() {
+  jq -cn --arg a "$1" --arg b "$2" \
+    '{comments:[{id:"IC_1", author:{login:"don-petry"}, authorAssociation:$a, body:$b,
+                 createdAt:"2026-10-10T16:00:00Z", isMinimized:false, minimizedReason:""}]}'
+}
+
+# _open_ids <snapshot> — the dev-lead harness's candidate ids for the snapshot.
+_open_ids() {
+  run bash -c "source '$GATE'; maintainer_gate_open_comment_ids \"\$(printf '%s' \"\$1\" | jq -c .comments)\" donpetry-bot" _ "$1"
+}
+
+_FOOTER=$'\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_'
+
+@test "#2209: bot mention only, from OWNER → 0 (review request)" {
+  _run_check "$(_one_comment OWNER '@donpetry-bot')"
+  [ "$status" -eq 0 ]
+}
+
+@test "#2209: mention + 'please review.' + Claude Code footer → 0" {
+  _run_check "$(_one_comment OWNER "@donpetry-bot please review.${_FOOTER}")"
+  [ "$status" -eq 0 ]
+}
+
+@test "#2209: mention + 'Please Review!' (case-insensitive, '!' ending) from COLLABORATOR → 0" {
+  _run_check "$(_one_comment COLLABORATOR '  @donpetry-bot Please Review!  ')"
+  [ "$status" -eq 0 ]
+}
+
+@test "#2209: mention + an extra sentence (PR 1276 body) → 1 (still a finding)" {
+  _run_check "$(_one_comment OWNER "@donpetry-bot please review. The advisory-bot rate-limit window you noted has passed; please re-run.${_FOOTER}")"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2209: text before the mention → 1 (anchored at the start)" {
+  _run_check "$(_one_comment OWNER 'Looks wrong. @donpetry-bot please review')"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2209: a different login's mention → 1" {
+  _run_check "$(_one_comment OWNER '@donpetry-bot2 please review')"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2209: review request from a non-collaborator (NONE) → 1" {
+  _run_check "$(_one_comment NONE '@donpetry-bot please review')"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2209: review request with no authorAssociation → 1 (fail closed)" {
+  local json='{"comments":[{"author":{"login":"don-petry"},"body":"@donpetry-bot please review","createdAt":"2026-10-10T16:00:00Z","isMinimized":false,"minimizedReason":""}]}'
+  _run_check "$json"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2209: the review-request match uses the bot user passed in, with [bot] stripped" {
+  _run_check "$(_one_comment OWNER '@other-bot please review')" "other-bot[bot]"
+  [ "$status" -eq 0 ]
+  _run_check "$(_one_comment OWNER '@donpetry-bot please review')" "other-bot[bot]"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2209: opt-out marker from OWNER → 0" {
+  _run_check "$(_one_comment OWNER $'Merge after the release cut.\n<!-- maintainer:not-a-finding -->')"
+  [ "$status" -eq 0 ]
+}
+
+@test "#2209: opt-out marker from MEMBER → 0" {
+  _run_check "$(_one_comment MEMBER $'<!-- maintainer:not-a-finding -->\nsteering note')"
+  [ "$status" -eq 0 ]
+}
+
+@test "#2209: opt-out marker from a non-collaborator → 1" {
+  _run_check "$(_one_comment CONTRIBUTOR $'This is fine.\n<!-- maintainer:not-a-finding -->')"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2209: an owner steering comment without the opt-out → 1 (stays in scope)" {
+  _run_check "$(_one_comment OWNER 'Hold this until #2208 lands.')"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2209: only a review request and a sentinel open → 0" {
+  local json
+  json=$(jq -cn --arg rr "@donpetry-bot please review.${_FOOTER}" '{comments:[
+    {id:"IC_rr", author:{login:"don-petry"}, authorAssociation:"OWNER", body:$rr,
+     createdAt:"2026-10-10T16:00:00Z", isMinimized:false, minimizedReason:""},
+    {id:"IC_s", author:{login:"don-petry"}, authorAssociation:"OWNER",
+     body:"<!-- auto-rebase-conflict: main -->\n\nThis branch has conflicts with main.",
+     createdAt:"2026-10-10T16:05:00Z", isMinimized:false, minimizedReason:""}]}')
+  _run_check "$json"
+  [ "$status" -eq 0 ]
+}
+
+@test "#2209: maintainer_gate_open_comment_ids lists exactly what the gate counts" {
+  local json
+  json=$(jq -cn --arg rr "@donpetry-bot please review.${_FOOTER}" '{comments:[
+    {id:"IC_rr", author:{login:"don-petry"}, authorAssociation:"OWNER", body:$rr, isMinimized:false},
+    {id:"IC_s", author:{login:"don-petry"}, authorAssociation:"OWNER", body:"<!-- auto-rebase-conflict: main -->", isMinimized:false},
+    {id:"IC_opt", author:{login:"don-petry"}, authorAssociation:"OWNER", body:"ok <!-- maintainer:not-a-finding -->", isMinimized:false},
+    {id:"IC_optx", author:{login:"drive-by"}, authorAssociation:"NONE", body:"ok <!-- maintainer:not-a-finding -->", isMinimized:false},
+    {id:"IC_more", author:{login:"don-petry"}, authorAssociation:"OWNER", body:"@donpetry-bot please review. Also fix X.", isMinimized:false},
+    {id:"IC_done", author:{login:"don-petry"}, authorAssociation:"OWNER", body:"Fix X.", isMinimized:true, minimizedReason:"RESOLVED"},
+    {id:"IC_own", author:{login:"donpetry-bot"}, authorAssociation:"NONE", body:"ack", isMinimized:false}]}')
+  _open_ids "$json"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'IC_optx\nIC_more' ]
+}
+
+# #2209 (pr-review cycle 2): the helper drops a clean registered info-status comment
+# (#1918) exactly as the gate does, and keeps one that carries findings. The gate
+# and the helper run on the SAME fixture, so a regression in either filter shows up
+# as a disagreement here.
+@test "#2209: maintainer_gate_open_comment_ids drops a clean info-status comment and keeps a finding-bearing one, as the gate does" {
+  local json
+  json=$(jq -cn --arg clean "$(_sonar_body 0 0)" --arg dirty "$(_sonar_body 2 0)" '{comments:[
+    {id:"IC_clean", author:{login:"sonarqubecloud"}, authorAssociation:"NONE", body:$clean, isMinimized:false, minimizedReason:""},
+    {id:"IC_dirty", author:{login:"sonarqubecloud"}, authorAssociation:"NONE", body:$dirty, isMinimized:false, minimizedReason:""},
+    {id:"IC_h", author:{login:"don-petry"}, authorAssociation:"OWNER", body:"Fix X.", isMinimized:false, minimizedReason:""}]}')
+  _open_ids "$json"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'IC_dirty\nIC_h' ]
+  # The gate counts the same two comments on the same fixture.
+  _run_check "$json"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"2 PR issue comment(s) lack a verified disposition"* ]]
+
+  # With only the clean status comment, the helper lists nothing and the gate is clear.
+  json=$(jq -cn --arg clean "$(_sonar_body 0 0)" '{comments:[
+    {id:"IC_clean", author:{login:"sonarqubecloud"}, authorAssociation:"NONE", body:$clean, isMinimized:false, minimizedReason:""}]}')
+  _open_ids "$json"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  _run_check "$json"
+  [ "$status" -eq 0 ]
+}
+
+@test "#2209: maintainer_gate_open_comment_ids fails on unreadable input" {
+  run bash -c "source '$GATE'; maintainer_gate_open_comment_ids 'not json' donpetry-bot"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "Wiring(#2209): resolve_dispositioned_comments takes its candidates from the shared helper" {
+  sed -n '/^resolve_dispositioned_comments()/,/^}/p' "$SCRIPT_DIR/dev-lead-fix-reviews.sh" \
+    | grep -q 'maintainer_gate_open_comment_ids'
+}
+
+# ────────────────────────────────────────────────────────────────────
 # INTEGRATION / WIRING TESTS (review-one-pr.sh)
 # ────────────────────────────────────────────────────────────────────
 
@@ -591,4 +828,69 @@ SHIM
 
 @test "Manifest: maintainer-comment gate registered under pr-review.yml surface" {
   grep -q "scripts/lib/maintainer-comment-gate.sh" "$SCRIPT_DIR/lib/consumer-manifest.json"
+}
+
+# ────────────────────────────────────────────────────────────────────
+# #2208: the lib dir must survive the caller's cd into the PR worktree
+# ────────────────────────────────────────────────────────────────────
+# dev-lead-fix-reviews.sh runs as `bash .dev-lead/scripts/...`, so BASH_SOURCE[0]
+# is a relative path, and it cds into the PR worktree before it calls
+# maintainer_gate_reopen_candidates. Resolving the lib dir at call time made
+# every registry read fail closed, so every `informational`-dispositioned bot
+# comment was unminimized on the next pass (#2152, second file).
+
+# _relative_ws — a workspace whose .dev-lead/scripts links to this repo's scripts.
+_relative_ws() {
+  local root="$BATS_TEST_TMPDIR/ws"
+  mkdir -p "$root/.dev-lead" "$root/pr-worktree"
+  ln -sfn "$SCRIPT_DIR" "$root/.dev-lead/scripts"
+  printf '%s' "$root"
+}
+
+@test "#2208: no function resolves its own directory at call time" {
+  run grep -nE '^[[:space:]]+.*dirname "\$\{BASH_SOURCE\[0\]\}"' "$GATE"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2208: registry lookups are cwd-independent when sourced by a relative path" {
+  local root expected
+  root=$(_relative_ws)
+  expected=$(bash -c "source '$SCRIPT_DIR/lib/reviewer-sources.sh'; reviewer_sources_finding_section_pattern")
+  run bash -c "cd '$root' && source .dev-lead/scripts/lib/maintainer-comment-gate.sh && cd pr-worktree && _maintainer_gate_finding_re"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$expected" ]
+  [ "$output" != '[\s\S]' ]
+  run bash -c "cd '$root' && source .dev-lead/scripts/lib/maintainer-comment-gate.sh && cd pr-worktree && _maintainer_gate_registered_logins_json"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | jq -e 'type == "array" and length > 0'
+  run bash -c "cd '$root' && source .dev-lead/scripts/lib/maintainer-comment-gate.sh && cd pr-worktree && _maintainer_gate_info_patterns_json"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | jq -e 'type == "object" and length > 0'
+}
+
+@test "#2208: a never-edited informational-dispositioned bot comment is not re-opened after the cd" {
+  local root comments
+  root=$(_relative_ws)
+  comments=$(jq -cn '[
+    {id:"IC_codex", author:{login:"chatgpt-codex-connector", __typename:"Bot"},
+     authorAssociation:"NONE",
+     body:"You have reached your Codex usage limits for code reviews. You can see your limits in the Codex usage dashboard.",
+     createdAt:"2026-10-10T11:30:00Z", isMinimized:true, minimizedReason:"RESOLVED",
+     includesCreatedEdit:false, lastEditedAt:null},
+    {id:"IC_disp", author:{login:"don-petry"}, authorAssociation:"OWNER",
+     body:"Usage-limit notice; no finding.\n<!-- dev-lead:comment-disposition id=IC_codex disposition=informational -->",
+     createdAt:"2026-10-10T11:37:00Z", isMinimized:false, minimizedReason:""}
+  ]')
+  run bash -c "cd '$root' && source .dev-lead/scripts/lib/maintainer-comment-gate.sh && cd pr-worktree && maintainer_gate_reopen_candidates \"\$1\" 2>/dev/null" _ "$comments"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+}
+
+@test "#2208: a really missing registry still fails closed" {
+  local lib="$BATS_TEST_TMPDIR/lonely"
+  mkdir -p "$lib"
+  cp "$GATE" "$lib/"
+  run bash -c "source '$lib/maintainer-comment-gate.sh'; cd /; _maintainer_gate_finding_re; echo; _maintainer_gate_registered_logins_json; echo; _maintainer_gate_info_patterns_json"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'[\\s\\S]\nnull\n{}' ]
 }
