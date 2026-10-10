@@ -161,9 +161,10 @@ _BB_DECIDE_JQ='
   def none($reason): verdict("none"; null; $reason; 0);
 
   (if ($now | test("^[0-9]{1,12}$")) then ($now | tonumber) else null end) as $t
-  | if $t == null then
-      none("the current time (\($now | tojson)) is not epoch seconds; failing open")
-    elif ($paused | ascii_downcase) == "true" then
+  # The pause state is judged BEFORE the clock: a human pause is left alone and an
+  # own pause on bad data is released whether or not the time can be read. Only
+  # the paths that compare against the time need a valid clock.
+  | if ($paused | ascii_downcase) == "true" then
       if $source == "" then
         none("the fleet is paused with no source: a human pause is never tripped over and never resumed")
       elif $source != $own then
@@ -173,12 +174,17 @@ _BB_DECIDE_JQ='
         | if $u == null then
             verdict("resume"; null;
               "own pause, but its until (\($until | tojson)) is missing or unparseable; failing open so bad data never keeps the fleet paused"; 0)
+          elif $t == null then
+            verdict("resume"; null;
+              "own pause, but the current time (\($now | tojson)) is not epoch seconds, so whether it has ended cannot be told; failing open so bad data never keeps the fleet paused"; 0)
           elif $u > $t then
             verdict("hold"; $until; "own pause holds until \($until)"; 0)
           else
             verdict("resume"; null; "own pause ended at \($until)"; 0)
           end
       end
+    elif $t == null then
+      none("the current time (\($now | tojson)) is not epoch seconds; failing open")
     else
       ($min | posint) as $m | ($win | posint) as $w | ($probe | posint) as $p
       | if $m == null or $w == null or $p == null then
@@ -390,7 +396,9 @@ bb_collect() {
   for org in "$@"; do
     listed=$(bb_list_repos "$org") || continue
     while IFS= read -r repo; do
-      [ -n "$repo" ] && repos+=("$repo")
+      if [ -n "$repo" ]; then
+        repos+=("$repo")
+      fi
     done <<< "$listed"
   done
   if [ "${#repos[@]}" -eq 0 ]; then

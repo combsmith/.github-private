@@ -362,6 +362,29 @@ posted_comments() {
   BUDGET_BREAKER_MIN_ITEMS="" expect "empty = default" none null 2 "$two"
 }
 
+@test "decide: an unreadable clock never keeps an own pause in place, and never touches a human pause" {
+  local three got now
+  three="$(arr "$(row acme/app 1 -60 3600)" "$(row acme/app 2 -60 3600)" "$(row acme/app 3 -60 3600)")"
+  for now in "now" "-5" " "; do
+    # Own pause, unparseable until: resume without needing the time at all.
+    got=$(bb_decide "$three" true "$BUDGET_BREAKER_PAUSE_SOURCE" "soon" "$now")
+    [ "$(jq -r '.action' <<< "$got")" = "resume" ] || { echo "bad until, now=$now -> $got" >&2; false; }
+    # Own pause, valid until, but no usable clock: it cannot be told whether the
+    # hold has ended, so bad data must not keep the fleet paused.
+    got=$(bb_decide "$three" true "$BUDGET_BREAKER_PAUSE_SOURCE" "$(ts 3600)" "$now")
+    [ "$(jq -r '.action' <<< "$got")" = "resume" ] || { echo "valid until, now=$now -> $got" >&2; false; }
+    [[ "$(jq -r '.reason' <<< "$got")" == *"current time"* ]]
+    # A human pause is still left exactly alone.
+    got=$(bb_decide "$three" true "" "" "$now")
+    [ "$(jq -r '.action' <<< "$got")" = "none" ]
+    got=$(bb_decide "$three" true "maintainer" "" "$now")
+    [ "$(jq -r '.action' <<< "$got")" = "none" ]
+    # Not paused: still never a trip on an unreadable clock.
+    got=$(bb_decide "$three" false "" "" "$now")
+    [ "$(jq -r '.action' <<< "$got")" = "none" ]
+  done
+}
+
 @test "decide: the clock defaults to bb_now, which honors BUDGET_BREAKER_NOW" {
   [ "$(bb_now)" = "$NOW" ]
   local three
