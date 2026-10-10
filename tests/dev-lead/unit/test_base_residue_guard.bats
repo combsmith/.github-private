@@ -120,7 +120,8 @@ setup() {
 
 @test "brg_drop_residue: total revert is dropped back to HEAD — nothing left to commit" {
   git checkout -q origin/main -- .
-  mapfile -t paths < <(brg_find_residue main)
+  local -a paths=()
+  IFS=$'\n' read -r -d '' -a paths < <(brg_find_residue main) || true
   brg_drop_residue "${paths[@]}"
   [[ -z "$(git status --porcelain)" ]]
 }
@@ -128,7 +129,8 @@ setup() {
 @test "brg_drop_residue: partial revert drops only the residue and keeps real edits" {
   git checkout -q origin/main -- a.txt
   printf 'c-base\nc-fix\n' > c.txt
-  mapfile -t paths < <(brg_find_residue main)
+  local -a paths=()
+  IFS=$'\n' read -r -d '' -a paths < <(brg_find_residue main) || true
   brg_drop_residue "${paths[@]}"
   [[ "$(git status --porcelain)" == " M c.txt" ]]
   [[ "$(cat a.txt)" == $'a-base\na-pr' ]]

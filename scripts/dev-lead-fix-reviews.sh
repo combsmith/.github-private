@@ -2852,8 +2852,14 @@ Auto-merge has been disabled and no commit was pushed. A human should restore th
 # PR file back to its base content (lib/base-residue-guard.sh, #2216), with a
 # warning naming the paths. Fails open: an unresolvable base drops nothing.
 drop_base_residue() {
-  local intent="$1" residue brg_rc=0 paths
-  residue=$(brg_find_residue "${BASE_REF:-main}") || brg_rc=$?
+  local intent="$1" residue brg_rc=0 paths base_ref="${BASE_REF:-}"
+  # BASE_REF defaults to main before the PR context is read; resolve the PR's real
+  # base like the test-tamper guard does, failing open to the BASE_REF value.
+  if [ -n "${PR_NUMBER:-}" ] && [ -n "${REPO:-}" ]; then
+    base_ref=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" 2>/dev/null | jq -r '.base.ref // empty' 2>/dev/null) || base_ref=""
+    [ -n "$base_ref" ] || base_ref="${BASE_REF:-}"
+  fi
+  residue=$(brg_find_residue "$base_ref") || brg_rc=$?
   if [ "$brg_rc" -ne 0 ]; then
     echo "::warning::Base-residue guard: could not check the ${intent} pass for base-content residue — nothing dropped (#2216)"
     return 0
@@ -2861,17 +2867,17 @@ drop_base_residue() {
   [ -n "$residue" ] || return 0
   paths=$(printf '%s\n' "$residue" | paste -sd ',' - | sed 's/,/, /g')
   if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
-    echo "[dry-run] Base-residue guard: would drop uncommitted residue restoring PR file(s) to ${BASE_REF:-main}: ${paths}"
+    echo "[dry-run] Base-residue guard: would drop uncommitted residue restoring PR file(s) to ${base_ref}: ${paths}"
     return 0
   fi
   local -a residue_paths=()
-  mapfile -t residue_paths <<<"$residue"
+  IFS=$'\n' read -r -d '' -a residue_paths <<<"$residue" || true
   if ! brg_drop_residue "${residue_paths[@]}"; then
-    echo "::error::Base-residue guard: could not drop uncommitted residue restoring PR file(s) to ${BASE_REF:-main} [${paths}] — refusing to commit it (#2216)" >&2
+    echo "::error::Base-residue guard: could not drop uncommitted residue restoring PR file(s) to ${base_ref} [${paths}] — refusing to commit it (#2216)" >&2
     retract_unlanded_claims "$intent" failed || true
     exit 1
   fi
-  echo "::warning::Base-residue guard: the ${intent} pass left uncommitted changes restoring PR file(s) to ${BASE_REF:-main} content [${paths}] — dropped them, not committed (#2216)"
+  echo "::warning::Base-residue guard: the ${intent} pass left uncommitted changes restoring PR file(s) to ${base_ref} content [${paths}] — dropped them, not committed (#2216)"
 }
 
 # commit_and_push: adds all changes, commits with an intent-specific message,
