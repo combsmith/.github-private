@@ -659,7 +659,9 @@ jobs:
       # across fleet-monitor runs through actions/cache (a per-org, run-and-attempt-unique key,
       # restored by org prefix); the snapshot is uploaded as the gemini-tier-snapshot artifact for the
       # dry-run poller (#2029). Informational only: nothing gates or defers dispatch on
-      # it, and every step is non-blocking.
+      # it, and every step is non-blocking. The cache and artifact steps use
+      # continue-on-error (a storage hiccup must not fail the fleet monitor); the
+      # report step warns on failure instead.
       - name: Restore Gemini tier history
         continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -670,7 +672,6 @@ jobs:
             gemini-tier-history-${{ env.ORG }}-
 
       - name: Gemini availability per task tier
-        continue-on-error: true
         env:
           GEMINI_RECORDS_IN: ${{ runner.temp }}/gemini-records.jsonl
           GEMINI_TIER_STATE_DIR: .gemini-tier-state
@@ -679,7 +680,11 @@ jobs:
           AI_MODELS_GEMINI: ${{ vars.AI_MODELS_GEMINI || '' }}
           GEMINI_FLASH_MODEL: ${{ vars.GEMINI_FLASH_MODEL || '' }}
           GEMINI_PRO_MODEL: ${{ vars.GEMINI_PRO_MODEL || '' }}
-        run: bash scripts/gemini_tier_report.sh >> "$GITHUB_STEP_SUMMARY"
+        # Non-blocking, but not silent: a failing report raises a warning instead
+        # of hiding behind continue-on-error.
+        run: |
+          bash scripts/gemini_tier_report.sh >> "$GITHUB_STEP_SUMMARY" \
+            || echo "::warning::Gemini tier report failed (informational, non-blocking; #2041)"
 
       - name: Save Gemini tier history
         if: always()

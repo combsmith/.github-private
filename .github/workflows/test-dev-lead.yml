@@ -68,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install jsonschema
-        run: python3 -m pip install --quiet --only-binary ":all:" jsonschema
+        run: python3 -m pip install --quiet --only-binary ":all:" 'jsonschema>=4,<5'
 
       - name: Install bats
         run: |

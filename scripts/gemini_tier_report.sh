@@ -33,7 +33,7 @@ source "$_GTR_DIR/lib/engine-models.sh"
 source "$_GTR_DIR/lib/gemini-quota.sh"
 
 # gtr_merge_store <store> <new_records_file>
-# Merges <new_records_file> into <store>: keeps Gemini records that carry a key index
+# Merges <new_records_file> into <store>: keeps Gemini records that carry a well-formed key index
 # (token_usage, gemini_attempt, gemini_key_cooldown, gemini_rejection_sample) and
 # gemini_tier_notice state, drops anything older than the start of the oldest
 # retained day, and de-duplicates (a run re-collecting an artifact it already merged
@@ -51,10 +51,18 @@ gtr_merge_store() {
     return 0
   fi
   cat "${inputs[@]}" \
-    | jq -R -c -S --argjson cutoff "$cutoff" 'try fromjson catch empty
+    | jq -R -c -S --argjson cutoff "$cutoff" '
+        # The collected artifacts are untrusted (a fork PR run in a public repo can
+        # upload one) and the key index is printed in the job summary, so keep only
+        # the two shapes emit_token_record writes: a number, or digits plus a short
+        # lowercase suffix. Anything else is dropped here, before it can be retained
+        # in the cross-run store.
+        def key_index_ok:
+          (type == "number") or (type == "string" and test("^[0-9]{1,6}[a-z]{0,8}$"));
+        try fromjson catch empty
         | select(type == "object")
         | select(.kind == "gemini_tier_notice"
-                 or (.engine == "gemini" and .key_index != null
+                 or (.engine == "gemini" and (.key_index | key_index_ok)
                      and ((.kind // "token_usage") | IN("token_usage", "gemini_attempt",
                           "gemini_key_cooldown", "gemini_rejection_sample"))))
         | ((.ts // "") | try fromdateiso8601 catch null) as $e
@@ -130,7 +138,7 @@ gtr_render() {
   printf '|---|---:|---|---:|---:|---:|---:|---|\n'
   jq -r '.[] | . as $d
       | if (.rows | length) == 0 then "| \($d.day) | - | _no Gemini activity in the ledger_ | | | | | |"
-        else .rows[] | "| \($d.day) | \(.key_index) | `\(.model | gsub("[\\\\]"; "\\\\") | gsub("[|]"; "\\|") | gsub("`"; "'"'"'"))` | \(.calls) | \(.rejected) | \(.peak_per_min) | \(.rate_limit_events) | \(if .cap_hit then "**yes**" else "no" end) |"
+        else .rows[] | "| \($d.day) | \(.key_index | tostring | gsub("[^0-9a-z]"; "")) | `\(.model | gsub("[\\\\]"; "\\\\") | gsub("[|]"; "\\|") | gsub("`"; "'"'"'"))` | \(.calls) | \(.rejected) | \(.peak_per_min) | \(.rate_limit_events) | \(if .cap_hit then "**yes**" else "no" end) |"
         end' "$hist"
   printf '\n'
 

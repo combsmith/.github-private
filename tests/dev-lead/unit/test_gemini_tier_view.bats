@@ -799,6 +799,30 @@ jsonschema.validate(json.load(open(sys.argv[1])), json.load(open(sys.argv[2])))'
   [[ "$output" != *"bad-shape-row"* ]]
 }
 
+@test "store: a record with a malformed key index is dropped at merge and never reaches the summary" {
+  _caps "1 m-a free 10 none 20"
+  local dir="$BATS_TEST_TMPDIR/state" in="$BATS_TEST_TMPDIR/in.jsonl"
+  TOKEN_LOG_FILE="$in" _call_at 1 m-a $(( NOW - 60 ))
+  # Forged records from an untrusted artifact: a string key index carrying a table
+  # break and a link, an object, and a legitimate digits-plus-suffix index.
+  jq -cn --arg ts "$(_iso $(( NOW - 50 )))" \
+    '{kind:"token_usage", ts:$ts, engine:"gemini", key_index:"1 | [click](https://evil.example)", model:"m-a", total_tokens:5}' >> "$in"
+  jq -cn --arg ts "$(_iso $(( NOW - 40 )))" \
+    '{kind:"gemini_attempt", ts:$ts, engine:"gemini", key_index:{"a":1}, model:"m-a", rejected:true}' >> "$in"
+  jq -cn --arg ts "$(_iso $(( NOW - 30 )))" \
+    '{kind:"token_usage", ts:$ts, engine:"gemini", key_index:"2b", model:"m-a", total_tokens:5}' >> "$in"
+  export GEMINI_TIER_STATE_DIR="$dir" GEMINI_RECORDS_IN="$in"
+  run bash "$TIER_REPORT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"evil.example"* ]]
+  [[ "$output" != *"click"* ]]
+  ! grep -q 'evil.example' "$dir/history.jsonl"
+  ! grep -q '"key_index":{' "$dir/history.jsonl"
+  # The well-formed records survive.
+  grep -q '"key_index":1' "$dir/history.jsonl"
+  grep -q '"key_index":"2b"' "$dir/history.jsonl"
+}
+
 @test "store: a failing merge leaves the retained store untouched" {
   source "$TIER_REPORT"
   local dir="$BATS_TEST_TMPDIR/state" in="$BATS_TEST_TMPDIR/in.jsonl"
