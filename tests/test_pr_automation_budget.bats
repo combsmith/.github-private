@@ -585,7 +585,10 @@ mev() { jq -n --arg when "$1" --arg login "$2" '{when: $when, login: $login, age
   # maintainer-comment-gate.sh owns the registered list. maintainer-resolve is
   # the reply a maintainer posts through maintainer-resolve-comment.sh — a human
   # act, so it must keep resetting the budget.
-  local gate fam
+  # The budget regex is intentionally more restrictive to prevent false positives
+  # when humans quote marker keywords: it requires proper delimiters (space, dash,
+  # or colon) after keywords without built-in delimiters. Test with valid bodies.
+  local gate fam suffix
   gate=$(grep -m1 "^readonly _MAINTAINER_GATE_AGENT_MARKERS=" \
     "$(dirname "$BATS_TEST_FILENAME")/../scripts/lib/maintainer-comment-gate.sh")
   [ -n "$gate" ]
@@ -593,7 +596,13 @@ mev() { jq -n --arg when "$1" --arg login "$2" '{when: $when, login: $login, age
   while IFS= read -r fam; do
     [ -n "$fam" ] || continue
     [ "$fam" = "maintainer-resolve" ] && continue
-    run pr_budget_body_is_agent_marked "<!-- ${fam}x y=z -->"
+    # Keywords with built-in delimiters can use any suffix; others need space/dash/colon
+    case "$fam" in
+      persona:|auto-rebase-*:*) suffix="x y=z" ;;    # Has built-in delimiter
+      auto-rebase-*) suffix="x y=z" ;;               # Dash is delimiter
+      *) suffix=" x y=z" ;;                          # Needs space delimiter
+    esac
+    run pr_budget_body_is_agent_marked "<!-- ${fam}${suffix} -->"
     [ "$status" -eq 0 ] || { echo "gate marker not covered: $fam"; return 1; }
   done < <(tr '|' '\n' <<<"$gate")
 }

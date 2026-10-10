@@ -62,7 +62,9 @@ _PR_BUDGET_DEPENDABOT_AUTHOR="dependabot[bot]"
 # `maintainer-resolve` is left out, because a maintainer posts it through
 # maintainer-resolve-comment.sh and that is a human act; and this breaker's own
 # escalation marker is added, because dev-lead posts it as the owner account.
-PR_BUDGET_AGENT_MARKER_RE='<!-- (pr-review-agent|pr-review-claim|persona:|dev-lead|dependency-advisory|auto-rebase-|pr-automation-budget)[^>]*-->'
+# Ensure agent markers are anchored to prevent matching arbitrary text: most need
+# a delimiter (colon, dash, or space) after the keyword (#2224 false-positive fix).
+PR_BUDGET_AGENT_MARKER_RE='<!-- (pr-review-agent[ ]|pr-review-claim[ ]|persona:|dev-lead[ :-]|dependency-advisory[ ]|auto-rebase-|pr-automation-budget[ ])[^>]*-->'
 
 # The label this breaker adds on exhaustion (and the cycle cap adds on escalation).
 # It is the human-controlled re-engagement gate: a human removing it resumes
