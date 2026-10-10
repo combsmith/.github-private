@@ -97,6 +97,39 @@ _resolve_remote_branch() {
 # case _pinned_force_push falls back to --force-with-lease --force-if-includes.
 _PUSH_GUARD_REMOTE_SHA=""
 _PUSH_GUARD_BRANCH=""
+# Newline-separated `<old>\t<new>` rows: each dev-lead commit the steering rebase
+# rewrote, and the commit that now carries the same change (#2032). The model's
+# "Fixed in <sha>" replies cite the pre-rebase SHAs, which never reach the remote;
+# the claim sweep (retract_unlanded_claims) re-points them through this map instead
+# of retracting fixes that landed. Accumulates across pushes in one run.
+_PUSH_GUARD_REWRITES="${_PUSH_GUARD_REWRITES:-}"
+
+# _push_guard_commit_keys <range> — one `<sha>\t<key>` row per commit in <range>.
+# The key hashes the author name, email and date and the full message: a rebase
+# keeps all four, so the key identifies a commit across the rewrite even when the
+# foreign commit shifted its diff context (which would change a patch-id).
+_push_guard_commit_keys() {
+  local sha key
+  git rev-list "$1" 2>/dev/null | while IFS= read -r sha; do
+    [ -z "$sha" ] && continue
+    key=$(git show -s --format='%an%x00%ae%x00%at%x00%B' "$sha" 2>/dev/null | git hash-object --stdin 2>/dev/null) || continue
+    [ -n "$key" ] && printf '%s\t%s\n' "$sha" "$key"
+  done
+  return 0
+}
+
+# _push_guard_rewrite_map <old_keys> <new_keys> — pair `<sha>\t<key>` rows from
+# before and after a rebase into `<old>\t<new>` rows. Only a key that occurs once
+# on each side is paired; an ambiguous or dropped commit maps to nothing, so its
+# claim fails closed (is retracted) rather than following a guess.
+_push_guard_rewrite_map() {
+  awk -F'\t' '
+    NF < 2 { next }
+    FNR == NR { oc[$2]++; o[$2] = $1; next }
+    { nc[$2]++; n[$2] = $1 }
+    END { for (k in o) if (oc[k] == 1 && nc[k] == 1 && o[k] != n[k]) print o[k] "\t" n[k] }
+  ' <(printf '%s\n' "$1") <(printf '%s\n' "$2")
+}
 
 incorporate_remote_head() {
   _PUSH_GUARD_REMOTE_SHA=""
@@ -151,7 +184,19 @@ incorporate_remote_head() {
   echo "::warning::steering detected on ${remote}/${branch} — commit(s) by a non-dev-lead identity present on the remote that HEAD did not incorporate; rebasing onto them so they are never discarded (#1607):" >&2
   printf '%s\n' "$foreign_oneline" >&2
 
+  # Record dev-lead's commits before the rebase so their rebased successors can
+  # be paired with them afterwards (#2032).
+  local pre_rebase_keys
+  pre_rebase_keys=$(_push_guard_commit_keys "${remote_sha}..HEAD")
+
   if git rebase --quiet "$remote_sha" 2>/dev/null; then
+    local rewrites
+    rewrites=$(_push_guard_rewrite_map "$pre_rebase_keys" "$(_push_guard_commit_keys "${remote_sha}..HEAD")")
+    if [ -n "$rewrites" ] && [ -n "$_PUSH_GUARD_REWRITES" ]; then
+      _PUSH_GUARD_REWRITES+=$'\n'"${rewrites}"
+    elif [ -n "$rewrites" ]; then
+      _PUSH_GUARD_REWRITES="$rewrites"
+    fi
     _push_guard_summary "### dev-lead: maintainer steering incorporated (#1607)"
     _push_guard_summary "A commit by a non-dev-lead identity was on \`${remote}/${branch}\` and has been rebased into this push rather than discarded:"
     _push_guard_summary ""

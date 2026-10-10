@@ -150,6 +150,198 @@ _comments() {
 }
 
 # ---------------------------------------------------------------------------
+# #2032: earlier passes are swept, a claim cannot predate its finding, a clean
+# rebase keeps true claims, and a wrongly retracted reply can recover.
+# ---------------------------------------------------------------------------
+
+_claim_body() {
+  # _claim_body <sha> [text] — an addressed reply carrying a #1692 claim on f.
+  printf '%s\n\n<!-- dev-lead:addressed -->\n<!-- dev-lead:claim {"v":1,"sha":"%s","files":["f"]} -->' \
+    "${2:-Fixed in f: handled the empty case.}" "$1"
+}
+
+@test "cl_retract_body: keeps the original claim in a retracted-claim comment that is NOT a claim" {
+  local out
+  out=$(cl_retract_body "$(_claim_body "$A40")" "not-on-ref")
+  [[ "$out" == *"<!-- dev-lead:retracted-claim {\"v\":1,\"sha\":\"$A40\",\"files\":[\"f\"]} -->"* ]]
+  # It can never authorize resolution: neither marker nor a parseable claim survives.
+  [[ "$out" != *"dev-lead:addressed"* ]]
+  run acv_parse_claim "$out"
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == "no-claim" ]]
+}
+
+@test "cl_retract_body: a reply with no parseable claim gets no retracted-claim comment" {
+  run cl_retract_body "Fixed. <!-- dev-lead:addressed -->" "unverifiable"
+  [[ "$output" != *"retracted-claim"* ]]
+}
+
+@test "cl_restore_body: rebuilds the original reply with both markers from a retraction" {
+  local orig retracted
+  orig=$(_claim_body "$A40" "Fixed in f: line one.
+second line")
+  retracted=$(cl_retract_body "$orig" "not-on-ref")
+  run cl_restore_body "$retracted" "{\"v\":1,\"sha\":\"$A40\",\"files\":[\"f\"]}"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"Fixed in f: line one."* ]]
+  [[ "$output" == *"second line"* ]]
+  [[ "$output" != *"Retracted"* ]]
+  [[ "$output" != *"dev-lead:retracted"* ]]
+  [[ "$output" == *"<!-- dev-lead:addressed -->"* ]]
+  run acv_parse_claim "$(cl_restore_body "$retracted" "{\"v\":1,\"sha\":\"$A40\",\"files\":[\"f\"]}")"
+  [[ "$status" -eq 0 ]]
+  [[ "$(jq -r .sha <<<"$output")" == "$A40" ]]
+}
+
+@test "cl_retract_body/cl_restore_body: a claim containing -- is stored escaped and restores" {
+  local claim='{"v":1,"sha":"'"$A40"'","files":["a--b.txt"]}' orig retracted
+  orig=$(printf 'Fixed.\n\n<!-- dev-lead:addressed -->\n<!-- dev-lead:claim %s -->' "$claim")
+  retracted=$(cl_retract_body "$orig" "not-on-ref")
+  [[ "$retracted" == *"dev-lead:retracted-claim "* ]]
+  local line
+  line=$(grep '^<!-- dev-lead:retracted-claim ' <<<"$retracted")
+  local payload="${line#'<!-- dev-lead:retracted-claim '}"
+  [[ "${payload%' -->'}" != *"--"* ]]
+  run cl_restore_body "$retracted" "$claim"
+  [[ "$status" -eq 0 ]]
+  [[ "$(acv_parse_claim "$output" | jq -r '.files[0]')" == "a--b.txt" ]]
+}
+
+@test "cl_restore_body: a reply that never carried the addressed-marker does not gain one" {
+  local orig retracted
+  orig=$(printf 'Fixed in f.\n\n<!-- dev-lead:claim {"v":1,"sha":"%s","files":["f"]} -->' "$A40")
+  retracted=$(cl_retract_body "$orig" "not-on-ref")
+  [[ "$retracted" == *"<!-- dev-lead:retracted-unaddressed -->"* ]]
+  run cl_restore_body "$retracted" "{\"v\":1,\"sha\":\"$A40\",\"files\":[\"f\"]}"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" != *"dev-lead:addressed"* ]]
+  [[ "$output" != *"dev-lead:retracted"* ]]
+}
+
+@test "cl_restore_body: an invalid claim payload restores nothing" {
+  run cl_restore_body "$(cl_retract_body "$(_claim_body "$A40")" x)" '{"v":1,"sha":"short","files":["f"]}'
+  [[ "$status" -eq 1 ]]
+  [[ -z "$output" ]]
+}
+
+@test "cl_rewrite_claim_sha: swaps the claim SHA and keeps the rest of the reply" {
+  run cl_rewrite_claim_sha "$(_claim_body "$A40")" "$B40"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"Fixed in f: handled the empty case."* ]]
+  [[ "$output" == *"<!-- dev-lead:addressed -->"* ]]
+  [[ "$output" != *"$A40"* ]]
+  run acv_parse_claim "$(cl_rewrite_claim_sha "$(_claim_body "$A40")" "$B40")"
+  [[ "$(jq -r .sha <<<"$output")" == "$B40" ]]
+  [[ "$(jq -c .files <<<"$output")" == '["f"]' ]]
+}
+
+@test "cl_rewrite_claim_sha: no claim or a bad new SHA -> rc1, nothing echoed" {
+  run cl_rewrite_claim_sha "Fixed. <!-- dev-lead:addressed -->" "$B40"
+  [[ "$status" -eq 1 ]]; [[ -z "$output" ]]
+  run cl_rewrite_claim_sha "$(_claim_body "$A40")" "abc123"
+  [[ "$status" -eq 1 ]]; [[ -z "$output" ]]
+}
+
+@test "cl_map_sha: finds the rebased successor of a SHA, rc1 when unmapped" {
+  local map
+  map=$(printf '%s\t%s\n%s\t%s\n' "$A40" "$B40" "$C40" "$A40")
+  run cl_map_sha "$A40" "$map"
+  [[ "$status" -eq 0 ]]; [[ "$output" == "$B40" ]]
+  run cl_map_sha "$B40" "$map"
+  [[ "$status" -eq 1 ]]; [[ -z "$output" ]]
+  run cl_map_sha "$A40" ""
+  [[ "$status" -eq 1 ]]
+}
+
+@test "cl_map_sha: follows a rewrite chain to the final SHA (A->B, B->C gives C)" {
+  local map
+  map=$(printf '%s\t%s\n%s\t%s\n' "$A40" "$B40" "$B40" "$C40")
+  run cl_map_sha "$A40" "$map"
+  [[ "$status" -eq 0 ]]; [[ "$output" == "$C40" ]]
+  # A cycle terminates instead of looping forever.
+  map=$(printf '%s\t%s\n%s\t%s\n' "$A40" "$B40" "$B40" "$A40")
+  run cl_map_sha "$A40" "$map"
+  [[ "$status" -eq 0 || "$status" -eq 1 ]]
+}
+
+_earlier_comments() {
+  # A finding (100) from a review bot, and our replies to it from EARLIER passes.
+  jq -c -n --arg a "$A40" --arg b "$B40" '[
+    {id: 100, user: {login: "coderabbitai[bot]"}, created_at: "2026-10-01T08:00:00Z",
+     body: "Potential issue: empty input crashes."},
+    {id: 101, user: {login: "donpetry-bot"}, created_at: "2026-10-01T09:00:00Z", in_reply_to_id: 100,
+     body: ("Fixed.\n<!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\"v\":1,\"sha\":\"" + $a + "\",\"files\":[\"f\"]} -->")},
+    {id: 102, user: {login: "donpetry-bot"}, created_at: "2026-10-01T09:30:00Z", in_reply_to_id: 100,
+     body: ("**⚠️ Retracted**\n\n> Fixed.\n\n<!-- dev-lead:retracted-claim {\"v\":1,\"sha\":\"" + $b + "\",\"files\":[\"f\"]} -->\n<!-- dev-lead:retracted reason=not-on-ref -->")},
+    {id: 103, user: {login: "donpetry-bot"}, created_at: "2026-10-01T09:40:00Z", in_reply_to_id: 100,
+     body: "Fixed (marker only, pre-#1692).\n<!-- dev-lead:addressed -->"},
+    {id: 104, user: {login: "donpetry-bot"}, created_at: "2026-10-01T09:50:00Z", in_reply_to_id: 100,
+     body: "Fixed.\n<!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\"v\":1,\"sha\":\"short\",\"files\":[\"f\"]} -->"},
+    {id: 105, user: {login: "coderabbitai[bot]"}, created_at: "2026-10-01T09:55:00Z", in_reply_to_id: 100,
+     body: ("<!-- dev-lead:claim {\"v\":1,\"sha\":\"" + $a + "\",\"files\":[\"f\"]} -->")},
+    {id: 106, user: {login: "donpetry-bot"}, created_at: "2026-10-02T10:05:00Z", in_reply_to_id: 100,
+     body: ("This pass.\n<!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\"v\":1,\"sha\":\"" + $a + "\",\"files\":[\"f\"]} -->")}
+  ]'
+}
+
+@test "cl_select_earlier_claims: our claim + retracted-claim replies from BEFORE the pass, with the finding date" {
+  run cl_select_earlier_claims "$(_earlier_comments)" "donpetry-bot" "2026-10-02T10:00:00Z"
+  [[ "$status" -eq 0 ]]
+  # 101 claimed; 102 retracted (carries its payload); 103 marker-only is history
+  # we cannot verify (skipped); 104 has a malformed claim (empty payload -> the
+  # caller retracts it); 105 is another account; 106 belongs to this pass.
+  local expected
+  expected=$(printf '101\x1fclaimed\x1f{"v":1,"sha":"%s","files":["f"]}\x1f2026-10-01T08:00:00Z\n102\x1fretracted\x1f{"v":1,"sha":"%s","files":["f"]}\x1f2026-10-01T08:00:00Z\n104\x1fclaimed\x1f\x1f2026-10-01T08:00:00Z' "$A40" "$B40")
+  [[ "$output" == "$expected" ]]
+}
+
+@test "cl_select_earlier_claims: no pass start or a non-array payload -> selects nothing" {
+  run cl_select_earlier_claims "$(_earlier_comments)" "donpetry-bot" ""
+  [[ "$status" -eq 0 ]]; [[ -z "$output" ]]
+  run cl_select_earlier_claims '{"message":"Not Found"}' "donpetry-bot" "2026-10-02T10:00:00Z"
+  [[ "$status" -eq 0 ]]; [[ -z "$output" ]]
+}
+
+@test "cl_select_earlier_claims: a reply whose finding is not in the listing has an empty finding date" {
+  local json
+  json=$(jq -c -n --arg a "$A40" '[{id: 7, user: {login: "donpetry-bot"}, created_at: "2026-10-01T09:00:00Z", in_reply_to_id: 999,
+     body: ("x\n<!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\"v\":1,\"sha\":\"" + $a + "\",\"files\":[\"f\"]} -->")}]')
+  run cl_select_earlier_claims "$json" "donpetry-bot" "2026-10-02T10:00:00Z"
+  [[ "$output" == "$(printf '7\x1fclaimed\x1f{"v":1,"sha":"%s","files":["f"]}\x1f' "$A40")" ]]
+}
+
+@test "cl_earlier_claim_verdict: on the remote head, touches its files, committed after the finding -> kept rc0" {
+  run cl_earlier_claim_verdict true true "2026-10-01T09:00:00Z" "2026-10-01T08:00:00Z"
+  [[ "$status" -eq 0 ]]; [[ "$output" == "kept" ]]
+  # Same second counts as not-before.
+  run cl_earlier_claim_verdict true true "2026-10-01T08:00:00Z" "2026-10-01T08:00:00Z"
+  [[ "$status" -eq 0 ]]; [[ "$output" == "kept" ]]
+  # No finding to compare against: the order rule does not apply.
+  run cl_earlier_claim_verdict true true "2026-10-01T09:00:00Z" ""
+  [[ "$status" -eq 0 ]]; [[ "$output" == "kept" ]]
+}
+
+@test "cl_earlier_claim_verdict: not on the remote head -> not-on-ref rc1" {
+  run cl_earlier_claim_verdict false true "2026-10-01T09:00:00Z" "2026-10-01T08:00:00Z"
+  [[ "$status" -eq 1 ]]; [[ "$output" == "not-on-ref" ]]
+}
+
+@test "cl_earlier_claim_verdict: does not touch its claimed files -> no-file-intersection rc1" {
+  run cl_earlier_claim_verdict true false "2026-10-01T09:00:00Z" "2026-10-01T08:00:00Z"
+  [[ "$status" -eq 1 ]]; [[ "$output" == "no-file-intersection" ]]
+}
+
+@test "cl_earlier_claim_verdict: committed BEFORE the finding it answers (571a3b8) -> predates-finding rc1" {
+  run cl_earlier_claim_verdict true true "2026-10-01T07:59:59Z" "2026-10-01T08:00:00Z"
+  [[ "$status" -eq 1 ]]; [[ "$output" == "predates-finding" ]]
+}
+
+@test "cl_earlier_claim_verdict: a finding date with no commit date fails closed -> unverifiable rc1" {
+  run cl_earlier_claim_verdict true true "" "2026-10-01T08:00:00Z"
+  [[ "$status" -eq 1 ]]; [[ "$output" == "unverifiable" ]]
+}
+
+# ---------------------------------------------------------------------------
 # cl_remote_head — the single impure reader
 # ---------------------------------------------------------------------------
 
