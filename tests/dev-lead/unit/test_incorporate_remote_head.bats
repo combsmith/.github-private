@@ -184,3 +184,56 @@ _remote_log()  { git --git-dir="$REMOTE" log --format='%s' main; }
   [ "$status" -eq 0 ]
   [ "$(_remote_head)" = "$head" ]
 }
+
+# ── #2032: a clean rebase records old→new SHAs ───────────────────────────────
+# The model's "Fixed in <sha>" replies cite dev-lead's PRE-rebase commits. When
+# the guard rebases them onto a steering commit, those SHAs exist nowhere on the
+# remote, so the claim sweep needs the map to keep the claims that did land.
+
+@test "#2032: a clean rebase onto steering records each dev-lead commit's rebased SHA" {
+  cd "$WORK"
+  source "$GUARD_LIB"
+  echo one > one; git add one; git commit -q -m "dev-lead fix one"
+  local old1; old1=$(git rev-parse HEAD)
+  echo two > two; git add two; git commit -q -m "dev-lead fix two"
+  local old2; old2=$(git rev-parse HEAD)
+  _maintainer_push steering.txt "keep me"
+
+  push_no_clobber origin main
+  local new2 new1
+  new2=$(git rev-parse HEAD); new1=$(git rev-parse HEAD~1)
+  [ "$new2" != "$old2" ]
+  [ "$(_remote_head)" = "$new2" ]
+  grep -qx "${old1}"$'\t'"${new1}" <<<"$_PUSH_GUARD_REWRITES"
+  grep -qx "${old2}"$'\t'"${new2}" <<<"$_PUSH_GUARD_REWRITES"
+  [ "$(grep -c . <<<"$_PUSH_GUARD_REWRITES")" -eq 2 ]
+}
+
+@test "#2032: no rebase (plain fast-forward) records no rewrites" {
+  cd "$WORK"
+  source "$GUARD_LIB"
+  echo ff > ff; git add ff; git commit -q -m "ff commit"
+  push_no_clobber origin main
+  [ -z "$_PUSH_GUARD_REWRITES" ]
+}
+
+@test "#2032: an un-incorporable steering commit records no rewrites" {
+  cd "$WORK"
+  source "$GUARD_LIB"
+  printf 'dev-lead line\n' >> base; git add base; git commit -q -m "dev-lead edits base"
+  _maintainer_push base "maintainer rewrite of base"
+  local push_status=0
+  push_no_clobber origin main || push_status=$?
+  [ "$push_status" -ne 0 ]
+  [ -z "$_PUSH_GUARD_REWRITES" ]
+}
+
+@test "#2032: _push_guard_rewrite_map pairs only unique keys" {
+  source "$GUARD_LIB"
+  local old new
+  old=$(printf 'o1\tk1\no2\tk2\no3\tdup\no4\tdup\no5\tgone\n')
+  new=$(printf 'n1\tk1\nn2\tk2\nn3\tdup\nn4\tdup\n')
+  run _push_guard_rewrite_map "$old" "$new"
+  [ "$status" -eq 0 ]
+  [ "$(sort <<<"$output")" = "$(printf 'o1\tn1\no2\tn2')" ]
+}
