@@ -73,15 +73,43 @@ The boundary a check can assert: **no dev-lead claim reply survives a pass
 unless the claim's commit was produced by that pass and is on the remote
 head.**
 
+Follow-up ([#2032](https://github.com/petry-projects/.github-private/issues/2032)):
+
+- **Earlier passes are swept too.** A run that is cancelled or killed after its
+  model replies never reaches its own sweep. So every pass, before it posts
+  anything, checks the claim replies our account posted in earlier passes
+  (`sweep_earlier_claims`, `cl_earlier_claim_verdict`). A verifiable claim
+  survives only if its commit is on the remote head, touches the claimed files,
+  and was committed no earlier than the review comment it answers. The sweep
+  fails open when it cannot verify: it leaves a claim as is when the remote head
+  or the comments cannot be read, the checkout is shallow and lacks the commit,
+  or GitHub cannot be asked about the commit; the date check is skipped when the
+  finding's timestamp is missing. A commit that is not on the head but is known
+  to GitHub was pushed and then rewritten, so its claim is kept, not retracted;
+  only a commit GitHub has never seen is. A retracted reply keeps its original
+  claim in a `dev-lead:retracted-claim` comment (with `--` JSON-escaped), which
+  is never read as a claim. If that claim later passes the same check, the
+  reply is restored without a new commit, and gets the addressed-marker back
+  only if it carried one before.
+- **A clean rebase keeps true claims.** When the push guard rebases dev-lead's
+  commits onto a foreign commit, it records each old→new SHA pair
+  (`_PUSH_GUARD_REWRITES`), matched on author, author date and message, which
+  a rebase keeps. The sweep re-points a claim at its rebased successor when
+  that successor landed, so the thread resolves in the same pass.
+
 ## Consequences
 
 - A rejected, aborted or failed pass leaves retracted replies, not false
   "Fixed" ones. The thread stays open and the next pass re-verifies.
-- The fail-closed direction costs some true claims. When the push guard
-  rebases dev-lead's commits onto a foreign commit, the SHAs the model cited
-  no longer exist on the remote, so those claims are retracted even though the
-  fix landed. Re-mapping rebased SHAs is a possible follow-up. A stuck thread
-  is a nuisance; a wrongly cleared gate is a defect.
+- The fail-closed direction costs some true claims. A stuck thread is a
+  nuisance; a wrongly cleared gate is a defect. Since #2032 a clean rebase no
+  longer costs any, because claims are re-mapped to the rebased SHAs. Two
+  cases are still lost. If a run is cancelled after its rebased push but
+  before its sweep, the old→new map is gone, so the next pass retracts the
+  claim. The same happens to a commit that is ambiguous or that the rebase
+  dropped.
+- Two passes that overlap can retract each other's replies before they push.
+  The next pass restores any whose commit has landed.
 - The model must commit locally before it replies, so its claims can cite a
   real commit. The prompts now say so. A pass that leaves its changes
   uncommitted gets them committed by the harness, and its claims (citing the
