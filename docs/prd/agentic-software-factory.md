@@ -10,7 +10,7 @@ This document states what the `petry-projects` agentic software factory must do 
 production-grade. It is written for the maintainer, who decides scope and targets, and for whoever
 designs and builds against it, human or agent.
 
-It is one of three documents produced by the October 2026 architecture review:
+It is one of four documents produced by the October 2026 architecture review:
 
 - **This PRD** — the requirements. It says *what* and *how well*, not *how*.
 - [`docs/architecture/factory-mvp-architecture-review.md`](../architecture/factory-mvp-architecture-review.md)
@@ -18,6 +18,9 @@ It is one of three documents produced by the October 2026 architecture review:
   requirements.
 - [`docs/architecture/adr/0012-factory-mvp-reference-architecture.md`](../architecture/adr/0012-factory-mvp-reference-architecture.md)
   — the proposed decision.
+- [`docs/research/market-agentic-software-factories-research-2026-10-10.md`](../research/market-agentic-software-factories-research-2026-10-10.md)
+  — market research: what the market offers, who the customer is, and where this Factory sits.
+  This PRD was revised against it; §7 of that document lists what changed.
 
 The current system is treated as a proof of concept (the **POC**). It established which functions
 are possible and where the hard problems are. This PRD defines the **MVP**: the first version
@@ -55,6 +58,20 @@ MVP keeps the functions and adds six properties:
 6. **A change to the factory reaches production by one gated path**, and the maintainer can say when
    it will be live and roll it back in one action.
 
+**What is distinctive.** By late 2026 the market had made the workers a commodity: turning an
+issue into a pull request, repairing CI on that pull request and giving it a first review are each
+offered by eight or more products, several free on public repos ([market research](../research/market-agentic-software-factories-research-2026-10-10.md), §4.3).
+What no product offers a solo operator is what surrounds the workers:
+
+- a merge decision taken unattended on the operator's own policy, by an approver that is not the
+  writer. Four vendors refuse in writing to merge to a default branch;
+- a view across a portfolio of repos of why each Work item is waiting;
+- one versioned definition of the automation, rolled out in stages across a dozen repos;
+- work admitted against the capacity actually left, with a hard cap on spend;
+- verification by Lenses from different vendors and of different kinds.
+
+That is the Factory's scope. It builds the line. It adopts the workers.
+
 **The working hypothesis is convergence.** A change is better when a council of independent Lenses
 (models, tools and perspectives, each looking for something different) has examined it and their
 Findings have been resolved, than when one agent has done its best alone. That holds across the
@@ -90,6 +107,12 @@ was sound locally. The pattern says the problems are structural, and structural 
 decided structure. That is what the accompanying ADR proposes; this PRD states what the structure
 must achieve.
 
+The pattern is not peculiar to this org. Across about 22,000 developers, periods of high agent
+adoption showed median review time five times longer, incidents per pull request up 243% and
+deployments per week down 11.7%, while task throughput rose 34%. In a sample of merged agent pull
+requests in significant public repos, 56% had no human reviewer ([market research](../research/market-agentic-software-factories-research-2026-10-10.md), §2.3).
+Output is up across the industry and delivery is not. Verification is the bottleneck everywhere.
+
 Some things did improve and must be kept: hard failures are 0.9% of runs, against 100% failure
 streaks in April; the self-mention loop that produced the PR 860 runaway has not recurred; trunk
 corruption stopped once its guard became a required check.
@@ -98,8 +121,10 @@ corruption stopped once its guard became a required check.
 
 ### 3.1 Users
 
-- **Maintainer.** The one human in the org. States intent, makes the decisions the factory may not
-  make, and is the operator of last resort. Has no on-call rotation and no second reviewer.
+- **Maintainer.** The one human in the org: a technical solo builder running a portfolio of
+  products. States intent, makes the decisions the factory may not make, and is the operator of
+  last resort. Has no on-call rotation and no second reviewer. Can read code, owns the repos and
+  the deployments, and pays for model access from a personal budget.
 - **Repo owner.** Adopts the factory in a repo and expects it to work without learning its
   internals. Today this is the Maintainer in a different seat.
 - **Factory developer.** Changes the factory itself. Usually an agent role working an issue;
@@ -108,6 +133,16 @@ corruption stopped once its guard became a required check.
   requests. Is not trusted.
 
 Roles (the agents) are actors in the system, not users of it.
+
+**Non-users.** Founders who cannot read code and ship from prompt-to-app builders are the largest
+group of solo builders and cannot operate a Factory built on GitHub and CI; they are out of scope by
+construction. So are teams looking for a hosted product with a vendor behind it ([market
+research](../research/market-agentic-software-factories-research-2026-10-10.md), §3.1).
+
+**What the wider segment says it needs** matches this Maintainer's jobs below: a stopping rule that
+can be trusted when nobody is watching, a hard cap on spend, review that scales past one person, and
+guardrails that do not need a platform team. One person supervises two to five agents, with a
+ceiling near eight, and the limit they name is their own attention (§3.1 to §3.3 of the research).
 
 ### 3.2 Jobs to be done
 
@@ -224,7 +259,9 @@ These are facts of the environment. A design that ignores one is not viable.
   Actions minutes are free.
 - **C-3. LLM capacity is a subscription window, not a metered API.** The binding limit is a 5-hour
   and a weekly window. The only usage signal is an unsupported endpoint that refuses the credential
-  CI holds.
+  CI holds. This basis is not secure: the provider announced in May 2026 that programmatic use
+  would move off subscription limits to API rates, and paused the change on the day it was due
+  (C-11).
 - **C-4. GitHub-native operation.** The June 2026 release initiative fixed "no new repos, no
   external infrastructure". The Maintainer lifted the first half on 2026-10-10: the Factory is
   built in a new repo (§11, OQ-5). `[ASSUMPTION]` The second half, no always-on infrastructure,
@@ -245,6 +282,12 @@ These are facts of the environment. A design that ignores one is not viable.
 - **C-9. Twenty runner slots.** The free plan allows 20 concurrent hosted-runner jobs.
   `[ASSUMPTION]` The limit is shared by every repo in the org. One push to a pull request in the
   Hosting repo starts about 56 jobs.
+- **C-11. Capacity terms can change on short notice.** In 2026 one platform moved its coding
+  product from flat to token-metered billing, one model provider announced and then paused the same
+  for automated use of its subscriptions, and another withdrew its command-line tool from
+  subscribers with about thirty days' notice. Limits on flat plans are unpublished and changeable.
+  The Factory's cost per change at API rates is several times its cost on a subscription
+  ([market research](../research/market-agentic-software-factories-research-2026-10-10.md), §2.5).
 - **C-10. One Maintainer's attention is the first limit on output.** Each change that needs a human
   audit, a cleared Hold or an Override costs Maintainer time, estimated at 10–12 hours a week at
   the POC's 30–36 merges. No requirement below can be met by spending more of it.
@@ -319,6 +362,11 @@ feature gives every Role one contract. Realizes UJ-7.
 - **FR-13. Engine independence.** A Role manifest names a capability tier, not a vendor or model.
   - Changing the Engine behind a tier is a configuration change gated by that tier's evals.
   - A Run records the Engine and model that actually served it, including after a fallback.
+- **FR-72. Workers and reviewers are adopted, not rebuilt.** Where a maintained product or toolkit
+  performs an Intent or acts as a Lens, the Factory uses it through the run contract or the Finding
+  contract. The Factory builds a worker of its own only where none meets the contract.
+  - Replacing one worker or reviewer with another changes configuration, not the Kernel.
+  - No part of the Factory depends on a product that has no declared replacement.
 - **FR-14. Shared-branch safety.** A Role that pushes to a branch other actors push to never
   discards a commit it did not make, never alters an existing test without a cited justification,
   and never pushes a change that turns a passing test red.
@@ -440,6 +488,12 @@ allows. Realizes UJ-8, UJ-9.
   repo and Release, and marked as first-pass or rework.
 - **FR-39. Cost ceiling per Work item.** Each class of Work item has a declared cost ceiling.
   Reaching it places a Hold that states the amount spent.
+- **FR-73. The Factory can run on metered capacity under a hard cap.** Every Role can be served from
+  a metered API credential as well as a subscription, and the choice is configuration.
+  - A hard monthly cap in currency stops Admission when it is reached. It is a brake outside the
+    Kernel.
+  - The scorecard reports what each period would have cost at API rates, whichever basis paid for
+    it.
 
 ### 6.7 Observability
 
@@ -651,6 +705,11 @@ the org's job-minutes `[ASSUMPTION]`.
   Validates FR-69.
 - **SM-10. Eval coverage.** Share of code-writing and Gate-deciding Intents with a passing held-out
   eval set. Target 100%. Validates FR-55.
+- **SM-13. Factory against one agent.** Cost, lead time and escaped defects per merged change for
+  work run through the Factory, against the same class of work done by one agent with the same
+  pre-flight checks and one human approval. The market's strongest objection is that orchestration
+  does not beat a single well-run agent; this is the measure that answers it. Validates the
+  premise, not a requirement.
 
 ### 9.3 Counter-metrics (do not optimise)
 
@@ -698,6 +757,23 @@ repos:
    reason to remain.
 5. The Maintainer's account authored no agent commit, comment or review.
 
+### 10.4 Build versus adopt
+
+From the competitive analysis ([market research](../research/market-agentic-software-factories-research-2026-10-10.md), §4.3).
+
+| Capability | Position | Why |
+|---|---|---|
+| The Lifecycle, Admission, the State record and Ledger | **Build** | No product offers a cross-repo account of why each Work item is waiting |
+| The merge decision and its policy | **Build** | Every vendor hands it back; four refuse in writing |
+| The Finding contract and Convergence | **Build** | No product draws reviewers from different vendors and kinds |
+| Staged release of the Factory across a portfolio | **Build** | Not documented by anyone |
+| Capacity admission and the hard cap | **Build** | Vendors meter spend; none admits work against what is left |
+| Turning an issue into a pull request | **Adopt** | Offered by more than ten products |
+| CI repair and review follow-up on an agent's own pull request | **Adopt** | Offered by more than eight |
+| First-pass review | **Adopt** | Free on public repos from several vendors |
+| Deterministic analysis | **Adopt** | Open tools reporting through code scanning |
+| Requested effects with a separate applier | **Adopt if it fits** | GitHub's Agentic Workflows ships this pattern under an open licence (OQ-14) |
+
 ## 11. Open questions
 
 1. **OQ-1. Is "no always-on infrastructure" still a hard constraint?** It decides whether an
@@ -738,6 +814,18 @@ repos:
 13. **OQ-13. Which outside reviewers are removed now?** §16.6 recommends removing four from the
     required set (CodeAnt, Graphite, Copilot, Qodo) and funding or dropping a fifth (Codex). Each
     is a subscription or an installation the Maintainer controls.
+14. **OQ-14. Is GitHub's Agentic Workflows adopted as the worker half of the run contract?** It is
+    the nearest substitute for what ADR-0012 proposes to build there. Its documentation does not
+    list a subscription credential for the Claude engine, which conflicts with C-3 until C-11
+    forces the question anyway.
+15. **OQ-15. What is the metered fallback budget?** FR-73 needs a monthly figure in currency at
+    which the Factory stops, and a decision on whether to hold a funded API credential in reserve.
+16. **OQ-16. Is release and operation the next scope after the MVP?** It is the widest gap in the
+    market at a solo builder's price and is outside §10.1.
+17. **OQ-17. Should the first non-goal be restated?** The research supports keeping the Factory out
+    of the business of selling orchestration: attention there is large and willingness to pay is
+    low. "Not a commercial product; open for others to read and reuse" would say that more exactly
+    than "not a product for other organisations".
 
 ## 12. Assumptions index
 
