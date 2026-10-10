@@ -185,35 +185,58 @@ jobs:
       TOKEN_WORKFLOW: dev-lead
 
     steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+
+      - name: Checkout dev-lead config
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: petry-projects/.github-private
+          ref: ${{ inputs.agent_ref }}
+          path: .dev-lead-config
+          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+          sparse-checkout: config
+
       - name: Engine token preflight (#1525)
         # With the secret declaration relaxed to required:false, presence is
         # enforced here instead — one actionable line, not a secrets-evaluation
-        # stack error on every event. Skipped when AI_ENGINES leaves claude out.
+        # stack error on every event. Skipped when AI_ENGINES leaves claude out or
+        # config/ai-engines.json disables Claude (provider disablement takes
+        # precedence over AI_ENGINES, so check the file before requiring the token).
         env:
           AI_ENGINES: ${{ vars.AI_ENGINES || vars.DEV_LEAD_ENGINES || '' }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
-          # Is Claude enabled? Only a valid AI_ENGINES list that omits claude turns it
-          # off; empty or invalid values fall back to the default chain, which includes
-          # claude (scripts/lib/engine-chain.sh — mirrored inline because this runs
-          # before the scripts are checked out).
+          # Is Claude enabled? Check config/ai-engines.json first (if it exists),
+          # then fall back to the inline AI_ENGINES logic.
           claude_enabled=true
-          spec="$(printf '%s' "${AI_ENGINES:-}" | tr '[:upper:],' '[:lower:] ')"
-          if [ -n "${spec//[[:space:]]/}" ]; then
-            set -f
-            known=true; has_claude=false
-            for e in $spec; do
-              case "$e" in
-                claude) has_claude=true ;;
-                gemini|copilot) ;;
-                *) known=false ;;
-              esac
-            done
-            set +f
-            if [ "$known" = true ] && [ "$has_claude" = false ]; then claude_enabled=false; fi
+          if [ -f .dev-lead-config/config/ai-engines.json ]; then
+            # config/ai-engines.json exists; check if claude provider is disabled.
+            if grep -q '"claude".*"enabled"\s*:\s*false' .dev-lead-config/config/ai-engines.json; then
+              claude_enabled=false
+            fi
+          fi
+          if [ "$claude_enabled" = true ]; then
+            # Config doesn't disable Claude; check if AI_ENGINES omits it.
+            spec="$(printf '%s' "${AI_ENGINES:-}" | tr '[:upper:],' '[:lower:] ')"
+            if [ -n "${spec//[[:space:]]/}" ]; then
+              set -f
+              known=true; has_claude=false
+              for e in $spec; do
+                case "$e" in
+                  claude) has_claude=true ;;
+                  gemini|copilot) ;;
+                  *) known=false ;;
+                esac
+              done
+              set +f
+              if [ "$known" = true ] && [ "$has_claude" = false ]; then claude_enabled=false; fi
+            fi
           fi
           if [ "$claude_enabled" = false ]; then
-            echo "claude not in AI_ENGINES (${AI_ENGINES}) — CLAUDE_CODE_OAUTH_TOKEN not required"
+            echo "claude disabled in config or not in AI_ENGINES (${AI_ENGINES}) — CLAUDE_CODE_OAUTH_TOKEN not required"
             exit 0
           fi
           if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
@@ -226,10 +249,8 @@ jobs:
           fi
           echo "engine token present — proceeding"
 
-      - name: Checkout caller repo
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+      - name: Clean up dev-lead config checkout
+        run: rm -rf .dev-lead-config
 
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

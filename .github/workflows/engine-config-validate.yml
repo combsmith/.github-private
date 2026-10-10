@@ -1,0 +1,44 @@
+name: Validate Engine Config
+
+on:
+  pull_request:
+    paths:
+      - 'config/ai-engines.json'
+      - 'config/ai-engines.schema.json'
+      - 'scripts/lib/model-pricing.tsv'
+      - 'scripts/validate-ai-engines.py'
+      - '.github/workflows/engine-config-validate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'config/ai-engines.json'
+      - 'config/ai-engines.schema.json'
+      - 'scripts/lib/model-pricing.tsv'
+      - 'scripts/validate-ai-engines.py'
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-ai-engines:
+    # The engine config gate (#1973). config/ai-engines.json is the source of
+    # truth for enabled providers, the model catalog and each task's chain, so a
+    # bad value is caught at PR time instead of in a failing review. Validates
+    # the file against config/ai-engines.schema.json (draft 2020-12), then fails
+    # on a task model that is missing from `models` or `retired`, a model in
+    # another provider's chain, an enabled provider's model with no row in
+    # scripts/lib/model-pricing.tsv, and a duck or Copilot chain with more than
+    # one model. Fully HERMETIC. This is the required check for config changes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Python deps
+        run: pip3 install --quiet "jsonschema==4.26.0" --only-binary=":all:"
+
+      - name: Validate config/ai-engines.json
+        run: python3 scripts/validate-ai-engines.py
