@@ -6,6 +6,7 @@ FIX_REVIEWS_SCRIPT="$SCRIPT_DIR/scripts/dev-lead-fix-reviews.sh"
 STUB_ENGINES_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/engines"
 GH_STUBS_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/stubs"
 
+# setup — initialize test environment with stub engines and environment variables.
 setup() {
   export GITHUB_ENV="$(mktemp)"
   export GITHUB_OUTPUT="$(mktemp)"
@@ -51,6 +52,7 @@ GHEOF
   cd "$SCRIPT_DIR"
 }
 
+# teardown — clean up temporary files and stub directories.
 teardown() {
   rm -f "$GITHUB_ENV" "$GITHUB_OUTPUT"
   rm -rf "$STUB_BIN_DIR"

@@ -1369,6 +1369,8 @@ _dtv_fetch_and_verify_tracker() {
   dtv_verify_tracking_issue "$issue_json" "$issue_comments" "$thread_id" "$origin_db_id" "$REPO" "$PR_NUMBER"
 }
 
+# resolve_deferred_bot_threads <intent> — resolve review threads from bots that are
+# marked as deferred per #2045 (out-of-scope findings tracked in a dedicated issue).
 resolve_deferred_bot_threads() {
   local intent="$1"
   if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
@@ -3670,6 +3672,8 @@ post_resolve_failed_marker() {
   post_reviews_rate_limited "$intent" "resolve-failed"
 }
 
+# resolution_gate_open <cp_rc> — check if resolution is allowed based on
+# resolution-integrity checks between the pre-commit and current state.
 resolution_gate_open() {
   local cp_rc="${1:-1}"
   if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
