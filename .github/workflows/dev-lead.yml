@@ -56,14 +56,22 @@ permissions: {}
 
 jobs:
   dev-lead:
-    # Pinned to the moving dev-lead/v1-stable channel tag, not @main, so a broken
+    # Pinned to the moving dev-lead/v139-ring0 channel tag, not @main, so a broken
     # change to dev-lead can no longer gate its own fix (the self-host circular
-    # dependency). Promotion is done by moving the dev-lead/v1-stable tag centrally; this
+    # dependency). This repo sits in ring `next`, but this stub DELIBERATELY pins a
+    # PROMOTED tier (ring0 — promoted from next only after its dwell): Safe Release
+    # SC2 (#503 / epic #495) requires that a broken in-development dev-lead cannot
+    # block the PR fixing its own breakage, and a bad ring0 is rolled back by moving
+    # the tag, with no PR. ring0 rather than the stable tier gets this repo dev-lead
+    # fixes days sooner. The `next` canary duty in this repo belongs to
+    # pr-review-trigger.yml, which pins pr-review/v1-next on purpose. Asserted by
+    # tests/test_sc2_self_review_channel.bats — never repin this to next.
+    # Promotion is done by moving the channel tags centrally; this
     # caller is never edited on release. agent_ref threads the same channel into
     # dev-lead's own scripts/prompts checkout. See https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md#dev-lead-agent.
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-ring0  # NOSONAR(githubactions:S7637) first-party channel ref
     with:
-      agent_ref: dev-lead/v1-stable
+      agent_ref: dev-lead/v139-ring0
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable
     permissions:
       contents: write
