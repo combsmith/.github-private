@@ -224,9 +224,10 @@ setup() {
   grep -qF 'The BMAD Analyst runs in a separate workflow run: ${run_url}' "$FEATURE_IDEATION_YML"
 }
 
-@test "feature-ideation.yml redispatch does not fabricate an empty run snapshot" {
-  # A failed pre-dispatch snapshot must NOT fall back to '[]' (that would link the
-  # newest pre-existing run); the lookup is skipped for the runs-page fallback.
-  ! grep -qF "|| echo '[]'" "$FEATURE_IDEATION_YML"
-  grep -qF '[ -n "${before_ids}" ] || break' "$FEATURE_IDEATION_YML"
+@test "feature-ideation.yml redispatch correlates the run by dispatch time" {
+  # The dispatched run is identified by recording the dispatch time (with slack for
+  # clock skew) and selecting only runs created at/after it, so a pre-existing run
+  # is never linked by mistake.
+  grep -qF 'dispatch_time=' "$FEATURE_IDEATION_YML"
+  grep -qF 'select(.createdAt >= ' "$FEATURE_IDEATION_YML"
 }

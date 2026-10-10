@@ -158,7 +158,9 @@ jobs:
           # createdAt has ~1s resolution, and concurrency serialises EXECUTION not dispatch
           # creation, so this is best-effort: a manual dispatch fired in the same second
           # could still be picked, but it's less likely than the original approach.
-          dispatch_time="$(date -u +'%Y-%m-%dT%H:%M:%S')Z"
+          # Subtract a few seconds of slack and compare with >= so runner-vs-server
+          # clock skew and the whole-second truncation do not exclude our own run.
+          dispatch_time="$(date -u -d '-5 seconds' +'%Y-%m-%dT%H:%M:%S')Z"
           gh workflow run feature-ideation.yml --repo "${REPO}" \
             -f target_discussion="${DISCUSSION_NUMBER}"
 
@@ -172,7 +174,7 @@ jobs:
             run_url="$(gh run list --repo "${REPO}" \
               --workflow feature-ideation.yml --event workflow_dispatch \
               --json databaseId,url,createdAt \
-              --jq "[.[] | select(.createdAt > \"${dispatch_time}\")] | sort_by(.createdAt) | first | .url // empty" \
+              --jq "[.[] | select(.createdAt >= \"${dispatch_time}\")] | sort_by(.createdAt) | first | .url // empty" \
               2>/dev/null || true)"
             [ -n "${run_url}" ] && break
             sleep 5
