@@ -578,6 +578,16 @@ seed_pass() {
   [ "$status" -eq 0 ]
 }
 
+@test "render_canary_report: gemini_attempt and gemini_rejection_sample audit records are skipped (#2041)" {
+  seed_pass
+  printf '{"kind":"gemini_attempt","ts":"2026-09-26T10:00:00Z","engine":"gemini","key_index":1,"rejected":true}\n' >> "$FILE"
+  printf '{"kind":"gemini_rejection_sample","ts":"2026-09-26T10:00:00Z","engine":"gemini","key_index":1,"sample":"x"}\n' >> "$FILE"
+  run render_canary_report "$DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"- candidate invocations: 5"* ]]
+  [[ "$output" == *"**Overall verdict:** PASS"* ]]
+}
+
 @test "render_canary_report: an incumbent record exactly at the baseline end is excluded" {
   seed_pass
   mkrec "$FILE" "2026-09-25T00:00:00Z" pr-review deep model-old 1000 1000 0 100 "https://github.com/o/r/pull/500" 1000

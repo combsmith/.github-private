@@ -26,6 +26,10 @@
 #   ARTIFACT_OP_TIMEOUT — per-gh-call timeout in seconds (default 60) so one hung/slow
 #                      artifact download or listing cannot consume the whole job. 0
 #                      disables the wrapper.
+#   GEMINI_RECORDS_OUT — optional path; when set, every collected Gemini ledger record
+#                      (engine "gemini": token usage, rejected attempts, cooldowns,
+#                      rejection samples) is appended there for scripts/gemini_tier_report.sh
+#                      (#2041), which keeps the per-day history across fleet-monitor runs.
 #   COLLECT_CONCURRENCY — max concurrent artifact listings/downloads (default 8). The
 #                      bulk of collection wall-clock is serial network I/O, so bounded
 #                      parallelism is what keeps the run inside the job timeout.
@@ -313,6 +317,30 @@ render_gemini_quota() {
       "$(_fmt_int "$cds")"
   done <<< "$rows"
   printf '\n'
+}
+
+# export_gemini_records <jsonl_dir>
+# Prints every Gemini ledger record (engine "gemini") from the collected JSONL, one
+# compact object per line. Rejection samples are redacted to remove any unredacted credentials
+# from untrusted collected artifacts. Pure: no network.
+export_gemini_records() {
+  local files=("$1"/*.jsonl)
+  [ -e "${files[0]}" ] || return 0
+  while IFS= read -r line; do
+    local sample kind
+    kind="$(jq -r '.kind // empty' <<< "$line" 2>/dev/null || true)"
+    if [ "$kind" = "gemini_rejection_sample" ]; then
+      # Untrusted: validate shape, redact, cap, re-encode with --arg. Fail closed (drop).
+      jq -e '(.key_index | type) == "number"
+             and ((.ts // "") | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$"))' \
+        <<< "$line" >/dev/null 2>&1 || continue
+      sample="$(jq -r '(.sample // "") | tostring | .[0:300]' <<< "$line" 2>/dev/null)" || continue
+      sample="$(_gq_redact_line "$sample")" || continue
+      jq -c --arg s "$sample" '.sample = $s' <<< "$line" 2>/dev/null || continue
+    else
+      echo "$line"
+    fi
+  done < <(jq -c 'select(type == "object" and .engine == "gemini")' "${files[@]}" 2>/dev/null || true)
 }
 
 # render_token_report <jsonl_dir> <lookback_days> <repo_count> <artifact_count> [generated_at]
@@ -634,6 +662,12 @@ main() {
   counts="$(collect_org_jsonl "$jsonl_dir")"
   repo_count="${counts%% *}"
   artifact_count="${counts##* }"
+
+  # Hand the Gemini ledger records to the per-tier availability report (#2041).
+  if [ -n "${GEMINI_RECORDS_OUT:-}" ]; then
+    export_gemini_records "$jsonl_dir" >> "$GEMINI_RECORDS_OUT" 2>/dev/null \
+      || echo "WARN: could not write Gemini records to GEMINI_RECORDS_OUT" >&2
+  fi
   generated_at="$(date -u +%Y-%m-%d 2>/dev/null || echo '')"
 
   # Resolve PR titles for the priciest PRs so render can show them (network step;
