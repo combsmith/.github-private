@@ -5121,6 +5121,31 @@ GITEOF
   grep -q "#1340" "$p"
 }
 
+# #2178: a neutral overview posted as a PR issue comment (CodeAnt "PR Risk: Low
+# Risk") has no info_status_pattern, so the maintainer-comment gate counts it until
+# it carries a verified disposition. "Nothing to fix" must not mean "no reply".
+@test "fix-bot-comment prompt: a neutral overview issue comment still gets one informational disposition (#2178)" {
+  local p="$SCRIPT_DIR/prompts/dev-lead/fix-bot-comment.md"
+  local note
+  note=$(grep -F '> **A neutral overview is not an actionable finding.**' "$p")
+  [ "$(printf '%s\n' "$note" | grep -c .)" -eq 1 ]
+  [[ "$note" == *'#2178'* ]]
+  [[ "$note" == *'disposition=informational'* ]]
+  [[ "$note" == *'PR Risk: Low Risk'* ]]
+  # The #1919 section must list the neutral overview among the notices it covers.
+  grep -qF 'a **neutral overview** with no finding (#2178)' "$p"
+  # A constraint bullet forbids leaving it reply-less.
+  grep -qE '^- .*neutral overview.*#2178' "$p"
+}
+
+@test "fix-bot-comment prompt: an overview carrying a finding or suggestion is not neutral (#2178)" {
+  local p="$SCRIPT_DIR/prompts/dev-lead/fix-bot-comment.md"
+  local note
+  note=$(grep -F '> **A neutral overview is not an actionable finding.**' "$p")
+  [[ "$note" == *'any finding or suggestion'* ]]
+  [[ "$note" == *'is **not** a neutral overview'* ]]
+}
+
 # ── Prompt guidance (#2008): a CodeRabbit summary is a set of sections ─────────
 
 @test "fix-bot-comment prompt: CodeRabbit summary is a set of sections; a rate-limit block covers only itself (#2008)" {

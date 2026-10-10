@@ -323,3 +323,178 @@ STUB
   [[ "$output" != *"$fake"* ]]
   [[ "$output" == *"<!-- persona:qa-lead -->"* ]]  # marker survives redaction
 }
+
+# --- posting-identity read (#2196) ------------------------------------------
+# On a failed `gh api user` call gh prints the API error BODY on stdout, so the
+# old inline read took '{' for a login and reported a wrong identity — and the
+# advisory was lost because the body was written only after the check. The
+# helper is tri-state (login / unreadable / not configured); the post step
+# retries unreadable, fails closed at once on a readable mismatch, and stages
+# the body before either.
+
+# _login_stub <fails> — a gh stub whose `api user` prints an error body and
+# exits non-zero for the first <fails> calls, then prints <login> (default
+# don-petry). Calls are counted in $BATS_TEST_TMPDIR/user-calls; a comment
+# post is recorded to $BATS_TEST_TMPDIR/posted.txt.
+_login_stub() {
+  stub="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$stub"
+  cat > "$stub/gh" <<STUB
+#!/usr/bin/env bash
+if [ "\$2" = "user" ]; then
+  n=\$(( \$(cat "$BATS_TEST_TMPDIR/user-calls" 2>/dev/null || echo 0) + 1 ))
+  echo "\$n" > "$BATS_TEST_TMPDIR/user-calls"
+  if [ "\$n" -le "$1" ]; then
+    printf '{\n  "message": "Server Error",\n  "status": "502"\n}\n'
+    echo "gh: Server Error (HTTP 502)" >&2
+    exit 1
+  fi
+  echo "${2:-don-petry}"
+  exit 0
+fi
+for a in "\$@"; do
+  case "\$a" in body=*) printf '%s' "\${a#body=}" > "$BATS_TEST_TMPDIR/posted.txt" ;; esac
+done
+exit 0
+STUB
+  chmod +x "$stub/gh"
+}
+
+# _run_post — run pr_run_post in a clean shell against the stub.
+_run_post() {
+  raw="$BATS_TEST_TMPDIR/agent-out.txt"
+  printf 'chatter\n===PERSONA-ADVISORY-BEGIN===\n## advisory\nrisk: low\n===PERSONA-ADVISORY-END===\n' > "$raw"
+  body_file="$BATS_TEST_TMPDIR/body.md"
+  summary_file="$BATS_TEST_TMPDIR/summary.md"
+  run env PATH="$stub:$PATH" GH_TOKEN=fake PR_LOGIN_RETRY_DELAY=0 bash -c '
+    set -euo pipefail
+    source "'"$LIB"'"
+    pr_run_post qa-lead petry-projects/.github-private 2188 \
+      don-petry GH_PAT_DON_PETRY "'"$raw"'" "'"$body_file"'" "'"$summary_file"'"
+  '
+}
+
+@test "pr_valid_login accepts ordinary GitHub logins" {
+  run pr_valid_login don-petry
+  [ "$status" -eq 0 ]
+  run pr_valid_login Octocat42
+  [ "$status" -eq 0 ]
+}
+
+@test "pr_valid_login rejects a '{'-prefixed (JSON error body) value" {
+  run pr_valid_login '{'
+  [ "$status" -ne 0 ]
+  run pr_valid_login '{"message":"Server Error"}'
+  [ "$status" -ne 0 ]
+}
+
+@test "pr_valid_login rejects multi-line output and empty output" {
+  run pr_valid_login "$(printf 'don-petry\nextra')"
+  [ "$status" -ne 0 ]
+  run pr_valid_login ""
+  [ "$status" -ne 0 ]
+}
+
+@test "pr_read_posting_login: a readable login returns rc 0 and the login" {
+  _login_stub 0
+  run env PATH="$stub:$PATH" GH_TOKEN=fake bash -c 'source "'"$LIB"'"; pr_read_posting_login'
+  [ "$status" -eq 0 ]
+  [ "$output" = "don-petry" ]
+}
+
+@test "pr_read_posting_login: a failed call is UNREADABLE (rc 1), not a login" {
+  _login_stub 9
+  run env PATH="$stub:$PATH" GH_TOKEN=fake bash -c 'source "'"$LIB"'"; pr_read_posting_login'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"HTTP 502"* ]]                  # says why
+}
+
+@test "pr_read_posting_login: a token straddling the 300-char cut is redacted before truncation" {
+  stub="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$stub"
+  pad="$(printf 'x%.0s' $(seq 1 259))"
+  cat > "$stub/gh" <<STUB
+#!/usr/bin/env bash
+echo "${pad} ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" >&2
+exit 1
+STUB
+  chmod +x "$stub/gh"
+  run env PATH="$stub:$PATH" GH_TOKEN=fake bash -c 'source "'"$LIB"'"; pr_read_posting_login'
+  [ "$status" -eq 1 ]
+  [[ "$output" != *"ghp_"* ]]
+}
+
+@test "pr_read_posting_login: exit-0 output that is not a login is UNREADABLE" {
+  _login_stub 0 '{'
+  run env PATH="$stub:$PATH" GH_TOKEN=fake bash -c 'source "'"$LIB"'"; pr_read_posting_login'
+  [ "$status" -eq 1 ]
+}
+
+@test "pr_read_posting_login: no token configured returns rc 2 without calling gh" {
+  _login_stub 0
+  run env PATH="$stub:$PATH" GH_TOKEN= bash -c 'source "'"$LIB"'"; pr_read_posting_login'
+  [ "$status" -eq 2 ]
+  [ ! -f "$BATS_TEST_TMPDIR/user-calls" ]
+}
+
+@test "pr_run_post: unreadable then readable identity -> retries and posts" {
+  _login_stub 1
+  _run_post
+  [ "$status" -eq 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/user-calls")" -eq 2 ]
+  run cat "$BATS_TEST_TMPDIR/posted.txt"
+  [ "${lines[0]}" = "<!-- persona:qa-lead -->" ]
+  [[ "$output" == *"risk: low"* ]]
+}
+
+@test "pr_run_post: unreadable three times -> fails with the unreadable message, body preserved" {
+  _login_stub 9
+  _run_post
+  [ "$status" -ne 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/user-calls")" -eq 3 ]
+  [[ "$output" == *"could not read the posting identity"* ]]
+  [[ "$output" == *"HTTP 502"* ]]
+  [[ "$output" != *"authenticates as"* ]]          # never names an error body as the account
+  [ ! -f "$BATS_TEST_TMPDIR/posted.txt" ]          # never posts unverified
+  [ -f "$body_file" ]                              # AC #4: the artifact step has a file
+  run cat "$body_file"
+  [ "${lines[0]}" = "<!-- persona:qa-lead -->" ]
+  [[ "$output" == *"risk: low"* ]]
+}
+
+@test "pr_run_post: a readable mismatch fails at once with the mismatch message" {
+  _login_stub 0 someone-else
+  _run_post
+  [ "$status" -ne 0 ]
+  [ "$(cat "$BATS_TEST_TMPDIR/user-calls")" -eq 1 ]   # no retry on a definite answer
+  [[ "$output" == *"authenticates as 'someone-else'"* ]]
+  [[ "$output" == *"not the manifest identity 'don-petry'"* ]]
+  [ ! -f "$BATS_TEST_TMPDIR/posted.txt" ]
+  [ -f "$body_file" ]
+}
+
+@test "pr_run_post: no token configured fails closed and still preserves the body" {
+  _login_stub 0
+  raw="$BATS_TEST_TMPDIR/agent-out.txt"
+  printf '===PERSONA-ADVISORY-BEGIN===\nrisk: low\n===PERSONA-ADVISORY-END===\n' > "$raw"
+  body_file="$BATS_TEST_TMPDIR/body.md"
+  run env PATH="$stub:$PATH" GH_TOKEN= PR_LOGIN_RETRY_DELAY=0 bash -c '
+    source "'"$LIB"'"
+    pr_run_post qa-lead repo/x 5 don-petry GH_PAT_DON_PETRY "'"$raw"'" "'"$body_file"'" /dev/null
+  '
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no PAT available"* ]]
+  [ -f "$body_file" ]
+}
+
+@test "pr_run_post: an empty advisory posts nothing and succeeds" {
+  _login_stub 0
+  raw="$BATS_TEST_TMPDIR/agent-out.txt"
+  printf 'no sentinels here\n' > "$raw"
+  run env PATH="$stub:$PATH" GH_TOKEN=fake bash -c '
+    source "'"$LIB"'"
+    pr_run_post qa-lead repo/x 5 don-petry CRED "'"$raw"'" "'"$BATS_TEST_TMPDIR/body.md"'" /dev/null
+  '
+  [ "$status" -eq 0 ]
+  [ ! -f "$BATS_TEST_TMPDIR/posted.txt" ]
+}

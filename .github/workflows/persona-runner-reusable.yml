@@ -294,15 +294,19 @@ jobs:
           # write access — otherwise a writable token for the WRONG account passes
           # the capability probe and triggers the paid engine, only to be rejected
           # by the post step's identity check afterward (the engine work is already
-          # spent). A definitely-wrong login fails closed here; an unreadable login
-          # (transient/rate-limit) is left to the post step's fail-closed check,
-          # matching this preflight's fail-open-on-indeterminate contract.
-          if [ -n "${GH_TOKEN}" ]; then
-            actual_login="$(gh api user -q .login 2>/dev/null || true)"
-            if [ -n "$actual_login" ] && [ "$actual_login" != "$POSTING_ACCOUNT" ]; then
-              echo "::error::authz-preflight: posting token authenticates as '${actual_login}', not the manifest identity '${POSTING_ACCOUNT}' (credential '${POSTING_CREDENTIAL}') — refusing to run the engine under the wrong identity"
-              exit 1
-            fi
+          # spent). A readable, definitely-wrong login fails closed here; an
+          # UNREADABLE read (a failed call or an error body — never a login,
+          # #2196) is indeterminate and left to the post step's retrying,
+          # fail-closed check, matching this preflight's fail-open contract.
+          # shellcheck source=scripts/lib/persona-runner.sh
+          source scripts/lib/persona-runner.sh
+          login_rc=0
+          actual_login="$(pr_read_posting_login)" || login_rc=$?
+          if [ "$login_rc" -eq 0 ] && [ "$actual_login" != "$POSTING_ACCOUNT" ]; then
+            echo "::error::authz-preflight: posting token authenticates as '${actual_login}', not the manifest identity '${POSTING_ACCOUNT}' (credential '${POSTING_CREDENTIAL}') — refusing to run the engine under the wrong identity"
+            exit 1
+          elif [ "$login_rc" -eq 1 ]; then
+            echo "::warning::authz-preflight: posting identity unreadable (${actual_login}) — indeterminate, proceeding; the post step verifies it"
           fi
 
           bash scripts/persona-authz-preflight.sh
@@ -435,65 +439,27 @@ jobs:
           fi
           export GH_TOKEN
 
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::error::no PAT available to post as '${POSTING_ACCOUNT}' (credential '${POSTING_CREDENTIAL}') — is that secret set on this repo/org?"
-            exit 1
-          fi
-
-          # Defense in depth: the selected token MUST authenticate as the
-          # manifest-declared account. If the chosen secret is unset, we
-          # could silently post under the wrong identity — the exact #1650
-          # regression. Fail closed (a future mention retries) rather than
-          # post under the wrong identity.
-          actual_login="$(gh api user -q .login 2>/dev/null || true)"
-          if [ "$actual_login" != "$POSTING_ACCOUNT" ]; then
-            msg="posting token authenticates as '${actual_login:-<unknown>}', "
-            msg="${msg}not the manifest identity '${POSTING_ACCOUNT}' "
-            msg="${msg}(credential '${POSTING_CREDENTIAL}') — refusing to post"
-            echo "::error::${msg} under the wrong identity"
-            exit 1
-          fi
-
-          raw="$(cat "$RUNNER_TEMP/agent-out.txt")"
-          body="$(pr_extract_advisory "$raw")"
-          if [ -z "${body//[[:space:]]/}" ]; then
-            echo "::warning::agent produced no advisory between the sentinels for ${SOURCE_REPO}#${ITEM_NUMBER} — nothing to post"
-            exit 0
-          fi
-
-          # Mechanically guarantee the recursion marker — the agent could not post
-          # unmarked (no write token), and now cannot post unmarked via us either.
-          # LOAD-BEARING under ADR-0008: personas now post as the owner account
-          # don-petry, which the router's actor axis cannot exclude, so THIS marker
-          # is the SOLE mechanical recursion guard for persona output. Enforcing it
-          # here in the post step — the only writer — is what keeps it workflow-
-          # enforced, not prompt-enforced (the #860 runaway failure mode). The
-          # forgot-the-marker path is covered by tests/persona_runner.bats
-          # ("pr_ensure_marker PREPENDS the marker when the agent forgot it"); keep
-          # that coverage green — do not weaken this call.
-          body="$(pr_ensure_marker "$PERSONA" "$body")"
-
-          if [ -z "${ITEM_NUMBER}" ]; then
-            echo "::notice::discussion advisory not yet supported by the runner post-path — skipping post for ${SOURCE_REPO}"
-            exit 0
-          fi
-
-          # Post via the orchestrator so a failing gh api cannot take the advisory
-          # with it: on failure it preserves the redacted, marker-complete body to
-          # $body_file (uploaded by the next step) and mirrors a truncated copy to
-          # the job summary, then returns non-zero so the run STILL fails (#1775).
-          # Issue-comments endpoint serves PRs too.
-          pr_post_advisory_or_preserve \
+          # Extract the advisory, guarantee the recursion marker, and write the
+          # redacted body to $body_file FIRST — so the upload step below has it
+          # on ANY failure here (#2196) — then verify the token authenticates as
+          # the manifest account (defense in depth against the #1650
+          # wrong-identity regression: a readable mismatch or a missing PAT fails
+          # closed at once; an unreadable read is retried, then fails closed),
+          # then post. A failing post preserves the body and still fails the run
+          # (#1775). The marker enforcement is load-bearing (ADR-0008) — see
+          # pr_run_post in scripts/lib/persona-runner.sh.
+          pr_run_post \
             "$PERSONA" "$SOURCE_REPO" "$ITEM_NUMBER" \
             "$POSTING_ACCOUNT" "$POSTING_CREDENTIAL" \
-            "$body" "$body_file" "$GITHUB_STEP_SUMMARY"
+            "$RUNNER_TEMP/agent-out.txt" "$body_file" "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve the advisory as a run artifact (post failed)
         # Failure-only, byte-for-byte re-postable copy of record. Named
         # deterministically from the item so the right one is findable when
-        # several runs have failed. The step above wrote $body_file only on a
-        # post failure; on any other failure (or if it never got that far)
-        # if-no-files-found:ignore keeps this a clean no-op (#1775 AC #1/#2).
+        # several runs have failed. The step above writes $body_file before its
+        # identity check and post (#2196), so any failure after extraction
+        # uploads it; if it never got that far, if-no-files-found:ignore keeps
+        # this a clean no-op (#1775 AC #1/#2).
         if: failure() && steps.post.outputs.artifact_name != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

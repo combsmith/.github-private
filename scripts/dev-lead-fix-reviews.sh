@@ -22,6 +22,8 @@ source "$(dirname "$0")/lib/addressed-claim-verify.sh"
 source "$(dirname "$0")/lib/claim-landing.sh"
 # Test-tamper guard (#2013): a fix pass may not silently rewrite an existing test.
 source "$(dirname "$0")/lib/test-tamper-guard.sh"
+# Sync-stub guard (#2185): a bot pass may not edit a synced org-standard stub.
+source "$(dirname "$0")/lib/sync-stub-guard.sh"
 # Test-regression guard (#2013): a pass may not push with the suite newly red.
 source "$(dirname "$0")/lib/test-regression-guard.sh"
 # PR issue-comment disposition verifier (#1813): the issue-comment sibling of
@@ -1591,25 +1593,12 @@ resolve_dispositioned_comments() {
   all_comments=$(jq -s 'add // []' "$pages_file" 2>/dev/null || echo "[]")
   rm -f "$pages_file"
 
-  # Candidate ids: non-agent comments not already minimized RESOLVED. Same filter
-  # as the gate (login != our account, body not agent-marked, not resolved-minimized)
-  # so what the harness resolves is exactly what the gate blocks on.
+  # Candidate ids: comments in the gate's scope not already minimized RESOLVED.
+  # The gate's own definition (#2209: our account, registered markers, review
+  # requests and opt-outs are out of scope), so what the harness resolves is
+  # exactly what the gate blocks on.
   local candidate_ids
-  candidate_ids=$(printf '%s' "$all_comments" | jq -r \
-    --arg botuser "$bot_user" \
-    --arg markers "$_MAINTAINER_GATE_AGENT_MARKERS" '
-      def bot_stripped: ($botuser | if endswith("[bot]") then .[0:-5] else . end);
-      .[] | objects
-      | (.author?.login // "" | tostring) as $l
-      | select($l != $botuser and $l != bot_stripped)
-      | select(((.body // "") | test($markers)) | not)
-      | select(
-          ((.isMinimized // false) == true)
-          and (((.minimizedReason // "") | ascii_downcase) == "resolved")
-          | not
-        )
-      | .id
-    ' 2>/dev/null || true)
+  candidate_ids=$(maintainer_gate_open_comment_ids "$all_comments" "$bot_user" || true)
 
   # #2008: edits re-open a dispositioned comment. CodeRabbit edits ONE summary
   # comment in place. On PR #2000 a Security Architecture finding was appended
@@ -2911,6 +2900,33 @@ commit_and_push() {
         fi
         ;;
     esac
+    # Sync-stub guard (#2185): on a `standards-sync` PR, a bot-driven pass must not
+    # change a stub copied verbatim from petry-projects/.github/standards/ (the
+    # incubator#164 shape). Restoring a stub to what the sync commit wrote is
+    # allowed. Maintainer-driven intents (review-changes/human-pr, on-mention,
+    # human) are the explicit override and are not guarded. The PR is read only
+    # when the pass touched a stub; an unreadable PR fails closed only for header stubs.
+    case "$intent" in
+      fix-bot-comment|fix-reviews)
+        local ssg_pr="" ssg_out ssg_rc=0
+        if ssg_pass_touches_stubs "${RESOLUTION_BASE_SHA:-}" HEAD && [ -n "${PR_NUMBER:-}" ] && [ -n "${REPO:-}" ]; then
+          # Bounded retry: unreadable = non-zero exit or output that is not a JSON object.
+          local ssg_try
+          for ssg_try in 1 2 3; do
+            ssg_pr=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" 2>/dev/null) || ssg_pr=""
+            jq -e 'type == "object"' <<<"$ssg_pr" >/dev/null 2>&1 && break
+            ssg_pr=""
+            [ "$ssg_try" -lt 3 ] && sleep "${SSG_RETRY_SLEEP:-2}"
+          done
+        fi
+        ssg_out=$(ssg_evaluate "${RESOLUTION_BASE_SHA:-}" HEAD "$ssg_pr" "${HEAD_REF:-}") || ssg_rc=$?
+        if [ "$ssg_rc" -ne 0 ]; then
+          echo "::error::Sync-stub guard: the ${intent} pass changed a synced org-standard stub on a standards-sync PR ($(printf '%s\n' "$ssg_out" | head -1)) — refusing to push (#2185)"
+          flag_sync_stub_drift "$intent" "$(printf '%s\n' "$ssg_out" | sed '1d')"
+          return 4
+        fi
+        ;;
+    esac
     # Test-tamper guard (#2013): a bot-driven fix pass must not silently rewrite an
     # existing test to make its own change pass (the petry-projects/.github#1220
     # `13927fc` shape). Refuse the push and escalate, like the no-op guard (rc 3).
@@ -2970,8 +2986,8 @@ commit_and_push() {
     # rewritten branch, aborting if the remote moved beyond what we fetched.
     # A rejected push — or one the remote head does not reflect (#2013) — must not
     # leave this pass's "Fixed" replies standing: retract them before failing.
-    # (commit_and_push returns 3 for the no-op guard and 4 for the test-tamper and
-    # test-regression guards.)
+    # (commit_and_push returns 3 for the no-op guard and 4 for the sync-stub,
+    # test-tamper and test-regression guards.)
     push_no_clobber || {
       echo "::error::git push failed — check remote access and branch permissions" >&2
       retract_unlanded_claims "$intent" failed || true
@@ -3233,6 +3249,33 @@ The \`${intent}\` pass changed, deleted, or skipped **existing** test(s) to go w
 
 If the test really is wrong, a human should make that call, or the fix should carry a \`Test-Change-Justification:\` commit trailer that cites the reason (for example, the review comment that asked for it). Auto-merge has been disabled.${HOLD_LABEL_NOTE}" \
       || echo "::warning::could not post test-tamper flag comment on PR #${PR_NUMBER}"
+  fi
+  disable_auto_merge_for_hold "$REPO" "$PR_NUMBER" || true
+  return 0
+}
+
+# flag_sync_stub_drift <intent> <rows> — the sync-stub guard refused the push
+# (#2185). <rows> are `path\ttemplate` lines (empty when the scan was unknown).
+# Same escalation as flag_test_tamper; the comment answers the bot suggestion as
+# declined and points at each template in petry-projects/.github.
+flag_sync_stub_drift() {
+  local intent="$1" rows="$2"
+  _AM_NEEDS_RESTORE=0
+  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+    echo "[dry-run] sync-stub guard: would decline on PR #${PR_NUMBER} (${intent}), add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}, disable auto-merge"
+    return 0
+  fi
+  local marker="<!-- dev-lead-sync-stub-drift pr=${PR_NUMBER} intent=${intent} -->"
+  # Label first so the flag comment can say when the PR could not be held (#2142).
+  apply_hold_label "$REPO" "$PR_NUMBER" || true
+  if gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" 2>/dev/null \
+       | jq -r '.[].body // ""' 2>/dev/null | grep -qF "$marker"; then
+    echo "::notice::PR #${PR_NUMBER} already flagged for synced-stub drift for intent=${intent} — not reposting"
+    post_hold_failure_note "$REPO" "$PR_NUMBER"
+  else
+    gh pr comment "$PR_NUMBER" --repo "$REPO" --body "${marker}
+$(ssg_declined_body "$intent" "$rows")${HOLD_LABEL_NOTE}" \
+      || echo "::warning::could not post sync-stub flag comment on PR #${PR_NUMBER}"
   fi
   disable_auto_merge_for_hold "$REPO" "$PR_NUMBER" || true
   return 0
@@ -3521,7 +3564,7 @@ case "$INTENT_TYPE" in
         # marker and do not re-enable auto-merge or resolve threads.
         echo "::warning::fix-reviews produced a net-zero diff — flagged for human, not pushed (#1340)"
       elif [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::fix-reviews was refused by a test guard (tamper/regression) — flagged for human, not pushed (#2013)"
+        echo "::warning::fix-reviews was refused by a push guard (test tamper/regression or sync-stub) — flagged for human, not pushed (#2013/#2185)"
       else
         notify_coderabbit_resolve
         if has_hard_blockers; then
@@ -3619,7 +3662,7 @@ case "$INTENT_TYPE" in
         # re-enable auto-merge or resolve threads.
         echo "::warning::fix-bot-comment produced a net-zero diff — flagged for human, not pushed (#1340)"
       elif [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::fix-bot-comment was refused by a test guard (tamper/regression) — flagged for human, not pushed (#2013)"
+        echo "::warning::fix-bot-comment was refused by a push guard (test tamper/regression or sync-stub) — flagged for human, not pushed (#2013/#2185)"
       else
         notify_coderabbit_resolve
         if has_hard_blockers; then
