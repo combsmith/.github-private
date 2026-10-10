@@ -28,12 +28,20 @@ set -euo pipefail
 # Drift TSV format (5 fields, tab-separated); the first 4 are shared with
 # fleet_stub_drift.sh, the 5th records which published version the committed file
 # matched under #1448's N / N-1 acceptance:
-#   1:file  2:status  3:committed_sha  4:expected_sha(N)  5:matched(N|N-1|"")
+#   1:file  2:status  3:committed_sha  4:expected_sha(N)  5:matched
+#   status ∈ ALIGNED|AHEAD|DRIFTED|MISSING
+#   matched ∈ N | N-1 (ALIGNED), HEAD (AHEAD), ahead-unchecked | "" (DRIFTED), "" (MISSING)
 # A file is ALIGNED if it matches the emission at the current published version (N)
 # or the immediately-preceding one (N-1); an N-1 match is a visible propagation
 # notice, not silent (#1448 AC #8). The resolved standards ref + commit SHA the
 # baseline is derived at is recorded in the report header (AC #7), and a guard
 # asserts neither N nor N-1 carries a pre-#1184 legacy non-major-scoped pin (AC #9).
+#
+# A file that matches neither is also compared against the emission at the standards
+# default-branch HEAD (#1926). A match there is AHEAD: the template already carries
+# standards content the channel has not published yet, so the remedy is to promote
+# the channel, never to re-seed (which would regress the template). AHEAD warns and
+# does NOT fail the check — see "AHEAD detection" below for the recorded decision.
 
 TEMPLATE_DRIFT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 TEMPLATE_REPO="${TEMPLATE_REPO:-petry-projects/repo-template}"
@@ -145,44 +153,82 @@ template_drift_covered() {
 # propagates. An N-1 match is reported (matched=N-1) so the annotate step can raise
 # a visible propagation notice rather than accept it silently.
 #
-# template_drift_classify <committed> <expected_n> <expected_n1>
-#   → "<status>\t<matched>"  where status ∈ ALIGNED|DRIFTED|MISSING and
-#     matched ∈ N | N-1 | "" (empty when not ALIGNED). N-1 is only consulted when
-#     <expected_n1> is non-empty (the publication scheme provides a previous ref).
+# ── AHEAD detection (#1926) ───────────────────────────────────────────────────
+# The published channel lags the standards default branch until someone promotes
+# it. A template seeded from (or synced to) newer standards content therefore
+# differs from the channel baseline while being exactly what standards says it
+# should be. Reporting that as DRIFTED prints the "re-seed" remedy, and re-seeding
+# from the channel would REGRESS the template (2026-09-24: it would have stripped
+# the merge_group trigger from agent-shield.yml and dependency-audit.yml).
+#
+# So a file matching neither N nor N-1 is compared once more, against the emission
+# at the standards default-branch HEAD. A match is AHEAD, with its own remedy:
+# promote standards (scripts/cut-standards-release.sh in the standards repo).
+#
+# Decision (#1926 AC #3): AHEAD WARNS, it does not fail the check.
+#   • It is a propagation lag, not template corruption: the committed bytes are
+#     byte-identical to a standards emission, so there is nothing to repair here.
+#   • The fix is a channel promotion in another repo. No PR in this repo can clear
+#     it, so failing would only turn every unrelated PR red until someone promotes.
+#   • It mirrors the N-1 rule (#1448 AC #8), the same lag in the other direction,
+#     which is also accepted and flagged. AHEAD uses `::warning::` rather than
+#     `::notice::` because following the wrong remedy does damage.
+# A file that matches no standards emission at all is still DRIFTED and still fails.
+#
+# template_drift_classify <committed> <expected_n> <expected_n1> [<expected_head>]
+#   → "<status>\t<matched>"  where status ∈ ALIGNED|AHEAD|DRIFTED|MISSING.
+#   matched is N | N-1 for ALIGNED, HEAD for AHEAD, empty for MISSING, and for
+#   DRIFTED either empty or `ahead-unchecked` (see below). N-1 is only consulted
+#   when <expected_n1> is non-empty (the publication scheme provides a previous ref).
+#   <expected_head> is one of:
+#     ""        nothing newer than N to compare (N already is HEAD) — or a legacy caller
+#     <sha>     blob SHA of the emission at the standards default-branch HEAD
+#     unknown   a newer commit may exist but its emission could not be computed;
+#               a would-be DRIFTED file is tagged `ahead-unchecked` so the annotation
+#               never prints the bare re-seed remedy for a file it could not check.
 template_drift_classify() {
-  local committed="${1:-}" expected_n="${2:-}" expected_n1="${3:-}"
+  local committed="${1:-}" expected_n="${2:-}" expected_n1="${3:-}" expected_head="${4:-}"
   if [ -z "$committed" ] || [ "$committed" = "null" ]; then
     printf 'MISSING\t\n'
   elif [ -n "$expected_n" ] && [ "$committed" = "$expected_n" ]; then
     printf 'ALIGNED\tN\n'
   elif [ -n "$expected_n1" ] && [ "$committed" = "$expected_n1" ]; then
     printf 'ALIGNED\tN-1\n'
+  elif [ "$expected_head" = "unknown" ]; then
+    printf 'DRIFTED\tahead-unchecked\n'
+  elif [ -n "$expected_head" ] && [ "$committed" = "$expected_head" ]; then
+    printf 'AHEAD\tHEAD\n'
   else
     printf 'DRIFTED\t\n'
   fi
 }
 
-# template_drift_row5 <file> <committed> <expected_n> <expected_n1>
+# template_drift_row5 <file> <committed> <expected_n> <expected_n1> [<expected_head>]
 #   → one 5-field TSV row: file<TAB>status<TAB>committed<TAB>expected_n<TAB>matched.
 # The expected SHA column carries N (the current published version) so a DRIFTED
 # annotation points at what the file SHOULD be at the current version.
 template_drift_row5() {
-  local file="${1:-}" committed="${2:-}" expected_n="${3:-}" expected_n1="${4:-}"
+  local file="${1:-}" committed="${2:-}" expected_n="${3:-}" expected_n1="${4:-}" expected_head="${5:-}"
   local status matched
-  IFS=$'\t' read -r status matched < <(template_drift_classify "$committed" "$expected_n" "$expected_n1")
+  IFS=$'\t' read -r status matched < <(template_drift_classify "$committed" "$expected_n" "$expected_n1" "$expected_head")
   printf '%s\t%s\t%s\t%s\t%s\n' "$file" "$status" "$committed" "$expected_n" "$matched"
 }
 
-# template_drift_report_header <resolved_ref> <resolved_sha> <prev_ref>
+# template_drift_report_header <resolved_ref> <resolved_sha> <prev_ref> [<head_sha>]
 # One-line report header naming the resolved standards ref + commit SHA the
 # baseline was derived at (#1448 AC #7), and — when a previous (N-1) ref is
-# configured — noting that N-1 emissions are also accepted (AC #8). Pure.
+# configured — noting that N-1 emissions are also accepted (AC #8). When the
+# standards default branch is past the resolved ref, <head_sha> names the commit
+# files are also compared against for AHEAD detection (#1926). Pure.
 template_drift_report_header() {
-  local ref="${1:-}" sha="${2:-}" prev="${3:-}"
+  local ref="${1:-}" sha="${2:-}" prev="${3:-}" head="${4:-}"
   printf 'Baseline derived from standards ref `%s` (commit `%s`) on %s.\n' \
     "$ref" "${sha:0:12}" "$TEMPLATE_REPO"
   if [ -n "$prev" ]; then
     printf 'Also accepting the immediately-preceding version (N-1) at ref `%s` while a promotion propagates.\n' "$prev"
+  fi
+  if [ -n "$head" ]; then
+    printf 'A file matching neither is also compared against standards HEAD (commit `%s`): a match there is AHEAD (promote standards), not DRIFTED.\n' "${head:0:12}"
   fi
 }
 
@@ -212,8 +258,14 @@ template_drift_assert_major_scoped() {
   return 0
 }
 
-# template_drift_annotate <tsv_file> — walk the drift TSV and annotate:
+# template_drift_annotate <tsv_file> [<n_ref>] [<head_sha>] — walk the drift TSV
+# and annotate (<n_ref> names the channel in the AHEAD message and defaults to
+# STANDARDS_CHANNEL; <head_sha> names the standards HEAD commit when known):
 #   • DRIFTED → `::error::` naming the file and BOTH SHAs (AC #3); fails the job.
+#     Tagged `ahead-unchecked`, the message says the AHEAD comparison could not be
+#     made and how to make it, instead of the bare re-seed remedy (#1926).
+#   • AHEAD → non-fatal `::warning::` pointing at a standards promotion and
+#     warning against a re-seed (#1926). Never fails the job.
 #   • ALIGNED with matched=N-1 → `::notice::` (propagation pending): the file
 #     matches the immediately-preceding published version, not the current one, so
 #     it is accepted but flagged visibly, not silently (#1448 AC #8).
@@ -222,8 +274,10 @@ template_drift_assert_major_scoped() {
 # 5th field is treated as an N (current-version) match. Pure: reads the TSV,
 # writes stdout. An absent/empty file is a clean pass.
 template_drift_annotate() {
-  local f="${1:-}" row file status committed expected matched drifted=0
+  local f="${1:-}" n_ref="${2:-${STANDARDS_CHANNEL:-standards/v1-stable}}" head_sha="${3:-}"
+  local row file status committed expected matched head_note="" drifted=0
   [ -n "$f" ] && [ -f "$f" ] || return 0
+  [ -z "$head_sha" ] || head_note=" (commit ${head_sha:0:12})"
   # Split each row on tabs WITHOUT collapsing empty fields — `IFS=$'\t' read`
   # treats a tab as whitespace-IFS and would coalesce the empty committed field on
   # a MISSING row, shifting every later column. Peel fields off explicitly instead.
@@ -243,8 +297,17 @@ template_drift_annotate() {
     case "$status" in
       DRIFTED)
         drifted=1
-        printf '::error file=%s::Template stub %s has DRIFTED from the standards-derived baseline (committed blob %s != expected %s). Re-seed it via scripts/seed-repo-template.sh — do not hand-edit the template; edit standards/ instead.\n' \
-          "$file" "$file" "${committed:0:12}" "${expected:0:12}"
+        if [ "$matched" = "ahead-unchecked" ]; then
+          printf '::error file=%s::Template stub %s has DRIFTED from the published baseline `%s` (committed blob %s != expected %s), but it could NOT be compared against standards HEAD, so it may be AHEAD of the channel rather than drifted. Do not re-seed yet: re-run with STANDARDS_REF=<standards main commit>. If that reports ALIGNED, promote standards (scripts/cut-standards-release.sh in the standards repo) instead of re-seeding, which would regress the template (#1926).\n' \
+            "$file" "$file" "$n_ref" "${committed:0:12}" "${expected:0:12}"
+        else
+          printf '::error file=%s::Template stub %s has DRIFTED from the standards-derived baseline (committed blob %s != expected %s). Re-seed it via scripts/seed-repo-template.sh — do not hand-edit the template; edit standards/ instead.\n' \
+            "$file" "$file" "${committed:0:12}" "${expected:0:12}"
+        fi
+        ;;
+      AHEAD)
+        printf '::warning file=%s::Template stub %s is ahead of `%s`: its committed blob %s matches the seed emission at standards HEAD%s, not the channel baseline %s. Promote standards (scripts/cut-standards-release.sh in the standards repo) instead of re-seeding — a re-seed from the channel would regress the template. This is a propagation lag, not template corruption, so it does not fail the check (#1926).\n' \
+          "$file" "$file" "$n_ref" "${committed:0:12}" "$head_note" "${expected:0:12}"
         ;;
       ALIGNED)
         if [ "$matched" = "N-1" ]; then
@@ -278,6 +341,31 @@ template_drift_annotate() {
 # DRIFTED file. A SHA that cannot be computed/read degrades to a non-fatal
 # `::warning::` skip (mirrors fleet_monitor.sh) so a transient cross-repo read
 # failure does not flake the PR lint job — only real drift fails it.
+#
+# A file that would be DRIFTED costs one more emission, at the standards
+# default-branch HEAD, to tell AHEAD from DRIFTED (#1926). That emission is only
+# computed for those files, and only when HEAD is past the resolved ref. When the
+# comparison cannot be made the file stays DRIFTED but is tagged `ahead-unchecked`
+# and a `::warning::` names what could not be resolved — "cannot check" is never
+# reported as "checked, and it is not ahead".
+
+# _template_drift_resolve_ref — "<ref>\t<commit-sha>\t<source>" for the standards
+# ref the baseline is derived at (seed-repo-template.sh --print-ref). Empty when it
+# cannot be resolved.
+_template_drift_resolve_ref() {
+  bash "${TEMPLATE_DRIFT_DIR}/seed-repo-template.sh" --print-ref 2>/dev/null || true
+}
+
+# _template_drift_head_sha — commit SHA of the standards repo's default-branch
+# HEAD, the newest standards commit. Empty when it cannot be read: an error body is
+# JSON, not a 40-hex SHA, so it is rejected rather than used as a ref.
+_template_drift_head_sha() {
+  local sha
+  sha="$(gh api -H "Accept: application/vnd.github.sha" \
+    "repos/${STANDARDS_REPO:-petry-projects/.github}/commits/HEAD" 2>/dev/null)" || true
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 0
+  printf '%s' "$sha"
+}
 
 # _template_drift_emit <emit_flag> <emit_arg> <standards_ref> — the standards-
 # derived content seed-repo-template.sh ships for this file, fetched PINNED at
@@ -329,14 +417,33 @@ main() {
   # that state seed-repo-template.sh resolves N to the HEAD commit SHA and there is
   # no N-1, so the check degrades to single-ref matching but stays explainable.
   local n_ref n_sha n_src prev_ref
-  IFS=$'\t' read -r n_ref n_sha n_src < <(bash "${TEMPLATE_DRIFT_DIR}/seed-repo-template.sh" --print-ref 2>/dev/null || true)
+  IFS=$'\t' read -r n_ref n_sha n_src < <(_template_drift_resolve_ref)
   prev_ref="${STANDARDS_PREV_REF:-}"
 
   echo "Template stub drift check — ${TEMPLATE_REPO} vs standards-derived baseline:"
   echo "Resolved standards ref source: ${n_src:-<unresolved>} (#1448 AC #7/#10)."
-  template_drift_report_header "${n_ref:-<unresolved>}" "${n_sha:-}" "$prev_ref"
+
+  # AHEAD detection (#1926): is the standards default branch past the resolved ref?
+  #   newer   — yes: a would-be DRIFTED file is also compared against HEAD.
+  #   none    — no (N already is HEAD), or the STANDARDS_DIR local seam, which reads
+  #             one checkout whatever the ref: there is nothing newer to compare.
+  #   unknown — HEAD could not be resolved: the comparison cannot be made.
+  local head_sha="" head_state="none"
+  if [ "${n_src:-}" != "local" ]; then
+    head_sha="$(_template_drift_head_sha)"
+    if [ -z "$head_sha" ]; then
+      head_state="unknown"
+      echo "::warning::Could not resolve the standards default-branch HEAD commit — a DRIFTED file cannot be checked for being AHEAD of ${n_ref:-<unresolved>} (#1926)."
+    elif [ "$head_sha" != "${n_sha:-}" ]; then
+      head_state="newer"
+    else
+      head_sha=""
+    fi
+  fi
+  template_drift_report_header "${n_ref:-<unresolved>}" "${n_sha:-}" "$prev_ref" "$head_sha"
 
   local tsv row path flag arg content_n content_n1 expected_n expected_n1 committed guard_rc=0
+  local content_head expected_head cls
   tsv="$(mktemp)"
   for row in "${TEMPLATE_DRIFT_FILES[@]}"; do
     IFS='|' read -r path flag arg <<< "$row"
@@ -361,13 +468,32 @@ main() {
     fi
 
     committed="$(_template_drift_committed_sha "$path")"
-    template_drift_row5 "$path" "$committed" "$expected_n" "$expected_n1" >> "$tsv"
+
+    # Only a file that matches neither N nor N-1 pays for the HEAD emission.
+    expected_head=""
+    IFS=$'\t' read -r cls _ < <(template_drift_classify "$committed" "$expected_n" "$expected_n1")
+    if [ "$cls" = "DRIFTED" ]; then
+      case "$head_state" in
+        newer)
+          if content_head="$(_template_drift_emit "$flag" "$arg" "$head_sha")"; then
+            # An AHEAD match passes the check, so HEAD is held to the AC #9 guard too.
+            template_drift_assert_major_scoped "$content_head" || guard_rc=1
+            expected_head="$(printf '%s' "$content_head" | git hash-object --stdin)"
+          else
+            expected_head="unknown"
+            echo "::warning::Could not compute the standards HEAD emission for ${path} at ${head_sha:0:12} — cannot tell AHEAD from DRIFTED for it (#1926)."
+          fi
+          ;;
+        unknown) expected_head="unknown" ;;
+      esac
+    fi
+    template_drift_row5 "$path" "$committed" "$expected_n" "$expected_n1" "$expected_head" >> "$tsv"
   done
 
   cat "$tsv"
   local rc=0
-  template_drift_annotate "$tsv" || rc=$?
-  [ "$guard_rc" -eq 0 ] || { echo "::error::a resolved standards baseline (N or N-1) carries a legacy non-major-scoped reusable pin — see annotations above (#1448 AC #9)."; rc=1; }
+  template_drift_annotate "$tsv" "${n_ref:-}" "$head_sha" || rc=$?
+  [ "$guard_rc" -eq 0 ] || { echo "::error::a resolved standards baseline (N, N-1 or HEAD) carries a legacy non-major-scoped reusable pin — see annotations above (#1448 AC #9)."; rc=1; }
   rm -f "$tsv"
   return "$rc"
 }

@@ -483,6 +483,23 @@ committed blob SHA, and fails on any **DRIFTED** file, reusing the ALIGNED/DRIFT
 model from `scripts/fleet_stub_drift.sh` (pure logic + bats: `tests/template_stub_drift.bats`). It is a
 PR-triggered check on the existing Lint workflow — **no new cron/scheduled workload**.
 
+- **AHEAD is not DRIFTED — promote standards, do not re-seed (#1926).** The baseline is derived at the
+  published `standards/v1-stable` channel, which lags standards `main` until someone promotes it. A
+  template that already carries newer standards content therefore differs from the channel while being
+  exactly what standards says it should be. A file matching neither N nor N-1 is compared once more,
+  against the seed emission at the standards default-branch HEAD. A match is **AHEAD**, and its
+  `::warning::` says to promote standards (`scripts/cut-standards-release.sh` in `petry-projects/.github`)
+  instead of re-seeding. Re-seeding from the channel would regress the template: on 2026-09-24 it would
+  have stripped the `merge_group` trigger from `agent-shield.yml` and `dependency-audit.yml`.
+  - **AHEAD warns; it does not fail the check.** This is deliberate. The committed bytes are
+    byte-identical to a standards emission, so nothing here needs repair. The fix is a channel promotion
+    in another repo, which no PR in this repo can make, so failing would only turn unrelated PRs red. It
+    mirrors the N-1 rule (the same lag in the other direction), which is also accepted and flagged.
+  - **Only a file that matches no standards emission is DRIFTED**, and that still fails.
+  - **A comparison that cannot be made is said so.** If the standards HEAD commit or its emission cannot
+    be read, the file stays DRIFTED and fails, but the row is tagged `ahead-unchecked` and the message
+    tells you to re-run with `STANDARDS_REF=<standards main commit>` before re-seeding.
+
 - **Reference rows — `agent-ingress.yml` (#1729, AC #12):** `.github/workflows/agent-ingress.yml` is
   enrolled in the drift manifest for **post-collapse byte-identity coverage**, but
   `seed-repo-template.sh` deliberately never seeds it (it lives in the `--emit-workflow`-only
