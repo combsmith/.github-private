@@ -676,3 +676,68 @@ SHIM
 @test "Manifest: maintainer-comment gate registered under pr-review.yml surface" {
   grep -q "scripts/lib/maintainer-comment-gate.sh" "$SCRIPT_DIR/lib/consumer-manifest.json"
 }
+
+# ────────────────────────────────────────────────────────────────────
+# #2208: the lib dir must survive the caller's cd into the PR worktree
+# ────────────────────────────────────────────────────────────────────
+# dev-lead-fix-reviews.sh runs as `bash .dev-lead/scripts/...`, so BASH_SOURCE[0]
+# is a relative path, and it cds into the PR worktree before it calls
+# maintainer_gate_reopen_candidates. Resolving the lib dir at call time made
+# every registry read fail closed, so every `informational`-dispositioned bot
+# comment was unminimized on the next pass (#2152, second file).
+
+# _relative_ws — a workspace whose .dev-lead/scripts links to this repo's scripts.
+_relative_ws() {
+  local root="$BATS_TEST_TMPDIR/ws"
+  mkdir -p "$root/.dev-lead" "$root/pr-worktree"
+  ln -sfn "$SCRIPT_DIR" "$root/.dev-lead/scripts"
+  printf '%s' "$root"
+}
+
+@test "#2208: no function resolves its own directory at call time" {
+  run grep -nE '^[[:space:]]+.*dirname "\$\{BASH_SOURCE\[0\]\}"' "$GATE"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2208: registry lookups are cwd-independent when sourced by a relative path" {
+  local root expected
+  root=$(_relative_ws)
+  expected=$(bash -c "source '$SCRIPT_DIR/lib/reviewer-sources.sh'; reviewer_sources_finding_section_pattern")
+  run bash -c "cd '$root' && source .dev-lead/scripts/lib/maintainer-comment-gate.sh && cd pr-worktree && _maintainer_gate_finding_re"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$expected" ]
+  [ "$output" != '[\s\S]' ]
+  run bash -c "cd '$root' && source .dev-lead/scripts/lib/maintainer-comment-gate.sh && cd pr-worktree && _maintainer_gate_registered_logins_json"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | jq -e 'type == "array" and length > 0'
+  run bash -c "cd '$root' && source .dev-lead/scripts/lib/maintainer-comment-gate.sh && cd pr-worktree && _maintainer_gate_info_patterns_json"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | jq -e 'type == "object" and length > 0'
+}
+
+@test "#2208: a never-edited informational-dispositioned bot comment is not re-opened after the cd" {
+  local root comments
+  root=$(_relative_ws)
+  comments=$(jq -cn '[
+    {id:"IC_codex", author:{login:"chatgpt-codex-connector", __typename:"Bot"},
+     authorAssociation:"NONE",
+     body:"You have reached your Codex usage limits for code reviews. You can see your limits in the Codex usage dashboard.",
+     createdAt:"2026-10-10T11:30:00Z", isMinimized:true, minimizedReason:"RESOLVED",
+     includesCreatedEdit:false, lastEditedAt:null},
+    {id:"IC_disp", author:{login:"don-petry"}, authorAssociation:"OWNER",
+     body:"Usage-limit notice; no finding.\n<!-- dev-lead:comment-disposition id=IC_codex disposition=informational -->",
+     createdAt:"2026-10-10T11:37:00Z", isMinimized:false, minimizedReason:""}
+  ]')
+  run bash -c "cd '$root' && source .dev-lead/scripts/lib/maintainer-comment-gate.sh && cd pr-worktree && maintainer_gate_reopen_candidates \"\$1\" 2>/dev/null" _ "$comments"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+}
+
+@test "#2208: a really missing registry still fails closed" {
+  local lib="$BATS_TEST_TMPDIR/lonely"
+  mkdir -p "$lib"
+  cp "$GATE" "$lib/"
+  run bash -c "source '$lib/maintainer-comment-gate.sh'; cd /; _maintainer_gate_finding_re; echo; _maintainer_gate_registered_logins_json; echo; _maintainer_gate_info_patterns_json"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'[\\s\\S]\nnull\n{}' ]
+}
