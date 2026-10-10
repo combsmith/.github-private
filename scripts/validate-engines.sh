@@ -60,12 +60,12 @@ _gemini_probe_model() {
 }
 
 # _validate_engine_enabled <engine> — 0 unless AI_ENGINES leaves <engine> out.
+# Returns 1 if the config file cannot be read (when engine-models.sh is sourced).
 _validate_engine_enabled() {
   if declare -F ai_engine_enabled >/dev/null 2>&1; then
-    ai_engine_enabled "$1"
-  else
-    return 0
+    ai_engine_enabled "$1" || return 1
   fi
+  return 0
 }
 
 # _gemini_probe_key <key> — minimal REST call with one Gemini key.
@@ -166,21 +166,38 @@ validate_engines() {
   fi
 
   # ── Engine chain (AI_ENGINES) ───────────────────────────────────────────────
-  local _chain_problem="" _disabled=""
+  local _chain_problem="" _disabled="" _chain=""
   if declare -F ai_engine_chain_problem >/dev/null 2>&1; then
-    _chain_problem="$(ai_engine_chain_problem)"
+    _chain_problem="$(ai_engine_chain_problem)" || {
+      echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable"
+      exit 1
+    }
     if [ -n "$_chain_problem" ] && [ -z "${AI_ENGINES_PROBLEM_REPORTED:-}" ]; then
       echo "::warning::$_chain_problem"
       export AI_ENGINES_PROBLEM_REPORTED=1
     fi
-    echo "::notice::Engine chain (AI_ENGINES): $(ai_engine_chain)"
+    _chain="$(ai_engine_chain)" || {
+      echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable"
+      exit 1
+    }
+    echo "::notice::Engine chain (AI_ENGINES): $_chain"
   fi
 
   # ── Claude ──────────────────────────────────────────────────────────────────
-  if ! _validate_engine_enabled claude; then
+  if _validate_engine_enabled claude; then
+    if command -v claude >/dev/null 2>&1 && [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+      claude_ok=true
+    fi
+  else
+    if declare -F ai_engine_enabled >/dev/null 2>&1; then
+      # ai_engine_enabled returned 1; could be disabled or config read error
+      # Try getting the chain to detect if config is readable
+      ai_engine_chain >/dev/null 2>&1 || {
+        echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable"
+        exit 1
+      }
+    fi
     _disabled="${_disabled:+$_disabled, }claude"
-  elif command -v claude >/dev/null 2>&1 && [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-    claude_ok=true
   fi
 
   # ── Gemini ──────────────────────────────────────────────────────────────────
@@ -196,9 +213,7 @@ validate_engines() {
     fi
   }
 
-  if ! _validate_engine_enabled gemini; then
-    _disabled="${_disabled:+$_disabled, }gemini"
-  else
+  if _validate_engine_enabled gemini; then
     if ! command -v gemini >/dev/null 2>&1; then
       append_gemini_reason "Gemini CLI not installed (fix: npm install -g @google/gemini-cli)"
     fi
@@ -231,6 +246,16 @@ validate_engines() {
     if [ -n "$gemini_reasons" ]; then
       echo "::warning::Gemini fallback unavailable — ${gemini_reasons}. When Claude is rate-limited, runs will fall through to the next engine in AI_ENGINES."
     fi
+  else
+    if declare -F ai_engine_enabled >/dev/null 2>&1; then
+      # ai_engine_enabled returned 1; could be disabled or config read error
+      # Try getting the chain to detect if config is readable
+      ai_engine_chain >/dev/null 2>&1 || {
+        echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable"
+        exit 1
+      }
+    fi
+    _disabled="${_disabled:+$_disabled, }gemini"
   fi
 
   # ── Copilot ─────────────────────────────────────────────────────────────────
@@ -244,27 +269,37 @@ validate_engines() {
   # --version` succeeding proves nothing — report it unavailable up front, the
   # same rule dev-lead's fallback applies (#1495, #1960).
   local _copilot_tok="${COPILOT_GITHUB_TOKEN:-}"
-  if ! _validate_engine_enabled copilot; then
-    _disabled="${_disabled:+$_disabled, }copilot"
-  elif [ -z "$_copilot_tok" ]; then
-    echo "::warning::Copilot unavailable — COPILOT_GITHUB_TOKEN is not set. Provide a fine-grained PAT with the Copilot entitlement or remove copilot from AI_ENGINES."
-  elif [[ "$_copilot_tok" == ghp_* ]]; then
-    echo "::warning::Copilot unavailable — COPILOT_GITHUB_TOKEN is a classic PAT (ghp_), which Copilot rejects. Use a fine-grained PAT or remove copilot from AI_ENGINES."
-  else
-    # A policy denial (no Copilot subscription/policy for the token's org) or any
-    # other probe failure is reported once, never left as a silent false (#1960).
-    # The CLI output is matched, not echoed: only the matched phrase is logged.
-    local _copilot_out _copilot_rc=0 _denied
-    _copilot_out="$(env GH_TOKEN="$_copilot_tok" gh copilot --version 2>&1)" || _copilot_rc=$?
-    _denied="$(printf '%s\n' "$_copilot_out" | grep -oiE "$_VALIDATE_LICENSE_DENIED_RE" | head -n 1 \
-      | tr '[:upper:]' '[:lower:]' || true)"
-    if [ -n "$_denied" ]; then
-      echo "::warning::Copilot unavailable — ${_denied} (the token's account or org has no usable Copilot entitlement). Fix the Copilot policy/subscription or remove copilot from AI_ENGINES."
-    elif [ "$_copilot_rc" -ne 0 ]; then
-      echo "::warning::Copilot unavailable — \`gh copilot --version\` failed (exit ${_copilot_rc}). Check the gh CLI and COPILOT_GITHUB_TOKEN, or remove copilot from AI_ENGINES."
-    else
-      copilot_ok=true
+  if _validate_engine_enabled copilot; then
+    if [ -z "$_copilot_tok" ]; then
+      echo "::warning::Copilot unavailable — COPILOT_GITHUB_TOKEN is not set. Provide a fine-grained PAT with the Copilot entitlement or remove copilot from AI_ENGINES."
+    elif [[ "$_copilot_tok" == ghp_* ]]; then
+      echo "::warning::Copilot unavailable — COPILOT_GITHUB_TOKEN is a classic PAT (ghp_), which Copilot rejects. Use a fine-grained PAT or remove copilot from AI_ENGINES."
+      else
+      # A policy denial (no Copilot subscription/policy for the token's org) or any
+      # other probe failure is reported once, never left as a silent false (#1960).
+      # The CLI output is matched, not echoed: only the matched phrase is logged.
+      local _copilot_out _copilot_rc=0 _denied
+      _copilot_out="$(env GH_TOKEN="$_copilot_tok" gh copilot --version 2>&1)" || _copilot_rc=$?
+      _denied="$(printf '%s\n' "$_copilot_out" | grep -oiE "$_VALIDATE_LICENSE_DENIED_RE" | head -n 1 \
+        | tr '[:upper:]' '[:lower:]' || true)"
+      if [ -n "$_denied" ]; then
+        echo "::warning::Copilot unavailable — ${_denied} (the token's account or org has no usable Copilot entitlement). Fix the Copilot policy/subscription or remove copilot from AI_ENGINES."
+      elif [ "$_copilot_rc" -ne 0 ]; then
+        echo "::warning::Copilot unavailable — \`gh copilot --version\` failed (exit ${_copilot_rc}). Check the gh CLI and COPILOT_GITHUB_TOKEN, or remove copilot from AI_ENGINES."
+      else
+        copilot_ok=true
+      fi
     fi
+  else
+    if declare -F ai_engine_enabled >/dev/null 2>&1; then
+      # ai_engine_enabled returned 1; could be disabled or config read error
+      # Try getting the chain to detect if config is readable
+      ai_engine_chain >/dev/null 2>&1 || {
+        echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable"
+        exit 1
+      }
+    fi
+    _disabled="${_disabled:+$_disabled, }copilot"
   fi
 
   if [ -n "$_disabled" ]; then
