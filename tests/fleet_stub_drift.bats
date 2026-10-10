@@ -260,6 +260,13 @@ INGRESS_NO_DEVLEAD="${BATS_TEST_DIRNAME}/fixtures/agent-ingress/collapsed-no-dev
   [ "$output" = "MISSING" ]
 }
 
+# A role with no published per-role canonical (#1729: pr-review,
+# ci-failure-analyst) cannot compare a legacy file, so it is MISSING, not DRIFTED.
+@test "classify_role_drift: no ingress and no legacy canonical is MISSING, never DRIFTED" {
+  run classify_role_drift "no" "irrelevant-block-sha" "" "" "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+  [ "$output" = "MISSING" ]
+}
+
 # ---------------------------------------------------------------------------
 # stub_drift_row_role — role rows flow through the SAME 4-field TSV shape as
 # whole-file rows, so the report/alert path is shared. The emitted SHAs are the
