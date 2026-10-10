@@ -645,6 +645,11 @@ maintainer_gate_no_finding_ids() {
 }
 
 # check_maintainer_comments <pr_snapshot_json> [bot_user]
+#   Count PR issue comments that are NOT resolved per gate scope rules. Comments
+#   by our account, with registered markers, or from trusted authors are cleared.
+#   RESOLVED comments by registered bots are re-checked against their latest
+#   covering disposition. Echoes undisposed comment count; returns 2 if input is
+#   unreadable, else 0.
 check_maintainer_comments() {
   local json="${1:-}"
   local bot_user="${2:-donpetry-bot}"
