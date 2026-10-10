@@ -186,3 +186,13 @@ description = "Suppress test fixture API key patterns in test_engine_gemini_keys
 condition = "AND"
 paths = ['''^tests/dev-lead/unit/test_engine_gemini_keys\.bats$''']
 regexes = ['''secret-key''']
+
+# Synthetic Google API key placeholder in the Gemini redaction test (test_gemini_tier_view.bats).
+# The literal survives only in earlier commits of PR #2150 (30, 32 and 39 chars); the test now builds
+# it at runtime. gitleaks v8.25.0+ supports [[allowlists]] with path scoping and AND conditions;
+# earlier versions fall back to the singular [allowlist] table without scoping.
+[[allowlists]]
+description = "Suppress synthetic Google API key placeholder in the Gemini redaction test"
+condition = "AND"
+paths = ['''^tests/dev-lead/unit/test_gemini_tier_view\.bats$''']
+regexes = ['''AIza0123456789[0-9A-Za-z_-]{25}''']
