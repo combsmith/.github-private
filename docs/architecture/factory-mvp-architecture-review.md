@@ -33,8 +33,8 @@ POC never made once, so it was made many times, locally:
 
 **Recommendation: restructure on GitHub Actions around a declared control plane, one run contract
 and one release** (§7), recorded as ADR-0012. A level-triggered Controller reconciles each work item
-from recorded state, so a lost event delays work instead of deleting it. Every role runs under one
-contract in which the model requests effects and a separate job applies them. Agents write through
+from recorded state, so a lost event delays work instead of deleting it. Every role in scope for the MVP
+runs under one contract in which the model requests effects and a separate job applies them. Agents write through
 a GitHub App and the owner account becomes the human's alone. Everything ships as one release on one
 gated path. No always-on infrastructure is added, and the decision logic is written so that it could
 later run behind a hosted control plane unchanged.
