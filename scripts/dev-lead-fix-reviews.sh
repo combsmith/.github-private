@@ -4040,7 +4040,9 @@ case "$INTENT_TYPE" in
         }
       fi
       cp_rc=0
-      commit_and_push "rebase" || cp_rc=$?
+      if [ "$REBASE_DEFER_PUSH" != "true" ]; then
+        commit_and_push "rebase" || cp_rc=$?
+      fi
       if [ "$cp_rc" -eq 3 ]; then
         # commit_and_push committed a script-side change that nets to zero and
         # already flagged it. Stop — never report a self-cancelling rebase applied.

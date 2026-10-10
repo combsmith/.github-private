@@ -238,6 +238,20 @@ EOF
   rm -rf "$dir"
 }
 
+@test "ssg_install_push_blocker: attached -calias and configured aliases are refused" {
+  _mk_pr
+  local dir
+  dir=$(ssg_install_push_blocker)
+  run env PATH="$dir:$PATH" git -C "$REPO_DIR" -calias.p=push p origin feat
+  [[ "$status" -ne 0 ]]
+  [[ "$output" == *"alias"* ]]
+  git -C "$REPO_DIR" config alias.p push
+  run env PATH="$dir:$PATH" git -C "$REPO_DIR" p origin feat
+  [[ "$status" -ne 0 ]]
+  [[ "$output" == *"aliases are disabled"* ]]
+  rm -rf "$dir"
+}
+
 # ---------------------------------------------------------------------------
 # End to end — dev-lead-fix-ci.sh
 # ---------------------------------------------------------------------------

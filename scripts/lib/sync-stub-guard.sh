@@ -345,13 +345,21 @@ for a in "$@"; do
   prev="$a"
   case "$a" in
     -c|-C|--git-dir|--work-tree|--namespace|--exec-path|--config-env) skip=1 ;;
+    -c[Aa][Ll][Ii][Aa][Ss].*) echo "git alias overrides are disabled for this pass (#2212)." >&2; exit 1 ;;
     --config-env=[Aa][Ll][Ii][Aa][Ss].*) echo "git alias overrides are disabled for this pass (#2212)." >&2; exit 1 ;;
     -*) ;;
     push)
       echo "git push is disabled for this pass: the harness checks the synced org-standard stubs and pushes the branch itself. Do not retry the push (#2212)." >&2
       exit 1
       ;;
-    *) break ;;
+    *)
+      # A user/repo/GIT_CONFIG_* alias (`alias.p=push`) would smuggle a push too.
+      if "$real" config --get "alias.$a" >/dev/null 2>&1; then
+        echo "git aliases are disabled for this pass (#2212)." >&2
+        exit 1
+      fi
+      break
+      ;;
   esac
 done
 exec "$real" "$@"
