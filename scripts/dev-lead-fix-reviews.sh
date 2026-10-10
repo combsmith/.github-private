@@ -4009,8 +4009,18 @@ case "$INTENT_TYPE" in
           git commit -q -m "chore: resolve rebase conflicts [skip ci-relay]" \
             || { echo "::error::git commit failed — check git identity configuration on the runner" >&2; exit 1; }
         fi
+        # Re-run the no-op guard on the committed tree: leftover engine edits can
+        # net the branch to zero only after this commit.
+        if pr_nets_to_zero "$BASE_REF"; then
+          echo "::error::No-op guard: PR #${PR_NUMBER} nets to zero changed files against ${BASE_REF} after committing rebase leftovers — flagging for human (#1786)"
+          flag_noop_pr "rebase"
+          exit "$rc"
+        fi
         [ -n "$REBASE_PR_JSON" ] || REBASE_PR_JSON=$(ssg_read_pr "$REPO" "$PR_NUMBER")
-        rebase_head_ref="${HEAD_REF:-$(jq -r '.head.ref // empty' <<<"$REBASE_PR_JSON" 2>/dev/null || true)}"
+        rebase_head_ref="${HEAD_REF:-}"
+        if [ -z "$rebase_head_ref" ] && [ -n "$REBASE_PR_JSON" ]; then
+          rebase_head_ref=$(jq -r '.head?.ref // empty' <<<"$REBASE_PR_JSON" 2>/dev/null) || rebase_head_ref=""
+        fi
         rebase_ssg_rc=0
         rebase_ssg_out=$(ssg_evaluate_rebase "${RESOLUTION_BASE_SHA:-}" HEAD "$REBASE_PR_JSON" "$rebase_head_ref" "$BASE_REF") || rebase_ssg_rc=$?
         if [ "$rebase_ssg_rc" -ne 0 ]; then

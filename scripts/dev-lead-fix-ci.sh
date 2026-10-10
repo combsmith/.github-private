@@ -338,11 +338,19 @@ main() {
     # SHA-pinning a `uses:` line a linter flags). Same rule as the review intents:
     # the PR is read only when the pass changed a file, and an unreadable PR fails
     # closed only when a header stub was touched.
+    # Reconcile with the true remote head BEFORE evaluating, so the tree checked is
+    # the tree push_with_merge_guard pushes (its own reconcile is then a no-op). A
+    # failure here is left to push_with_merge_guard to handle.
+    incorporate_remote_head || true
     local ssg_pr="" ssg_out ssg_rc=0
     if ssg_pass_touches_stubs "$pre_pass_sha" HEAD; then
       ssg_pr=$(ssg_read_pr "$REPO" "$PR_NUMBER")
     fi
-    ssg_out=$(ssg_evaluate "$pre_pass_sha" HEAD "$ssg_pr" "$(jq -r '.head.ref // empty' <<<"$ssg_pr" 2>/dev/null || true)") || ssg_rc=$?
+    local ssg_head_ref=""
+    if [ -n "$ssg_pr" ]; then
+      ssg_head_ref=$(jq -r '.head?.ref // empty' <<<"$ssg_pr" 2>/dev/null) || ssg_head_ref=""
+    fi
+    ssg_out=$(ssg_evaluate "$pre_pass_sha" HEAD "$ssg_pr" "$ssg_head_ref") || ssg_rc=$?
     if [ "$ssg_rc" -ne 0 ]; then
       echo "::error::Sync-stub guard: the fix-ci pass changed a synced org-standard stub on a standards-sync PR ($(printf '%s\n' "$ssg_out" | head -1)) — refusing to push (#2212)"
       flag_sync_stub_drift "$(printf '%s\n' "$ssg_out" | sed '1d')"

@@ -333,7 +333,11 @@ skip=0
 for a in "$@"; do
   if [ "$skip" = 1 ]; then skip=0; continue; fi
   case "$a" in
-    -C|-c|--git-dir|--work-tree|--namespace|--exec-path|--config-env) skip=1 ;;
+    -c)
+      # `-c alias.x=push` would smuggle a push past the literal check below.
+      case "${2:-}" in alias.*|ALIAS.*) echo "git alias overrides are disabled for this pass (#2212)." >&2; exit 1 ;; esac
+      skip=1 ;;
+    -C|--git-dir|--work-tree|--namespace|--exec-path|--config-env) skip=1 ;;
     -*) ;;
     push)
       echo "git push is disabled for this pass: the harness checks the synced org-standard stubs and pushes the branch itself. Do not retry the push (#2212)." >&2
