@@ -581,6 +581,85 @@ _all_four_keys() {
   [ "$(jq -r .remaining_calls <<< "$output")" = "80" ]
 }
 
+# _flash_calls_today <n> <key_index> — n Flash calls earlier today (Pacific), all
+# outside the rolling minute, so only the requests/day window is in play.
+_flash_calls_today() {
+  local i
+  for (( i = 0; i < $1; i++ )); do _ledger_call "$2" gemini-3.8-flash $(( 3600 + i )); done
+}
+
+@test "#2146 AC2: shipped caps and an empty ledger → ok (an excluded Pro row is not a full key)" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  _all_four_keys
+  _source_engine gemini
+
+  run check_provider_headroom gemini
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[headroom] gemini usage 0% — ok"* ]]
+  [[ "$output" != *"fake-secret"* ]]
+  [ ! -e "$CURL_RECORD" ]
+}
+
+@test "#2146 AC2: shipped caps, 15 Flash calls today on every key → skip (15 of 20 is the 75% threshold)" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  # 2026-10-09T19:00:00Z = 12:00 PDT: the Pacific day started 12 hours ago.
+  NOW=1791572400; export GEMINI_QUOTA_NOW="$NOW"
+  _all_four_keys
+  local k
+  for k in 1 2 3 4; do _flash_calls_today 15 "$k"; done
+  _source_engine gemini
+
+  run check_provider_headroom gemini
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"[headroom] gemini usage 75% >= threshold 75% — skipping"* ]]
+
+  # One key at 14 of 20 (70%) keeps the engine available.
+  : > "$TOKEN_LOG_FILE"
+  for k in 1 2 3; do _flash_calls_today 15 "$k"; done
+  _flash_calls_today 14 4
+  run check_provider_headroom gemini
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[headroom] gemini usage 70% — ok"* ]]
+
+  # Calls made before the Pacific midnight reset do not count toward today.
+  : > "$TOKEN_LOG_FILE"
+  for k in 1 2 3 4; do
+    local i; for (( i = 0; i < 15; i++ )); do _ledger_call "$k" gemini-3.8-flash $(( 13 * 3600 + i )); done
+  done
+  run check_provider_headroom gemini
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"usage 0% — ok"* ]]
+}
+
+@test "#2146: a cap-0 row is left out of the engine verdict; a key with only cap-0 rows reads 100%" {
+  export GOOGLE_API_KEY="fake-secret-a" GOOGLE_API_KEY_2="fake-secret-b"
+  _source_engine gemini
+
+  # Key 1 has headroom on Flash; its Pro row is excluded, not counted as 100%.
+  _caps "1 gemini-3.8-flash paid 10 none none" "1 gemini-3.1-pro-preview paid 0 0 0" \
+        "2 gemini-3.1-pro-preview paid 0 0 0"
+  [ "$(gq_key_pct 1)" = "0" ]
+  [ "$(gq_key_pct 2)" = "100" ]
+  # The per-model percent rotation uses is unchanged: cap 0 is still 100 there.
+  [ "$(gq_key_pct 1 gemini-3.1-pro-preview)" = "100" ]
+  run check_provider_headroom gemini
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"usage 0% — ok"* ]]
+
+  # Every key excluded on every model: nothing can run, so the gate skips.
+  _caps "1 gemini-3.1-pro-preview paid 0 0 0" "2 * paid 5 none 0"
+  run check_provider_headroom gemini
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"usage 100% >= threshold 75%"* ]]
+
+  # An excluded row does not hide an unfilled one: still the conservative 2.
+  _caps "1 gemini-3.8-flash unknown unknown unknown unknown" "1 gemini-3.1-pro-preview paid 0 0 0" \
+        "2 gemini-3.8-flash unknown unknown unknown unknown" "2 gemini-3.1-pro-preview paid 0 0 0"
+  run check_provider_headroom gemini
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"limits unknown for key index 1,2"* ]]
+}
+
 @test "#2146 AC3: Pro is never called on any key; deep, audit and single move to the Flash fallback" {
   export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
   _all_four_keys

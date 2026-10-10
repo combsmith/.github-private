@@ -818,6 +818,9 @@ is to keep degrading from moving the outage onto an unmetered provider.
   `1` (skip) means every key is metered and at or above the threshold.
   `2` (**constrained**) means the limits are unknown, a key has no caps row, or the
   ledger is unreadable or corrupt.
+  A caps row with a cap of 0 excludes that model on the key (#2041), so the gate leaves
+  the row out of the key's percent (#2146): with Pro at 0, a key is judged on Flash
+  alone. A key whose every row has a cap of 0 has nothing left to run and reads 100%.
   `2` is deliberately **not** fail-open, unlike Claude's probe. It logs a
   `::warning::` naming `limits unknown` or `ledger unreadable` and never prints
   the `ok` line. The engine still runs on `2`, because refusing to degrade onto a
