@@ -401,11 +401,13 @@ maintainer_gate_reopen_candidates() {
 #   is an array of PR issue-comment nodes, each
 #   {id, author{login,__typename}, authorAssociation, body, createdAt, isMinimized,
 #   minimizedReason, lastEditedAt}.
-#   Echoes a JSON array of {id, lastEditedAt} for every comment that is ALL of:
+#   Echoes a JSON array of {id, login, lastEditedAt, dispositionAt} for every
+#   comment that is ALL of:
 #   authored by a Bot (or a registered reviewer login); minimized RESOLVED or not
 #   minimized (re-opened by the harness); covered by a dev-lead disposition; and
 #   edited strictly after its latest covering disposition. Those are the comments
-#   a fresh dev-lead pass must re-disposition.
+#   a fresh dev-lead pass must re-disposition. dispositionAt is the createdAt of
+#   that latest (now stale) covering disposition; login is the bare author login.
 #   Comments covered only by a maintainer-resolve reply are included too: an edit
 #   after that reply re-blocks the gate, so a fresh pass must re-disposition them.
 #   Unreadable input echoes nothing and returns 1, so a caller never dispatches on
@@ -434,7 +436,25 @@ maintainer_gate_stale_dispositions() {
         | latest_cover($all; $cid) as $cov
         | select($cov != null)
         | select($e > $cov.createdAt)
-        | {id: $cid, lastEditedAt: $e} ]
+        | {id: $cid, login: $lbare, lastEditedAt: $e, dispositionAt: $cov.createdAt} ]
+  ' 2>/dev/null
+}
+
+# maintainer_gate_stale_disposition_facts <comments_array_json> [bot_user]
+#   The #2008 re-open rule as facts for a dev-lead prompt (#2166). The harness
+#   states these before the model runs, instead of asking the model to compare
+#   timestamps itself: on .github PR 1276 the model read a disposition older than
+#   the last edit as current and posted nothing. One markdown bullet per comment
+#   maintainer_gate_stale_dispositions returns, naming the comment id, its last
+#   edit time and the time of the stale disposition. Echoes nothing when no
+#   disposition is stale. Unreadable input echoes nothing and returns 1, so the
+#   caller never tells the model "none" on a guess.
+maintainer_gate_stale_disposition_facts() {
+  local stale
+  stale=$(maintainer_gate_stale_dispositions "${1:-}" "${2:-donpetry-bot}") || return 1
+  [[ -n "$stale" ]] || return 1
+  printf '%s' "$stale" | jq -r '
+    .[] | "- `\(.id)` (\(.login)): edited \(.lastEditedAt), after the newest disposition reply for it (posted \(.dispositionAt)). That disposition judged an older body and no longer covers the comment."
   ' 2>/dev/null
 }
 

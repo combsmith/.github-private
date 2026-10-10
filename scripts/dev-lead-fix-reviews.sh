@@ -40,6 +40,9 @@ source "$(dirname "$0")/lib/deferred-thread-verify.sh"
 # our own disposition/ack/note replies with the SAME discriminator the gate uses
 # (single source of truth; #1813 loop safety AC7).
 source "$(dirname "$0")/lib/maintainer-comment-gate.sh"
+# bcr_fetch_pr_comments (#2017): the fail-closed paginated PR comment read that
+# export_stale_dispositions uses (#2166).
+source "$(dirname "$0")/lib/bot-comment-retry.sh"
 # Structured PR-body backfill (#1805): heal an existing PR whose body is still
 # missing 3+ required description sections, once, marker-keyed.
 # Absolute agent-scripts dir, captured before any cd into a PR worktree so later
@@ -639,6 +642,36 @@ fetch_pr_context() {
     return 1
   fi
   export ALL_REVIEWS_JSON
+}
+
+# export_stale_dispositions: exports STALE_DISPOSITIONS, the prompt text naming
+# every registered-bot comment on the PR that was edited after its newest trusted
+# disposition (#2166). The harness decides staleness (maintainer_gate_stale_
+# disposition_facts, the gate's own #2008 rule) BEFORE the model runs and states it
+# as a fact. Left to the model, the rule was not followed: on .github PR 1276 the
+# model read a 12:18Z disposition as current for a comment edited at 13:03Z,
+# posted nothing, and the gate stayed blocked on every pass. A PR whose comments
+# cannot be read gets an explicit "could not be determined" note, never "none".
+export_stale_dispositions() {
+  local comments facts
+  if comments=$(bcr_fetch_pr_comments "$REPO" "$PR_NUMBER" 2>/dev/null) \
+     && facts=$(maintainer_gate_stale_disposition_facts "$comments" "${BOT_USER:-donpetry-bot}"); then
+    if [ -n "$facts" ]; then
+      STALE_DISPOSITIONS="These registered reviewer-bot comments were edited AFTER the newest disposition reply covering them. Each old disposition judged an older body and no longer covers the comment, and the maintainer-comment gate blocks the PR until each has a fresh one:
+
+${facts}
+
+This is settled; do not re-derive it. For each comment listed, read its CURRENT body and post a fresh disposition reply for it in this pass, even if it is minimized \`RESOLVED\` or you dispositioned it before. Never report that an earlier disposition still covers it."
+      echo "::notice::stale dispositions on PR #${PR_NUMBER} (edited after their newest disposition; stated in the prompt, #2166):"
+      printf '%s\n' "$facts"
+    else
+      STALE_DISPOSITIONS="None. No registered reviewer-bot comment on this PR was edited after its newest disposition."
+    fi
+  else
+    STALE_DISPOSITIONS="Could not be determined: the harness could not read this PR's comments. Apply the edit rule yourself: a disposition older than the comment's \`lastEditedAt\` no longer covers it."
+    echo "::warning::could not compute stale dispositions for PR #${PR_NUMBER} — the prompt says so instead of listing them (#2166)"
+  fi
+  export STALE_DISPOSITIONS
 }
 
 # resolve_bot_outdated_threads: resolves all outdated review threads from bot reviewers.
@@ -3507,6 +3540,7 @@ case "$INTENT_TYPE" in
     # Deliberately NOT exported (see build_and_run): unbounded payload.
     export -n OPEN_THREADS_JSON  # an inherited export would carry the payload into every exec
     fetch_pr_context
+    export_stale_dispositions
     rc=0
     build_and_run "fix-reviews" || rc=$?
     [ "$rc" -eq 2 ] && handle_rate_limit "fix-reviews"
@@ -3629,6 +3663,7 @@ case "$INTENT_TYPE" in
     export REPO ACTOR="${ACTOR:-}" COMMENT_BODY="${COMMENT_BODY:-}" COMMENT_NODE_ID="${COMMENT_NODE_ID:-}" HEAD_SHA
     export COMMENT_VERSION="${COMMENT_VERSION:-}"
     fetch_pr_context
+    export_stale_dispositions
     rc=0
     build_and_run "fix-bot-comment" || rc=$?
     [ "$rc" -eq 2 ] && handle_rate_limit "fix-bot-comment"

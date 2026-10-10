@@ -260,7 +260,10 @@ classify_bot_comment_retry() {
     emit_skip "not-dev-lead-authored"
     return 0
   fi
-  if [ "$minimized" = "resolved" ]; then
+  # A RESOLVED comment is done unless it was edited since: the gate re-blocks one
+  # edited after its newest disposition (#2008), so the decision below decides
+  # whether it still needs a pass (#2166).
+  if [ "$minimized" = "resolved" ] && [ "$(jq -r '.lastEditedAt // ""' <<< "$node")" = "" ]; then
     emit_skip "bot-comment-already-resolved"
     return 0
   fi
@@ -293,6 +296,12 @@ classify_bot_comment_retry() {
     pass-completed)   emit_skip "bot-comment-pass-completed"; return 0 ;;
     state-unreadable) emit_skip "bot-comment-retry-state-unreadable"; return 0 ;;
   esac
+  # An edited RESOLVED comment the decision does not list has a disposition newer
+  # than its edit: the gate still clears it.
+  if [ "$minimized" = "resolved" ] && [ -z "$reason" ]; then
+    emit_skip "bot-comment-already-resolved"
+    return 0
+  fi
 
   # Same context shape as the issue_comment path: no head_sha, so the pass
   # resolves the PR's CURRENT head at run time rather than the sweep-time one.

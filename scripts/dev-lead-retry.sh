@@ -42,6 +42,10 @@ set -euo pipefail
 #                         turns on the #2086 per-target payload-field gate
 #                         (dev-lead-retry.yml passes it; unset = gate off)
 #   NOW_ISO             — override current time for testing (ISO-8601 UTC)
+#   STALE_DISPOSITION_MAX_PASSES — fix-reviews passes that may start after a bot
+#                         comment's latest edit without writing a fresh
+#                         disposition before the #2008 edit re-dispatch holds the
+#                         PR with a warning (default 2, #2166)
 #   BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC — seconds to wait after posting a
 #                         bot-comment retry marker before re-listing markers
 #                         to pick the earliest (default: 5), so a concurrent
@@ -55,9 +59,10 @@ set -euo pipefail
 # disposition (#2008). CodeRabbit edits one summary comment in place, for example
 # to append a Security Architecture finding, and dev-lead only fires on CREATED
 # comments. The caller stub's `on:` is standards-owned, so this sweep is the
-# trigger. It is deduplicated: a successful fix-reviews run marker posted
-# at/after the edit means a pass already saw the edited body, so CodeRabbit's
-# frequent progress edits don't each spawn a run (stale_disposition_needs_dispatch).
+# trigger. It is deduplicated on a disposition NEWER than the edit (#2166): a pass
+# that ran after the edit but wrote no fresh disposition left the gate blocked, so
+# it does not count as done. Passes that started after the edit are capped
+# (STALE_DISPOSITION_MAX_PASSES), so it never loops (stale_disposition_needs_dispatch).
 #
 # NOT retried automatically: on-mention
 #   on-mention requires USER_INSTRUCTION from the original triggering event,
@@ -470,22 +475,28 @@ fetch_pr_comment_nodes() {
 # stale_disposition_needs_dispatch <comment_nodes_json> <pr_number>
 #   0 when a fix-reviews pass should be dispatched for the #2008 edit re-open:
 #   some bot comment was edited strictly after its latest dev-lead disposition
-#   (maintainer_gate_stale_dispositions), AND no successful fix-reviews run marker
-#   for THIS PR (`<!-- dev-lead-fix-reviews pr=<N> … intent=fix-reviews
-#   status=applied|no-changes`) was posted at/after the latest such edit. The
-#   marker check is the dedup. A pass that already ran after the edit saw the
-#   current body, so a burst of CodeRabbit progress edits costs one run, not one per
-#   edit. A pass counts from when it STARTED (the marker's read_at=, a lower bound
-#   on when it read the comments), not when its marker was posted: a pass that
-#   began before the edit and finished after it never saw the edited body. A
-#   legacy marker without read_at= falls back to its createdAt.
-#   A failed pass does not count, so its comment is retried. Only a marker
+#   (maintainer_gate_stale_dispositions). The dedup is a disposition NEWER than
+#   the edit (#2166), which drops the comment from that list. A fix-reviews run
+#   marker after the edit is not proof the edit was handled: on
+#   empower-personal-dashboard#65/#66/#67 passes ran after the edit, wrote no
+#   fresh disposition, and that marker stopped every later dispatch.
+#   Run markers only BOUND the retry. A successful fix-reviews pass for THIS PR
+#   (`<!-- dev-lead-fix-reviews pr=<N> … intent=fix-reviews
+#   status=applied|no-changes`) that started at/after the latest such edit counts
+#   as one attempt. After STALE_DISPOSITION_MAX_PASSES (default 2) it returns 3:
+#   hold for a human rather than spend a model run on every sweep. A new edit
+#   starts a new count. A pass counts from when it STARTED (the marker's
+#   read_at=, a lower bound on when it read the comments), not when its marker
+#   was posted: a pass that began before the edit never saw the edited body. A
+#   legacy marker without read_at= falls back to its createdAt. Only a marker
 #   from a trusted author (OWNER/MEMBER/COLLABORATOR, as dev-lead's own markers
-#   are) counts, so an outside commenter pasting a success-shaped marker cannot
-#   suppress the re-dispatch. 1 otherwise, including unreadable input (never
-#   dispatch on a guess). Pure apart from reading the reviewer registry.
+#   are) counts, so an outside commenter cannot exhaust the cap.
+#   1 otherwise, including unreadable input (never dispatch on a guess). Pure
+#   apart from reading the reviewer registry.
 stale_disposition_needs_dispatch() {
   local nodes="$1" pr_number="$2" stale latest_edit later_runs
+  local max_passes="${STALE_DISPOSITION_MAX_PASSES:-2}"
+  [[ "$max_passes" =~ ^[0-9]+$ ]] || max_passes=2
   [[ "$pr_number" =~ ^[0-9]+$ ]] || return 1
   stale=$(maintainer_gate_stale_dispositions "$nodes" "${BOT_USER:-donpetry-bot}") || return 1
   latest_edit=$(jq -r 'map(.lastEditedAt) | max // ""' <<< "$stale" 2>/dev/null) || return 1
@@ -498,7 +509,9 @@ stale_disposition_needs_dispatch() {
         | (.createdAt // "") as $posted
         | ([(.body // "") | capture("read_at=(?<r>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)") | .r] | first // $posted) as $seen
         | select($seen >= $e) ] | length' <<< "$nodes" 2>/dev/null) || return 1
-  [ "$later_runs" = "0" ]
+  [[ "$later_runs" =~ ^[0-9]+$ ]] || return 1
+  [ "$later_runs" -lt "$max_passes" ] || return 3
+  return 0
 }
 
 # scan_pr_for_rate_limits <repo> <pr_number>
@@ -721,7 +734,11 @@ scan_pr_for_rate_limits() {
   if [ "$dispatched" -eq 0 ] && [ "$held" -eq 0 ]; then
     local comment_nodes
     comment_nodes=$(fetch_pr_comment_nodes "$repo" "$pr_number")
-    if [ -n "$comment_nodes" ] && stale_disposition_needs_dispatch "$comment_nodes" "$pr_number"; then
+    local stale_rc=1
+    if [ -n "$comment_nodes" ]; then
+      stale_disposition_needs_dispatch "$comment_nodes" "$pr_number" && stale_rc=0 || stale_rc=$?
+    fi
+    if [ "$stale_rc" -eq 0 ]; then
       echo "  [stale-disposition] PR ${pr_number}: a bot comment was edited after its dev-lead disposition — re-dispatching fix-reviews (#2008)" >&2
       if [ "$guard_posted" -eq 0 ]; then
         post_dispatch_guard "$repo" "$pr_number" "$head_sha"
@@ -729,6 +746,8 @@ scan_pr_for_rate_limits() {
       fi
       dispatch_reviews_retry "$repo" "$pr_number" "$head_sha" "fix-reviews"
       dispatched=$(( dispatched + 1 ))
+    elif [ "$stale_rc" -eq 3 ]; then
+      echo "::warning::PR ${pr_number} in ${repo}: a bot comment edited after its dev-lead disposition still has no fresh disposition after ${STALE_DISPOSITION_MAX_PASSES:-2} fix-reviews pass(es) since the edit — not re-dispatching; needs a human (#2166)" >&2
     fi
   fi
 

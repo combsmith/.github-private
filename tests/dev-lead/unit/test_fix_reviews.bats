@@ -7000,3 +7000,83 @@ GITEOF
   _nochange_resolver_case maintainer unset
   ! grep -q "PRRT_nochange_bot" "$MUTATIONS_FILE"
 }
+
+# ── #2166: the harness states stale dispositions in the prompt ─────────────────
+# fix-bot-comment.md already told the model "edits re-open the comment", and on
+# .github PR 1276 the model still read a disposition older than the last edit as
+# current and posted nothing. The harness now computes the stale set before the
+# model runs (the gate's own #2008 rule) and hands it over as a fact.
+
+# _stale_env <comments-json|FAIL>: run export_stale_dispositions against a gh stub
+# whose comment read returns <comments-json> (or fails), and print the result.
+_stale_env() {
+  export STALE_COMMENTS="$1"
+  cat > "$STUB_BIN_DIR/gh" <<'GHEOF'
+#!/usr/bin/env bash
+[ "$STALE_COMMENTS" = "FAIL" ] && exit 1
+jq -nc --argjson n "$STALE_COMMENTS" \
+  '{data:{repository:{pullRequest:{comments:{pageInfo:{hasNextPage:false,endCursor:null},nodes:$n}}}}}'
+GHEOF
+  chmod +x "$STUB_BIN_DIR/gh"
+  run bash -c "
+    export PATH='$STUB_BIN_DIR':\"\$PATH\" REPO=o/r PR_NUMBER=54
+    source '$SCRIPT_DIR/scripts/lib/maintainer-comment-gate.sh'
+    source '$SCRIPT_DIR/scripts/lib/bot-comment-retry.sh'
+    eval \"\$(sed -n '/^export_stale_dispositions()/,/^}/p' '$FIX_REVIEWS_SCRIPT')\"
+    export_stale_dispositions >/dev/null 2>&1
+    printf '%s' \"\$STALE_DISPOSITIONS\"
+  "
+}
+
+# _stale_nodes <disposition createdAt>: CodeRabbit's summary edited at 13:03:53Z.
+_stale_nodes() {
+  jq -nc --arg d "$1" '
+    [{id:"IC_kwDORyesfc8AAAABayrmPQ", author:{login:"coderabbitai", __typename:"Bot"}, authorAssociation:"NONE",
+      body:"Review limit reached", createdAt:"2026-10-10T12:00:00Z", lastEditedAt:"2026-10-10T13:03:53Z",
+      isMinimized:false, minimizedReason:null},
+     {id:"IC_d", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+      body:"Rate-limit notice.\n<!-- dev-lead:comment-disposition id=IC_kwDORyesfc8AAAABayrmPQ disposition=informational -->",
+      createdAt:$d, lastEditedAt:null, isMinimized:false, minimizedReason:null}]'
+}
+
+@test "fix-reviews(#2166): a disposition older than the edit is stated as stale, with id, edit time and disposition time" {
+  _stale_env "$(_stale_nodes 2026-10-10T12:18:39Z)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'`IC_kwDORyesfc8AAAABayrmPQ`'* ]]
+  [[ "$output" == *"edited 2026-10-10T13:03:53Z"* ]]
+  [[ "$output" == *"2026-10-10T12:18:39Z"* ]]
+  [[ "$output" == *"post a fresh disposition"* ]]
+}
+
+@test "fix-reviews(#2166): a disposition newer than the edit leaves nothing stale" {
+  _stale_env "$(_stale_nodes 2026-10-10T13:10:00Z)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "None."* ]]
+}
+
+@test "fix-reviews(#2166): an unreadable comment list is reported as undetermined, never as none" {
+  _stale_env FAIL
+  [ "$status" -eq 0 ]
+  [[ "$output" == "Could not be determined"* ]]
+  [[ "$output" != *"None."* ]]
+}
+
+@test "fix-reviews(#2166): fix-reviews and fix-bot-comment compute stale dispositions before the model runs" {
+  local intent block
+  for intent in fix-reviews fix-bot-comment; do
+    block="$(sed -n "/^  ${intent})\$/,/build_and_run \"${intent}\"/p" "$FIX_REVIEWS_SCRIPT")"
+    [[ "$block" == *"export_stale_dispositions"* ]]
+  done
+}
+
+@test "fix-reviews(#2166): both prompts declare STALE_DISPOSITIONS and render it" {
+  local tmpl vars out
+  for tmpl in fix-reviews fix-bot-comment; do
+    head -1 "$SCRIPT_DIR/prompts/dev-lead/${tmpl}.md" | grep -q 'STALE_DISPOSITIONS'
+    vars=$(head -1 "$SCRIPT_DIR/prompts/dev-lead/${tmpl}.md" | sed 's/<!-- VARIABLES: //; s/ -->//' \
+      | tr ',' '\n' | awk '{gsub(/^ +| +$/, ""); if (length) printf "${%s}", $0}')
+    out=$(STALE_DISPOSITIONS='- `IC_stale_marker`' envsubst "$vars" < "$SCRIPT_DIR/prompts/dev-lead/${tmpl}.md")
+    [[ "$out" == *'- `IC_stale_marker`'* ]]
+    [[ "$out" != *'${STALE_DISPOSITIONS}'* ]]
+  done
+}

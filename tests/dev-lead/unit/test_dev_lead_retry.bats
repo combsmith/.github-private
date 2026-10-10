@@ -165,9 +165,10 @@ _marker() {
 # Architecture finding). dev-lead only fires on CREATED comments, and the caller
 # stub's `on:` is standards-owned, so the safety-net sweep re-dispatches a
 # fix-reviews pass when a RESOLVED bot comment was edited after its latest
-# dev-lead disposition. It is deduplicated against dev-lead's own run markers: a
-# fix-reviews run marker posted at/after the edit means a pass already saw the
-# edited body, so CodeRabbit's frequent progress edits don't each spawn a run.
+# dev-lead disposition. #2166: it is deduplicated on a disposition NEWER than the
+# edit, not on a run marker — a pass that ran after the edit but wrote no fresh
+# disposition left the gate blocked forever. Passes that started after the edit
+# only bound it (STALE_DISPOSITION_MAX_PASSES), so it never loops unattended.
 
 # _sweep_nodes <lastEditedAt> <disposition_createdAt> [run_marker_createdAt] [run_marker_association] [run_marker_read_at]
 _sweep_nodes() {
@@ -194,37 +195,58 @@ _sweep_nodes() {
   [ "$status" -eq 1 ]
 }
 
-@test "sweep(#2008): deduplicated — a dev-lead run marker posted after the edit suppresses the dispatch" {
+@test "sweep(#2166): a fix-reviews marker after the edit is not proof — only a disposition newer than the edit clears" {
+  # One pass ran after the edit but wrote no fresh disposition: still stale, so
+  # dispatch again (PRs empower-personal-dashboard#65/#66/#67 held forever here).
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z)" 2000
-  [ "$status" -eq 1 ]
-  # A run marker that PREDATES the edit does not suppress it.
+  [ "$status" -eq 0 ]
+  # A run marker that PREDATES the edit does not suppress it either.
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T19:24:23Z)" 2000
   [ "$status" -eq 0 ]
+  # A disposition newer than the edit is the dedup key: nothing to dispatch.
+  run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T20:36:00Z 2026-10-01T20:36:15Z)" 2000
+  [ "$status" -eq 1 ]
+}
+
+@test "sweep(#2166): bounded — after STALE_DISPOSITION_MAX_PASSES passes since the edit it holds (rc 3) instead of looping" {
+  local nodes
+  nodes=$(jq -c '. + [ .[] | select(.id == "IC_run") | .id = "IC_run2" | .createdAt = "2026-10-01T20:50:00Z" ]' \
+    <<< "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z)")
+  run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 3 ]
+  STALE_DISPOSITION_MAX_PASSES=3 run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 0 ]
+  # A non-numeric cap falls back to the default (2).
+  STALE_DISPOSITION_MAX_PASSES=x run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 3 ]
 }
 
 @test "sweep(#2008): a run marker for a DIFFERENT PR does not suppress the dispatch" {
+  export STALE_DISPOSITION_MAX_PASSES=1  # one counted pass reaches the cap
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z)" 20
   [ "$status" -eq 0 ]
 }
 
 @test "sweep(#2008): a run marker from an untrusted author does not suppress the dispatch" {
+  export STALE_DISPOSITION_MAX_PASSES=1  # one counted pass reaches the cap
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z NONE)" 2000
   [ "$status" -eq 0 ]
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z CONTRIBUTOR)" 2000
   [ "$status" -eq 0 ]
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z MEMBER)" 2000
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 3 ]
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z COLLABORATOR)" 2000
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 3 ]
 }
 
 @test "sweep(#2008): a pass that STARTED before the edit does not suppress the dispatch, even if it finished after" {
+  export STALE_DISPOSITION_MAX_PASSES=1  # one counted pass reaches the cap
   # Marker posted after the edit (20:36:15) by a pass that read the comments at 20:30.
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z OWNER 2026-10-01T20:30:00Z)" 2000
   [ "$status" -eq 0 ]
-  # A pass that started after the edit does suppress it.
+  # A pass that started after the edit counts toward the cap.
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z OWNER 2026-10-01T20:35:30Z)" 2000
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 3 ]
 }
 
 @test "sweep(#2008): unreadable comment data never dispatches (no guessing)" {
@@ -269,6 +291,25 @@ _scan_with_hold() {
   _scan_with_hold "2026-06-18T23:00:00Z"
   [ "${lines[-1]}" = "1" ]
   [ "$(grep -c 'DISPATCH' <<< "$output")" -eq 1 ]
+}
+
+@test "sweep(#2166): a stale disposition past its pass cap is held with a warning, not dispatched" {
+  gh() {
+    case "$*" in
+      *"/pulls/2000"*) echo '{"state":"open","head":{"sha":"abc"},"labels":[]}' ;;
+      *) echo '[]' ;;
+    esac
+  }
+  pr_resume_suppressed() { return 1; }
+  post_dispatch_guard() { echo "GUARD" >&2; }
+  fetch_pr_comment_nodes() { echo '[{"id":"IC_cr"}]'; }
+  stale_disposition_needs_dispatch() { return 3; }
+  dispatch_reviews_retry() { echo "DISPATCH intent=$4" >&2; }
+  run scan_pr_for_rate_limits "petry-projects/.github-private" 2000
+  [ "${lines[-1]}" = "0" ]
+  [[ "$output" != *"DISPATCH"* ]]
+  [[ "$output" != *"GUARD"* ]]
+  [[ "$output" == *"::warning::"*"#2166"* ]]
 }
 
 # _scan_with_markers <json-array-of-bodies>: scan a PR whose comments are exactly those.
