@@ -193,8 +193,9 @@ canary_annotate() {
   # (render_canary_report then fails closed with the operational exit code) rather
   # than be silently discarded or coerced to placeholder labels / zero counts, which
   # could let the surviving rows score a bogus PASS on partial evidence. Recognized
-  # non-token audit kinds (finding_verification, lsp_cold_start, gemini_key_cooldown — see
-  # scripts/lib/token-metrics.sh; keep in sync) are legitimately skipped, not scored.
+  # non-token audit kinds (finding_verification, lsp_cold_start, gemini_key_cooldown,
+  # gemini_attempt, gemini_rejection_sample — see scripts/lib/token-metrics.sh and
+  # scripts/lib/gemini-quota.sh; keep in sync) are legitimately skipped, not scored.
   # duration_ms stays optional: real emit_token_record output carries none yet, so a
   # missing/null duration is "", not invalid.
   #
@@ -207,7 +208,8 @@ canary_annotate() {
         if type != "object" then "invalid"
         else
           (.kind // "token_usage") as $k
-          | if ($k == "finding_verification" or $k == "lsp_cold_start" or $k == "gemini_key_cooldown") then empty
+          | if ($k == "finding_verification" or $k == "lsp_cold_start" or $k == "gemini_key_cooldown"
+                or $k == "gemini_attempt" or $k == "gemini_rejection_sample") then empty
             elif $k == "token_usage" then
               # ts must be a canonical, valid UTC instant (a "2026-09-26garbage" string
               # would sort in-window lexically); token counts must be non-negative

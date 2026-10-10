@@ -257,6 +257,7 @@ jobs:
             tests/dev-lead/integration/test_usage_telemetry_roundtrip.bats \
             tests/dev-lead/unit/test_gemini_quota.bats \
             tests/dev-lead/unit/test_budget_poller.bats \
+            tests/dev-lead/unit/test_gemini_tier_view.bats \
             tests/test_qa_lead_test_surface.bats \
             tests/test_qa_lead_advisory_gate.bats \
             tests/test_persona_pr_pregate.bats \

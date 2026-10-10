@@ -41,6 +41,11 @@ of per-role Class-1 caller stubs on `main`, read live on 2026-09-29:
 (markets `e390f85`, 2026-10-06). §3 carries that pin so the collapse does not
 revert it. See §5b.
 
+**Later pin change (markets#521):** markets#521 repointed markets `main`'s
+ingress `pr-review` job from `@pr-review/stable` to `@pr-review/v1-stable`
+(markets `62587ec`, 2026-10-10), in both `uses:` and `agent_ref`. §3 carries
+that pin. The row above still records the pre-collapse stub pin. See §5a.
+
 > **Gap (named, not silently carried):** the delivery brief cites a baseline doc
 > at `docs/initiatives/agent-ingress-collapse-baseline.md`. That file **does not
 > exist** on `main`. The authoritative baseline is the pair above (the canonical
@@ -109,10 +114,12 @@ per-job pin (moved down a tier from the per-file pin, ADR-0002), its own
 `permissions:`, its own `secrets:`, and a **pure event-filter `if:`** that
 reconstructs that role's original subscription.
 
-> **Two pins below are defective and are preserved *as-is for pilot parity* while
+> **Two pins below were defective and were preserved *as-is for pilot parity* while
 > being NAMED here — see §5 for the follow-up corrections.** A behavior-preserving
 > collapse must not silently "fix" a pin in the same change that moves it; the
-> corrections are separate follow-ups.
+> corrections are separate follow-ups. The `pr-review` pin has since been
+> corrected by markets#521 (§5a). The `ci-failure-analyst` pin is still
+> defective (§5b).
 >
 > **Job-level `concurrency:` — ruled by ADR-0010, accepted (see §4).** Three
 > source stubs carry a *workflow-level* `concurrency:` block. A single collapsed
@@ -127,6 +134,11 @@ reconstructs that role's original subscription.
 > `agent-ingress.yml` that markets#513 ships. It differs from the first ratified
 > text (#2039) in the `pr-auto-review` group (per-event slot, §4b) and the
 > `ci-failure-analyst` pin (§5b). The maintainer accepted both changes.
+>
+> **Synced to markets#521 (#2206).** The YAML below is byte-identical to markets
+> `main` `.github/workflows/agent-ingress.yml` at `62587ec` (blob `d411cff`). The
+> only change from the #2171 text is the `pr-review` pin, now
+> `pr-review/v1-stable` in both `uses:` and `agent_ref` (§5a).
 
 ```yaml
 # ─────────────────────────────────────────────────────────────────────────────
@@ -273,9 +285,9 @@ jobs:
       contents: read
       pull-requests: write
       checks: read
-    uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/stable  # NOSONAR(githubactions:S7637) first-party channel ref  # DEFECTIVE PIN — see §5
+    uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     with:
-      agent_ref: pr-review/stable
+      agent_ref: pr-review/v1-stable
       pr_url: ${{ inputs.pr_url || '' }}
       dry_run: ${{ inputs.dry_run || '' }}
       force_review: ${{ inputs.force_review || '' }}
@@ -378,9 +390,17 @@ accepted ADR is immutable. ADR-0010 is the delivered form of that reading.
 | Role | `group` (leading literal) | `cancel-in-progress` | Pinned reusable's groups | Collision |
 | --- | --- | --- | --- | --- |
 | `pr-auto-review` | `pr-auto-review-…` (per-event slot, §4b) | `true` | none (`pr-auto-review-reusable.yml@pr-auto-review/v1-stable`) | none |
-| `pr-review` | `pr-review-…` | `true` | `pr-review-pr-{…}`, `pr-review-batch` (`pr-review.yml@pr-review/stable`) | none (see the `enumerate` note in §4b) |
+| `pr-review` | `pr-review-…` | `true` | `pr-review-pr-{…}`, `pr-review-batch` (`pr-review.yml@pr-review/v1-stable`) | none (see the `enumerate` note in §4b) |
 | `ci-failure-analyst` | `ci-failure-analyst-…` (unchanged) | `false` (unchanged) | none (`ci-failure-analyst-reusable.yml@b585102…`) | none |
 | `dev-lead`, `pr-review-mention` | no caller block | — | — | — |
+
+The `pr-review` repin (markets#521, §5a) does not change the collision result.
+The reusable at `pr-review/v1-stable` (`71920a2`) declares the same
+`pr-review-pr-…` / `pr-review-batch` groups and the same four inputs
+(`agent_ref`, `dry_run`, `force_review`, `pr_url`) as the old `pr-review/stable`
+snapshot. The test snapshot
+`tests/fixtures/agent-ingress/markets-pinned-reusables/pr-review.yml` records the
+new pin.
 
 Both guards pass on the §3 ingress as rendered: `scripts/validate-ingress-if.sh`
 (event surface, role prefix, literal boolean) and
@@ -471,10 +491,21 @@ change.
 
 ## 5. The two defective pins (named, with follow-up corrections)
 
-Both are preserved as-is in §3 for behavior parity in the pilot, and flagged
-inline with `# DEFECTIVE PIN`. Neither is silently carried:
+Both were preserved as-is in §3 for behavior parity in the pilot, and flagged
+inline with `# DEFECTIVE PIN`. Neither is silently carried. §5a has since been
+resolved by markets#521. §5b is still open:
 
-### 5a. `pr-review` → `@pr-review/stable` (stale / non-standard channel)
+### 5a. `pr-review` → `@pr-review/stable` (stale / non-standard channel) — **resolved by markets#521**
+
+- **Resolved (markets#521, merged 2026-10-10):** markets repointed the ingress
+  `pr-review` job to `@pr-review/v1-stable` (`uses:` and `agent_ref`) and dropped
+  the `# DEFECTIVE PIN` marker. §3 is synced to markets `62587ec` (#2206). The
+  reusable at `pr-review/v1-stable` (`71920a2`) declares the same four
+  `workflow_call.inputs` that §3 forwards (`agent_ref`/`pr_url`/`dry_run`/
+  `force_review`), so there is no channel skew, and the §4a collision result
+  is unchanged. `pr-review` has run on the new pin:
+  https://github.com/petry-projects/markets/actions/runs/38055494293/job/114222972939.
+  The history below is kept as the record of the defect.
 
 - **Defect:** every other first-party pin rides a `<name>/v<MAJOR>-<tier>`
   channel (`dev-lead/v139-stable`, `pr-auto-review/v1-stable`,
@@ -735,8 +766,6 @@ docs/initiatives/agent-ingress-collapse-markets.md
 - Keep the 6 carve-out stubs (§2b) and both required-gate stubs (§2c) untouched.
 
 ## Known follow-ups (do NOT bundle into this PR — §5)
-- pr-review pin `@pr-review/stable` is a stale bare-tier channel — repoint after
-  a `pr-review/v<MAJOR>-stable` channel is published.
 - ci-failure-analyst pin is a bare SHA (`b585102…` # main) — repoint to a moving
   `ci-failure-analyst/v<MAJOR>-stable` channel.
 
@@ -756,5 +785,5 @@ docs/initiatives/agent-ingress-collapse-markets.md
 | Canonical `agent-ingress.yml` template published | **Deferred (§9b)** | Write to `petry-projects/.github`; cross-repo. |
 | `STUB_REGISTRY` rows activated in fleet_monitor.sh | **Prepared, not applied (§9a)** | Would 404 against an unpublished canonical path and can't be ALIGNED-verified pre-collapse (§9c). |
 | §4 job-level concurrency schema ruling | **Ratified — ADR-0010, accepted** | ADR-0010 admits bounded job-level `concurrency:`. §3 was re-rendered to the bounds (#2038), and §4b states the non-PR-event behavior change. |
-| pin corrections (§5a/§5b) | **Named, not applied** | Behavior-preserving collapse must not change pins; separate follow-ups. |
+| pin corrections (§5a/§5b) | **§5a resolved by markets#521; §5b named, not applied** | Behavior-preserving collapse must not change pins; separate follow-ups. |
 | Dedicated baseline doc at the brief's cited path | **Does not exist (§1)** | Not fabricated; real baseline is the reference file + live stubs. |
