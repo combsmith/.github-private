@@ -51,6 +51,9 @@ source "$(dirname "$0")/lib/maintainer-comment-gate.sh"
 AGENT_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$(dirname "$0")/lib/dev-lead-pr-body.sh"
 source "$(dirname "$0")/lib/redact.sh"
+# Duplicate-declaration leg of the post-rebase integrity gate, with its output
+# kept and its outcomes separated (#2184).
+source "$(dirname "$0")/lib/rebase-integrity-gate.sh"
 # Rebase exhaustion handling (#865): abort cleanly on hard conflicts instead of
 # timing out (exit 124), and dampen sentinel bursts.
 source "$(dirname "$0")/lib/rebase-exhaustion.sh"
@@ -2600,20 +2603,17 @@ verify_resolution_integrity() {
   done <<EOF
 ${changed}
 EOF
-  if [ -x "${script_dir}/check-duplicate-decls.sh" ]; then
-    # The gate's default no-arg mode scans its own directory ($SCRIPT_DIR = the
-    # checked-out dev-lead scripts repo), not the PR's resolved working tree. Point
-    # it at the resolved tree explicitly so it inspects the rebased files: pass the
-    # work tree's scripts/ as SCAN_DIR and name its prompts/ and personas/ dirs so
-    # all three scopes scan the PR tree. Nonexistent dirs are skipped by the gate.
-    local work_root
-    work_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-    if ! DUPLICATE_DECL_PROMPTS_DIR="${work_root}/prompts" \
-         DUPLICATE_DECL_PERSONAS_DIR="${work_root}/personas" \
-         "${script_dir}/check-duplicate-decls.sh" "${work_root}/scripts" >/dev/null 2>&1; then
-      echo "::warning::integrity gate: check-duplicate-decls.sh failed after rebase resolution — possible #1485 corruption (#1890 AC #7)"
-      rc=1
-    fi
+  # The gate's default no-arg mode scans its own directory ($SCRIPT_DIR = the
+  # checked-out dev-lead scripts repo), not the PR's resolved working tree. Point
+  # it at the resolved tree explicitly: rig_duplicate_decl_gate passes the work
+  # tree's scripts/ as SCAN_DIR and names its prompts/ and personas/ dirs so all
+  # three scopes scan the PR tree. It keeps the gate's output (#2184): a finding
+  # and "the gate could not be evaluated" are reported differently, and both hold
+  # the rebase back (fail closed).
+  local work_root
+  work_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  if ! rig_duplicate_decl_gate "${script_dir}/check-duplicate-decls.sh" "$work_root"; then
+    rc=1
   fi
   return "$rc"
 }
@@ -4194,7 +4194,23 @@ case "$INTENT_TYPE" in
       # to a human immediately — corruption is not something to retry.
       if ! verify_resolution_integrity "$BASE_REF"; then
         echo "::error::rebase: post-resolution integrity gate failed for PR #${PR_NUMBER} — not reporting applied; escalating to a human (#1890 AC #7)"
-        escalate_rebase_needs_human "Post-conflict-resolution integrity check failed (\`bash -n\` / \`shellcheck\` / \`check-duplicate-decls.sh\`). A bad conflict resolution has corrupted trunk before (#1485), so this branch is held for a human rather than reported resolved."
+        # Say what the duplicate-declaration check actually reported, so a human
+        # can tell a real finding from a gate that could not run (#2184).
+        # The fence is picked to outlast any tilde run in the excerpt, so the
+        # gate's output cannot close the block early. (No `local`: this is the
+        # script's top level, not a function.)
+        _rig_note=""
+        if [ -n "${RIG_DETAIL:-}" ]; then
+          _rig_fence="$(pick_fence "$RIG_DETAIL")"
+          _rig_note="
+
+What \`check-duplicate-decls.sh\` reported:
+
+${_rig_fence}
+${RIG_DETAIL}
+${_rig_fence}"
+        fi
+        escalate_rebase_needs_human "Post-conflict-resolution integrity check failed (\`bash -n\` / \`shellcheck\` / \`check-duplicate-decls.sh\`). A bad conflict resolution has corrupted trunk before (#1485), so this branch is held for a human rather than reported resolved.${_rig_note}"
         exit 1
       fi
       # Assert the REAL post-condition (#1890 AC #2). The engine exit code and the

@@ -522,6 +522,16 @@ JSONL
   [[ "$output" == *'| 2 | `gemini-3.8-flash` | unknown | 1 | 1 / unknown | 11 / unknown | 1 / unknown | 0 |'* ]]
 }
 
+@test "export_gemini_records: hands every gemini record (not claude) to the tier report (#2041)" {
+  local d; d="$(_gq_dir)"
+  run export_gemini_records "$d"
+  rm -rf "$d"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | grep -c .)" = "5" ]
+  [[ "$output" == *'"kind":"gemini_key_cooldown"'* ]]
+  [[ "$output" != *"claude"* ]]
+}
+
 @test "render_gemini_quota: no-op when no record carries a gemini key index" {
   local d; d="$(mktemp -d)"
   printf '%s\n' '{"ts":"2026-06-01T10:00:00Z","engine":"gemini","model":"gemini-3.8-flash","input_tokens":1,"output_tokens":1,"repo":"r"}' > "$d/run.jsonl"
@@ -559,4 +569,29 @@ JSONL
   # Each call is the only one in its Pacific day → peak req/day 1 (UTC day buckets would give 2 for key 1).
   [[ "$output" == *'| 1 | `m` | unknown | 2 | 1 / unknown | 2 / unknown | 1 / unknown | 0 |'* ]]
   [[ "$output" == *'| 2 | `m` | unknown | 2 | 1 / unknown | 2 / unknown | 1 / unknown | 0 |'* ]]
+}
+
+@test "export_gemini_records: a forged rejection sample is emitted redacted, even with a double quote (#2150)" {
+  local d key; d="$(mktemp -d)"
+  key="AI""za0123456789$(printf '%025d' 0)"
+  jq -cn --arg s "say \"hi\" $key end" \
+    '{kind:"gemini_rejection_sample", ts:"2026-10-09T10:00:00Z", engine:"gemini", key_index:1, sample:$s}' > "$d/run.jsonl"
+  run export_gemini_records "$d"
+  rm -rf "$d"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"$key"* ]]
+  [ "$(jq -r .sample <<< "$output" | grep -c 'end')" = "1" ]
+}
+
+@test "export_gemini_records: a rejection sample that cannot be validated or re-encoded is dropped (#2150)" {
+  local d; d="$(mktemp -d)"
+  printf '%s\n' '{"kind":"gemini_rejection_sample","ts":"not-a-time","engine":"gemini","key_index":1,"sample":"x"}' > "$d/run.jsonl"
+  run export_gemini_records "$d"
+  [ -z "$output" ]
+  rm -f "$d/run.jsonl"
+  printf '%s\n' '{"kind":"gemini_rejection_sample","ts":"2026-10-09T10:00:00Z","engine":"gemini","key_index":1,"sample":"x"}' > "$d/run.jsonl"
+  _gq_redact_line() { return 1; }
+  run export_gemini_records "$d"
+  rm -rf "$d"
+  [ -z "$output" ]
 }

@@ -56,6 +56,30 @@ _mq_read_state() {
   ' 2>/dev/null
 }
 
+# _mq_read_state_retry <owner> <name> <number>
+#   _mq_read_state with a bounded retry (#2186). The helper runs right after an
+#   approval was dismissed, and the window that matters is seconds long, so one
+#   transient GraphQL error must not end the check. Tunables (also for tests):
+#   MQ_READ_ATTEMPTS (default 3) and MQ_READ_RETRY_DELAY_SEC (default 2).
+#   Non-zero when every attempt failed.
+_mq_read_state_retry() {
+  local owner="$1" name="$2" number="$3" st i
+  local attempts="${MQ_READ_ATTEMPTS:-3}" delay="${MQ_READ_RETRY_DELAY_SEC:-2}"
+  [[ "$attempts" =~ ^[1-9][0-9]*$ ]] || attempts=3
+  [[ "$delay" =~ ^[0-9]+$ ]] || delay=2
+  for ((i = 1; i <= attempts; i++)); do
+    if st=$(_mq_read_state "$owner" "$name" "$number"); then
+      printf '%s' "$st"
+      return 0
+    fi
+    if [ "$i" -lt "$attempts" ]; then
+      echo "  merge-queue: live-state read failed (attempt $i of $attempts) — retrying" >&2
+      [ "$delay" -gt 0 ] && sleep "$delay"
+    fi
+  done
+  return 1
+}
+
 # _mq_post_notice <owner> <name> <number> <pr_url> <head> <body> [marker_prefix]
 #   Post <body> unless a comment carrying this head's marker already exists, so
 #   repeat runs at one head post one notice. If the comments cannot be listed,
@@ -98,9 +122,18 @@ mq_dequeue_if_unapproved() {
   fi
 
   local st status_st=0
-  st=$(_mq_read_state "$owner" "$name" "$number") || status_st=$?
+  st=$(_mq_read_state_retry "$owner" "$name" "$number") || status_st=$?
   if [ "$status_st" -ne 0 ]; then
     echo "::warning::merge-queue: could not read the merge-queue and review state of $pr_url — cannot tell whether a queued PR lost its last approval; check the queue by hand (#2174)"
+    # Surface it where a maintainer looks, not only in the run log (#2186). No PR
+    # comment on this path: most PRs that reach it are not in the queue at all.
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+      {
+        printf '### Merge queue: state unknown after an approval was withdrawn\n\n'
+        printf 'The live merge-queue and review state of %s could not be read after every retry. ' "$pr_url"
+        printf 'If that pull request is in the merge queue it may merge without an approval: check the queue and remove it by hand if needed.\n\n'
+      } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+    fi
     return 0
   fi
 

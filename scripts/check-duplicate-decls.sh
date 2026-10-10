@@ -104,9 +104,17 @@ if [ -n "$PROMPTS_DIR" ] && [ -d "$PROMPTS_DIR" ]; then
     echo "::error::check-duplicate-decls: failed to enumerate .md files under ${PROMPTS_DIR}" >&2
     exit 2
   fi
+  # Name each file as "<scanned dir's name>/<path under it>" (prompts/triage.md),
+  # NOT relative to this script's own repo. The rebase integrity gate runs THIS
+  # script against ANOTHER tree (the resolved PR worktree) through
+  # DUPLICATE_DECL_PROMPTS_DIR; a path relative to $REPO_ROOT stayed absolute
+  # there, so no MD_HEADING_ALLOWLIST entry could ever match and the verified-
+  # benign prompts/triage.md heading failed every post-rebase check (#2184).
+  prompts_root="${PROMPTS_DIR%/}"
+  prompts_name="$(basename "$prompts_root")"
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    rel="${f#"$REPO_ROOT"/}"
+    rel="${prompts_name}/${f#"$prompts_root"/}"
     while IFS= read -r heading; do
       [ -n "$heading" ] || continue
       allowed=0
@@ -127,9 +135,11 @@ if [ -n "$PERSONAS_DIR" ] && [ -d "$PERSONAS_DIR" ]; then
     echo "::error::check-duplicate-decls: failed to enumerate persona YAML files under ${PERSONAS_DIR}" >&2
     exit 2
   fi
+  personas_root="${PERSONAS_DIR%/}"
+  personas_name="$(basename "$personas_root")"
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    rel="${f#"$REPO_ROOT"/}"
+    rel="${personas_name}/${f#"$personas_root"/}"
     while IFS= read -r dupline; do
       [ -n "$dupline" ] || continue
       scope="${dupline%%$'\t'*}"
