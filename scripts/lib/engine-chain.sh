@@ -39,23 +39,26 @@ if ! declare -F ai_engines_file_providers >/dev/null 2>&1 \
 fi
 
 # _ai_engine_default_chain — the file's enabled providers in fallback_order.
-# AI_ENGINES_DEFAULT is used only when the file cannot be read; a file that
-# enables nothing yields an empty chain (the validator rejects such a file) and
-# never re-enables the providers it turned off.
+# AI_ENGINES_DEFAULT is used only when engine-models.sh is not available; if
+# the file cannot be read when the lib is available, fails closed (returns 1)
+# so callers never silently re-enable providers the file disables.
 _ai_engine_default_chain() {
   local c
-  if declare -F ai_engines_file_providers >/dev/null 2>&1 \
-     && c="$(ai_engines_file_providers 2>/dev/null)"; then
+  if declare -F ai_engines_file_providers >/dev/null 2>&1; then
+    # The function exists (engine-models.sh was sourced); must succeed.
+    c="$(ai_engines_file_providers)" || return 1
     printf '%s' "$c"
     return 0
   fi
+  # Function not available; use the built-in default.
   printf '%s' "$AI_ENGINES_DEFAULT"
 }
 
 # _ai_engine_file_disabled — the providers the file disables (space-separated).
+# Returns 1 when the file cannot be read (if engine-models.sh was sourced).
 _ai_engine_file_disabled() {
   declare -F ai_engines_file_disabled >/dev/null 2>&1 || return 0
-  ai_engines_file_disabled 2>/dev/null || true
+  ai_engines_file_disabled
 }
 
 # _ai_engine_spec — the raw configured value (AI_ENGINES, else DEV_LEAD_ENGINES).
@@ -88,23 +91,27 @@ _ai_engine_parse() {
 # Engines the file disables are dropped. Empty or invalid configuration → the
 # default chain. A valid configuration that names only disabled engines → empty
 # (fails closed rather than silently re-enabling providers the spec excluded).
+# Returns 1 if the config file cannot be read (when engine-models.sh is sourced).
 ai_engine_chain() {
-  local spec parsed disabled e kept=""
+  local spec parsed disabled e kept="" chain
   spec="$(_ai_engine_spec)"
   if [ -z "$spec" ]; then
-    printf '%s' "$(_ai_engine_default_chain)"
+    chain="$(_ai_engine_default_chain)" || return 1
+    printf '%s' "$chain"
     return 0
   fi
   if parsed="$(_ai_engine_parse "$spec")" && [ -n "$parsed" ]; then
-    disabled="$(_ai_engine_file_disabled)"
+    disabled="$(_ai_engine_file_disabled)" || return 1
     for e in $parsed; do
       [[ " $disabled " == *" $e "* ]] || kept="${kept:+$kept }$e"
     done
   fi
   if [ -z "$kept" ] && [ -z "${spec//[[:space:],]/}" ]; then
-    printf '%s' "$(_ai_engine_default_chain)"
+    chain="$(_ai_engine_default_chain)" || return 1
+    printf '%s' "$chain"
   elif [ -z "$kept" ] && ! _ai_engine_parse "$spec" >/dev/null 2>&1; then
-    printf '%s' "$(_ai_engine_default_chain)"
+    chain="$(_ai_engine_default_chain)" || return 1
+    printf '%s' "$chain"
   else
     printf '%s' "$kept"
   fi
@@ -112,28 +119,32 @@ ai_engine_chain() {
 
 # ai_engine_chain_problem — prints a one-line description when the configured
 # value is unusable (unknown engine, nothing but separators, or an engine the
-# file disables); prints nothing when it is fine or unset.
+# file disables); prints nothing when it is fine or unset. Returns 1 if the
+# config file cannot be read (when engine-models.sh is sourced).
 ai_engine_chain_problem() {
-  local spec parsed disabled e off=""
+  local spec parsed disabled e off="" chain
   spec="$(_ai_engine_spec)"
   [ -n "$spec" ] || return 0
   if [ -z "${spec//[[:space:],]/}" ]; then
+    chain="$(_ai_engine_default_chain)" || return 1
     printf "AI_ENGINES='%s' lists no engine — using the default chain '%s'" \
-      "$spec" "$(_ai_engine_default_chain)"
+      "$spec" "$chain"
     return 0
   elif ! parsed="$(_ai_engine_parse "$spec")" || [ -z "$parsed" ]; then
+    chain="$(_ai_engine_default_chain)" || return 1
     printf "AI_ENGINES='%s' names an unknown engine (expected claude, gemini, copilot) — using the default chain '%s'" \
-      "$spec" "$(_ai_engine_default_chain)"
+      "$spec" "$chain"
     return 0
   fi
-  disabled="$(_ai_engine_file_disabled)"
+  disabled="$(_ai_engine_file_disabled)" || return 1
   for e in $parsed; do
     [[ " $disabled " != *" $e "* ]] || off="${off:+$off, }$e"
   done
   if [ -n "$off" ]; then
     # AI_ENGINES narrows the file; it cannot turn a provider back on.
+    chain="$(ai_engine_chain)" || return 1
     printf "AI_ENGINES='%s' names %s, which config/ai-engines.json has disabled — ignored (enable a provider in the file, not with AI_ENGINES); using '%s'" \
-      "$spec" "$off" "$(ai_engine_chain)"
+      "$spec" "$off" "$chain"
   elif [[ "$spec" =~ ^[[:space:],] ]]; then
     # The workflows derive the primary with startsWith(vars.AI_ENGINES, …),
     # which cannot skip leading separators.
@@ -143,8 +154,11 @@ ai_engine_chain_problem() {
 }
 
 # ai_engine_enabled <engine> — 0 when <engine> is in the configured chain.
+# Returns 1 if the config file cannot be read (when engine-models.sh is sourced).
 ai_engine_enabled() {
-  [[ " $(ai_engine_chain) " == *" ${1:-} "* ]]
+  local chain
+  chain="$(ai_engine_chain)" || return 1
+  [[ " $chain " == *" ${1:-} "* ]]
 }
 
 # ai_engine_primary [preferred] — <preferred> when it is enabled, otherwise the
@@ -152,11 +166,11 @@ ai_engine_enabled() {
 # An INVALID AI_ENGINES value means full defaults, primary included: the
 # workflows derive REVIEW_ENGINE / DEV_LEAD_ENGINE from the raw value's first
 # token, so honouring <preferred> there would let "copilot,typo" still make
-# Copilot primary (#1961 review).
+# Copilot primary (#1961 review). Returns 1 if the config file cannot be read.
 ai_engine_primary() {
   local pref chain spec
   pref="$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
-  chain="$(ai_engine_chain)"
+  chain="$(ai_engine_chain)" || return 1
   spec="$(_ai_engine_spec)"
   if [ -n "${spec//[[:space:],]/}" ] && ! _ai_engine_parse "$spec" >/dev/null; then
     pref=""
@@ -190,10 +204,10 @@ ai_engine_available() {
 # ai_engine_next_available <current> — the first available engine AFTER
 # <current> in the chain (forward only, so a rate-limit walk cannot cycle).
 # When <current> is not in the chain, searches the whole chain. Prints nothing
-# when there is none.
+# when there is none. Returns 1 if the config file cannot be read.
 ai_engine_next_available() {
   local current="${1:-}" chain e seen=0
-  chain="$(ai_engine_chain)"
+  chain="$(ai_engine_chain)" || return 1
   [[ " $chain " == *" $current "* ]] || seen=1
   for e in $chain; do
     if [ "$seen" -eq 0 ]; then
@@ -208,9 +222,11 @@ ai_engine_next_available() {
 }
 
 # ai_engine_first_available — the first available engine in the chain.
+# Returns 1 if the config file cannot be read (when engine-models.sh is sourced).
 ai_engine_first_available() {
-  local e
-  for e in $(ai_engine_chain); do
+  local e chain
+  chain="$(ai_engine_chain)" || return 1
+  for e in $chain; do
     if ai_engine_available "$e"; then
       printf '%s' "$e"
       return 0
