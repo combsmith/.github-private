@@ -21,12 +21,11 @@ RIG_DETAIL=""
 # _rig_excerpt — stdin → stdout. Redacts FIRST (cutting first could split a
 # token below its redaction pattern), then bounds the result.
 _rig_excerpt() {
-  local text
-  text="$(cat)"
   if declare -F redact_secrets >/dev/null 2>&1; then
-    text="$(printf '%s\n' "$text" | redact_secrets)"
-  fi
-  printf '%s\n' "$text" | head -n "$RIG_DETAIL_MAX_LINES" | head -c "$RIG_DETAIL_MAX_BYTES"
+    redact_secrets
+  else
+    cat
+  fi | head -n "$RIG_DETAIL_MAX_LINES" | head -c "$RIG_DETAIL_MAX_BYTES"
 }
 
 # rig_duplicate_decl_gate <gate_script> <work_root>
@@ -50,7 +49,9 @@ rig_duplicate_decl_gate() {
   out="$(DUPLICATE_DECL_PROMPTS_DIR="${work_root}/prompts" \
          DUPLICATE_DECL_PERSONAS_DIR="${work_root}/personas" \
          "$gate" "${work_root}/scripts" 2>&1)" || rc=$?
-  [ "$rc" -eq 0 ] && return 0
+  if [ "$rc" -eq 0 ]; then
+    return 0
+  fi
 
   RIG_DETAIL="$(printf '%s\n' "$out" | _rig_excerpt)"
   if [ "$rc" -eq 1 ]; then

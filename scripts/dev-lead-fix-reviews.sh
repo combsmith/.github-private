@@ -3990,15 +3990,19 @@ case "$INTENT_TYPE" in
         echo "::error::rebase: post-resolution integrity gate failed for PR #${PR_NUMBER} — not reporting applied; escalating to a human (#1890 AC #7)"
         # Say what the duplicate-declaration check actually reported, so a human
         # can tell a real finding from a gate that could not run (#2184).
+        # The fence is picked to outlast any tilde run in the excerpt, so the
+        # gate's output cannot close the block early. (No `local`: this is the
+        # script's top level, not a function.)
         _rig_note=""
         if [ -n "${RIG_DETAIL:-}" ]; then
+          _rig_fence="$(pick_fence "$RIG_DETAIL")"
           _rig_note="
 
 What \`check-duplicate-decls.sh\` reported:
 
-~~~
+${_rig_fence}
 ${RIG_DETAIL}
-~~~"
+${_rig_fence}"
         fi
         escalate_rebase_needs_human "Post-conflict-resolution integrity check failed (\`bash -n\` / \`shellcheck\` / \`check-duplicate-decls.sh\`). A bad conflict resolution has corrupted trunk before (#1485), so this branch is held for a human rather than reported resolved.${_rig_note}"
         exit 1

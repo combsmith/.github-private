@@ -147,4 +147,27 @@ _fake_gate() {
   grep -qF 'rig_duplicate_decl_gate "${script_dir}/check-duplicate-decls.sh" "$work_root"' "$f"
   ! grep -E 'check-duplicate-decls\.sh.*>/dev/null' "$f"
   grep -qF '${RIG_DETAIL}' "$f"
+  # The excerpt is fenced with pick_fence, so a tilde run in it cannot close the block.
+  grep -qF '_rig_fence="$(pick_fence "$RIG_DETAIL")"' "$f"
+}
+
+@test "a caller under set -euo pipefail survives every outcome and can read the status" {
+  _fake_gate 1 "dup"
+  run bash -c "set -euo pipefail; source '$REPO_ROOT/scripts/lib/redact.sh'; source '$LIB'
+    rc=0; rig_duplicate_decl_gate '$FAKE_GATE' '$WORK' >/dev/null || rc=\$?; echo \"finding rc=\$rc\"
+    rig_duplicate_decl_gate '$BATS_TEST_TMPDIR/bin/absent.sh' '$WORK' >/dev/null; echo \"absent rc=\$?\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"finding rc=1"* ]]
+  [[ "$output" == *"absent rc=0"* ]]
+  _fake_gate 0 "clean"
+  run bash -c "set -euo pipefail; source '$LIB'; rig_duplicate_decl_gate '$FAKE_GATE' '$WORK'; echo CONTINUED"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *CONTINUED* ]]
+}
+
+@test "the excerpt keeps working without redact_secrets defined (bounded, unredacted pass-through)" {
+  _fake_gate 1 "plain finding text"
+  run bash -c "source '$LIB'; rig_duplicate_decl_gate '$FAKE_GATE' '$WORK'"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"plain finding text"* ]]
 }
