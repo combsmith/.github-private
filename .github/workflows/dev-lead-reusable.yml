@@ -757,8 +757,11 @@ jobs:
   # cancelled or timed-out test job still gets here, so a "Fixed" reply whose
   # commit does not land is retracted. That case has no verdict, so the script
   # does not push (tjh_verdict fails closed). Skipped (no runner) without a handoff.
-  # AGENTS_PAUSED suppresses only the push; cleanup (claim retraction, thread
-  # resolution) still runs to avoid leaving false "Fixed" claims standing (#2143).
+  # AGENTS_PAUSED skips this whole job (every job carries the pause gate; see
+  # tests/dev-lead/integration/test_agents_paused_preflight.py), so nothing is
+  # pushed and no cleanup runs. A pause set before the run also skips dispatch, so
+  # no handoff exists; flipping it mid-run leaves dispatch's claims for the next
+  # pass to retract (#2143).
   push:
     needs: [dispatch, test-suite]
     if: always() && needs.dispatch.outputs.handoff == 'true' && vars.AGENTS_PAUSED != 'true'
