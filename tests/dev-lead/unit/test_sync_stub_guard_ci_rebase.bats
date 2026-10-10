@@ -226,6 +226,18 @@ EOF
   rm -rf "$dir"
 }
 
+@test "ssg_install_push_blocker: alias override is refused even when -c is not the first argument" {
+  _mk_pr
+  local dir
+  dir=$(ssg_install_push_blocker)
+  run env PATH="$dir:$PATH" git -C "$REPO_DIR" -c alias.p=push p origin feat
+  [[ "$status" -ne 0 ]]
+  [[ "$output" == *"alias overrides are disabled"* ]]
+  run env PATH="$dir:$PATH" git -C "$REPO_DIR" -c core.quotePath=false rev-parse HEAD
+  [[ "$status" -eq 0 ]]
+  rm -rf "$dir"
+}
+
 # ---------------------------------------------------------------------------
 # End to end — dev-lead-fix-ci.sh
 # ---------------------------------------------------------------------------

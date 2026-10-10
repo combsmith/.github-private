@@ -330,14 +330,22 @@ ssg_install_push_blocker() {
     printf '#!/usr/bin/env bash\nreal=%q\n' "$real"
     cat <<'SHIM'
 skip=0
+prev=""
 for a in "$@"; do
-  if [ "$skip" = 1 ]; then skip=0; continue; fi
+  if [ "$skip" = 1 ]; then
+    skip=0
+    # `-c alias.x=push` would smuggle a push past the literal check below; the
+    # value is the argument after `-c`, wherever `-c` sits on the command line.
+    if [ "$prev" = "-c" ] || [ "$prev" = "--config-env" ]; then
+      case "$a" in [Aa][Ll][Ii][Aa][Ss].*) echo "git alias overrides are disabled for this pass (#2212)." >&2; exit 1 ;; esac
+    fi
+    prev=""
+    continue
+  fi
+  prev="$a"
   case "$a" in
-    -c)
-      # `-c alias.x=push` would smuggle a push past the literal check below.
-      case "${2:-}" in alias.*|ALIAS.*) echo "git alias overrides are disabled for this pass (#2212)." >&2; exit 1 ;; esac
-      skip=1 ;;
-    -C|--git-dir|--work-tree|--namespace|--exec-path|--config-env) skip=1 ;;
+    -c|-C|--git-dir|--work-tree|--namespace|--exec-path|--config-env) skip=1 ;;
+    --config-env=[Aa][Ll][Ii][Aa][Ss].*) echo "git alias overrides are disabled for this pass (#2212)." >&2; exit 1 ;;
     -*) ;;
     push)
       echo "git push is disabled for this pass: the harness checks the synced org-standard stubs and pushes the branch itself. Do not retry the push (#2212)." >&2
