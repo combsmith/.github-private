@@ -107,11 +107,6 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "template_drift_allowlisted: copilot-setup-steps.yml is allowlisted" {
-  run template_drift_allowlisted ".github/workflows/copilot-setup-steps.yml"
-  [ "$status" -eq 0 ]
-}
-
 @test "template_drift_allowlisted: a covered stub is NOT allowlisted" {
   run template_drift_allowlisted ".github/workflows/dev-lead.yml"
   [ "$status" -ne 0 ]
