@@ -109,8 +109,13 @@ def check_references(config, globs) -> list:
             continue  # $comment
         for provider in PROVIDERS:
             # The duck runs on Claude only; the other tasks need a chain per enabled provider.
+            # Claude chains are always required: idea-triage and persona-runner resolve
+            # Claude models independently of provider routing, so disabling Claude for
+            # pr-review/dev-lead must not drop them.
             needed = provider == "claude" if task in SINGLE_MODEL_TASKS else True
-            if needed and providers[provider]["enabled"] and provider not in chains:
+            if provider == "claude" and provider not in chains:
+                problems.append(f"tasks.{task}.claude: missing chain (required even when Claude is disabled)")
+            elif needed and providers[provider]["enabled"] and provider not in chains:
                 problems.append(f"tasks.{task}.{provider}: missing chain for enabled provider {provider}")
         for provider, chain in chains.items():
             if provider not in PROVIDERS:
