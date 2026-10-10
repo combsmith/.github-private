@@ -557,6 +557,16 @@ The ceiling is therefore the **existing** two controls, and they remain authorit
    not per-worker — §7 rules 3, 4). On exhaustion it stops all automated writes, adds
    `needs-human-review`, disables auto-merge, and posts one deduped escalation. Re-engagement
    is **human-gated** (§7 rule 2); `FORCE_REVIEW` does not bypass it.
+
+   Who is "automated" is decided by login (`*[bot]` or `AUTOMATION_BOT_LOGINS`), with two
+   corrections (#2224). On a PR authored by `dependabot[bot]`, the merge pipeline's own
+   events (Dependabot's commit, the dependabot-automerge App's branch updates and
+   re-approvals) neither count nor reset: a push to `main` causes them, not an agent
+   answering an agent. And a comment or review that carries one of our automation markers
+   never resets the budget, whatever login posted it, because dev-lead, the personas and
+   auto-rebase post as the owner account. **Known limit:** a commit, an unmarked comment or
+   a review-thread reply that an agent makes under the owner account still reads as a human
+   interaction and resets the budget.
 2. **The runaway detector** — the pushed detection signal in
    `daily-pr-review-health` / `scripts/fleet_monitor.sh` that flags open PRs over soft
    thresholds (commit/comment/cycle counts, or open >48h with active agent churn), so a

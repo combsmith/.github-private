@@ -25,12 +25,44 @@
 # compare correctly); items with null/empty `when` are ignored. A login is a
 # bot when it ends in `[bot]` or is listed in AUTOMATION_BOT_LOGINS; an empty /
 # unattributed login is treated as a machine (conservative — it must not reset).
+#
+# Login alone misreads two kinds of event, so gather_pr_automation_events flags
+# them (#2224) and compute_pr_automation_cycles honours the flags:
+#   mechanical: true    On a PR authored by dependabot[bot], an event by a login
+#                       in PR_BUDGET_MECHANICAL_LOGINS — Dependabot's own commit,
+#                       the dependabot-automerge App's `update-branch` merge
+#                       commits and re-approvals. A push to `main` causes these,
+#                       not an agent answering an agent. Neither counts nor
+#                       resets. Both keys are required: any other bot on a
+#                       Dependabot PR, and the App on anyone else's PR, count.
+#   agent_marked: true  A comment or review whose body carries one of our
+#                       automation markers (PR_BUDGET_AGENT_MARKER_RE). dev-lead,
+#                       the personas and auto-rebase post as the owner account,
+#                       so their login reads as a human. Such an event never
+#                       resets the budget. It does not count either: only bot
+#                       logins count.
+# Still read as human, because nothing in the event tells them apart: a commit,
+# an unmarked comment, or a review-thread reply an agent makes under a human login.
 
 # Space-separated bot logins beyond any `*[bot]` GitHub App identity. Includes
 # the agent identity (donpetry-bot) and repair-pr-approvals, whose machine
 # approvals must not reset the budget.
 : "${AUTOMATION_BOT_LOGINS:=donpetry-bot github-actions[bot] repair-pr-approvals}"
 : "${MAX_PR_AUTOMATION_CYCLES:=10}"
+
+# Space-separated logins of the Dependabot merge pipeline. Their events are
+# flagged `mechanical` on a PR authored by dependabot[bot], and nowhere else.
+# Set but empty turns the exemption off (hence `=`, not `:=`).
+: "${PR_BUDGET_MECHANICAL_LOGINS=dependabot[bot] petry-projects-dependabot-automrg[bot]}"
+_PR_BUDGET_DEPENDABOT_AUTHOR="dependabot[bot]"
+
+# Regex (jq `test`) for a body one of our agents wrote. The registered list is
+# scripts/lib/maintainer-comment-gate.sh's _MAINTAINER_GATE_AGENT_MARKERS (kept
+# in step by tests/test_pr_automation_budget.bats), with two differences:
+# `maintainer-resolve` is left out, because a maintainer posts it through
+# maintainer-resolve-comment.sh and that is a human act; and this breaker's own
+# escalation marker is added, because dev-lead posts it as the owner account.
+PR_BUDGET_AGENT_MARKER_RE='<!-- (pr-review-agent|pr-review-claim|persona:|dev-lead|dependency-advisory|auto-rebase-|pr-automation-budget)[^>]*-->'
 
 # The label this breaker adds on exhaustion (and the cycle cap adds on escalation).
 # It is the human-controlled re-engagement gate: a human removing it resumes
@@ -57,18 +89,22 @@ _PR_BUDGET_JQ_DEFS='
     | ($login == null) or ($login == "")
       or ($login | endswith("[bot]"))
       or (($bots | index($login)) != null);
+  def agent_marked($re): (. // "" | tostring | test($re));
 '
 
 # compute_pr_automation_cycles <events_json>
 #   Prints the number of bot-authored events newer than the latest human event.
+#   `mechanical` events are left out altogether; an `agent_marked` event under a
+#   human login is not a human event (#2224).
 compute_pr_automation_cycles() {
   local events_json="${1:-[]}"
   local bots_json count
   bots_json=$(printf '%s' "${AUTOMATION_BOT_LOGINS}" \
     | jq -R 'split(" ") | map(select(. != ""))' 2>/dev/null) || bots_json='[]'
   count=$(jq -r --argjson bots "$bots_json" "$_PR_BUDGET_JQ_DEFS"'
-    map(select(.when != null and .when != ""))
-    | ([.[] | select((.login | is_bot($bots)) | not) | .when] | max // "") as $last_human
+    map(select(.when != null and .when != "" and .mechanical != true))
+    | ([.[] | select(((.login | is_bot($bots)) | not) and (.agent_marked != true)) | .when]
+        | max // "") as $last_human
     | [.[] | select((.login | is_bot($bots)) and (.when > $last_human))]
     | length
   ' <<<"$events_json" 2>/dev/null) || count=0
@@ -78,6 +114,38 @@ compute_pr_automation_cycles() {
     ''|*[!0-9]*) echo 0 ;;
     *) echo "$count" ;;
   esac
+}
+
+# pr_budget_flag_mechanical <events_json> [pr_author]
+#   Print the events with `mechanical: true` added to each Dependabot-pipeline
+#   event (see the header). Pure. No event is dropped: the stall and merge-ready
+#   scans read `.when` from every event. An empty, missing or other PR author
+#   flags nothing, and input that is not a JSON array is printed unchanged, so a
+#   failure here can only leave the count where it was (fail closed).
+pr_budget_flag_mechanical() {
+  local events_json="${1:-[]}" pr_author="${2:-}" logins_json out
+  if [ "$pr_author" != "$_PR_BUDGET_DEPENDABOT_AUTHOR" ] || [ -z "${PR_BUDGET_MECHANICAL_LOGINS}" ]; then
+    printf '%s\n' "$events_json"
+    return 0
+  fi
+  logins_json=$(printf '%s' "${PR_BUDGET_MECHANICAL_LOGINS}" \
+    | jq -R 'split(" ") | map(select(. != ""))' 2>/dev/null) || logins_json='[]'
+  if out=$(jq -c --argjson logins "$logins_json" '
+      if type != "array" then error("not an array") else . end
+      | map(if (.login as $l | $logins | index($l)) != null then . + {mechanical: true} else . end)
+    ' <<<"$events_json" 2>/dev/null); then
+    printf '%s\n' "$out"
+  else
+    printf '%s\n' "$events_json"
+  fi
+}
+
+# pr_budget_body_is_agent_marked <body>
+#   Exit 0 when the body carries one of our automation markers. Pure; the same
+#   jq test gather_pr_automation_events applies to comment and review bodies.
+pr_budget_body_is_agent_marked() {
+  jq -en --arg b "${1:-}" --arg re "$PR_BUDGET_AGENT_MARKER_RE" "$_PR_BUDGET_JQ_DEFS"'
+    $b | agent_marked($re)' >/dev/null 2>&1
 }
 
 # pr_has_escalation_label <labels_json>
@@ -256,17 +324,24 @@ pr_budget_exhausted() {
 }
 
 # gather_pr_automation_events <pr> <repo>
-#   Assemble {when, login}[] from the PR's commits, issue comments, and reviews.
+#   Assemble {when, login}[] from the PR's commits, issue comments, and reviews,
+#   with the `agent_marked` and `mechanical` flags the header describes (#2224).
+#   Bodies are tested here and not carried in the result.
 #   Exits 1 (failure) when any GitHub API call fails so callers can distinguish
 #   an unavailable result from a genuinely empty event list — critical for the
 #   fail-closed budget gate in pr_resume_suppressed. Each gh call is captured
 #   separately from jq so gh failures are not masked by jq succeeding on
-#   empty/partial input.
+#   empty/partial input. The PR-author lookup is the exception: without it no
+#   event is flagged `mechanical`, which is the count as it was before #2224,
+#   so its failure is not an error.
 gather_pr_automation_events() {
   local pr="$1" repo="$2"
   local comments commits reviews api_error=0 _raw
+  local mark_defs="$_PR_BUDGET_JQ_DEFS"'
+    def flagged($re): if (.body | agent_marked($re)) then {agent_marked: true} else {} end;'
   if _raw=$(gh api --paginate "repos/${repo}/issues/${pr}/comments?per_page=100" 2>/dev/null); then
-    comments=$(jq -s '[.[][] | {when: .created_at, login: (.user?.login // "")}]' \
+    comments=$(jq -s --arg re "$PR_BUDGET_AGENT_MARKER_RE" "$mark_defs"'
+      [.[][] | {when: .created_at, login: (.user?.login // "")} + flagged($re)]' \
       <<< "$_raw" 2>/dev/null) || comments='[]'
   else
     api_error=1; comments='[]'
@@ -278,7 +353,8 @@ gather_pr_automation_events() {
     api_error=1; commits='[]'
   fi
   if _raw=$(gh api --paginate "repos/${repo}/pulls/${pr}/reviews?per_page=100" 2>/dev/null); then
-    reviews=$(jq -s '[.[][] | {when: .submitted_at, login: (.user?.login // "")}]' \
+    reviews=$(jq -s --arg re "$PR_BUDGET_AGENT_MARKER_RE" "$mark_defs"'
+      [.[][] | {when: .submitted_at, login: (.user?.login // "")} + flagged($re)]' \
       <<< "$_raw" 2>/dev/null) || reviews='[]'
   else
     api_error=1; reviews='[]'
@@ -287,8 +363,35 @@ gather_pr_automation_events() {
     echo "  [warn] budget event collection incomplete for PR ${pr} in ${repo} — API unavailable" >&2
     return 1
   fi
-  jq -n --argjson a "${comments:-[]}" --argjson b "${commits:-[]}" --argjson c "${reviews:-[]}" \
-    '$a + $b + $c' 2>/dev/null || echo '[]'
+  local events pr_author
+  # Merged on stdin: three --argjson values would put a long PR's whole history
+  # on jq's command line.
+  events=$(printf '%s\n%s\n%s\n' "${comments:-[]}" "${commits:-[]}" "${reviews:-[]}" \
+    | jq -c -s 'add // []' 2>/dev/null) || events='[]'
+  pr_author=$(gh api "repos/${repo}/pulls/${pr}" --jq '.user.login // ""' 2>/dev/null) || pr_author=''
+  events=$(pr_budget_flag_mechanical "$events" "$pr_author")
+  _pr_budget_log_flags "$pr" "$repo" "$events"
+  printf '%s\n' "$events"
+}
+
+# _pr_budget_log_flags <pr> <repo> <events_json>
+#   One stderr line per kind of flagged event, so a run log shows why a count is
+#   lower than the PR's bot activity suggests. Silent when nothing is flagged.
+_pr_budget_log_flags() {
+  local pr="$1" repo="$2" events_json="${3:-[]}" bots_json n_mech n_marked
+  bots_json=$(printf '%s' "${AUTOMATION_BOT_LOGINS}" \
+    | jq -R 'split(" ") | map(select(. != ""))' 2>/dev/null) || bots_json='[]'
+  read -r n_mech n_marked < <(jq -r --argjson bots "$bots_json" "$_PR_BUDGET_JQ_DEFS"'
+    [ ([.[] | select(.mechanical == true)] | length),
+      ([.[] | select(.agent_marked == true and ((.login | is_bot($bots)) | not))] | length) ]
+    | @tsv' <<<"$events_json" 2>/dev/null) || true
+  if [ "${n_mech:-0}" -gt 0 ] 2>/dev/null; then
+    echo "  [budget] PR #${pr} in ${repo}: ${n_mech} Dependabot-pipeline event(s) left out of the automation budget (#2224)" >&2
+  fi
+  if [ "${n_marked:-0}" -gt 0 ] 2>/dev/null; then
+    echo "  [budget] PR #${pr} in ${repo}: ${n_marked} marker-carrying agent event(s) under a human login do not reset the automation budget (#2224)" >&2
+  fi
+  return 0
 }
 
 # pr_automation_already_escalated <pr> <repo>
