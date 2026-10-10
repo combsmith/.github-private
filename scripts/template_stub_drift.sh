@@ -222,12 +222,15 @@ template_drift_row5() {
 # files are also compared against for AHEAD detection (#1926). Pure.
 template_drift_report_header() {
   local ref="${1:-}" sha="${2:-}" prev="${3:-}" head="${4:-}"
+  # shellcheck disable=SC2016
   printf 'Baseline derived from standards ref `%s` (commit `%s`) on %s.\n' \
     "$ref" "${sha:0:12}" "$TEMPLATE_REPO"
   if [ -n "$prev" ]; then
+    # shellcheck disable=SC2016
     printf 'Also accepting the immediately-preceding version (N-1) at ref `%s` while a promotion propagates.\n' "$prev"
   fi
   if [ -n "$head" ]; then
+    # shellcheck disable=SC2016
     printf 'A file matching neither is also compared against standards HEAD (commit `%s`): a match there is AHEAD (promote standards), not DRIFTED.\n' "${head:0:12}"
   fi
 }
@@ -300,6 +303,7 @@ template_drift_annotate() {
       DRIFTED)
         drifted=1
         if [ "$matched" = "ahead-unchecked" ]; then
+          # shellcheck disable=SC2016
           printf '::error file=%s::Template stub %s has DRIFTED from the published baseline `%s` (committed blob %s != expected %s), but it could NOT be compared against standards HEAD, so it may be AHEAD of the channel rather than drifted. Do not re-seed yet: re-run with STANDARDS_REF=<standards main commit>. If that reports ALIGNED, promote standards (scripts/cut-standards-release.sh in the standards repo) instead of re-seeding, which would regress the template (#1926).\n' \
             "$file" "$file" "$n_ref" "${committed:0:12}" "${expected:0:12}"
         else
@@ -308,6 +312,7 @@ template_drift_annotate() {
         fi
         ;;
       AHEAD)
+        # shellcheck disable=SC2016
         printf '::warning file=%s::Template stub %s is ahead of `%s`: its committed blob %s matches the seed emission at standards HEAD%s, not the channel baseline %s. Promote standards (scripts/cut-standards-release.sh in the standards repo) instead of re-seeding — a re-seed from the channel would regress the template. This is a propagation lag, not template corruption, so it does not fail the check (#1926).\n' \
           "$file" "$file" "$n_ref" "${committed:0:12}" "$head_note" "${expected:0:12}"
         ;;
@@ -449,7 +454,8 @@ main() {
   local tsv row path flag arg content_n content_n1 expected_n expected_n1 committed guard_rc=0
   local content_head expected_head cls
   tsv="$(mktemp)"
-  trap "rm -f '$tsv'" EXIT
+  # shellcheck disable=SC2064
+  trap "rm -f \"$tsv\"" EXIT
   for row in "${TEMPLATE_DRIFT_FILES[@]}"; do
     IFS='|' read -r path flag arg <<< "$row"
     template_drift_allowlisted "$path" && continue
