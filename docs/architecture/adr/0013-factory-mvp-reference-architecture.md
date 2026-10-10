@@ -77,8 +77,9 @@ The maintainer chose the hybrid: build in a new repository, cut over through the
 repo already has. That lifts the "no new repos" half of the constraint set in June 2026. The "no
 always-on infrastructure" half stands.
 
-In this record "the factory repo" is the new repository and "this repo" is
-`petry-projects/.github-private`, which hosts the POC.
+In this record "the factory repo" is the new repository, `petry-projects/software-factory` (named
+by the maintainer on 2026-10-10), and "this repo" is `petry-projects/.github-private`, which hosts
+the POC.
 
 **A note on the number.** This record was drafted and discussed as ADR-0012. While it was in review,
 ADR-0012 was assigned on `main` to the maintainer comment gate's exemption set, so this record
@@ -210,12 +211,18 @@ with every side effect expressed as a requested Effect. Three jobs carry it: `ru
 
 ### 5. Agents have their own identity
 
-We will have every agent write through one factory GitHub App, with a token minted per Run and
-narrowed to the Role's permitted Effects, and have reviews submitted by the existing machine user.
-Code-owner review stays required. The owner account is the human's alone.
+We will have every agent write through a factory GitHub App identity, with a token minted per Run
+and narrowed to the Role's permitted Effects, and have reviews submitted by the existing machine
+user. Code-owner review stays required. The owner account is the human's alone.
+
+The maintainer decided on 2026-10-10 that no agent runs as the owner account. The Maintainer may
+still author changes to the factory repo under that account, as a person. Whether the factory has
+one App or one App per Role is open and belongs to the agent-identity follow-on; the review
+recommends one (§6.4, option c against option d). The boundaries below hold either way, and "the
+App" in them means whichever factory App acts.
 
 - **No factory workflow references the owner account's token.**
-- **Every Effect in the Ledger has the App or the reviewer as its actor.**
+- **Every Effect in the Ledger has a factory App or the reviewer as its actor.**
 - **For every agent-authored pull request, author and approver differ, and the App is not a code
   owner.**
 - **The count of automated actions since the last human decision does not consult a login list.**
@@ -305,11 +312,18 @@ We will make the factory's own verification a required check from the first comm
 - **From that point the POC takes defect fixes only.**
 - **A compensating workflow is retired in the change that makes it unnecessary, or keeps a recorded
   reason to remain.** The number of compensating workflows does not rise during the migration.
-- **The migration has a budget and a stopping rule, set by the maintainer before the first factory
-  component runs:** a dated limit for the period in which two systems coexist, a policy for which
-  POC defects get a POC fix with a weekly cap, and a kill criterion. If the kill criterion is met,
-  the identity change and the configuration fixes are kept and unused factory code is deleted.
-  Until these three are written, this decision is not in force.
+- **The migration has a limit, a defect policy and a stopping rule.** This decision was not in
+  force until the maintainer wrote all three. They were set on 2026-10-10:
+  - **Limit.** For each intent family, the POC and the factory run side by side for at most four
+    weeks, counted from the day the factory's comparable intent is available on live traffic. That
+    day is recorded in the ring file.
+  - **Defect policy.** POC defects are fixed in the POC as needed. There is no weekly cap.
+  - **Kill criterion.** An intent family whose disagreements are not within its declared bound at
+    the end of its four weeks. If it is met, the identity change and the configuration fixes are
+    kept and unused factory code is deleted.
+- **The bound for an intent family is declared before its four weeks start, and is one that four
+  weeks of traffic can show.** At the hosting repo's volume that is a rate of about 5% for the
+  approving intent, not 2%, unless consumer repos are pooled (PRD OQ-9).
 - **Escaped defects (PRD SM-C1) are baselined before any step that raises the autonomy rate.**
 - **Three assumptions are settled on a canary repo before any cutover:** that a pull request
   authored by the App needs no extra approval under the live ruleset, which sets
@@ -371,14 +385,14 @@ Numbers are assigned when each is written. Each lands with the migration step th
 
 | Follow-on | Must decide | Effect on the log |
 |---|---|---|
-| **Agent identity** | The App's permissions; how tokens are narrowed per Role; the dispatch-only credential a consumer uses to send a wake; the reviewer credential's confinement; what interaction model §12.2 says afterwards. | Supersedes ADR-0008. |
+| **Agent identity** | One App or one per Role; the App's permissions; how tokens are narrowed per Role; the dispatch-only credential a consumer uses to send a wake; the reviewer credential's confinement; what interaction model §12.2 says afterwards. | Supersedes ADR-0008. |
 | **State record and Ledger** | The store's location and visibility (PRD OQ-8); schemas; retention; how legacy markers are read during migration. | New. No ADR governs this today. |
 | **Admission** | The wake schema; the one-job ingress; the sweep; Pause and Hold stores; the LLM capacity signal and its credential (PRD OQ-3); priority order. | Extends ADR-0007, including a `pull_request_target` subscription that ADR-0007 excludes and that is safe only because the ingress checks out nothing and forwards a wake that carries identifiers only. Admission treats the wake as untrusted: an Outside contributor's pull request produces no Run that holds secrets or writes without a Maintainer decision (PRD FR-62). ADR-0010's job-level concurrency key stays in use for the per-item group. Supersedes ADR-0009 when the router it names is retired. |
 | **Run contract** | Task, Result and Effect schemas; the sandbox; resume; whether an adopted runtime fills the inner half. | Extends ADR-0005. Supersedes ADR-0011, which should be accepted now as the interim rule. |
 | **Release unit and promotion** | The eval gate and its cost budget; ring membership; rollback; retirement of per-agent names. | Supersedes ADR-0002 and ADR-0006, restating what survives of each. |
 | **Kernel language and verification** | Type checking; size and complexity budgets; recorded-interface tests; when the legacy suite becomes required. | Supersedes ADR-0004, restating its principle. |
 | **Merge integrity** | The content identity; the gate function's inputs; advisory-reviewer deadlines; the Override record; merge-queue settings. | New. No ADR governs this today. |
-| **Factory repository** | The new repo's name and ruleset; how the forwarders in this repo are tested and frozen; the final re-pin of consumers; what this repo keeps afterwards; where these three documents and the ADR log live once the factory repo exists. | New. Decision 1 fixes that there is one. |
+| **Factory repository** | The ruleset of `petry-projects/software-factory`; how the forwarders in this repo are tested and frozen; the final re-pin of consumers; what this repo keeps afterwards; where these three documents and the ADR log live once the factory repo exists. | New. Decision 1 fixes that there is one. |
 | **Council composition** | Which Lenses are required for each class of work item and stage (PRD OQ-12); how their Findings are aggregated; what counts as independent; the cost each stage may spend on its council. Decided from the Ledger's measure of each Lens, not in advance; review §16.6 proposes the set to start measuring from. | New. Extends ADR-0003, whose registry binds a review target to a rubric and is the nearest existing form of a Lens declaration. |
 
 ADR-0001 and ADR-0003 are kept without change. ADR-0012 governs the POC's comment gate until the
@@ -412,6 +426,12 @@ extension remains a separate decision.
 
 - **Three repos for a while.** The standards repo, this repo and the factory repo coexist until the
   last consumer is re-pinned. The split this review criticised gets wider before it gets narrower.
+
+- **Nothing limits the build before the first comparison.** The four-week limit starts when an
+  intent family is comparable, the POC has no cap on fixes, and the kill criterion is judged at the
+  end of a comparison. The review ranks a starved migration as the likeliest failure (§14.2), and
+  the period in which that would happen is the one these three leave open. The signal to watch is
+  the weekly share of merged pull requests that land in the factory repo.
 
 - **A greenfield build can fail to reach parity.** The POC's tests encode incident history that a
   new codebase does not have. The read-only comparison in decision 10 is the only measure of how

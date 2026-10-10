@@ -791,23 +791,40 @@ From the competitive analysis ([market research](../research/market-agentic-soft
 2. **OQ-2. Will the Maintainer move the code-writing Role off the owner account?** FR-26 and FR-17
    need it. It reverses the choice made in `petry-projects/.github-private#1316 — dev-lead regressed
    to committing as donpetry-bot (review-only machine user) instead of don-petry` and recorded in
-   the interaction model, §12.2.
+   the interaction model, §12.2. Decided by the Maintainer on 2026-10-10: yes. No agent runs as the
+   owner account. The Maintainer may still author changes to the Factory's repo under that account,
+   as a person. Open: whether the Factory has one GitHub App or one per Role. The review document,
+   §6.4, recommends one, with the token narrowed per Role when it is minted.
 3. **OQ-3. What supplies the LLM capacity signal, and does the Factory get its own LLM credential?**
    FR-35 has no feed today. An estimate from the Factory's own usage is sound only if interactive
-   sessions do not spend from the same window unobserved.
+   sessions do not spend from the same window unobserved. The analyst's comment on the idea
+   (`petry-projects/.github-private#2226 — Factory MVP: rebuild the agentic factory around a
+   declared control plane, one run contract and a council of Lenses`) sets out four credential
+   options and suggests moving the eval lane to metered access first. It is still open, and it
+   should be closed before the Factory repo's first commit.
 4. **OQ-4. Should code-owner review stay required with one human in the org?** It is the reason the
    reviewer must be a machine user and not an App.
 5. **OQ-5. Should the Factory have its own repo?** Decided by the Maintainer on 2026-10-10: yes. It
    is built greenfield in a new repo and cut over through the channel tags `.github-private`
-   already has, one Intent and one Ring at a time (review document, §18). Open: the repo's name,
-   and what `.github-private` keeps once every caller is re-pinned.
+   already has, one Intent and one Ring at a time (review document, §18). The repo is
+   `petry-projects/software-factory`. Open: what `.github-private` keeps once every caller is
+   re-pinned.
 6. **OQ-6. Which Advisory reviewers are worth waiting for?** Four of seven gated reviewers never
-   participate.
+   participate. The rule was decided on 2026-10-10 (OQ-13): a reviewer is awaited only if it has a
+   structured surface the contract can read.
 7. **OQ-7. Are the `[ASSUMPTION]` targets in §7 the right ones?**
 8. **OQ-8. Where does the Ledger live and who may read it?** Everything in a public repo is public.
 9. **OQ-9. What is the budget for the migration itself**, in weeks and in LLM spend, given that the
-   POC must keep delivering while it is replaced? ADR-0013 is not in force until a dated limit, a
-   POC defect policy and a kill criterion are written.
+   POC must keep delivering while it is replaced? The three conditions ADR-0013 required were set
+   by the Maintainer on 2026-10-10 (ADR-0013, decision 10). The limit is four weeks of side-by-side
+   running for each Intent family, counted from the day the Factory's comparable Intent is
+   available. POC defects are fixed as needed, with no weekly cap. The kill criterion is an Intent
+   family that has not reached parity when its four weeks end. Still open: the parity bound for
+   each family, the LLM spend, and any limit on the build before the first comparison. On the
+   bound: with no disagreements observed, 59 pull requests show a rate of at most 5% at 95%
+   confidence and about 120 show 2.5%. The Hosting repo merges about 30 a week, and the idea's
+   analysis proposes a 14-day window before a disagreement counts as settled. Four weeks can
+   therefore show about 5% for the approving Intent, and 2% only if Consumer repos are pooled.
 10. **OQ-10. Should third-party reviewer comments keep gating approvals?** Decided by the Maintainer
     on 2026-10-10: reviewers are integrated through a contract, and structured Findings gate where
     comment bodies do not (FR-32, FR-33). The nine current reviewers' surfaces are established in the
@@ -821,9 +838,15 @@ From the competitive analysis ([market research](../research/market-agentic-soft
     §15.4), and §16.6 proposes a starting council for code changes: six deterministic and
     execution-grounded Lenses on one contract, the in-house reviewer, and three or four of the
     nine outside reviewers kept for measurement.
-13. **OQ-13. Which outside reviewers are removed now?** §16.6 recommends removing four from the
+13. **OQ-13. Which outside reviewers are removed now?** §16.6 recommended removing four from the
     required set (CodeAnt, Graphite, Copilot, Qodo) and funding or dropping a fifth (Codex). Each
-    is a subscription or an installation the Maintainer controls.
+    is a subscription or an installation the Maintainer controls. Decided by the Maintainer on
+    2026-10-10: compatibility with the structured contract decides, not volume. Copilot and Qodo
+    come off now, because neither is reviewing and neither shows a structured surface here. Codex
+    stays installed, unfunded and not required, so its refusals gate nothing. CodeAnt and Graphite
+    stay as review-thread Lenses and are measured with the rest. Graphite is a paid subscription.
+    Copilot may be re-enabled, and would then enter as a review-thread Lens under the same
+    measure.
 14. **OQ-14. Is GitHub's Agentic Workflows adopted as the worker half of the run contract?** It is
     the nearest substitute for what ADR-0013 proposes to build there. Its documentation does not
     list a subscription credential for the Claude engine, which conflicts with C-3 until C-11

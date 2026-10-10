@@ -70,8 +70,9 @@ systems tested it from outside (§13). Three findings changed the proposal:
   poller for comparison.
 
 The same pass found that the migration is the likeliest thing to fail: holding the POC still needs
-more fix pull requests a week than the line delivers. The ADR now requires a dated limit, a defect
-policy and a kill criterion before it is in force.
+more fix pull requests a week than the line delivers. The ADR therefore required a dated limit, a
+defect policy and a kill criterion before it was in force. The maintainer set them on 2026-10-10
+(§18.5).
 
 **The maintainer's core hypothesis is convergence**: that a council of models, tools and
 perspectives produces a better outcome than one agent alone. The first draft did not evaluate it.
@@ -86,7 +87,10 @@ the Kernel, and measures each Lens before any is added.
 **Decisions this asks of the maintainer** are in the PRD, §11. The three that shape everything else:
 whether agents move off the owner account, whether the POC is frozen for features while it is
 replaced, and what the migration may cost. A fourth was decided on 2026-10-10: third-party
-reviewers are integrated through a contract, and comment bodies gate nothing.
+reviewers are integrated through a contract, and comment bodies gate nothing. The same day the
+maintainer decided that no agent runs as the owner account, named the new repo
+`petry-projects/software-factory`, set the migration's limit and kill criterion, and chose which
+reviewers stay (§16.6). One App or one per Role is still open.
 
 **It will be built in a new repo and cut over through the existing channel tags** (§18). Building in
 place would put every factory change through the POC's own line, which is the thing that is
@@ -1932,7 +1936,7 @@ proposes a council to start measuring from.
 | **Graphite** | Check `Graphite / AI Reviews`; not documented by the vendor | None | Comment only | Yes | None | None | None seen |
 | **Gemini Code Assist** | None | None | Comment only | Yes | A priority badge image | None documented | None seen |
 | **Codex** | None | None | Comment only | Yes | A `P1`/`P2` badge image | None | Usage-limit notices |
-| **CodeAnt** | None seen; documented only for its scanner gates | None seen | Comment only | Yes | Severity and category as text | Scanner findings only; its review comments are re-read from GitHub | Yes, a risk summary |
+| **CodeAnt** | None seen; documented only for its scanner gates | None seen | Comment only seen; an approving review is documented as an option, off by default | Yes | Severity and category as text | Its CLI returns its own comments and reviews as JSON, with a filter on resolved; no severity field is documented | Yes, a risk summary |
 | **Copilot code review** | None | None | None seen | None seen | A text label, per its docs | None | None |
 | **Qodo** | None | None | None seen | None seen | Text labels, per its docs | MCP `findings`, fields undocumented | Only "trial has ended" notices |
 
@@ -1958,6 +1962,17 @@ What this means for the contract in ADR-0013, decision 12:
    cubic's checks exist and their meaning is not documented.
 5. **No reviewer here is configured as code.** There is no `.coderabbit.yaml`, `cubic.yaml`,
    `.codeant/` or `.pr_agent.toml` in the repo. Each runs on settings held in its vendor's console.
+6. **CodeAnt has more of a contract than the first reading found.** Its documentation was re-read
+   directly on 2026-10-10, without the summarising fetcher. Three things are documented and not in
+   use here. An "Auto Approve PR" setting submits an approving review once every thread CodeAnt
+   opened is resolved, pinned to the commit it reviewed. A status check fails a pull request on
+   scanner quality gates, which are metrics and not review findings. A CLI lists CodeAnt's own
+   comments and reviews as JSON and filters on resolved. What it still lacks is severity as a typed
+   field, annotations, and code-scanning alerts. On `petry-projects/.github-private#2225 — docs:
+   factory MVP — PRD, architecture review, market research and ADR-0013 (proposed)` it emitted two
+   comment reviews, three threads and two comments, and no check. An approving review from a
+   third-party App should be tried on a canary repo before it is enabled, to see whether the
+   platform counts it toward the required approval.
 
 ### 16.3 What each contributed
 
@@ -1971,7 +1986,7 @@ about six lines.
 | Codex | 74 | **249** | 33 | 142 | 64% | 25% | P1 64, P2 78 | OpenAI | No; needs a paid ChatGPT plan |
 | CodeRabbit | 401 | 155 | **3** | 67 | 59% | 33% | Major 13, Minor 22, Trivial 3 | Not disclosed | Yes; 1–10 reviews an hour per repo |
 | Gemini Code Assist | 118 | 15 | 49 | 60 | 60% | **16%** | high 12, medium 26, low 22 | Google | Free while in preview, through Google Cloud |
-| CodeAnt | **453** | 21 | 64 | 53 | 50% | **43%** | Major 48, Critical 4 | Not disclosed | No free tier found |
+| CodeAnt | **453** | 21 | 64 | 53 | 50% | **43%** | Major 48, Critical 4 | Not disclosed | No free tier found in its documentation; free for this org, per the maintainer |
 | Graphite | 22 | 8 | 101 | 15 | 66% | 26% | none | Anthropic and OpenAI | No, for an org's repos |
 | SonarQube Cloud | 116 | 0 | 59 | 8 alert threads | 0 of 8 | — | by rule | None; rule-based | Yes |
 | Copilot | **2** | 0 | 172 | 0 | — | — | — | Not disclosed | No |
@@ -2086,6 +2101,22 @@ For seat 8 the installed reviewers divide like this:
 That takes the outside LLM reviewers from nine to three or four, moves six deterministic and
 execution Lenses onto one contract, and leaves the choice among the three to four weeks of the
 Ledger's per-Lens measure. The research predicts the end state is one, at most two.
+
+**What the maintainer decided, 2026-10-10.** The recommendation above ranked by measured value. The
+maintainer's rule is different: compatibility with the structured contract decides who stays.
+
+- **Off the required set now: Copilot and Qodo.** Neither is reviewing and neither shows a structured surface here.
+  Copilot may be re-enabled; it would then enter as a review-thread Lens under the same measure.
+- **Installed, unfunded, not required: Codex.** Its refusals gate nothing and nothing waits for it.
+- **Kept as review-thread Lenses: CodeAnt and Graphite.** Both open review threads, which decision
+  12 names as a structured surface, so the rule does not remove them. Their gate is a thread's
+  state, open or resolved, and their summary comments gate nothing. CodeAnt is free for this org.
+  Graphite is a paid subscription and reviewed 22 times in the measured week, which is the figure
+  to weigh at its renewal.
+- **Kept and measured, as recommended: CodeRabbit, cubic and Gemini Code Assist.**
+
+That leaves six of the nine that can gate. The per-Lens measure, not this list, decides the
+required set.
 
 ### 16.7 What is not known
 
@@ -2295,12 +2326,17 @@ how a second system fails.
 
 - A dated limit, a defect policy with a weekly cap for the POC, and a kill criterion, written
   before the new repo is created. If the criterion is met, the configuration fixes and the identity
-  change stay and the new repo is archived.
+  change stay and the new repo is archived. **Set by the maintainer on 2026-10-10**, and not as
+  recommended here. The limit is four weeks of side-by-side running for each intent family, counted
+  from the day the factory's comparable intent is available. POC defects are fixed as needed, with
+  no weekly cap. The kill criterion is an intent family that has not reached parity when its four
+  weeks end. These bound each comparison. They do not bound the build before the first one, which
+  is where §14.2 expects the migration to starve.
 - No intent is cut over until its disagreement list is within a bound declared beforehand and an
   eval set exists for it.
 - This repo is not renamed while anything references it.
 
-ADR-0013 carries these as decisions 1 and 10.
+ADR-0013 carries these as decisions 1 and 10. The new repo is `petry-projects/software-factory`.
 
 ### 18.6 Sources
 
