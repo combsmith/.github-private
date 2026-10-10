@@ -247,7 +247,7 @@ These are facts of the environment. A design that ignores one is not viable.
   Hosting repo starts about 56 jobs.
 - **C-10. One Maintainer's attention is the first limit on output.** Each change that needs a human
   audit, a cleared Hold or an Override costs Maintainer time, estimated at 10–12 hours a week at
-  the POC's 30–36 merges. No requirement below can be met by spending more of it.
+  the POC's 30–36 merges. `[ASSUMPTION]` The estimate is the Maintainer's rough figure. No requirement below can be met by spending more of it.
 
 ## 6. Functional requirements
 
@@ -514,7 +514,7 @@ accepts any flags. The suite cannot run on the Maintainer's machine. Realizes UJ
   termination, absence of undeclared cycles, and Hold and Pause semantics.
 - **FR-58. Local reproducibility.** A Factory developer can run the full suite, and replay a
   recorded Work item through the Kernel, on macOS and on Linux with documented prerequisites.
-- **FR-63. Acceptance the author cannot edit.** Every code-writing Intent is checked against at
+- **FR-59. Acceptance the author cannot edit.** Every code-writing Intent is checked against at
   least one acceptance signal that the authoring Role can neither read in advance nor change. The
   Consumer repo's own tests do not qualify, because the author can edit them.
 
@@ -524,15 +524,15 @@ accepts any flags. The suite cannot run on the Maintainer's machine. Realizes UJ
 comments and fallback authentication. Reusable workflows inherit every org secret. One gate fetches
 and executes a script from another repo's default branch at run time. Realizes UJ-3, UJ-6.
 
-- **FR-59. Least privilege per Role.** Each Role's Effects are applied with a credential scoped to
+- **FR-60. Least privilege per Role.** Each Role's Effects are applied with a credential scoped to
   that Role's permitted Effects and short-lived. No Role uses the Maintainer's credential.
   - Where the platform requires a user account (C-6), that one long-lived credential is confined to
     a job that runs no model and no code from the Work item.
-- **FR-60. No unpinned execution.** The Factory executes no code and reads no policy from a mutable
+- **FR-61. No unpinned execution.** The Factory executes no code and reads no policy from a mutable
   reference outside its own Release.
-- **FR-61. Public by default.** Every Effect is written as world-readable. Secret values never
+- **FR-62. Public by default.** Every Effect is written as world-readable. Secret values never
   appear in logs, comments or the Ledger.
-- **FR-62. Outside contributions.** A pull request from an Outside contributor never receives a Run
+- **FR-63. Outside contributions.** A pull request from an Outside contributor never receives a Run
   that holds secrets or can produce write Effects without a Maintainer decision.
 
 ### 6.11 Convergence: the council of Lenses
@@ -568,7 +568,7 @@ replaces the discussion with a contract. Realizes UJ-1, UJ-2, UJ-9.
   - Independence is measured, not assumed: two Lenses that raise the same Findings count as one.
 - **FR-70. Lenses differ in what they can see, not only in which model they are.** A Council for a
   code change includes at least one Lens grounded in execution (tests, static analysis, a running
-  system) and at least one acceptance signal the author cannot edit (FR-63).
+  system) and at least one acceptance signal the author cannot edit (FR-59).
 
 - **FR-71. Feedback moves left; the verdict does not.** Every Lens that can run before a push runs
   inside the Run, and its Findings go back to the author for a bounded number of repair turns
@@ -578,7 +578,7 @@ replaces the discussion with a contract. Realizes UJ-1, UJ-2, UJ-9.
   - Both runs use the same pinned tools and configuration, defined once.
   - A Run whose work still fails after its repair turns keeps the work and reports what failed. It
     is not discarded.
-  - An acceptance signal the author must not see (FR-63) is never fed back.
+  - An acceptance signal the author must not see (FR-59) is never fed back.
 
 ## 7. Non-functional requirements
 
@@ -618,7 +618,7 @@ the org's job-minutes `[ASSUMPTION]`.
 - The MVP does not improve review depth. Better bug-finding (symbol context, specialist routing,
   few-shot from merged pull requests) waits until the line is stable, because its benefit cannot be
   measured on a line that loses a third of its work. This non-goal sets the MVP's ceiling: once
-  approvals issue reliably, how often they are right is what limits autonomy (FR-63, and the note
+  approvals issue reliably, how often they are right is what limits autonomy (FR-59, and the note
   under §7).
 - The MVP adds no new Roles and no new Advisory reviewers. It gives the existing council a contract
   and a measure (§6.11). Enlarging the council comes after the measure exists.
@@ -645,12 +645,12 @@ the org's job-minutes `[ASSUMPTION]`.
 - **SM-7. Release lag and manual promotions per week.** NFR-8. Validates FR-46 to FR-49.
 - **SM-8. Factory-defect issues per week.** NFR-10.
 - **SM-9. Maintainer non-decision time per week.** NFR-9. Validates FR-22 to FR-28.
+- **SM-10. Eval coverage.** Share of code-writing and Gate-deciding Intents with a passing held-out
+  eval set. Target 100%. Validates FR-55.
 - **SM-11. Rounds to Convergence.** Commits and review rounds per merged pull request. POC baseline:
   7–10 commits at the median. Validates FR-65 to FR-67.
 - **SM-12. Lens contribution.** Per Lens: Findings acted on, Findings unique to it, and cost.
   Validates FR-69.
-- **SM-10. Eval coverage.** Share of code-writing and Gate-deciding Intents with a passing held-out
-  eval set. Target 100%. Validates FR-55.
 
 ### 9.3 Counter-metrics (do not optimise)
 
@@ -672,9 +672,10 @@ the org's job-minutes `[ASSUMPTION]`.
 - The advisory personas as they exist, moved onto the common run contract and release path.
 - The Hosting repo and at least two Consumer repos, served from one Release.
 - Every requirement in §6 for those Roles and repos.
-- The identity requirement (FR-26, FR-59) for every agent, including the planning Roles that
+- The identity requirement (FR-26, FR-60) for every agent, including the planning Roles that
   §10.2 otherwise leaves as they are. Exit criterion 5 depends on it.
 - Migration of in-flight Work items without loss.
+- `[ASSUMPTION]` Two Consumer repos are enough to prove multi-repo operation for the MVP.
 
 ### 10.2 Out of scope for the MVP
 
@@ -685,6 +686,8 @@ the org's job-minutes `[ASSUMPTION]`.
   to the common contract after the delivery line.
 - Fleet-wide compliance automation and the spam guard. Owned by the standards repo.
 - Report and health workflows that become redundant once the Ledger exists are retired, not ported.
+- `[ASSUMPTION]` The planning Roles can stay on their current implementation during the MVP without
+  blocking it.
 
 ### 10.3 Exit criteria: POC to production
 
@@ -764,9 +767,9 @@ Classes and counts are from the review document, §2.3.
 | B. Status reported but not real | 37 / 14 | FR-4, FR-10, FR-11, FR-47 |
 | E. Quota and budget exhaustion | 33 / 6 | FR-35 to FR-39 |
 | C. Merged fix is not what runs | 25 / 72 | FR-45 to FR-53 |
-| F. Identity, credential, permission | 21 / 3 | FR-26, FR-29, FR-59 |
+| F. Identity, credential, permission | 21 / 3 | FR-26, FR-29, FR-60 |
 | G. Re-review churn, rebase treadmill, runaway | 17 / 4 | FR-7, FR-17, FR-20, FR-34 |
 | I. Human steering does not reach the agent | 14 / 12 | FR-22 to FR-25 |
 | J. Tests and evals not measuring the real thing | 14 / 16 | FR-54 to FR-58 |
-| K. Automation that corrupts or destroys | 13 / 8 | FR-10, FR-14, FR-60 |
+| K. Automation that corrupts or destroys | 13 / 8 | FR-10, FR-14, FR-61 |
 | H. Timeout loses the work | 9 / 3 | FR-6 |
