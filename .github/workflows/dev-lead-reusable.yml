@@ -760,7 +760,7 @@ jobs:
   # resolution) still runs to avoid leaving false "Fixed" claims standing (#2143).
   push:
     needs: [dispatch, test-suite]
-    if: always() && needs.dispatch.outputs.handoff == 'true'
+    if: always() && needs.dispatch.outputs.handoff == 'true' && vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
