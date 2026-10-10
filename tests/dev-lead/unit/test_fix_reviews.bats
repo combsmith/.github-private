@@ -6158,10 +6158,11 @@ _setup_2013() {
   T2013_DIR="$BATS_TEST_TMPDIR/workdir"
   T2013_MUT="$BATS_TEST_TMPDIR/mutations"
   T2013_PATCH="$BATS_TEST_TMPDIR/patches"
+  T2013_LABELS="$BATS_TEST_TMPDIR/labels"
   T2013_PUSH="$BATS_TEST_TMPDIR/pushes"
   # Extra review comments (a JSON array) appended to the PR's listing (#2032).
   T2013_EXTRA="$BATS_TEST_TMPDIR/extra-comments.json"
-  : > "$T2013_MUT"; : > "$T2013_PATCH"; : > "$T2013_PUSH"
+  : > "$T2013_MUT"; : > "$T2013_PATCH"; : > "$T2013_PUSH"; : > "$T2013_LABELS"
   [ -s "$T2013_EXTRA" ] || echo '[]' > "$T2013_EXTRA"
   mkdir -p "$T2013_DIR/tests"
   rm -f /tmp/dev-lead-session-output.txt
@@ -6195,6 +6196,10 @@ sha="${claim_sha}"
 [ "\$sha" = "HEAD" ] && sha="\$(git rev-parse HEAD)"
 reply="Fixed in fix.txt: added the fix. <!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\\\\\"v\\\\\":1,\\\\\"sha\\\\\":\\\\\"\${sha}\\\\\",\\\\\"files\\\\\":[\\\\\"fix.txt\\\\\"]} -->"
 case "\$ARGS" in
+  *"POST"*"issues/"*"/labels"*)
+    echo "\$*" >> "$T2013_LABELS"
+    echo '[]'
+    ;;
   *"PATCH"*"pulls/comments/"*)
     echo "\$*" >> "$T2013_PATCH"
     echo '{}'
@@ -6494,7 +6499,7 @@ SH
   [ ! -s "$T2013_PUSH" ]
   [[ "$output" == *"Test-regression guard"* ]]
   [[ "$output" == *"existing behaviour"* ]]
-  [[ "$output" == *"needs-human-review"* ]]
+  grep -q 'labels\[\]=needs-human-review' "$T2013_LABELS"
   [ ! -s "$T2013_MUT" ]
   grep -q "pulls/comments/777" "$T2013_PATCH"
 }
@@ -6545,7 +6550,7 @@ SH
 # _setup_2143 <engine_script> — the 15a919e fixture, a suite that leaves a marker
 # when it runs, and a git stub that records the SHA each push sends.
 _setup_2143() {
-  rm -rf "$BATS_TEST_TMPDIR/workdir" "$BATS_TEST_TMPDIR/handoff" "$BATS_TEST_TMPDIR/test-job" "$BATS_TEST_TMPDIR/suite-ran"
+  rm -rf "$BATS_TEST_TMPDIR/workdir" "$BATS_TEST_TMPDIR/handoff" "$BATS_TEST_TMPDIR/test-job" "$BATS_TEST_TMPDIR/suite-ran" "$BATS_TEST_TMPDIR/origin.git"
   _setup_15a919e "$1"
   T2143_SUITE_RAN="$BATS_TEST_TMPDIR/suite-ran"
   export DEV_LEAD_TEST_CMD="./suite.sh; rc=\$?; : > '$T2143_SUITE_RAN'; exit \$rc"
@@ -6588,7 +6593,7 @@ _run_2143() {
 # _test_job — what the test-suite job does with the handoff: tjh_run_suite in a shell
 # that has none of the work job's state. Sets T2143_VERDICT.
 _test_job() {
-  T2143_VERDICT=$(cd "$BATS_TEST_TMPDIR" && bash -c "
+  T2143_VERDICT=$(cd "$BATS_TEST_TMPDIR" && env -i PATH="$PATH" HOME="$BATS_TEST_TMPDIR" ${DEV_LEAD_TEST_CMD:+DEV_LEAD_TEST_CMD="$DEV_LEAD_TEST_CMD"} bash -c "
     source '$SCRIPT_DIR/scripts/lib/test-regression-guard.sh'
     source '$SCRIPT_DIR/scripts/lib/test-job-handoff.sh'
     tjh_run_suite '$T2143_HANDOFF/handoff.tar' '$BATS_TEST_TMPDIR/test-job'
@@ -6643,22 +6648,22 @@ _test_job() {
   [ ! -s "$T2013_PUSH" ]
   [[ "$output" == *"Test-regression guard"* ]]
   [[ "$output" == *"existing behaviour"* ]]
-  [[ "$output" == *"needs-human-review"* ]]
+  grep -q 'labels\[\]=needs-human-review' "$T2013_LABELS"
   [ ! -s "$T2013_MUT" ]
   grep -q "pulls/comments/777" "$T2013_PATCH"
 }
 
 @test "#2143: a failed, cancelled or skipped test job — the push job does not push and retracts the claim" {
   local r
-  for r in failure cancelled ""; do
+  for r in failure cancelled skipped ""; do
     _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
-    : > "$T2013_PUSH"; : > "$T2013_PATCH"
+    : > "$T2013_PUSH"; : > "$T2013_PATCH"; : > "$T2013_LABELS"
     _run_2143 work fix-reviews
     # a verdict that says green must not count when the job itself did not succeed
     T2143_VERDICT='{"verdict":"green","cmd":"./suite.sh","tests":[]}' T2143_JOB="$r" _run_2143 push fix-reviews
     [ ! -s "$T2013_PUSH" ]
     [[ "$output" == *"NO VERDICT"* ]]
-    [[ "$output" == *"needs-human-review"* ]]
+    grep -q 'labels\[\]=needs-human-review' "$T2013_LABELS"
     grep -q "pulls/comments/777" "$T2013_PATCH"
   done
 }
@@ -6675,8 +6680,19 @@ _test_job() {
 @test "#2143: no test command stays a non-blocking verdict across the boundary" {
   _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
   _run_2143 work fix-reviews
-  # (tjh_run_suite's own not-run verdict is pinned in test_test_job_handoff.bats)
-  T2143_VERDICT='{"verdict":"not-run","cmd":"","tests":[]}' _run_2143 push fix-reviews
+  # the test-suite job, run with no test command configured, produces the not-run verdict
+  # (a PATH without bats, so the guard's `bats --recursive tests` fallback is unavailable too)
+  local saved_cmd="$DEV_LEAD_TEST_CMD" saved_path="$PATH" tool nb="$BATS_TEST_TMPDIR/nobats"
+  mkdir -p "$nb"
+  for tool in bash env git jq tar sed awk grep cat sort head tail mktemp find xargs rm mkdir sha256sum cut tr date timeout paste dirname basename mv cp ls; do
+    ln -sf "$(command -v "$tool")" "$nb/$tool" 2>/dev/null || true
+  done
+  unset DEV_LEAD_TEST_CMD
+  PATH="$nb" _test_job
+  PATH="$saved_path"
+  export DEV_LEAD_TEST_CMD="$saved_cmd"
+  [[ "$(jq -r .verdict <<<"$T2143_VERDICT")" == "not-run" ]]
+  _run_2143 push fix-reviews
   [ -s "$T2013_PUSH" ]
   [[ "$output" == *"Test suite: NOT RUN"* ]]
 }

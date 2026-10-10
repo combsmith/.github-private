@@ -654,6 +654,7 @@ jobs:
       # this job's outputs, so the push job only accepts the tarball this job wrote.
       - name: Hand off to the test-suite job
         id: handoff
+        if: always()
         env:
           ARTIFACT: dev-lead-handoff-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
@@ -664,7 +665,7 @@ jobs:
           fi
 
       - name: Upload handoff
-        if: steps.handoff.outputs.handoff == 'true'
+        if: always() && steps.handoff.outputs.handoff == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ steps.handoff.outputs.artifact }}

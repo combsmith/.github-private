@@ -3348,7 +3348,9 @@ commit_and_push() {
             exit 1
             ;;
           push) trg_out=$(tjh_verdict "${DEV_LEAD_TEST_JOB_RESULT:-}" "${DEV_LEAD_TRG_RESULT:-}") || trg_rc=$? ;;
-          *)    trg_out=$(trg_scan_pass "${RESOLUTION_BASE_SHA:-}") || trg_rc=$? ;;
+          "")   trg_out=$(trg_scan_pass "${RESOLUTION_BASE_SHA:-}") || trg_rc=$? ;;
+          # Fail closed: an unknown phase must never run PR test code in the job that holds secrets.
+          *)    trg_out=$(printf 'no-verdict\tunknown DEV_LEAD_PHASE %s\n' "$DEV_LEAD_PHASE"); trg_rc=2 ;;
         esac
         IFS=$'\t' read -r trg_verdict trg_cmd <<<"$(printf '%s\n' "$trg_out" | head -1)"
         trg_tests=$(printf '%s\n' "$trg_out" | sed '1d' | paste -sd ',' - | sed 's/,/, /g')
@@ -3373,6 +3375,18 @@ commit_and_push() {
     # leave this pass's "Fixed" replies standing: retract them before failing.
     # (commit_and_push returns 3 for the no-op guard and 4 for the sync-stub,
     # channel-pin, test-tamper and test-regression guards.)
+    # The test-suite verdict covers the handoff's tree. If the remote moved since the
+    # pass started, push_no_clobber would rebase onto it and push a tree the suite
+    # never saw, so refuse and let the next pass start from the new head (#2143).
+    if [ "${DEV_LEAD_PHASE:-}" = "push" ]; then
+      local pnc_remote="" pnc_rc=0
+      pnc_remote=$(cl_remote_head) || pnc_rc=$?
+      if [ "$pnc_rc" -ne 1 ] && { [ "$pnc_rc" -ne 0 ] || [ "$pnc_remote" != "${RESOLUTION_BASE_SHA:-}" ]; }; then
+        echo "::error::push phase: the remote head (${pnc_remote:-unreadable}) is not the pre-pass head ${RESOLUTION_BASE_SHA:-<unknown>} — the tested tree would be rebased, so nothing is pushed (#2143)" >&2
+        retract_unlanded_claims "$intent" failed || true
+        exit 1
+      fi
+    fi
     push_no_clobber || {
       echo "::error::git push failed — check remote access and branch permissions" >&2
       retract_unlanded_claims "$intent" failed || true
@@ -3726,20 +3740,19 @@ flag_test_unverified() {
     return 0
   fi
   local marker="<!-- dev-lead-test-unverified pr=${PR_NUMBER} intent=${intent} -->"
+  apply_hold_label "$REPO" "$PR_NUMBER" || true
   if gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" 2>/dev/null \
        | jq -r '.[].body // ""' 2>/dev/null | grep -qF "$marker"; then
     echo "::notice::PR #${PR_NUMBER} already flagged for an unverified test run for intent=${intent} — not reposting"
+    post_hold_failure_note "$REPO" "$PR_NUMBER"
   else
     gh pr comment "$PR_NUMBER" --repo "$REPO" --body "${marker}
 ## Test suite not verified — human attention needed
 
-The \`${intent}\` pass could not be checked against the test suite: ${reason}. Without a verdict dev-lead **did not push** this pass (#2143). Auto-merge has been disabled. Re-run the workflow, or apply the change by hand." \
+The \`${intent}\` pass could not be checked against the test suite: ${reason}. Without a verdict dev-lead **did not push** this pass (#2143). Auto-merge has been disabled. Re-run the workflow, or apply the change by hand.${HOLD_LABEL_NOTE}" \
       || echo "::warning::could not post test-unverified flag comment on PR #${PR_NUMBER}"
   fi
-  gh pr edit "$PR_NUMBER" --repo "$REPO" --add-label "${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}" 2>/dev/null \
-    || echo "::warning::could not add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review} label on PR #${PR_NUMBER}"
-  gh pr merge "$PR_NUMBER" --repo "$REPO" --disable-auto 2>/dev/null \
-    || echo "::notice::auto-merge was not enabled on PR #${PR_NUMBER} (nothing to disable)"
+  disable_auto_merge_for_hold "$REPO" "$PR_NUMBER" || true
   return 0
 }
 

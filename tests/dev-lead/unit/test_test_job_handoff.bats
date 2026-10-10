@@ -129,10 +129,15 @@ _handoff() {
   # an untracked dependency in the work tree (e.g. node_modules) travels with the result
   mkdir -p "$R/deps"; printf 'dep\n' > "$R/deps/lib.txt"
   _handoff
-  export DEV_LEAD_TEST_CMD='cat deps/lib.txt; cat state.txt; echo "not ok 1 probe"; exit 1'
+  local seen="$BATS_TEST_TMPDIR/seen"
+  export DEV_LEAD_TEST_CMD="{ echo \"dep=\$(cat deps/lib.txt 2>&1)\"; echo \"state=\$(cat state.txt 2>&1)\"; } >> '$seen'; echo 'not ok 1 probe'; exit 1"
   run --separate-stderr tjh_run_suite "$H" "$BATS_TEST_TMPDIR/s"
   # the result is red, so the baseline ran too: probe failed on both → preexisting
   [[ "$(jq -r .verdict <<<"$output")" == "preexisting" ]]
+  # run 1 (result): the untracked dep and the changed tracked file; run 2 (baseline): the base's tracked file
+  [[ "$(sed -n 1p "$seen")" == "dep=dep" ]]
+  [[ "$(sed -n 2p "$seen")" == "state=changed" ]]
+  [[ "$(sed -n 4p "$seen")" == "state=ok" ]]
 }
 
 @test "tjh_run_suite: fake secrets in the environment and git config do not reach the suite (#2143)" {
@@ -192,6 +197,10 @@ _handoff() {
   [[ "$status" -eq 2 ]]
   run tjh_verdict success 'not json'
   [[ "$status" -eq 2 ]]
+  # a multi-word value is not a verdict, even when its words are listed ones
+  run tjh_verdict success '{"verdict":"preexisting unattributed"}'
+  [[ "$status" -eq 2 ]]
+  [[ "${lines[0]}" == no-verdict* ]]
 }
 
 # --- the push side: tjh_restore + tjh_apply_result ----------------------------
@@ -261,14 +270,12 @@ if "secrets" in t:
 for i, s in enumerate(t.get("steps", [])):
     uses = s.get("uses", "") or ""
     if uses.startswith("actions/checkout"):
-        w = s.get("with", {}) or {}
-        if w.get("persist-credentials") is not False or "token" in w:
-            errs.append(f"test-suite step {i} checks out with a credential")
+        errs.append(f"test-suite step {i} checks out the repository")
 needs = t.get("needs")
 needs = [needs] if isinstance(needs, str) else (needs or [])
 if needs != ["dispatch"]:
     errs.append(f"test-suite must need only dispatch, got {needs!r}")
-if "handoff" not in str(t.get("if", "")):
+if "needs.dispatch.outputs.handoff == 'true'" not in str(t.get("if", "")):
     errs.append("test-suite must run only on a handoff")
 if "always()" in str(t.get("if", "")):
     errs.append("test-suite must not run when there is no handoff")
@@ -345,7 +352,7 @@ yaml.safe_dump(doc, open(sys.argv[2], "w"))
 PY
   run _py "$bad"
   [[ "$status" -ne 0 ]]
-  [[ "$output" == *"checks out with a credential"* ]]
+  [[ "$output" == *"checks out the repository"* ]]
 }
 
 @test "dev-lead-reusable.yml: the test-suite job runs the guard from the handoff and verifies its digest" {

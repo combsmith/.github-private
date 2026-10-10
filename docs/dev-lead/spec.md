@@ -283,7 +283,7 @@ on:
 | Job | Trigger condition | Purpose |
 |---|---|---|
 | `dispatch` | All events except `check_run` + `repository_dispatch` from ci-relay | Classify intent, run handler |
-| `test-suite` | `dispatch` handed off a guarded pass (fix-reviews, fix-bot-comment, review-changes) | Run the repo's test suite on the pass's result with no secrets, `permissions: {}` and no checkout; output the verdict only (#2143) |
+| `test-suite` | `dispatch` handed off a guarded pass (fix-reviews, fix-bot-comment, review-changes, human-pr) | Run the repo's test suite on the pass's result with no secrets, `permissions: {}` and no checkout; output the verdict, command and test names (#2143) |
 | `push` | `always()` after `test-suite`, when `dispatch` handed off | Push on any successful verdict (green, preexisting, unattributed, unbaselined, timeout, not-run), then push verification, claim retraction, thread resolution and the terminal comment; refusal (no verdict or regression) retracts outstanding claims (#2143) |
 | `ci-relay` | `check_run` completed, failure, not `dev-lead / *` | Resolve PR, emit `repository_dispatch` |
 

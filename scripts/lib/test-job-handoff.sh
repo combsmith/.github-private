@@ -98,7 +98,7 @@ tjh_run_suite() {
         git -C "$repo" "${id[@]}" commit -q --no-verify --allow-empty -m base &&
         b=$(git -C "$repo" rev-parse HEAD) || exit 1
       find "$repo" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + || exit 1
-      git -C "$repo" rm -r -q --cached . >/dev/null || exit 1
+      git -C "$repo" rm -r -q --cached --ignore-unmatch . >/dev/null || exit 1
     fi
     tar -xf "$x/result-tree.tar" -C "$repo" || exit 1
     ( cd "$repo" && xargs -0 -r git add -f -- < "$x/tracked.z" ) || exit 1
@@ -131,7 +131,7 @@ tjh_verdict() {
     return 2
   fi
   if ! verdict=$(jq -er '.verdict | strings' <<<"$json" 2>/dev/null) \
-     || [[ " ${TJH_VERDICTS} " != *" ${verdict} "* ]]; then
+     || [[ "$verdict" == *[[:space:]]* ]] || [[ " ${TJH_VERDICTS} " != *" ${verdict} "* ]]; then
     printf 'no-verdict\tthe test-suite job reported no readable verdict\n'
     return 2
   fi
