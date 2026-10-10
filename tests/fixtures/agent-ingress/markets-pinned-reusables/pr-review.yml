@@ -1,10 +1,10 @@
-# PINNED-USES: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/stable
+# PINNED-USES: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
 # SNAPSHOT (trimmed) of petry-projects/.github-private
-# .github/workflows/pr-review.yml @ pr-review/stable (776c9585c8fff87a1ffefd469137791ab6467e61),
-# read 2026-10-02 for #2038. Only the parts the two ingress guards read are kept:
-# the workflow_call inputs (validate-caller-inputs.sh) and the workflow-level
-# concurrency group verbatim (the ADR-0010 collision rule). Re-snapshot if the
-# markets §3 pin moves.
+# .github/workflows/pr-review.yml @ pr-review/v1-stable (71920a24213a5f50b318d3931d2f2df7b82f782a),
+# read 2026-10-10 for #2206 (markets#521 repin). Only the parts the two ingress
+# guards read are kept: the workflow_call inputs (validate-caller-inputs.sh) and
+# the workflow-level concurrency group verbatim (the ADR-0010 collision rule).
+# Re-snapshot if the markets §3 pin moves.
 name: PR Review Agent
 
 on:
