@@ -239,6 +239,7 @@ keeps its own file) carries **no** job qualifier and remains exactly one row.
 > | `.github/workflows/test-aw.yml` | CI test workflow, not an agentic role |
 > | `.github/workflows/duplicate-decl-gate.yml` | CI gate guard — enforces duplicate declaration check, not an agentic role |
 > | `.github/workflows/holdout-guard.yml` | Gate guard — enforces merge conditions, not an agentic role |
+> | `.github/workflows/engine-config-validate.yml` | CI gate guard — validates config/ai-engines.json, not an agentic role |
 > | `.github/workflows/test-deletion-guard.yml` | Gate guard — enforces test retention, not an agentic role |
 > | `.github/workflows/sync-scope-guard.yml` | Gate guard — enforces sync-PR scope, not an agentic role |
 > | `.github/workflows/dependabot-automerge.yml` | Dependabot plumbing — thin caller stub |

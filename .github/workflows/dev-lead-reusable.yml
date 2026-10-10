@@ -185,20 +185,6 @@ jobs:
       TOKEN_WORKFLOW: dev-lead
 
     steps:
-      - name: Checkout caller repo
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
-
-      - name: Checkout dev-lead config
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: petry-projects/.github-private
-          ref: ${{ inputs.agent_ref }}
-          path: .dev-lead-config
-          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
-          sparse-checkout: config
-
       - name: Engine token preflight (#1525)
         # With the secret declaration relaxed to required:false, presence is
         # enforced here instead — one actionable line, not a secrets-evaluation
@@ -207,18 +193,21 @@ jobs:
         # precedence over AI_ENGINES, so check the file before requiring the token).
         env:
           AI_ENGINES: ${{ vars.AI_ENGINES || vars.DEV_LEAD_ENGINES || '' }}
+          AGENT_REF: ${{ inputs.agent_ref }}
+          GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           # Is Claude enabled? Check config/ai-engines.json first (if it exists),
           # then fall back to the inline AI_ENGINES logic.
           claude_enabled=true
-          if [ -f .dev-lead-config/config/ai-engines.json ]; then
-            # Parse (never grep) the file; fail closed — keep requiring the
-            # token — when .providers.claude.enabled cannot be resolved.
-            cfg_claude="$(jq -r '.providers.claude.enabled' .dev-lead-config/config/ai-engines.json 2>/dev/null || echo unknown)"
-            if [ "$cfg_claude" = false ]; then
-              claude_enabled=false
-            fi
+          # Fetched through the API, not a checkout, so this stays the first step.
+          # Parse (never grep) the file; fail closed — keep requiring the token —
+          # when .providers.claude.enabled cannot be fetched or resolved.
+          cfg_claude="$(gh api -H 'Accept: application/vnd.github.raw' \
+            "repos/petry-projects/.github-private/contents/config/ai-engines.json?ref=${AGENT_REF}" 2>/dev/null \
+            | jq -r '.providers.claude.enabled' 2>/dev/null || echo unknown)"
+          if [ "$cfg_claude" = false ]; then
+            claude_enabled=false
           fi
           if [ "$claude_enabled" = true ]; then
             # Config doesn't disable Claude; check if AI_ENGINES omits it.
@@ -251,8 +240,10 @@ jobs:
           fi
           echo "engine token present — proceeding"
 
-      - name: Clean up dev-lead config checkout
-        run: rm -rf .dev-lead-config
+      - name: Checkout caller repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
 
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -796,19 +787,11 @@ jobs:
       issues: read
 
     steps:
-      - name: Checkout dev-lead config
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: petry-projects/.github-private
-          ref: ${{ inputs.agent_ref }}
-          path: .dev-lead-config
-          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
-          persist-credentials: false
-          sparse-checkout: config
-
       - name: Engine token preflight (#1525)
         env:
           AI_ENGINES: ${{ vars.AI_ENGINES || vars.DEV_LEAD_ENGINES || '' }}
+          AGENT_REF: ${{ inputs.agent_ref }}
+          GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           # Is Claude enabled? config/ai-engines.json disabling Claude takes
@@ -817,12 +800,14 @@ jobs:
           # includes claude (scripts/lib/engine-chain.sh — mirrored inline because this
           # runs before the scripts are checked out).
           claude_enabled=true
-          if [ -f .dev-lead-config/config/ai-engines.json ]; then
-            # Parse (never grep) the file; fail closed when unresolvable.
-            cfg_claude="$(jq -r '.providers.claude.enabled' .dev-lead-config/config/ai-engines.json 2>/dev/null || echo unknown)"
-            if [ "$cfg_claude" = false ]; then
-              claude_enabled=false
-            fi
+          # Fetched through the API, not a checkout, so this stays the first step.
+          # Parse (never grep) the file; fail closed — keep requiring the token —
+          # when .providers.claude.enabled cannot be fetched or resolved.
+          cfg_claude="$(gh api -H 'Accept: application/vnd.github.raw' \
+            "repos/petry-projects/.github-private/contents/config/ai-engines.json?ref=${AGENT_REF}" 2>/dev/null \
+            | jq -r '.providers.claude.enabled' 2>/dev/null || echo unknown)"
+          if [ "$cfg_claude" = false ]; then
+            claude_enabled=false
           fi
           spec="$(printf '%s' "${AI_ENGINES:-}" | tr '[:upper:],' '[:lower:] ')"
           if [ "$claude_enabled" = true ] && [ -n "${spec//[[:space:]]/}" ]; then
