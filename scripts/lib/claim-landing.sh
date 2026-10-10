@@ -482,7 +482,7 @@ cl_select_fixed_dispositions() {
   local id body_b64 body parsed sha
   while IFS=$'\t' read -r id body_b64; do
     [[ -z "$id" ]] && continue
-    body=$(base64 --decode <<<"$body_b64" 2>/dev/null || printf '')
+    body=$(base64 --decode <<<"$body_b64" 2>/dev/null || base64 -d <<<"$body_b64" 2>/dev/null || printf '')
     sha=""
     if parsed=$(cdv_parse_disposition "$body"); then
       [[ "$(jq -r '.disposition // ""' <<<"$parsed" 2>/dev/null)" == "fixed" ]] || continue
@@ -531,10 +531,13 @@ cl_rewrite_disposition_sha() {
   [[ "$(jq -r '.disposition // ""' <<<"$parsed" 2>/dev/null)" == "fixed" ]] || return 1
   old=$(jq -r '.sha // ""' <<<"$parsed" 2>/dev/null) || return 1
 
-  local rest marker
+  local before rest after middle new_middle
+  before="${body%%"$_CDV_MARKER_PREFIX"*}"
   rest="${body#*"$_CDV_MARKER_PREFIX"}"
-  marker="${_CDV_MARKER_PREFIX}${rest%%"$_CDV_MARKER_SUFFIX"*}${_CDV_MARKER_SUFFIX}"
-  printf '%s\n' "${body/"$marker"/"${marker/"sha=${old}"/"sha=${new_sha}"}"}"
+  after="${rest#*"$_CDV_MARKER_SUFFIX"}"
+  middle="${rest%%"$_CDV_MARKER_SUFFIX"*}"
+  new_middle="${middle/"sha=${old}"/"sha=${new_sha}"}"
+  printf '%s%s%s%s%s\n' "$before" "$_CDV_MARKER_PREFIX" "$new_middle" "$_CDV_MARKER_SUFFIX" "$after"
 }
 
 # cl_remote_head
