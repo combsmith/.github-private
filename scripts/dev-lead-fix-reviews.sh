@@ -107,6 +107,33 @@ if [ -n "${PR_NUMBER:-}" ] && [ "${DEV_LEAD_DRY_RUN:-false}" != "true" ] \
   exit 0
 fi
 
+# read_pr_head_sha — print the PR's current head SHA from the API, or nothing when
+# the read fails or returns something that is not a commit SHA (#2211).
+read_pr_head_sha() {
+  local sha
+  sha=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha // empty' 2>/dev/null) || sha=""
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] && printf '%s\n' "$sha"
+  return 0
+}
+
+# verify_worktree_at_pr_head — the checked-out worktree must be at the PR head
+# this pass resolved (HEAD_SHA). A push between that read and the checkout moves
+# the head legitimately, so on a mismatch the head is re-read once and adopted if
+# the worktree matches it. Anything else fails loudly, naming both SHAs (#2211).
+verify_worktree_at_pr_head() {
+  local wt_head current
+  wt_head="$(git rev-parse HEAD 2>/dev/null || true)"
+  [ -n "$wt_head" ] && [ "$wt_head" = "$HEAD_SHA" ] && return 0
+  current="$(read_pr_head_sha)"
+  if [ -n "$wt_head" ] && [ "$wt_head" = "$current" ]; then
+    echo "::notice::PR #${PR_NUMBER} head moved from ${HEAD_SHA} to ${current} before checkout — working from ${current}"
+    HEAD_SHA="$current"
+    return 0
+  fi
+  echo "::error::the worktree for PR #${PR_NUMBER} is at ${wt_head:-<unreadable>}, not the PR head ${HEAD_SHA}${current:+ (API now reports ${current})} — the PR branch checkout did not land, refusing to run ${INTENT_TYPE} from another ref (#2211)" >&2
+  return 1
+}
+
 # Checkout the PR branch for modification (Requirement 1).
 # Use an isolated worktree so switching to the PR branch never overwrites the
 # agent's own prompts/scripts in the working tree (issue #448).
@@ -123,10 +150,26 @@ if [ "${DEV_LEAD_DRY_RUN:-false}" = "false" ] && [ -n "${PR_NUMBER:-}" ]; then
   # Resolving here rather than before the hold closes the window where an
   # approval could satisfy branch protection during the API call and let
   # GitHub auto-merge the branch before the hold is installed.
+  # A head this pass cannot resolve fails it loudly (#2211): a retry dispatch has
+  # no event SHA, and an empty one would let the pass run unanchored.
+  _head_from_event=true
   if [ -z "${HEAD_SHA:-}" ]; then
-    HEAD_SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha' 2>/dev/null || true)
+    _head_from_event=false
+    HEAD_SHA="$(read_pr_head_sha)"
+    if [ -z "$HEAD_SHA" ]; then
+      echo "::error::could not resolve the head SHA of PR #${PR_NUMBER} (GET repos/${REPO}/pulls/${PR_NUMBER} .head.sha) — refusing to run ${INTENT_TYPE} without the PR's head (#2211)" >&2
+      exit 1
+    fi
   fi
   checkout_pr_in_worktree "$PR_NUMBER" "$REPO"
+  # The worktree starts at the agent ref (origin/main) and only `gh pr checkout`
+  # moves it onto the PR. When this pass resolved the head itself, check that the
+  # move landed: a pass working from main commits a tree without the PR's changes
+  # (#2211). An event-supplied HEAD_SHA may be legitimately stale, so it is not
+  # held to this check.
+  if [ "$_head_from_event" = false ]; then
+    verify_worktree_at_pr_head || exit 1
+  fi
   # Immutable snapshot of the head this pass starts from — captured at the one
   # moment that actually means "before this pass did any work" (#1617). The
   # resolution gate compares against THIS, not HEAD_SHA: HEAD_SHA is the
@@ -2803,8 +2846,10 @@ pr_nets_to_zero() {
 # the needs-human-review label, and disable auto-merge — and suppress the
 # EXIT-trap auto-merge restore so a self-cancelling PR is never silently made
 # mergeable again. Mirrors pr_automation_escalate's escalation shape.
+# <landed> is "discarded" (default: the guard refused the push, so the PR branch
+# is untouched) or "pushed" (the rebase engine force-pushed before the check).
 flag_noop_pr() {
-  local intent="$1"
+  local intent="$1" landed="${2:-discarded}"
   # A self-cancelling PR must stay unmergeable until a human looks: prevent
   # restore_auto_merge (EXIT trap) from re-enabling what we are about to disable.
   _AM_NEEDS_RESTORE=0
@@ -2820,12 +2865,26 @@ flag_noop_pr() {
     echo "::notice::PR #${PR_NUMBER} already flagged as net-zero for intent=${intent} — not reposting"
     post_hold_failure_note "$REPO" "$PR_NUMBER"
   else
+    # Say what is true (#2211): when the push was refused, the branch never
+    # changed, so there is no fix to restore — only a hold to clear.
+    local what next
+    if [ "$landed" = "pushed" ]; then
+      what="The \`${intent}\` pass reverted this PR's own changes and pushed the result, so its net diff against \`${BASE_REF:-main}\` is now **empty** (zero changed files)."
+      next="Auto-merge has been disabled. A human should restore the PR's changes on the branch or close this PR."
+    else
+      # Name the branch's true remote head — after a rebase the engine already
+      # pushed, so the pre-pass head is not where the branch is now.
+      local head
+      head="$(cl_remote_head 2>/dev/null)" || head="${RESOLUTION_BASE_SHA:-${HEAD_SHA:-}}"
+      what="The \`${intent}\` pass produced a result that would have reverted this PR's own changes, netting its diff against \`${BASE_REF:-main}\` to **empty** (zero changed files). That result was **discarded**: nothing from it was pushed, and the PR branch is unchanged at \`${head:-its pre-pass head}\`."
+      next="Auto-merge has been disabled. A human should check the branch still carries the PR's changes and then clear the hold (remove \`${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}\`) — there is no fix to restore."
+    fi
     gh pr comment "$PR_NUMBER" --repo "$REPO" --body "${marker}
 ## No-op fix detected — human attention needed
 
-The \`${intent}\` pass reverted this PR's own changes, so its net diff against \`${BASE_REF:-main}\` is now **empty** (zero changed files). Merging a PR that nets to zero would auto-close its \`Closes #N\` compliance issue while the underlying finding remains unfixed (#1340), and the idempotent audit would immediately re-open it.
+${what} Merging a PR that nets to zero would auto-close its \`Closes #N\` compliance issue while the underlying finding remains unfixed (#1340), and the idempotent audit would immediately re-open it.
 
-Auto-merge has been disabled and no commit was pushed. A human should restore the correct fix or close this PR.${HOLD_LABEL_NOTE}" \
+${next}${HOLD_LABEL_NOTE}" \
       || echo "::warning::could not post no-op flag comment on PR #${PR_NUMBER}"
   fi
   disable_auto_merge_for_hold "$REPO" "$PR_NUMBER" || true
@@ -3972,7 +4031,7 @@ case "$INTENT_TYPE" in
       git fetch origin "$BASE_REF" >/dev/null 2>&1 || true
       if pr_nets_to_zero "$BASE_REF"; then
         echo "::error::No-op guard: PR #${PR_NUMBER} nets to zero changed files against ${BASE_REF} after rebase — flagging for human, not reporting applied (#1786)"
-        flag_noop_pr "rebase"
+        flag_noop_pr "rebase" pushed
         exit "$rc"
       fi
       cp_rc=0
