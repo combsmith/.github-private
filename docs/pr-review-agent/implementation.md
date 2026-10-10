@@ -105,9 +105,11 @@ gates that withhold approval until an external finding is accounted for:
   comment cleared it) was retired in #1813 because GitHub now returns the head push
   timestamp as `null`; "addressed" now means the comment was minimized with
   classifier `RESOLVED`. Every issue comment — human *and* bot — must carry one,
-  with two narrow exceptions: our own automation-marked comments, and clean
-  informational status comments from registered reviewer bots (e.g. SonarCloud's
-  "Quality Gate passed", #1918). It **fails closed**. See
+  except for a narrow exemption set (ADR-0012, #2209): our own automation-marked
+  comments and the auto-rebase conflict sentinel, an owner/member/collaborator's
+  exact review request (`@<bot user> please review`), a comment they mark
+  `<!-- maintainer:not-a-finding -->`, and clean informational status comments
+  from registered reviewer bots (e.g. SonarCloud's "Quality Gate passed", #1918). It **fails closed**. See
   [maintainer-comment-gate.md](maintainer-comment-gate.md) for why a review thread
   blocks merge but a plain PR comment previously did not, and how the block clears.
 
