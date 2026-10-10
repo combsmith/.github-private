@@ -48,12 +48,11 @@ _PREFLIGHT_CHAIN_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-chain.sh"
 # shellcheck source=lib/engine-chain.sh
 [ -f "$_PREFLIGHT_CHAIN_LIB" ] && source "$_PREFLIGHT_CHAIN_LIB"
 if declare -F ai_engine_enabled >/dev/null 2>&1; then
-  if ! ai_engine_enabled claude; then
-    CLAUDE_REQUIRED=optional
-  fi || {
+  _chain="$(ai_engine_chain)" || {
     echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable"
     exit 1
   }
+  [[ " $_chain " == *" claude "* ]] || CLAUDE_REQUIRED=optional
 fi
 
 if [ "$CLAUDE_REQUIRED" = required ]; then
