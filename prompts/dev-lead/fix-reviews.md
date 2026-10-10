@@ -232,6 +232,7 @@ Read every changed line as if you are the reviewer seeing the response:
 - Never revert or undo the PR's own committed changes to satisfy a neutral `COMMENTED`/overview review — that produces a net-zero diff that silently cancels the fix (#1340)
 - If a review thread is ambiguous, apply the most conservative interpretation
 - Commit your fixes locally so your claims can cite them, but **never push**. The CI workflow pushes after you finish, verifies the push landed, and retracts any claim that did not land (#2013)
+- To inspect the base branch, use `git show origin/<base>:<path>` or `git diff origin/<base> -- <path>`. Never check base content out into the worktree (`git checkout origin/<base> -- …`). Uncommitted changes that restore PR files to base content are dropped, not committed. A deliberate restore to base must be its own commit (#2216)
 - Never edit an existing test to match your change. A bot suggestion that contradicts an existing test goes to a human (reply without the marker). An existing-test change needs a `Test-Change-Justification:` trailer (#2013)
 
 ## Output Format

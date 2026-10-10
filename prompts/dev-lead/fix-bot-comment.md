@@ -229,6 +229,7 @@ Some bot comments are pure **operational notices**, not code findings: a rate-li
 - **Never resolve a thread yourself**: do not call the `resolveReviewThread` (or `unresolveReviewThread`) mutation. Resolution is the harness's job — it resolves the addressed and outdated threads from `${ACTOR}`; your only lever is the addressed-marker on your reply
 - Stay within the scope of the pull request's changed files where possible
 - Commit your fixes locally so your claims can cite them, but **never push**. The CI workflow pushes after you finish, verifies the push landed, and retracts any claim that did not land (#2013)
+- To inspect the base branch, use `git show origin/<base>:<path>` or `git diff origin/<base> -- <path>`. Never check base content out into the worktree (`git checkout origin/<base> -- …`). Uncommitted changes that restore PR files to base content are dropped, not committed. A deliberate restore to base must be its own commit (#2216)
 - Never edit an existing test to match your change. A conflicting bot suggestion goes to a human. An existing-test change needs a `Test-Change-Justification:` trailer (#2013)
 
 ## Output Format

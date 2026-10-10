@@ -6,6 +6,7 @@ FIX_REVIEWS_SCRIPT="$SCRIPT_DIR/scripts/dev-lead-fix-reviews.sh"
 STUB_ENGINES_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/engines"
 GH_STUBS_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/stubs"
 
+# setup — initialize test environment with stub engines and environment variables.
 setup() {
   export GITHUB_ENV="$(mktemp)"
   export GITHUB_OUTPUT="$(mktemp)"
@@ -51,6 +52,7 @@ GHEOF
   cd "$SCRIPT_DIR"
 }
 
+# teardown — clean up temporary files and stub directories.
 teardown() {
   rm -f "$GITHUB_ENV" "$GITHUB_OUTPUT"
   rm -rf "$STUB_BIN_DIR"
@@ -4921,9 +4923,14 @@ STUB
 # refs/remotes/origin/main at the base commit, and install a gh/git stub that
 # records flag comments, label edits, merges, and pushes. The engine (claude
 # stub) rewrites file.txt to the caller-provided content. Captures both base and
-# head SHAs as NOOP_BASE_SHA and NOOP_HEAD_SHA.
+# head SHAs as NOOP_BASE_SHA and NOOP_HEAD_SHA. With a third argument `commit`
+# the engine commits its edit, as the fix-reviews/fix-bot-comment/review-changes
+# prompts require: an UNCOMMITTED revert to base is dropped as residue (#2216),
+# so only a committed one reaches the no-op guard.
 _noop_setup_repo() {
-  local git_repo="$1" engine_content="$2"
+  local git_repo="$1" engine_content="$2" engine_commit="${3:-}"
+  local commit_cmd=""
+  [ "$engine_commit" = "commit" ] && commit_cmd='git add -A && git -c user.email=e@test -c user.name=E commit -q -m "fix: engine edit"'
   git -C "$git_repo" init -q
   printf 'base\n' > "$git_repo/file.txt"
   git -C "$git_repo" add .
@@ -4941,6 +4948,7 @@ _noop_setup_repo() {
 #!/usr/bin/env bash
 echo "Addressed review feedback."
 printf '${engine_content}' > file.txt
+${commit_cmd}
 STUB
   chmod +x "$STUB_BIN_DIR/claude"
 }
@@ -4987,7 +4995,7 @@ GITEOF
   touch "$comment_file" "$merge_file" "$push_file"
 
   # Engine reverts the feature line → net base…head diff becomes empty.
-  _noop_setup_repo "$git_repo" 'base\n'
+  _noop_setup_repo "$git_repo" 'base\n' commit
   _noop_gh_stub "$comment_file" "$merge_file" "$NOOP_HEAD_SHA"
   _noop_git_stub "$push_file"
 
@@ -5022,7 +5030,7 @@ GITEOF
   mkdir -p "$git_repo"
   touch "$comment_file" "$merge_file" "$push_file"
 
-  _noop_setup_repo "$git_repo" 'base\n'
+  _noop_setup_repo "$git_repo" 'base\n' commit
   _noop_gh_stub "$comment_file" "$merge_file" "$NOOP_HEAD_SHA"
   _noop_git_stub "$push_file"
 
@@ -5086,7 +5094,7 @@ GITEOF
   mkdir -p "$git_repo"
   touch "$comment_file" "$merge_file" "$push_file"
 
-  _noop_setup_repo "$git_repo" 'base\n'
+  _noop_setup_repo "$git_repo" 'base\n' commit
   _noop_gh_stub "$comment_file" "$merge_file" "$NOOP_HEAD_SHA"
   _noop_git_stub "$push_file"
 
@@ -5104,6 +5112,121 @@ GITEOF
   grep -q "disable-auto" "$merge_file"
   run grep -q -- "--auto" "$merge_file"
   [ "$status" -eq 1 ]
+}
+
+# ── Base-content residue (#2216): the #2198 shape ─────────────────────────────
+# A fix-bot-comment session ran `git checkout origin/main -- .` while checking
+# whether a failure was "pre-existing on origin/main" and left it in the working
+# tree; the harness's `git add -A` committed the inverse of the PR. Uncommitted
+# residue that restores PR files to base is dropped before staging.
+
+# _residue_setup_repo <git_repo> <engine_cmds> — base has a.txt/b.txt/c.txt; the
+# PR edits a.txt and b.txt. The claude stub runs <engine_cmds> in the worktree.
+_residue_setup_repo() {
+  local git_repo="$1" engine_cmds="$2"
+  git -C "$git_repo" init -q
+  printf 'a-base\n' > "$git_repo/a.txt"
+  printf 'b-base\n' > "$git_repo/b.txt"
+  printf 'c-base\n' > "$git_repo/c.txt"
+  git -C "$git_repo" add .
+  git -C "$git_repo" -c user.email="t@test" -c user.name="T" commit -q -m "base"
+  git -C "$git_repo" update-ref refs/remotes/origin/main "$(git -C "$git_repo" rev-parse HEAD)"
+  printf 'a-base\na-pr\n' > "$git_repo/a.txt"
+  printf 'b-base\nb-pr\n' > "$git_repo/b.txt"
+  git -C "$git_repo" add .
+  git -C "$git_repo" -c user.email="t@test" -c user.name="T" commit -q -m "feat: the PR"
+  NOOP_HEAD_SHA="$(git -C "$git_repo" rev-parse HEAD)"
+
+  cat > "$STUB_BIN_DIR/claude" << STUB
+#!/usr/bin/env bash
+echo "Checked whether the failure is pre-existing on origin/main."
+${engine_cmds}
+STUB
+  chmod +x "$STUB_BIN_DIR/claude"
+}
+
+# _residue_git_stub <push_file> — records each push plus the pushed a/b/c content.
+_residue_git_stub() {
+  local push_file="$1"
+  cat > "$STUB_BIN_DIR/git" << GITEOF
+#!/usr/bin/env bash
+if [ "\$1" = "push" ]; then
+  echo "\$*" >> "${push_file}"
+  for f in a.txt b.txt c.txt; do echo "\$f=\$(/usr/bin/git show HEAD:\$f | paste -sd '|' -)" >> "${push_file}"; done
+  exit 0
+fi
+exec /usr/bin/git "\$@"
+GITEOF
+  chmod +x "$STUB_BIN_DIR/git"
+}
+
+_residue_run_fix_bot_comment() {
+  run bash -c "
+    export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=false
+    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='petry-projects/.github-private'
+    export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
+    export ACTOR='github-copilot[bot]' COMMENT_BODY='template-drift is failing.'
+    export PATH="$STUB_BIN_DIR:\$PATH"
+    bash '$FIX_REVIEWS_SCRIPT'
+  " 2>&1
+}
+
+@test "base-residue guard: total revert left in the worktree is dropped, not committed (#2216/#2198)" {
+  local git_repo="$BATS_TEST_TMPDIR/git_repo"
+  local comment_file="$BATS_TEST_TMPDIR/comment_file"
+  local merge_file="$BATS_TEST_TMPDIR/merge_file"
+  local push_file="$BATS_TEST_TMPDIR/push_file"
+  mkdir -p "$git_repo"
+  touch "$comment_file" "$merge_file" "$push_file"
+
+  _residue_setup_repo "$git_repo" 'git checkout origin/main -- .'
+  _noop_gh_stub "$comment_file" "$merge_file" "$NOOP_HEAD_SHA"
+  _residue_git_stub "$push_file"
+
+  cd "$git_repo"
+  _residue_run_fix_bot_comment
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Base-residue guard"* ]]
+  [[ "$output" == *"a.txt"* && "$output" == *"b.txt"* ]]
+  # Nothing pushed, and no self-cancelling commit for the no-op guard to catch
+  [ ! -s "$push_file" ]
+  [[ "$output" != *"No-op guard"* ]]
+  [[ "$output" == *"No changes to commit for intent=fix-bot-comment"* ]]
+}
+
+@test "base-residue guard: partial revert drops only the residue and pushes the real fix (#2216/#2198)" {
+  local git_repo="$BATS_TEST_TMPDIR/git_repo"
+  local comment_file="$BATS_TEST_TMPDIR/comment_file"
+  local merge_file="$BATS_TEST_TMPDIR/merge_file"
+  local push_file="$BATS_TEST_TMPDIR/push_file"
+  mkdir -p "$git_repo"
+  touch "$comment_file" "$merge_file" "$push_file"
+
+  # Residue on a.txt (a PR file) plus a real, uncommitted fix to c.txt.
+  _residue_setup_repo "$git_repo" "git checkout origin/main -- a.txt
+printf 'c-base\\nc-fix\\n' > c.txt"
+  _noop_gh_stub "$comment_file" "$merge_file" "$NOOP_HEAD_SHA"
+  _residue_git_stub "$push_file"
+
+  cd "$git_repo"
+  _residue_run_fix_bot_comment
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Base-residue guard"*"a.txt"* ]]
+  # The real fix was pushed, with the PR's a.txt/b.txt intact
+  grep -q "^push" "$push_file"
+  grep -qxF "a.txt=a-base|a-pr" "$push_file"
+  grep -qxF "b.txt=b-base|b-pr" "$push_file"
+  grep -qxF "c.txt=c-base|c-fix" "$push_file"
+}
+
+@test "base-residue prompts: inspect base without checking it out; commit a deliberate restore (#2216)" {
+  local f
+  for f in fix-reviews fix-bot-comment review-changes; do
+    grep -q 'Never check base content out into the worktree' "$SCRIPT_DIR/prompts/dev-lead/$f.md"
+    grep -q 'must be its own commit (#2216)' "$SCRIPT_DIR/prompts/dev-lead/$f.md"
+  done
 }
 
 # ── Prompt guidance (#1340): COMMENTED/overview is neutral, not a change-request ─
@@ -5384,7 +5507,7 @@ GITEOF
   touch "$comment_file" "$merge_file" "$push_file"
 
   # Engine reverts the feature line → net base…head diff becomes empty.
-  _noop_setup_repo "$git_repo" 'base\n'
+  _noop_setup_repo "$git_repo" 'base\n' commit
   _noop_gh_stub "$comment_file" "$merge_file" "$NOOP_HEAD_SHA"
   _noop_git_stub "$push_file"
 

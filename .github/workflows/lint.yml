@@ -248,6 +248,7 @@ jobs:
             tests/dev-lead/unit/test_claim_landing.bats \
             tests/dev-lead/unit/test_test_tamper_guard.bats \
             tests/dev-lead/unit/test_test_regression_guard.bats \
+            tests/dev-lead/unit/test_base_residue_guard.bats \
             tests/dev-lead/unit/test_deferred_thread_verify.bats \
             tests/dev-lead/unit/test_fewshot_assemble.bats \
             tests/dev-lead/unit/test_net_diff_guard.bats \
