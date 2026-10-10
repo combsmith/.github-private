@@ -85,17 +85,29 @@ _ai_engine_parse() {
 }
 
 # ai_engine_chain — the enabled engines in preference order, space-separated.
-# Engines the file disables are dropped. Empty or invalid configuration, or one
-# that names only disabled engines → the default chain.
+# Engines the file disables are dropped. Empty or invalid configuration → the
+# default chain. A valid configuration that names only disabled engines → empty
+# (fails closed rather than silently re-enabling providers the spec excluded).
 ai_engine_chain() {
-  local parsed disabled e kept=""
-  if parsed="$(_ai_engine_parse "$(_ai_engine_spec)")" && [ -n "$parsed" ]; then
+  local spec parsed disabled e kept=""
+  spec="$(_ai_engine_spec)"
+  if [ -z "$spec" ]; then
+    printf '%s' "$(_ai_engine_default_chain)"
+    return 0
+  fi
+  if parsed="$(_ai_engine_parse "$spec")" && [ -n "$parsed" ]; then
     disabled="$(_ai_engine_file_disabled)"
     for e in $parsed; do
       [[ " $disabled " == *" $e "* ]] || kept="${kept:+$kept }$e"
     done
   fi
-  printf '%s' "${kept:-$(_ai_engine_default_chain)}"
+  if [ -z "$kept" ] && [ -z "${spec//[[:space:],]/}" ]; then
+    printf '%s' "$(_ai_engine_default_chain)"
+  elif [ -z "$kept" ] && ! _ai_engine_parse "$spec" >/dev/null 2>&1; then
+    printf '%s' "$(_ai_engine_default_chain)"
+  else
+    printf '%s' "$kept"
+  fi
 }
 
 # ai_engine_chain_problem — prints a one-line description when the configured
