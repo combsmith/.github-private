@@ -458,6 +458,11 @@ stops the merge: PR 2084 was approved, enqueued, had that approval dismissed, an
   call is a no-op. A failed dequeue logs a `::warning::` and posts one comment asking a maintainer to
   remove the PR from the queue by hand. An unreadable live state logs a `::warning::` and takes no
   action. The marker is posted at most once per head SHA.
+- **A failed state read is retried, then surfaced.** The live read is tried `MQ_READ_ATTEMPTS` times
+  (default 3, `MQ_READ_RETRY_DELAY_SEC` apart, default 2). If every attempt fails the helper cannot tell
+  whether a queued PR lost its last approval: it logs a `::warning::`, writes the unknown state to the job
+  step summary so a maintainer can check the queue, makes no dequeue call and posts no PR comment (most PRs
+  that reach this path are not queued), and never fails the run (#2186).
 - **Auto-merge after a dequeue.** A dequeue consumes the PR's auto-merge request. dev-lead's idempotent
   `try_enable_auto_merge` re-enables it on its next pass; once an approval stands again, the PR
   rejoins the queue. This is intended.
