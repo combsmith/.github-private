@@ -503,7 +503,7 @@ stale_disposition_needs_dispatch() {
   latest_edit=$(jq -r 'map(.lastEditedAt) | max // ""' <<< "$stale" 2>/dev/null) || return 1
   [ -n "$latest_edit" ] || return 1
   later_runs=$(jq -r --arg e "$latest_edit" \
-    --arg re "<!-- dev-lead-fix-reviews pr=${pr_number} [^>]*intent=fix-reviews status=(applied|no-changes)" '
+    --arg re "<!-- dev-lead-fix-reviews pr=${pr_number} [^>]*intent=fix-reviews status=" '
       [ .[] | objects
         | select((.authorAssociation // "") as $a | ["OWNER","MEMBER","COLLABORATOR"] | index($a) != null)
         | select((.body // "") | test($re))
@@ -753,6 +753,22 @@ scan_pr_for_rate_limits() {
       dispatched=$(( dispatched + 1 ))
     elif [ "$stale_rc" -eq 3 ]; then
       echo "::warning::PR ${pr_number} in ${repo}: a bot comment edited after its dev-lead disposition still has no fresh disposition after ${STALE_DISPOSITION_MAX_PASSES:-2} fix-reviews pass(es) since the edit — not re-dispatching; needs a human (#2166)" >&2
+      local max_passes="${STALE_DISPOSITION_MAX_PASSES:-2}"
+      local hold_marker="<!-- dev-lead-stale-disposition-hold pr=${pr_number} sha=${head_sha} max_passes=${max_passes} -->"
+      if ! echo "$comments_json" | jq -e --arg pat "dev-lead-stale-disposition-hold pr=${pr_number}" '.[] | select(test($pat))' >/dev/null 2>&1; then
+        if [ "$DRY_RUN" != "true" ]; then
+          gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
+            -f body="**dev-lead: stale bot comment disposition needs human action**
+
+A bot comment on this PR was edited, and dev-lead retried the review workflow up to ${max_passes} time(s) to disposition it, but no fresh disposition was written. The comment remains unresolved, blocking the merge (\`required_review_thread_resolution\`).
+
+A maintainer needs to either:
+- Resolve or address the unresolved bot comments on this PR, or
+- @mention dev-lead to re-try the fix-reviews workflow
+
+$hold_marker" >/dev/null 2>&1 || true
+        fi
+      fi
     fi
   fi
 
