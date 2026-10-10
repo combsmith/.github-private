@@ -565,8 +565,9 @@ The ceiling is therefore the **existing** two controls, and they remain authorit
    answering an agent. And a comment or review that carries one of our automation markers
    never resets the budget, whatever login posted it, because dev-lead, the personas and
    auto-rebase post as the owner account. **Known limit:** a commit, an unmarked comment or
-   a review-thread reply that an agent makes under the owner account still reads as a human
-   interaction and resets the budget.
+   a review that an agent makes under the owner account still reads as a human interaction
+   and resets the budget. Inline review-thread replies (`/pulls/{pr}/comments`) are not
+   collected at all, so they neither count nor reset.
 2. **The runaway detector** — the pushed detection signal in
    `daily-pr-review-health` / `scripts/fleet_monitor.sh` that flags open PRs over soft
    thresholds (commit/comment/cycle counts, or open >48h with active agent churn), so a
