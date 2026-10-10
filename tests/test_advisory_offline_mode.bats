@@ -152,6 +152,7 @@ _steps_section() {
                  on { print }' <<<"$steps" | tr '\n' ' ' | tr -s ' ')"
   [ -n "$bullet" ]
   grep -q '\*\*escalate = no\*\*' <<<"$bullet"
+  ! grep -q 'escalate = yes' <<<"$bullet"
   grep -q 'A missing ADR is a gap to name, not a reason to escalate' <<<"$bullet"
 }
 
