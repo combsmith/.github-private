@@ -17,6 +17,16 @@ on:
         type: string
         required: false
         default: "main"
+      shadow_mode:
+        # #1713 (split 1/2): when true, this lane posts NOTHING to the PR/issue
+        # (no review, comment, thread reply, label, or auto-merge enable) — its
+        # output goes to the run log + a file instead. Default false ⇒ behaviour
+        # is byte-identical to today. INERT: only an explicit caller input can
+        # set it; nothing dispatches a shadow lane yet (that is split 2/2).
+        description: "Run silently: suppress all PR/issue output (shadow mode)"
+        type: boolean
+        required: false
+        default: false
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         # required:false (#1525) — a hard required:true fails the CALLER at
@@ -168,6 +178,11 @@ jobs:
       AI_MODELS_GEMINI: ${{ vars.AI_MODELS_GEMINI || '' }}
       AI_MODELS_COPILOT: ${{ vars.AI_MODELS_COPILOT || '' }}
       DEV_LEAD_DRY_RUN: ${{ vars.DEV_LEAD_DRY_RUN || 'false' }}
+      # #1713 (split 1/2): forwarded to the handlers, which fail-closed suppress
+      # ALL PR/issue output when active. Sourced from the caller's shadow_mode
+      # input (default false ⇒ today's behaviour). Nothing sets it yet.
+      DEV_LEAD_SHADOW_MODE: ${{ inputs.shadow_mode }}
+      SHADOW_OUTPUT_FILE: /tmp/dev-lead-shadow-output-${{ github.run_id }}.txt
       DEEP_TIMEOUT_SEC: ${{ vars.DEEP_TIMEOUT_SEC || '' }}
       ACTION_TIMEOUT_SEC: ${{ vars.ACTION_TIMEOUT_SEC || '' }}
       GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}

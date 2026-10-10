@@ -6,6 +6,8 @@ FIX_ISSUE_SCRIPT="$SCRIPT_DIR/scripts/dev-lead-fix-issue.sh"
 STUB_ENGINES_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/engines"
 GH_STUBS_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/stubs"
 
+# setup — initialize test environment with stubs and env for fix-issue integration tests.
+# Creates temporary directories for test artifacts, stubs gh/engines, sets env defaults.
 setup() {
   export GITHUB_ENV="$(mktemp)"
   export GITHUB_OUTPUT="$(mktemp)"
@@ -47,6 +49,8 @@ GHEOF
   cd "$SCRIPT_DIR"
 }
 
+# teardown — clean up temporary test artifacts created in setup().
+# Removes env files and stub bin directory.
 teardown() {
   rm -f "$GITHUB_ENV" "$GITHUB_OUTPUT"
   rm -rf "$STUB_BIN_DIR"
@@ -1408,4 +1412,91 @@ GHEOF
   # The claim states the file count and net line change (AC2).
   grep -q "1 file(s)" "$NDG_COMMENT_FILE"
   grep -q "+1/-0 lines" "$NDG_COMMENT_FILE"
+}
+
+# ── shadow_mode total PR-output suppression (#1713 split 1/2) ──────────────────
+# With DEV_LEAD_SHADOW_MODE active the lane must post NOTHING to the PR/issue —
+# not even the pre-dry-run-exit dedup comment, which is the one posting site that
+# fires before fix-issue's dry-run early-exit. AC#3 (post nothing) + AC#4
+# (fail-closed) + AC#2 (flag off = today's behaviour, still posts).
+
+@test "fix-issue: shadow off + existing PR → dedup comment IS posted (today's behaviour, AC#2)" {
+  cat > "$STUB_BIN_DIR/gh" <<GHEOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"pulls?state=open"*) echo "1" ;;
+  *"issue comment"*)    touch "$STUB_BIN_DIR/dedup_posted"; exit 0 ;;
+  *) echo "{}" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN_DIR/gh"
+  export DEV_LEAD_DRY_RUN="false"
+  unset DEV_LEAD_SHADOW_MODE
+
+  run bash "$FIX_ISSUE_SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ -f "$STUB_BIN_DIR/dedup_posted" ]   # dedup comment posted, as today
+}
+
+@test "fix-issue: shadow on + existing PR → dedup comment SUPPRESSED (AC#3, pre-exit leak gated)" {
+  cat > "$STUB_BIN_DIR/gh" <<GHEOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"pulls?state=open"*) echo "1" ;;
+  *"issue comment"*)    touch "$STUB_BIN_DIR/dedup_posted"; exit 0 ;;
+  *) echo "{}" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN_DIR/gh"
+  export DEV_LEAD_DRY_RUN="false"   # shadow must suppress even with dry-run off
+  export DEV_LEAD_SHADOW_MODE="true"
+
+  run bash "$FIX_ISSUE_SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ ! -f "$STUB_BIN_DIR/dedup_posted" ]   # NOTHING posted to the issue
+}
+
+@test "fix-issue: shadow on (normal run) → no PR create, no comment, exits 0" {
+  # No existing PR → normal path. Shadow forces suppression so the run stops at
+  # the dry-run boundary before the engine/PR-create/comment sites.
+  cat > "$STUB_BIN_DIR/gh" <<GHEOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"pulls?state=open"*)        echo "0" ;;
+  *"api"*"repos/"*"issues/"*)  echo '{"title":"Test","body":"body"}' ;;
+  *"pr create"*)               touch "$STUB_BIN_DIR/pr_created"; echo "https://github.com/x/y/pull/1" ;;
+  *"issue comment"*)           touch "$STUB_BIN_DIR/any_comment"; exit 0 ;;
+  *) echo "{}" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN_DIR/gh"
+  export DEV_LEAD_DRY_RUN="false"
+  export DEV_LEAD_SHADOW_MODE="true"
+
+  run bash "$FIX_ISSUE_SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ ! -f "$STUB_BIN_DIR/pr_created" ]
+  [ ! -f "$STUB_BIN_DIR/any_comment" ]
+}
+
+@test "fix-issue: shadow undetermined (garbage value) → suppresses (fail-closed AC#4)" {
+  cat > "$STUB_BIN_DIR/gh" <<GHEOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"pulls?state=open"*) echo "1" ;;
+  *"issue comment"*)    touch "$STUB_BIN_DIR/dedup_posted"; exit 0 ;;
+  *) echo "{}" ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN_DIR/gh"
+  export DEV_LEAD_DRY_RUN="false"
+  export DEV_LEAD_SHADOW_MODE="maybe"   # unrecognized ⇒ cannot determine ⇒ suppress
+
+  run bash "$FIX_ISSUE_SCRIPT"
+
+  [ "$status" -eq 0 ]
+  [ ! -f "$STUB_BIN_DIR/dedup_posted" ]
 }

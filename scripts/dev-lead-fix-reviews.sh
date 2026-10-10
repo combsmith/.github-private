@@ -63,11 +63,18 @@ source "$(dirname "$0")/lib/ci-status.sh"
 # labels API, logs the API's message on failure, and a failed hold fails the run.
 source "$(dirname "$0")/lib/hold-label.sh"
 
+# shadow_mode_active / shadow_apply_suppression (#1713): total PR-output
+# suppression when this lane runs in shadow mode.
+source "$(dirname "$0")/lib/shadow-suppress.sh"
+
 INTENT_TYPE="${INTENT_TYPE:-fix-reviews}"
 PR_NUMBER="${PR_NUMBER:-}"
 REPO="${REPO:-${GITHUB_REPOSITORY:-}}"
 HEAD_SHA="${HEAD_SHA:-}"
 DEV_LEAD_DRY_RUN="${DEV_LEAD_DRY_RUN:-false}"
+# In shadow mode, force the already-tested dry-run "post nothing" path so no PR
+# output escapes. Must run before the budget/hold/dispatch posting sites below.
+shadow_apply_suppression
 export PROMPTS_DIR="${PROMPTS_DIR:-prompts/dev-lead}"
 # Pin PROMPTS_DIR to an absolute path now, while CWD still points at the agent
 # checkout — checkout_pr_in_worktree cds into the PR worktree, after which a
@@ -319,7 +326,7 @@ build_and_run() {
     printf '%s\n' "${out}${rest}" > "$prompt_file"
   fi
 
-  if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
+  if [ "$DEV_LEAD_DRY_RUN" = "true" ] && ! shadow_mode_active; then
     echo "[dry-run] would run engine with prompt: $prompt_file ($(wc -l < "$prompt_file") lines)"
     rm -f "${prompt_file:-}"
     return 0
@@ -335,7 +342,12 @@ build_and_run() {
     echo "::warning::could not install the reply recorder — no-change dispositions are disabled this pass (#2079)"
     [ -n "${PASS_REPLY_RECORD:-}" ] && printf 'UNATTRIBUTED\n' > "$PASS_REPLY_RECORD"
   fi
-  PATH="$engine_path" run_writer_with_fallback "$prompt_file" "${INTENT_TYPE:-}" || rc=$?
+  local capture_file="${SHADOW_OUTPUT_FILE:-}"
+  if [ -n "$capture_file" ]; then
+    PATH="$engine_path" run_writer_with_fallback "$prompt_file" "${INTENT_TYPE:-}" 2>&1 | tee -a "$capture_file" || rc=$?
+  else
+    PATH="$engine_path" run_writer_with_fallback "$prompt_file" "${INTENT_TYPE:-}" || rc=$?
+  fi
   [ -n "$shim_dir" ] && rm -rf "$shim_dir"
   rm -f "${prompt_file:-}"
   return "$rc"

@@ -19,10 +19,16 @@ source "$(dirname "$0")/lib/issue-comments.sh"
 # net_diff_is_empty / net_diff_summary (#1786): refuse to open/claim a PR whose
 # three-dot net diff against base is empty.
 source "$(dirname "$0")/lib/net-diff-guard.sh"
+# shadow_mode_active / shadow_apply_suppression (#1713): total PR-output
+# suppression when this lane runs in shadow mode.
+source "$(dirname "$0")/lib/shadow-suppress.sh"
 
 ISSUE_NUMBER="${ISSUE_NUMBER:-}"
 REPO="${REPO:-${GITHUB_REPOSITORY:-}}"
 DEV_LEAD_DRY_RUN="${DEV_LEAD_DRY_RUN:-false}"
+# In shadow mode, force the already-tested dry-run "post nothing" path so no
+# PR/issue output escapes. Must run before any posting site.
+shadow_apply_suppression
 export PROMPTS_DIR="${PROMPTS_DIR:-prompts/dev-lead}"
 
 # Machine-readable marker the retry cron (dev-lead-retry.sh) scans for to requeue
@@ -555,8 +561,14 @@ main() {
 
   if check_existing_pr; then
     echo "::notice::Existing open PR found for issue #${ISSUE_NUMBER} — skipping (dedup)"
-    gh issue comment "$ISSUE_NUMBER" --repo "$REPO" \
-      --body "<!-- dev-lead-issue-dedup -->Already working on this: an open PR exists for issue #${ISSUE_NUMBER}." 2>/dev/null || true
+    # Dedup comment fires before the dry-run early-exit below, so it is the one
+    # posting site not covered by forced dry-run — gate it on shadow or dry-run.
+    if shadow_mode_active || [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+      echo "[shadow/dry-run] would post dedup comment for issue #${ISSUE_NUMBER} (suppressed)"
+    else
+      gh issue comment "$ISSUE_NUMBER" --repo "$REPO" \
+        --body "<!-- dev-lead-issue-dedup -->Already working on this: an open PR exists for issue #${ISSUE_NUMBER}." 2>/dev/null || true
+    fi
     exit 0
   fi
 
@@ -590,7 +602,7 @@ main() {
     envsubst < "$template_path" > "$prompt_file"
   fi
 
-  if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
+  if [ "$DEV_LEAD_DRY_RUN" = "true" ] && ! shadow_mode_active; then
     echo "[dry-run] fix-issue: would implement issue #${ISSUE_NUMBER} using prompt: $prompt_file"
     rm -f "${prompt_file:-}"
     exit 0
@@ -620,7 +632,12 @@ main() {
   pre_engine_sha=$(git rev-parse HEAD)
 
   local engine_rc=0
-  run_writer_with_fallback "$prompt_file" "fix-issue" || engine_rc=$?
+  local capture_file="${SHADOW_OUTPUT_FILE:-}"
+  if [ -n "$capture_file" ]; then
+    run_writer_with_fallback "$prompt_file" "fix-issue" 2>&1 | tee -a "$capture_file" || engine_rc=$?
+  else
+    run_writer_with_fallback "$prompt_file" "fix-issue" || engine_rc=$?
+  fi
   if [ "$engine_rc" -ne 0 ]; then
     # Unified failure handler: classifies the cause, surfaces it on the issue
     # (marker + comment + run link + redacted snippet), and decides retry vs.
