@@ -581,9 +581,14 @@ jobs:
 
 ### 1.5.4 Access configuration
 
-The private `.github-private` reusable must be accessible to calling repos. In GitHub org settings:
-- **Settings → Actions → General → "Allow workflows from private repositories"** — must be enabled
-- OR configure per-repo in `.github-private` → **Settings → Actions → General → "Allow access from repositories in the organization"**
+The `.github-private` reusable must be accessible to calling repos. `.github-private` is a **public**
+repository, so any repository can call its reusable workflows and no access setting is needed.
+
+The **Settings → Actions → General → Access** setting ("Accessible from repositories in the
+organization") exists only for private and internal repositories. Checked on 2026-10-10: the
+repository's visibility is `public`, and `GET /repos/petry-projects/.github-private/actions/permissions/access`
+answers `422 Access policy only applies to internal and private repositories`. If the repository is
+ever made private or internal, that setting must be enabled before any caller can use the reusable.
 
 Document this in `standards/ci-standards.md` §5.
 
@@ -966,7 +971,7 @@ For each repo:
 ### 8.3 Phase 8 definition of done
 
 - [ ] `dev-lead-reusable.yml` works correctly from at least 2 different repos
-- [ ] Private repo access settings configured org-wide
+- [ ] Caller repos can reach the reusable (no access setting is needed while `.github-private` is public; see §1.5.4)
 - [ ] Migration guide documented in `standards/ci-standards.md` §5
 
 ---

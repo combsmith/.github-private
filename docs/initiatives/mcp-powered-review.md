@@ -48,8 +48,9 @@ security/quality signal on top.
 >
 > **Plan caveat for this repo (#816).** GitHub MCP secret scanning's `run_secret_scanning` tool is a
 > content-scan API gated on the repository's **`advanced_security`** flag (full GitHub Advanced
-> Security) — a *different* flag than Secret Protection / push protection — and that flag is **not
-> available on this private repo's plan** (confirmed identically from two independent tokens). So on
+> Security) — a *different* flag than Secret Protection / push protection — and that flag was **not
+> available on this repo's plan** when the pilot ran (confirmed identically from two independent tokens;
+> not re-checked since). So on
 > `.github-private` the GitHub-MCP secret-scanning starter only ever emits an "unavailable" degradation
 > warning; the **actual pilot starter here is Context7** (zero-auth). Interim secret coverage stays
 > intact via the existing `Secret scan (gitleaks)` CI check. See §5.
@@ -159,8 +160,8 @@ the actual pilot starter.** The MCP plumbing was proven end-to-end — #809's en
 `REVIEW_MCP_ALLOWED_TOOLS` reaches the live job env, the GitHub MCP server connects, and its tools are
 reachable. But the recommended `run_secret_scanning` tool is a content-scan API gated on the repo's
 **`advanced_security`** flag (full GitHub Advanced Security) — a *different* flag than Secret Protection
-/ push protection — and **that flag is not available on this private repo's plan** (confirmed
-identically from two independent tokens). Keeping the GitHub entry configured therefore only emits an
+/ push protection — and **that flag was not available on this repo's plan** when the pilot ran (confirmed
+identically from two independent tokens; not re-checked since). Keeping the GitHub entry configured therefore only emits an
 "unavailable" degradation warning on every review. #681 closed **not-planned** on that starter, and
 both the pilot doc and #681's AC #1 already named **Context7 as the zero-auth fallback**. #816 executes
 that path:
