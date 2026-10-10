@@ -40,11 +40,15 @@ setup() {
   export PR_STATE_FILE="$TEST_DIR/pr_state";      echo OPEN > "$PR_STATE_FILE"
   export CLOCK_FILE="$TEST_DIR/clock";            echo 10 > "$CLOCK_FILE"
   export CALLS="$TEST_DIR/gh_calls.log";          : > "$CALLS"
+  # #2186: the live-state read retries; no real sleeps in tests.
+  export MQ_READ_RETRY_DELAY_SEC=0
+  export READ_FAILS_FILE="$TEST_DIR/read_fails";  echo 0 > "$READ_FAILS_FILE"
 
   cat > "$TEST_DIR/bin/gh" <<'GHEOF'
 #!/bin/bash
 # Stateful gh mock for #2174. Env knobs:
 #   GRAPHQL_READ_RC        — non-zero ⇒ the live-state GraphQL read fails
+#   GRAPHQL_READ_FAIL_TIMES — N ⇒ only the first N live-state reads fail (#2186)
 #   DEQUEUE_RC             — non-zero ⇒ dequeuePullRequest fails (state unchanged)
 #   LEAVE_QUEUE_ON_DEQUEUE — 1 ⇒ the PR leaves the queue just before the mutation,
 #                            which then fails (the check/call race)
@@ -106,6 +110,12 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
     exit 0
   fi
   [ "${GRAPHQL_READ_RC:-0}" = "0" ] || { echo 'HTTP 502' >&2; exit "$GRAPHQL_READ_RC"; }
+  if [ "${GRAPHQL_READ_FAIL_TIMES:-0}" != "0" ]; then
+    n=$(cat "$READ_FAILS_FILE")
+    if [ "$n" -lt "$GRAPHQL_READ_FAIL_TIMES" ]; then
+      echo $((n + 1)) > "$READ_FAILS_FILE"; echo 'HTTP 502' >&2; exit 1
+    fi
+  fi
   # Live state: latest review per author (GitHub's latestOpinionatedReviews).
   jq -n --slurpfile r "$REVIEWS_FILE" --arg st "$(cat "$PR_STATE_FILE")" \
         --arg q "$(cat "$QUEUED_FILE")" --arg h "$PR_HEAD_SHA" '
@@ -329,6 +339,40 @@ fix_request_verdict() {
   [[ "$output" == *"merge-queue"* ]]
   [ "$(dequeue_calls)" -eq 0 ]
   [ "$(jq length "$COMMENTS_FILE")" -eq 0 ]
+}
+
+@test "live-state read fails once then succeeds → the queued, unapproved PR is still dequeued (#2186)" {
+  export GRAPHQL_READ_FAIL_TIMES=1
+  run_lib
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"attempt 1 of 3"* ]]
+  [ "$(dequeue_calls)" -eq 1 ]
+  [ "$(cat "$QUEUED_FILE")" = "false" ]
+  [ "$(marker_count)" -eq 1 ]
+}
+
+@test "every live-state read fails → bounded retries, no dequeue, no comment, step-summary entry, exit 0 (#2186)" {
+  export GRAPHQL_READ_RC=1 MQ_READ_ATTEMPTS=4
+  export GITHUB_STEP_SUMMARY="$TEST_DIR/summary.md"; : > "$GITHUB_STEP_SUMMARY"
+  run_lib
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::warning::"* ]]
+  # Exactly MQ_READ_ATTEMPTS reads, then it stops.
+  [ "$(grep -c 'api graphql' "$CALLS")" -eq 4 ]
+  [ "$(dequeue_calls)" -eq 0 ]
+  [ "$(jq length "$COMMENTS_FILE")" -eq 0 ]
+  grep -q 'state unknown after an approval was withdrawn' "$GITHUB_STEP_SUMMARY"
+  grep -qF "$PR_URL" "$GITHUB_STEP_SUMMARY"
+}
+
+@test "a malformed retry setting falls back to the default instead of looping or aborting (#2186)" {
+  export GRAPHQL_READ_RC=1 MQ_READ_ATTEMPTS=abc MQ_READ_RETRY_DELAY_SEC=-1
+  # -1 is not a valid delay, so the default (2s) would apply; keep the test fast
+  # by proving only the attempt count here with a valid zero delay.
+  export MQ_READ_RETRY_DELAY_SEC=0
+  run_lib
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'api graphql' "$CALLS")" -eq 3 ]
 }
 
 @test "under set -e the helper never aborts its caller" {

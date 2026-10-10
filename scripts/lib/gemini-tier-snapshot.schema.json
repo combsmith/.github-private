@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gemini-tier-snapshot.schema.json",
+  "title": "Gemini availability per task tier — snapshot (#2041)",
+  "description": "Written by scripts/gemini_tier_report.sh (gq_tier_snapshot in scripts/lib/gemini-quota.sh) on every fleet-monitor run and uploaded as the gemini-tier-snapshot artifact. Metered from the fleet ledger only. Keys are identified by INDEX only: no field may carry a key value. Read-only input for a later actuation change; nothing gates on it yet.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "generated_epoch", "source", "ledger_note", "window", "key_indexes", "tiers"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "generated_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "generated_epoch": { "type": "integer", "minimum": 0 },
+    "source": { "const": "ledger" },
+    "ledger_note": { "type": "string" },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["day_label", "day_start", "day_end", "day_start_iso", "day_end_iso", "rolling", "minute_window_sec", "daily_reset_time", "daily_reset_tz"],
+      "properties": {
+        "day_label": { "type": "string", "description": "Reset-timezone date the current day window starts on (rolling-0 when the reset is not configured)." },
+        "day_start": { "type": "integer", "description": "Epoch of the last daily reset (or now - 24h when rolling)." },
+        "day_end": { "type": ["integer", "null"], "description": "Epoch of the next daily reset; null when the reset is not configured (rolling 24h)." },
+        "day_start_iso": { "type": "string" },
+        "day_end_iso": { "type": ["string", "null"] },
+        "rolling": { "type": "boolean" },
+        "minute_window_sec": { "const": 60 },
+        "daily_reset_time": { "type": "string" },
+        "daily_reset_tz": { "type": "string" }
+      }
+    },
+    "key_indexes": { "type": "array", "items": { "$ref": "#/$defs/key_index" } },
+    "tiers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/tier" }
+    }
+  },
+  "$defs": {
+    "key_index": {
+      "type": "string",
+      "pattern": "^[0-9]+b?$",
+      "description": "1 = primary slot (GEMINI_API_KEY / GOOGLE_API_KEY; 1b = a distinct GOOGLE_API_KEY), N = GOOGLE_API_KEY_N. Never a key value."
+    },
+    "count_or_null": { "type": ["integer", "null"], "minimum": 0 },
+    "tier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "status", "chain", "first_choice", "serving_model", "degraded_to", "usable", "remaining_calls", "recovers_at", "pairs"],
+      "properties": {
+        "tier": { "enum": ["triage", "action", "deep", "audit", "single", "duck"] },
+        "status": { "enum": ["available", "degraded", "unavailable", "unknown"] },
+        "chain": { "type": "array", "items": { "type": "string" }, "description": "ai_models_gemini_chain <tier>, in order." },
+        "first_choice": { "type": ["string", "null"] },
+        "serving_model": { "type": ["string", "null"], "description": "The model the tier would run on now (null: none)." },
+        "degraded_to": { "type": ["string", "null"], "description": "Set only when status is degraded: the later chain model that can run (a quality change)." },
+        "usable": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["model", "key_index", "remaining_calls"],
+            "properties": {
+              "model": { "type": "string" },
+              "key_index": { "$ref": "#/$defs/key_index" },
+              "remaining_calls": { "$ref": "#/$defs/count_or_null" }
+            }
+          }
+        },
+        "remaining_calls": { "$ref": "#/$defs/count_or_null", "description": "Sum over usable pairs; null when unknown or a usable pair has no daily cap." },
+        "recovers_at": { "type": ["integer", "null"], "description": "When unavailable: earliest cooldown end or daily reset among the pairs." },
+        "pairs": { "type": "array", "items": { "$ref": "#/$defs/pair" } }
+      }
+    },
+    "pair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key_index", "model", "state", "reason", "remaining_calls", "remaining", "used", "caps", "until", "day_start", "day_end"],
+      "properties": {
+        "key_index": { "$ref": "#/$defs/key_index" },
+        "model": { "type": "string" },
+        "state": { "enum": ["available", "cooling", "unavailable", "exhausted", "unknown"] },
+        "reason": { "type": "string" },
+        "remaining_calls": { "$ref": "#/$defs/count_or_null" },
+        "remaining": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rpd", "rpm", "tpm"],
+          "properties": {
+            "rpd": { "$ref": "#/$defs/count_or_null" },
+            "rpm": { "$ref": "#/$defs/count_or_null" },
+            "tpm": { "$ref": "#/$defs/count_or_null" }
+          }
+        },
+        "used": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rpd", "rpm", "tpm"],
+          "description": "Ledger counts (successes + rejected attempts) for the current windows — compare with the AI Studio viewer.",
+          "properties": {
+            "rpd": { "type": "integer", "minimum": 0 },
+            "rpm": { "type": "integer", "minimum": 0 },
+            "tpm": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "caps": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tier", "rpm", "tpm", "rpd"],
+          "properties": {
+            "tier": { "type": "string" },
+            "rpm": { "type": "string" },
+            "tpm": { "type": "string" },
+            "rpd": { "type": "string" }
+          }
+        },
+        "until": { "type": ["integer", "null"] },
+        "day_start": { "type": "integer" },
+        "day_end": { "type": ["integer", "null"] }
+      }
+    }
+  }
+}
