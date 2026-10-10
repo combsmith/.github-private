@@ -199,7 +199,10 @@ Roles (the agents) are actors in the system, not users of it.
 - **Channel** — a named pointer to a Release that consumers follow.
 - **Ring** — a set of Consumer repos that receive a Release at the same stage.
 - **Consumer repo** — a repo the Factory serves.
-- **Hosting repo** — the repo that contains the Factory. It is also a Consumer repo.
+- **Hosting repo** — the repo that contains the Factory. It is also a Consumer repo. The POC is
+  hosted in `petry-projects/.github-private`, and every measurement in this document that says
+  "hosting repo" was taken there. The MVP is built in a new repo, which becomes the Hosting repo;
+  `.github-private` then becomes a Consumer repo.
 - **Advisory reviewer** — a third-party review bot whose output the Factory consumes but does not
   control. An Advisory reviewer is a Lens.
 - **Lens** — any source of judgement on a Work item: a Role, an Advisory reviewer, a tool such as a
@@ -223,8 +226,9 @@ These are facts of the environment. A design that ignores one is not viable.
   and a weekly window. The only usage signal is an unsupported endpoint that refuses the credential
   CI holds.
 - **C-4. GitHub-native operation.** The June 2026 release initiative fixed "no new repos, no
-  external infrastructure". `[ASSUMPTION]` This PRD assumes the *no always-on infrastructure* half
-  still holds and treats the *no new repos* half as open (§11, OQ-1, OQ-5).
+  external infrastructure". The Maintainer lifted the first half on 2026-10-10: the Factory is
+  built in a new repo (§11, OQ-5). `[ASSUMPTION]` The second half, no always-on infrastructure,
+  still holds (OQ-1).
 - **C-5. The platform loses events.** Scheduled ticks are dropped about 60% of the time and always
   run the default branch. A concurrency group holds one running Run and, by default, one pending
   Run; a third arrival evicts the pending one. GitHub now documents `concurrency.queue: max`, which
@@ -707,8 +711,10 @@ repos:
    sessions do not spend from the same window unobserved.
 4. **OQ-4. Should code-owner review stay required with one human in the org?** It is the reason the
    reviewer must be a machine user and not an App.
-5. **OQ-5. Should the Factory have its own repo?** The current name carries a GitHub-defined meaning
-   and a history of exceptions; a new repo would let FR-54 hold from the first commit.
+5. **OQ-5. Should the Factory have its own repo?** Decided by the Maintainer on 2026-10-10: yes. It
+   is built greenfield in a new repo and cut over through the channel tags `.github-private`
+   already has, one Intent and one Ring at a time (review document, §18). Open: the repo's name,
+   and what `.github-private` keeps once every caller is re-pinned.
 6. **OQ-6. Which Advisory reviewers are worth waiting for?** Four of seven gated reviewers never
    participate.
 7. **OQ-7. Are the `[ASSUMPTION]` targets in §7 the right ones?**
@@ -738,7 +744,7 @@ repos:
 This PRD was revised once after the architecture analysis tested it against the constraints. The
 twelve changes and their reasons are recorded in the review document, §10.
 
-- §5 C-4 — "no always-on infrastructure" still holds; "no new repos" is open.
+- §5 C-4 — "no always-on infrastructure" still holds.
 - §5 C-6 — GitHub's terms allow one machine-user account per person.
 - §7 NFR-1, NFR-2, NFR-3, NFR-7, NFR-9, NFR-10, NFR-14 — numeric targets are proposals.
 - §5 C-9 — the 20-job limit is org-wide. §5 C-10 — the Maintainer-time estimate.

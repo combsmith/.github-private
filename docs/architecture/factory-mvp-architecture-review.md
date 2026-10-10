@@ -88,6 +88,12 @@ whether agents move off the owner account, whether the POC is frozen for feature
 replaced, and what the migration may cost. A fourth was decided on 2026-10-10: third-party
 reviewers are integrated through a contract, and comment bodies gate nothing.
 
+**It will be built in a new repo and cut over through the existing channel tags** (§18). Building in
+place would put every factory change through the POC's own line, which is the thing that is
+failing. A literal swap is not available, because GitHub does not redirect reusable-workflow
+references. The hybrid builds greenfield, runs read-only against real traffic from its first weeks,
+and switches one intent and one ring at a time by moving a tag.
+
 **Which reviewers have a contract** is answered in §16. Of the nine installed, SonarQube Cloud has a
 full one, and the POC reads its comment instead; cubic has a findings API; CodeRabbit has a
 structured verdict; the rest offer review threads or nothing. No LLM reviewer's severity is
@@ -996,7 +1002,9 @@ GitHub dismisses an approval when the diff changes *or the merge base changes*.
 ## 7. Recommended target architecture
 
 Sections 7 and 8 are the recommendation as first made. §14 challenged it, and §14.7 lists what
-changed in ADR-0012 as a result. Where they differ, the ADR is current.
+changed in ADR-0012 as a result. §18 changes where it is built: in a new repo, not as a tree in
+this one, which replaces the recommendation of §6.6 and the structure shown in §7.3. Where they
+differ, the ADR is current.
 
 ### 7.1 The recommendation
 
@@ -2213,3 +2221,85 @@ trusted, which is why the verdict stays where the author cannot reach it.
   <https://docs.sonarsource.com/sonarqube-mcp-server/reference/tools.md>
 - Semgrep CLI reference: <https://docs.semgrep.dev/cli-reference>
 - Claude Code headless and bare mode: <https://code.claude.com/docs/en/headless>
+
+---
+
+## 18. How it is built: in place, or greenfield
+
+§6.6 recommended a self-contained tree inside this repo, with a separate repo to be decided at the
+end. The adversarial pass then ranked a starved migration as the likeliest failure (§14.2). This
+section weighs the two ways to build and records the choice the maintainer made on 2026-10-10.
+
+### 18.1 The two options
+
+| | In-place strangler | Greenfield repo, then switch |
+|---|---|---|
+| Cost of each factory change | The POC's: about 56 CI jobs a push (§14.1), nine reviewers, and an approval gate that issues for none of 52 open pull requests | One hermetic required check and a council chosen from the first day |
+| Risk to the running line | Shared workflows, scripts and release tags; a factory change can break the POC | None until cutover |
+| "The POC takes defect fixes only" | Unenforceable in one tree | Physical: a different repo |
+| Agent identity | Retrofitted under the live ruleset, with an untested rule in the way (§14.2, item 7) | The App authors agent changes from the first commit, so the maintainer can review them as an ordinary reviewer |
+| Legacy doctrine | Agents working on the factory read a 1,062-line `AGENTS.md` written for the POC | A short rule file written for the factory |
+| Contact with real traffic | Early and continuous | Late, unless it is designed in |
+| Parity | Replaced piece by piece against the same tests | At risk: about 70,000 lines of tests encode the POC's incident history |
+| Stopping | Half a strangler is hard to unwind | Archive the repo |
+| Cutover | Per intent, reversible | All at once, as stated |
+
+Neither is right as stated. In place, the replacement is built through the line that is failing:
+holding the POC still already needs an estimated 30 to 52 fix pull requests a week against 29 to
+36 delivered (§14.2). Greenfield with a single switch meets real traffic only at the end, which is
+how a second system fails.
+
+### 18.2 Two platform facts that decide the shape
+
+- **A literal switch is not available.** GitHub's documentation states: "GitHub Actions does not
+  support redirects for actions or reusable workflows." If this repo is renamed, or its name is
+  reused, every consumer's reference fails until it is re-pinned, across twelve repos at once.
+- **Forwarding is available.** Reusable workflows may be nested up to ten levels, and one workflow
+  may call up to fifty. A reusable workflow in this repo can therefore become a thin caller of one
+  in the new repo, and permissions can only narrow down the chain.
+
+### 18.3 The hybrid: built greenfield, cut over as a strangler
+
+1. **In this repo, now:** the configuration fixes of §8, step 0, and the GitHub App identity. Both
+   are worth having whatever happens next.
+2. **A new repo that starts as it means to go on:** a required hermetic check, the App as the
+   author of agent changes, environment-scoped secrets, and the starting council of §16.6, all from
+   the first commit.
+3. **Real traffic in the first weeks.** The Kernel runs read-only from the new repo, as a poller
+   over every repo. It needs read access only and changes nothing. Its disagreements with what the
+   POC actually did are the measure of parity, and the only one a greenfield build has.
+4. **Cutover at the seam that already exists.** Consumers pin this repo's channel tags. A reusable
+   workflow here is replaced by a forwarder to the new repo; moving a channel tag onto that commit
+   switches one intent for one ring; moving it back is the rollback. No consumer file changes. The
+   release mechanism that §3.7 lists as solid is the cutover mechanism.
+5. **Last, the re-pin.** Once every intent is served by the factory at `stable`, the standards sweep
+   points consumers at the new repo directly, and this repo keeps only what GitHub's
+   `.github-private` convention gives it.
+
+### 18.4 What this costs, and what it does not fix
+
+- **Three repos for a while.** The split between this repo and the standards repo, which §3.1
+  criticises, gets wider before it gets narrower.
+- **Parity is a real risk.** The comparison in step 3 measures decisions, not every effect, and
+  some of what the POC's tests know will not be carried over.
+- **It makes each change cheaper, not fewer.** The size of the build is the same either way, and
+  nothing in the evidence prices it (PRD OQ-9).
+- **The POC must still be kept alive.** Its defect inflow does not stop because the replacement is
+  being built somewhere else.
+- **It does not raise either ceiling of §14.1.**
+
+### 18.5 Conditions
+
+- A dated limit, a defect policy with a weekly cap for the POC, and a kill criterion, written
+  before the new repo is created. If the criterion is met, the configuration fixes and the identity
+  change stay and the new repo is archived.
+- No intent is cut over until its disagreement list is within a bound declared beforehand and an
+  eval set exists for it.
+- This repo is not renamed while anything references it.
+
+ADR-0012 carries these as decisions 1 and 10.
+
+### 18.6 Sources
+
+- GitHub, "Reusing workflow configurations":
+  <https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations>

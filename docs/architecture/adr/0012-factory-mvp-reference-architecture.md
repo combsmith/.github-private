@@ -67,6 +67,19 @@ them, it removed brakes the POC has, and it had no stopping rule. The boundaries
 changes it required. It also found two ceilings this decision does not raise, which are stated in
 Consequences.
 
+**Where it is built was decided on 2026-10-10.** The first draft kept the factory as a tree inside
+this repo and left a separate repo to be decided at the end. The review weighed building in place
+against building greenfield and switching over (§18). In place, every factory change pays the
+POC's price: about 56 CI jobs a push, nine reviewers, and an approval gate that issues for no open
+pull request. A literal switch-over is not available either: GitHub Actions does not redirect
+reusable-workflow references, so renaming or replacing this repo would break every caller at once.
+The maintainer chose the hybrid: build in a new repository, cut over through the channel tags this
+repo already has. That lifts the "no new repos" half of the constraint set in June 2026. The "no
+always-on infrastructure" half stands.
+
+In this record "the factory repo" is the new repository and "this repo" is
+`petry-projects/.github-private`, which hosts the POC.
+
 **Scope and precedence.** This record fixes the structure every new factory component follows. It
 supersedes no ADR by itself. An accepted ADR keeps governing the POC code path it describes until a
 follow-on ADR, named below, supersedes it in the same change that makes the new behaviour true in
@@ -76,26 +89,32 @@ not yet do, which is the defect ADR-0008 was written to repair, in reverse.
 ## Decision
 
 We will rebuild the factory's core as **a declared control plane, one run contract and one release**,
-on GitHub Actions, with no always-on component. We will introduce it beside the POC and cut over one
+on GitHub Actions, with no always-on component. We will build it in a repository of its own, beside
+the POC, and cut over one
 repo and one intent family at a time. Terms are those of the PRD glossary.
 
-### 1. One self-contained tree, with decision logic that does no I/O
+### 1. One self-contained repository, with decision logic that does no I/O
 
-We will keep the factory in one tree, `factory/`, in the hosting repo: Lifecycle, Role manifests,
-schemas, configuration, Kernel, adapters, Harness, Controller, release tooling and their tests. The
-Kernel is Python 3 using the standard library only. All I/O is in adapters. Shell is step glue.
+We will build the factory in a new repository of its own: Lifecycle, Role manifests, schemas,
+configuration, Kernel, adapters, Harness, Controller, release tooling and their tests. The Kernel is
+Python 3 using the standard library only. All I/O is in adapters. Shell is step glue.
 
 The boundaries a check can assert:
 
-- **No module under `factory/kernel/` performs I/O.** It imports nothing that opens a file, a
-  process, a socket or the environment, and it takes the clock as an argument.
-- **Nothing under `factory/` imports or sources a file outside `factory/`.**
+- **No module under `kernel/` performs I/O.** It imports nothing that opens a file, a process, a
+  socket or the environment, and it takes the clock as an argument.
+- **The factory repo reads nothing from this repo at run time.** Code carried over from the POC is
+  copied in with its tests and owned there. Nothing is sourced, fetched or checked out across the
+  two.
 - **No decision logic in workflow YAML.** A `run:` block in a factory workflow is at most ten lines
   and calls a module entry point.
+- **The factory repo starts as it means to go on.** From its first commit it has the required check
+  of decision 8, the agent identity of decision 5 as the author of agent changes, and
+  environment-scoped secrets.
 
 ### 2. A declared Lifecycle and one State record
 
-We will define one Lifecycle per work-item type as versioned data under `factory/lifecycle/`, and
+We will define one Lifecycle per work-item type as versioned data under `lifecycle/`, and
 keep one State record per work item together with an append-only Ledger in a store that only the
 Controller identity writes. The store starts as git; that choice is provisional (decision 11). The
 work item shows a projection of its State record. Labels are the human's input vocabulary.
@@ -104,7 +123,7 @@ HTML-comment markers are not state.
 - **Every transition in the Ledger for a Release is declared in that Release's Lifecycle.** An
   undeclared one fails a check and is reported.
 - **A state change and its ledger events are one commit.**
-- **No module under `factory/kernel/` takes a comment body as input.** Text written by third
+- **No module under `kernel/` takes a comment body as input.** Text written by third
   parties becomes typed records in adapters and Roles that are enumerated in one list. The entries
   in that list that read legacy markers may only shrink.
 - **The State record holds only what GitHub does not.** Reviews, checks, labels, merges and thread
@@ -118,7 +137,7 @@ HTML-comment markers are not state.
 We will admit every Run through one Controller that evaluates recorded state and current facts.
 Events are wake-ups. The sweep is sufficient without them: any decision reached on a wake is also
 reached by a sweep with no wake. Waking per event is a latency optimisation and is provisional
-(decision 11). The Controller runs in the hosting repo, one lane per work item, held from decision
+(decision 11). The Controller runs in the factory repo, one lane per work item, held from decision
 to applied Effects.
 
 - **A wake carries a schema version and a work item's identity, and nothing else.** The Kernel's
@@ -137,7 +156,7 @@ Three brakes sit outside the Kernel, so that a defect in the Kernel cannot disab
 - **A human Pause holds when factory code is broken.** The entry shim's caller jobs are conditioned
   on a pause variable that the platform evaluates before any factory code runs.
 - **A ceiling on admitted Runs, per work item and per org in a rolling window, is enforced outside
-  `factory/kernel/`,** from a count the Kernel does not write, with its own tests.
+  `kernel/`,** from a count the Kernel does not write, with its own tests.
 - **The count of automated actions since the last human decision is computed from GitHub's record
   of actors,** not from the Ledger.
 
@@ -196,11 +215,11 @@ Code-owner review stays required. The owner account is the human's alone.
 We will release the factory as one line: immutable `factory/vX.Y.Z` tags and moving
 `factory/v<MAJOR>-next` and `factory/v<MAJOR>-stable` channels, on ADR-0002's mechanism. Workflows,
 Kernel, Harness, prompts, manifests, Lifecycle and configuration all ride it. Ring membership is one
-file in the Release. The hosting repo is always served by `stable`.
+file in the Release. The factory repo is always served by `stable`.
 
 - **Every Run records the Release it ran.**
 - **Inside a Release, factory files are read at `github.job_workflow_sha`,** never at a branch.
-- **The only factory files that run from the default branch are the entry shim in the hosting repo
+- **The only factory files that run from the default branch are the entry shim in the factory repo
   and the one ingress file in each consumer.** Both are byte-frozen thin callers under ADR-0001:
   every job `uses:` a pinned factory reusable and declares no `steps:` or `run:`. The shim has one
   static caller job per channel and selects between them with a job-level `if:` on the output of a
@@ -237,7 +256,7 @@ of the pull request's own diff against its merge base), and decide approval in o
 
 We will make the factory's own verification a required check from the first commit of the tree.
 
-- **`factory / verify` is a required check on the hosting repo's protected branch.** It runs on
+- **`factory / verify` is a required check on the factory repo's protected branch.** It runs on
   every pull request and on `merge_group`, with no path filter.
 - **A required check is hermetic:** it reads nothing outside the merge commit.
 - **The declared Lifecycle is checked mechanically** for termination, undeclared cycles, and Hold
@@ -245,17 +264,31 @@ We will make the factory's own verification a required check from the first comm
 
 ### 9. One fact, one place
 
-- **The set of Roles is the listing of `factory/roles/`.** The consumers, each consumer's ring and
-  each Role's triggers are each written once under `factory/`.
+- **The set of Roles is the listing of `roles/`.** The consumers, each consumer's ring and each
+  Role's triggers are each written once in the factory repo.
 - **Any table of these in a document is generated, and a stale one fails `factory / verify`.**
 
-### 10. Migration
+### 10. Migration: built greenfield, cut over as a strangler
 
+- **Factory code is written in the factory repo.** This repo receives defect fixes, configuration
+  fixes and forwarders, and nothing else.
+- **Cutover happens at this repo's channel tags.** A reusable workflow here is replaced by a
+  forwarder: a thin caller under ADR-0001 whose only job calls the factory's pinned wake reusable.
+  Moving one of this repo's channel tags onto that commit switches one intent family for one ring.
+  Moving the tag back is the rollback. No consumer file changes during cutover.
+- **This repo is not renamed, and its name is not reused, while any caller references it.** GitHub
+  Actions does not redirect reusable-workflow references.
+- **Consumers are re-pinned to the factory repo last,** through the standards sweep, after every
+  intent family is served by the factory at `stable`. This repo then keeps only what GitHub's
+  `.github-private` convention gives it.
 - **For any repo and intent family, exactly one line serves it,** the POC or the factory, as
   recorded in the ring file. A check derives this and fails on dual serving.
-- **The first factory component runs read-only:** it computes State and writes the Ledger and the
-  projection for every repo, and admits nothing, until its decisions have been compared with the
-  POC's on live traffic.
+- **The first factory component runs read-only, from the factory repo, on every repo:** it computes
+  State and writes the Ledger and the projection, and admits nothing. It needs read access only.
+  This is how a greenfield build meets real traffic from its first weeks.
+- **An intent family is cut over only when the factory's decisions for it have been compared with
+  the POC's on live traffic and the disagreements are within a bound declared beforehand.** That
+  comparison is the measure of parity. A greenfield build has no other.
 - **From that point the POC takes defect fixes only.**
 - **A compensating workflow is retired in the change that makes it unnecessary, or keeps a recorded
   reason to remain.** The number of compensating workflows does not rise during the migration.
@@ -332,7 +365,7 @@ Numbers are assigned when each is written. Each lands with the migration step th
 | **Release unit and promotion** | The eval gate and its cost budget; ring membership; rollback; retirement of per-agent names. | Supersedes ADR-0002 and ADR-0006, restating what survives of each. |
 | **Kernel language and verification** | Type checking; size and complexity budgets; recorded-interface tests; when the legacy suite becomes required. | Supersedes ADR-0004, restating its principle. |
 | **Merge integrity** | The content identity; the gate function's inputs; advisory-reviewer deadlines; the Override record; merge-queue settings. | New. No ADR governs this today. |
-| **Factory home** | Whether the tree moves to its own repo (PRD OQ-5), decided at MVP exit. | New. |
+| **Factory repository** | The new repo's name and ruleset; how the forwarders in this repo are tested and frozen; the final re-pin of consumers; what this repo keeps afterwards; where these three documents and the ADR log live once the factory repo exists. | New. Decision 1 fixes that there is one. |
 | **Council composition** | Which Lenses are required for each class of work item and stage (PRD OQ-12); how their Findings are aggregated; what counts as independent; the cost each stage may spend on its council. Decided from the Ledger's measure of each Lens, not in advance; review §16.6 proposes the set to start measuring from. | New. Extends ADR-0003, whose registry binds a review target to a rubric and is the nearest existing form of a Lens declaration. |
 
 ADR-0001 and ADR-0003 are kept without change. ADR-0000 is kept; adding a forward link for
@@ -363,8 +396,18 @@ extension remains a separate decision.
   stops every repo at once. ADR-0007 accepted that per repo; this accepts it per org. The shim's
   byte freeze and the promotion gate are correspondingly load-bearing.
 
+- **Three repos for a while.** The standards repo, this repo and the factory repo coexist until the
+  last consumer is re-pinned. The split this review criticised gets wider before it gets narrower.
+
+- **A greenfield build can fail to reach parity.** The POC's tests encode incident history that a
+  new codebase does not have. The read-only comparison in decision 10 is the only measure of how
+  much was lost, and it measures decisions, not every effect.
+
+- **The forwarder adds a hop.** A consumer's call passes through this repo to the factory repo, one
+  more nested workflow and one more thing that can break, for as long as the migration lasts.
+
 - **A consumer's work runs in the hub.** Runs for a consumer's work items execute and log in the
-  hosting repo; the consumer's own Actions tab shows only the wake. `verify` runs the consumer's
+  factory repo; the consumer's own Actions tab shows only the wake. `verify` runs the consumer's
   tests on a hub runner, so each consumer must declare its setup and test commands, which the POC
   infers.
 
@@ -454,7 +497,7 @@ extension remains a separate decision.
   to earlier ADRs (§9), requirements the analysis changed (§10), platform facts and assumptions
   (§11), comparison with other systems (§13), the adversarial review and the ceiling (§14), the
   evidence on councils and convergence (§15), reviewer surfaces and a starting council (§16), where
-  a Lens runs (§17).
+  a Lens runs (§17), building in place against building greenfield (§18).
 - ADR-0000 (process) — immutability and supersede-not-edit, which the precedence rule above follows.
 - ADR-0001 (thin caller / reusable) — the boundary the entry shim and the ingress file keep.
 - ADR-0003 (review artifact contract and rubric registry) — the existing data contract that
