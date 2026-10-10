@@ -736,7 +736,11 @@ scan_pr_for_rate_limits() {
     comment_nodes=$(fetch_pr_comment_nodes "$repo" "$pr_number")
     local stale_rc=1
     if [ -n "$comment_nodes" ]; then
-      stale_disposition_needs_dispatch "$comment_nodes" "$pr_number" && stale_rc=0 || stale_rc=$?
+      if stale_disposition_needs_dispatch "$comment_nodes" "$pr_number"; then
+        stale_rc=0
+      else
+        stale_rc=$?
+      fi
     fi
     if [ "$stale_rc" -eq 0 ]; then
       echo "  [stale-disposition] PR ${pr_number}: a bot comment was edited after its dev-lead disposition — re-dispatching fix-reviews (#2008)" >&2
