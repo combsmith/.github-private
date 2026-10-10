@@ -123,6 +123,70 @@ _steps_section() {
   grep -Eiq 'Cite an ADR by number, or say there is none' "$PROMPTS/solution-architect/advisory.md"
 }
 
+# --- solution-architect escalation calibration (#1787) ----------------------
+# All three held-out failures in #1787 were wrong escalate decisions on otherwise
+# correct advisories. The calibration below is what fixes them; these checks keep
+# it from being silently dropped by a later edit or template sync.
+
+@test "solution-architect calibrates escalation inside its Steps section (#1787 AC1)" {
+  steps="$(_steps_section "$PROMPTS/solution-architect/advisory.md")"
+  grep -q 'Calibrating the risk tier and escalation' <<<"$steps"
+}
+
+@test "solution-architect: a conforming change is LOW / escalate = no (#1787 AC2)" {
+  steps="$(_steps_section "$PROMPTS/solution-architect/advisory.md")"
+  # The whole bullet, from its opening line to the next sibling bullet, so a
+  # rewrap of the paragraph cannot move the asserted text out of range.
+  bullet="$(awk '/The change conforms to an accepted ADR/ { on=1; print; next }
+                 on && /^   - / { exit }
+                 on { print }' <<<"$steps")"
+  grep -q '\*\*LOW\*\*' <<<"$bullet"
+  grep -q '\*\*escalate = no\*\*' <<<"$bullet"
+}
+
+@test "solution-architect: 'no ADR governs' is not itself an escalation (#1787 AC3)" {
+  steps="$(_steps_section "$PROMPTS/solution-architect/advisory.md")"
+  # The no-ADR bullet as one line, so a rewrap cannot split the asserted text.
+  bullet="$(awk '/No recorded ADR governs the change/ { on=1; print; next }
+                 on && /^   - / { exit }
+                 on { print }' <<<"$steps" | tr '\n' ' ' | tr -s ' ')"
+  [ -n "$bullet" ]
+  grep -q '\*\*escalate = no\*\*' <<<"$bullet"
+  ! grep -q 'escalate = yes' <<<"$bullet"
+  grep -q 'A missing ADR is a gap to name, not a reason to escalate' <<<"$bullet"
+}
+
+@test "solution-architect: HIGH always pairs with escalate = yes" {
+  grep -q 'HIGH always pairs with escalate = yes' "$PROMPTS/solution-architect/advisory.md"
+}
+
+@test "solution-architect step 2 names ADR files the way the corpus does" {
+  f="$PROMPTS/solution-architect/advisory.md"
+  # The corpus is docs/architecture/adr/NNNN-<slug>.md; there is no ADR-NNNN.md.
+  # A bare `! grep` mid-test cannot fail it (errexit ignores negated commands),
+  # so fail explicitly.
+  if grep -q 'docs/architecture/adr/ADR-' "$f"; then
+    echo "prompt must not reference docs/architecture/adr/ADR-NNNN.md" >&2
+    false
+  fi
+  example="$(grep -oE '[0-9]{4}-[a-z0-9-]+\.md' "$f" | head -1)"
+  [ -n "$example" ]
+  [ -f "$ROOT/docs/architecture/adr/$example" ]
+  # The persona runs this command, so it must work as written: no `<…>`
+  # placeholder (the shell reads it as a redirection), and it must match a file.
+  cmd="$(grep -E '^[[:space:]]*cat docs/architecture/adr/' "$f" | head -1 | sed 's/^[[:space:]]*cat //')"
+  [ -n "$cmd" ]
+  if [[ "$cmd" == *"<"* ]]; then
+    echo "ADR read command contains a <placeholder>: $cmd" >&2
+    false
+  fi
+  compgen -G "$ROOT/$cmd" >/dev/null
+}
+
+@test "solution-architect body shape states the risk tier explicitly (#1787 AC4)" {
+  grep -q '^\*\*Risk tier:\*\* LOW | MEDIUM | HIGH' "$PROMPTS/solution-architect/advisory.md"
+}
+
 # --- engine-parity tier in scorer.json (AC #3) ------------------------------
 
 @test "qa-lead scorer declares the persona (Opus) engine tier — the #1696 reference" {
