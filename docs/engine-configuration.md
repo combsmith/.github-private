@@ -61,6 +61,9 @@ For each task's chain, highest first:
    `GEMINI_FLASH_MODEL(_CHAIN)`, `GEMINI_PRO_MODEL(_CHAIN)`, `COPILOT_API_MODEL`.
    These are **internal**: they are kept for tests and the A/B runner. Do not
    set them as Actions variables; use `AI_MODELS_*`.
+   The reusable workflows still forward the legacy `GEMINI_FLASH_MODEL` /
+   `GEMINI_PRO_MODEL` Actions variables, so a leftover one **silently overrides**
+   `AI_MODELS_GEMINI`; they are deprecated — delete them.
 2. **`AI_MODELS_*`** — the break-glass override (below).
 3. **`config/ai-engines.json`**.
 
