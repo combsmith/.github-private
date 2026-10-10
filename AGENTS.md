@@ -867,6 +867,81 @@ pending the pause-vs-degrade decision.
   moves slowly, so a 6-hour-old reading is still meaningful. A stale record still fails open:
   a consumer that finds no fresh record proceeds as if there were no reading.
 
+### Gemini availability per task tier (#2041)
+
+Slice 2 of the metering. It shows what Gemini capacity is **left**, so you can see that a
+capped model blocks a tier **before** that tier's work runs and fails. It uses the same
+ledger and caps file (`scripts/lib/gemini-quota.sh`). It gates and defers nothing: acting
+on it is the follow-up actuation work.
+
+- **Remaining capacity** (`gq_remaining <key> <model>`) is computed for the current
+  windows. The day window runs from the configured reset (Pacific midnight) to the next
+  reset, counted by local calendar day, so a DST change day lasts 23h or 25h. The minute
+  window is rolling. The states are checked in this order:
+  - `unavailable`: a cap is 0;
+  - `unknown`: no caps row, a limit is not filled, or the ledger is unreadable;
+  - `exhausted`: requests today are at or above the daily cap, until the reset;
+  - `cooling`: there is an active cooldown, or the minute window is full, until it ends;
+  - `available`: N requests are left today.
+
+  Remaining values are never negative.
+- **Tier view** (`gq_tier_view`). Each tier (triage, action, deep, audit, single, duck)
+  takes its chain from `ai_models_gemini_chain`; the tier code names no model. The view
+  walks the chain in order and stops at the first model that decides the status:
+  - first model has a usable key: `available`;
+  - a later model has a usable key: `degraded`, and `degraded_to` names that model,
+    because it is a quality change;
+  - a model with an `unknown` key comes before any usable model: `unknown`;
+  - no model is usable and none is unknown: `unavailable`.
+
+  The view also lists the usable (model, key index) pairs and the total remaining calls.
+- **Snapshot and history.** On every fleet-monitor run, `scripts/gemini_tier_report.sh`
+  does the following:
+  - It merges the Gemini records that `token_report.sh` collected (`GEMINI_RECORDS_OUT`)
+    into a history store. The store persists across runs through `actions/cache`, has
+    duplicates removed, and keeps today plus `history_days` previous days
+    (`GEMINI_HISTORY_DAYS`, default 7).
+  - It writes `snapshot.json`, which follows `scripts/lib/gemini-tier-snapshot.schema.json`
+    and holds key indexes only. The snapshot is uploaded as the `gemini-tier-snapshot`
+    artifact. The dry-run poller (#2029) asks "can tier T run on Gemini now?" by calling
+    `gq_tier_can_run <snapshot> <tier>`.
+  - It renders the report. The report has the tier table, remaining capacity per key and
+    model with the ledger count, and a per-Pacific-day matrix. The matrix columns are
+    calls, rejected attempts, peak per minute, rate-limit events and whether the cap was
+    hit. The report ends with the redacted rejection messages.
+  - It emits one `::warning::` per tier that is `degraded` or `unavailable`, at most once
+    per tier per Pacific day. A `gemini_tier_notice` record in the store prevents repeats.
+- **Rejected attempts count.** Google counts rejected calls against the limits. So a call
+  rejected as rate-limited or quota-exceeded appends a `kind:"gemini_attempt"`
+  (`rejected:true`) record, which holds the key index, model and timestamp only. Metering
+  counts these as requests. Each distinct rejection message is also kept once, redacted,
+  as `kind:"gemini_rejection_sample"`, so the report shows what Google actually sent.
+- **Escalating cooldown** (`gq_escalated_cooldown`). The first rejection waits for the
+  retry hint, or `default_cooldown_sec` if there is no hint. The cooldown then doubles for
+  each consecutive rejection of the same key and model, up to the next Pacific reset. A
+  success, or the daily reset, restarts the streak. If the ledger already shows the daily
+  cap reached, the cooldown runs straight to the reset. If the error text has Google's
+  documented daily wording (`quota_exceeded`, "daily quota"), it is also treated as daily
+  and cools to the reset. Any other text is treated as per-minute. No error-body format is
+  relied on.
+- **Rotation drops keys that cannot run.** For the model being called,
+  `gq_rotation_plan` reports a key that is `unavailable` (cap 0), `exhausted`, or
+  `cooling` (its rolling minute is full, until a stated time) as `skip`, with the
+  reason, and does not call it. The same key is still used for another
+  model it has capacity for. Keys that are only over the threshold, and `unknown` keys,
+  are still tried last; an unfilled caps file never becomes a hard block. If every key is
+  dropped, the rule for "all keys cooling down" applies and the chain moves to the next
+  model.
+- **Known limitation.** All of this comes from the fleet's own ledger. The ledger cannot
+  see other use of the same Google project, such as manual use, AI Studio or other tools.
+  It also misses any rejected attempt that was not recorded. So the AI Studio viewer can
+  show more usage than the ledger count. The report says so and shows the ledger count for
+  comparison. **No probe or reconciliation call** to the Gemini API is ever made:
+  - Google documents no API that reports usage or remaining quota.
+  - A probe would spend a request out of a daily cap that can be as small as 20.
+
+  Calibrating against the AI Studio viewer is a manual maintainer step.
+
 ### Initiative Planner — blocking open-questions gate
 
 `scripts/initiative-planner/apply-plan.sh` will **not** materialize an epic + sub-issue

@@ -995,7 +995,8 @@ _gemini_chain_invoke() {
       # Cooldown memory (#2030): a key that rate-limited on this model within its
       # cooldown (ledger record, gq_rotation_plan) is skipped, not re-hit; keys with
       # measured headroom go first and constrained ones (limits unknown / at the
-      # threshold) last. Keys are named by index only.
+      # threshold) last. A key that cannot run this model today — cap 0 or daily cap
+      # used up — is dropped and never called (#2041). Keys are named by index only.
       local -a _key_names=() _key_idxs=() _all_names=()
       local _pk _pn _pi _pu
       while IFS= read -r _pn; do _all_names+=("$_pn"); done < <(_gemini_api_key_names)
@@ -1004,6 +1005,8 @@ _gemini_chain_invoke() {
           case "$_pk" in
             cool)
               echo "::notice::[gemini] model $model: key index $_pi cooling down until $(date -u -d "@$_pu" +%H:%M:%SZ 2>/dev/null || echo "$_pu") — skipped" >&2 ;;
+            skip)
+              echo "::notice::[gemini] model $model: key index $_pi $_pu — skipped, not called" >&2 ;;
             use)
               _key_names+=("$_pn"); _key_idxs+=("$_pi") ;;
           esac
@@ -1018,16 +1021,17 @@ _gemini_chain_invoke() {
         _gemini_invoke "$prompt_file" "$timeout_sec" "$model" "${extra_args[@]}" \
           > "$stdout_tmp" 2> "$stderr_tmp" || rc=$?
       elif [ "${#_key_names[@]}" -eq 0 ]; then
-        # Every key is cooling down on this model: no call. Classified as a rate
-        # limit (captured stderr only) so the chain moves to the next model and,
-        # past the last one, signals the cross-provider fallback (exit 2).
-        printf '[gemini] every API key is cooling down after a rate limit on model %s — not called\n' \
+        # Every key is cooling down, or capped / exhausted (#2041), on this model: no
+        # call. Classified as a rate limit (captured stderr only) so the chain moves to
+        # the next model and, past the last one, signals the cross-provider fallback
+        # (exit 2).
+        printf '[gemini] every API key is cooling down after a rate limit (or capped) on model %s — not called\n' \
           "$model" > "$stderr_tmp"
         rc=2
       else
         local _had_gk="${GOOGLE_API_KEY+x}" _had_gmk="${GEMINI_API_KEY+x}"
         local _saved_gk="${GOOGLE_API_KEY:-}" _saved_gmk="${GEMINI_API_KEY:-}"
-        local _key _key_name _key_i _key_n=0 _cd _cd_src
+        local _key _key_name _key_i _key_n=0 _cd _cd_src _cd_scope
         for _key_i in "${!_key_names[@]}"; do
           _key_n=$((_key_n + 1))
           _key_name="${_key_names[$_key_i]}"
@@ -1050,10 +1054,20 @@ _gemini_chain_invoke() {
           # Only a rate-limit rotates to the next key; a hard failure stops here.
           is_rate_limited_files "$stdout_tmp" "$stderr_tmp" || break
           # Remember the throttle so later calls/jobs skip this key on this model
-          # until the provider's retry hint (else the configured default) elapses.
+          # until the provider's retry hint (else the configured default) elapses —
+          # doubled per consecutive rejection, capped at the next daily reset, and
+          # straight to the reset at a daily cap (#2041). Record only genuine quota/rate-limit
+          # rejections as attempts (Google counts those), plus a redacted sample.
           if [ -n "${_key_idxs[$_key_i]}" ] && [ -n "$(gq_ledger_file)" ]; then
             _cd="$(gq_retry_hint_sec "$stdout_tmp" "$stderr_tmp")"; _cd_src="retry hint"
             [ -n "$_cd" ] || { _cd="$(gq_default_cooldown_sec)"; _cd_src="default"; }
+            _cd_scope="$(gq_rejection_scope "$stdout_tmp" "$stderr_tmp")"
+            IFS=$'\t' read -r _cd _cd_src <<< "$(gq_escalated_cooldown "${_key_idxs[$_key_i]}" "$model" \
+              "$_cd" "$_cd_src" "$_cd_scope")"
+            if gq_is_quota_rejection "$stdout_tmp" "$stderr_tmp"; then
+              gq_record_attempt "${_key_idxs[$_key_i]}" "$model"
+              gq_record_rejection_sample "${_key_idxs[$_key_i]}" "$model" "$_cd_scope" "$stdout_tmp" "$stderr_tmp"
+            fi
             gq_record_cooldown "${_key_idxs[$_key_i]}" "$model" "$_cd" "$_cd_src"
             echo "::notice::[gemini] model $model: key index ${_key_idxs[$_key_i]} cooling down for ${_cd}s ($_cd_src)" >&2
           fi
