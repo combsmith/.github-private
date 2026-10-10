@@ -12,11 +12,13 @@ bats_require_minimum_version 1.5.0
 SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
 LIB="$SCRIPT_DIR/scripts/lib/base-residue-guard.sh"
 
+# _commit <msg> — stage and commit all changes with <msg>.
 _commit() {
   git add -A
   git -c user.email=t@test -c user.name=T commit -q -m "$1"
 }
 
+# setup — initialize test repo with base content and source the guard library.
 setup() {
   # shellcheck source=scripts/lib/base-residue-guard.sh
   source "$LIB"
