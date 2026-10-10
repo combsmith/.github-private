@@ -277,7 +277,9 @@ template_drift_annotate() {
   local f="${1:-}" n_ref="${2:-${STANDARDS_CHANNEL:-standards/v1-stable}}" head_sha="${3:-}"
   local row file status committed expected matched head_note="" drifted=0
   [ -n "$f" ] && [ -f "$f" ] || return 0
-  [ -z "$head_sha" ] || head_note=" (commit ${head_sha:0:12})"
+  if [ -n "$head_sha" ]; then
+    head_note=" (commit ${head_sha:0:12})"
+  fi
   # Split each row on tabs WITHOUT collapsing empty fields — `IFS=$'\t' read`
   # treats a tab as whitespace-IFS and would coalesce the empty committed field on
   # a MISSING row, shifting every later column. Peel fields off explicitly instead.
@@ -363,7 +365,9 @@ _template_drift_head_sha() {
   local sha
   sha="$(gh api -H "Accept: application/vnd.github.sha" \
     "repos/${STANDARDS_REPO:-petry-projects/.github}/commits/HEAD" 2>/dev/null)" || true
-  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 0
+  if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+    return 0
+  fi
   printf '%s' "$sha"
 }
 
@@ -445,6 +449,7 @@ main() {
   local tsv row path flag arg content_n content_n1 expected_n expected_n1 committed guard_rc=0
   local content_head expected_head cls
   tsv="$(mktemp)"
+  trap 'rm -f "$tsv"' EXIT
   for row in "${TEMPLATE_DRIFT_FILES[@]}"; do
     IFS='|' read -r path flag arg <<< "$row"
     template_drift_allowlisted "$path" && continue
@@ -477,7 +482,9 @@ main() {
         newer)
           if content_head="$(_template_drift_emit "$flag" "$arg" "$head_sha")"; then
             # An AHEAD match passes the check, so HEAD is held to the AC #9 guard too.
-            template_drift_assert_major_scoped "$content_head" || guard_rc=1
+            if ! template_drift_assert_major_scoped "$content_head"; then
+              guard_rc=1
+            fi
             expected_head="$(printf '%s' "$content_head" | git hash-object --stdin)"
           else
             expected_head="unknown"
