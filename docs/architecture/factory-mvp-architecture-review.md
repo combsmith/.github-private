@@ -5,7 +5,7 @@
 **Reviewed at:** commit `aef61164` (`main`)
 **Lens:** Solution Architect persona (`personas/solution-architect/`), run locally for a whole-system review
 **Companions:** [PRD](../prd/agentic-software-factory.md) ·
-[ADR-0012 (proposed)](./adr/0012-factory-mvp-reference-architecture.md)
+[ADR-0013 (proposed)](./adr/0013-factory-mvp-reference-architecture.md)
 
 ## 1. Summary
 
@@ -32,7 +32,7 @@ POC never made once, so it was made many times, locally:
 7. Verification does not bind: the test suite, the validators and the evals block nothing.
 
 **Recommendation: restructure on GitHub Actions around a declared control plane, one run contract
-and one release** (§7), recorded as ADR-0012. A level-triggered Controller reconciles each work item
+and one release** (§7), recorded as ADR-0013. A level-triggered Controller reconciles each work item
 from recorded state, so a lost event delays work instead of deleting it. Every role in scope for the MVP
 runs under one contract in which the model requests effects and a separate job applies them. Agents write through
 a GitHub App and the owner account becomes the human's alone. Everything ships as one release on one
@@ -79,7 +79,7 @@ perspectives produces a better outcome than one agent alone. The first draft did
 self-evaluation, and Lenses that can see different things find different defects; but a council
 that converses does worse than one that reports, a council that co-writes does worse than one
 author, and a weaker reviewer makes a stronger author's work worse. The POC has run a large council
-for months through free-text discussion and cannot say what any member contributed. ADR-0012 now
+for months through free-text discussion and cannot say what any member contributed. ADR-0013 now
 gives every Lens, third-party reviewers included, one structured contract, decides convergence in
 the Kernel, and measures each Lens before any is added.
 
@@ -1002,7 +1002,7 @@ GitHub dismisses an approval when the diff changes *or the merge base changes*.
 ## 7. Recommended target architecture
 
 Sections 7 and 8 are the recommendation as first made. §14 challenged it, and §14.7 lists what
-changed in ADR-0012 as a result. §18 changes where it is built: in a new repo, not as a tree in
+changed in ADR-0013 as a result. §18 changes where it is built: in a new repo, not as a tree in
 this one, which replaces the recommendation of §6.6 and the structure shown in §7.3. Where they
 differ, the ADR is current.
 
@@ -1222,7 +1222,7 @@ Notes on the order:
 
 ---
 
-## 9. Relationship to ADR-0001 through ADR-0011
+## 9. Relationship to ADR-0001 through ADR-0012
 
 ADR-0000 offers three statuses and one permitted edit to an accepted record. It has no way to mark
 an ADR as extended or narrowed, a gap ADR-0010 recorded and left open. The table uses four words;
@@ -1230,10 +1230,10 @@ only "supersede" changes a status.
 
 | ADR | Verdict | What happens | How to record it |
 |---|---|---|---|
-| 0000 process | **Keep.** | ADR-0012 follows it. The missing `extended-by` link is felt again here. | Recommend, separately, an ADR that supersedes 0000 to add a forward link for extension. Not required by this decision. |
-| 0001 thin caller / reusable | **Keep, and tighten.** | The consumer file and the entry shim are both thin callers. The boundary gets stricter: the shim has no logic at all. | ADR-0012 cites it; no status change. |
+| 0000 process | **Keep.** | ADR-0013 follows it. The missing `extended-by` link is felt again here. | Recommend, separately, an ADR that supersedes 0000 to add a forward link for extension. Not required by this decision. |
+| 0001 thin caller / reusable | **Keep, and tighten.** | The consumer file and the entry shim are both thin callers. The boundary gets stricter: the shim has no logic at all. | ADR-0013 cites it; no status change. |
 | 0002 channel tags and rings | **Supersede**, restating what survives. | Two tag kinds, ruleset protection and one App-moved path survive. The unit changes from per reusable to the factory; tiers reduce to two. Non-factory reusables in the standards repo keep their own names. | The release follow-on ADR supersedes it at step 6. Until then it governs the POC's tags. |
-| 0003 rubric registry | **Keep, narrowed in scope.** | Binding review target to method by data is the same idea as the Role manifest. The registry stays an input adapter above the Engine port. | No status change; ADR-0012 names it as a seam. |
+| 0003 rubric registry | **Keep, narrowed in scope.** | Binding review target to method by data is the same idea as the Role manifest. The registry stays an input adapter above the Engine port. | No status change; ADR-0013 names it as a seam. |
 | 0004 pure logic plus bats | **Supersede**, restating the principle. | Purity, I/O at the edge, the model only where it must be, and fail-loud all survive and get stricter. The binding to shell and bats does not. | The language follow-on ADR supersedes it when the first Kernel module merges. Legacy scripts stay under 0004 until deleted. |
 | 0005 advisory by default | **Keep, extended.** | Write stays an explicit opt-in. The opt-in is expressed as permitted Effects in the manifest and enforced by `apply`, which also closes the gap that nothing enforces `gate_label` today (§3.6). | The run-contract follow-on ADR extends it; no status change. |
 | 0006 shared-runtime personas not ring-registered | **Supersede**, restating what survives. | Its insight, that a persona is data served by a runtime and the runtime is the unit of release, becomes the rule for every Role. Its boundary that the reach check is the sole promotion gate is replaced by the release gate. | The release follow-on ADR supersedes it at step 6. |
@@ -1242,12 +1242,13 @@ only "supersede" changes a status.
 | 0009 qa-lead surface through the router | **Keep until it lapses.** | "No second ingress path" becomes true by construction. Its hard precondition, that a human hold binds on every surface, is met by admission. The router it names is retired at step 6. | Superseded by the admission follow-on ADR when the router is retired; until then it governs. |
 | 0010 ingress concurrency; schema is an allowlist | **Keep the principle; the key lapses.** | The allowlist rule is kept and made stricter. Job-level concurrency in the consumer file is no longer needed, because the lane is in the hub. | The admission follow-on ADR extends 0007 again and notes that 0010's key is unused; no status change. |
 | 0011 write-mode personas on a shared branch (proposed) | **Accept now; supersede later.** | Its five rules are right for the POC and already implemented. Under the run contract, rules 2 and 3 hold by construction and rules 1, 4 and 5 become `verify` and `apply` steps. | Accept it as the interim record at step 0. The run-contract follow-on ADR supersedes it at step 4. |
+| 0012 comment gate's exemption set (proposed; landed on `main` while this review was open) | **Keep for the POC; supersede later.** | It narrows the POC's comment gate by registered marker or one exact body form. It is a further patch to the gate §14.3 identifies as the source of the largest failure class, and it is the right patch for the POC. Under the Finding contract a comment body gates nothing, so the rule has nothing left to exempt. | The merge-integrity follow-on ADR supersedes it when the factory's gate takes over. |
 
 Two normative documents that are not ADRs also change: interaction model §12.2 is reversed by the
 identity decision and should say so with a pointer, and its §§5 to 9 are largely replaced by the
 Lifecycle files once those exist.
 
-**Why ADR-0012 supersedes nothing itself.** It fixes the structure and binds new code. Each
+**Why ADR-0013 supersedes nothing itself.** It fixes the structure and binds new code. Each
 supersession is recorded by the follow-on ADR that lands with the step that makes it true in the
 running system. The alternative, flipping several statuses on acceptance, would make the record claim
 things the system does not yet do, which is the reverse of the defect ADR-0008 was written to repair.
@@ -1406,10 +1407,10 @@ presented as a production system.
 1. **Conversation.** Roles talk in natural language (AutoGen, ChatDev). No production-leaning system
    above uses it.
 2. **Structured handoff.** Roles pass typed documents in a declared order (MetaGPT, and the BMAD
-   method this repo vendors). ADR-0012's Task and Result are this pattern.
+   method this repo vendors). ADR-0013's Task and Result are this pattern.
 3. **A shared work ledger.** Roles never address each other. They take work from a durable store and
    put results back (Beads, Symphony's tracker, the compiler's lock directory, Tide's labels). Every
-   system above that runs unattended for long uses this. ADR-0012's State record and Ledger are this
+   system above that runs unattended for long uses this. ADR-0013's State record and Ledger are this
    pattern.
 4. **Hierarchy.** One role plans, others execute, another judges. Cursor reports that equal peers
    became risk-averse: "No agent took responsibility for hard problems or end-to-end
@@ -1425,14 +1426,14 @@ comments, labels and markers on a surface shared with humans and third-party bot
 - **Effects are applied outside the model.** In Symphony, Cursor's harness and the compiler
   experiment the agent itself writes. Symphony's specification leaves the trust boundary to each
   implementation and its README is reported to describe it as a preview for trusted environments.
-  ADR-0012's credential boundary per job is stricter than any comparable, and it is the right
+  ADR-0013's credential boundary per job is stricter than any comparable, and it is the right
   strictness for public repos that take text from strangers.
 - **Review independence is enforced by the platform.** The comparables either remove review
-  (StrongDM), or let agents review agents with no separation of identity (OpenAI). ADR-0012 keeps a
+  (StrongDM), or let agents review agents with no separation of identity (OpenAI). ADR-0013 keeps a
   gate that the author's identity cannot satisfy.
 - **State survives a restart with its history.** Symphony deliberately keeps scheduler state in
   memory and re-derives it. That is simple, and it means attempts, spend and dispositions are not
-  recorded anywhere. ADR-0012's Ledger makes cost per outcome and "why is this stuck" answerable.
+  recorded anywhere. ADR-0013's Ledger makes cost per outcome and "why is this stuck" answerable.
 - **It releases itself safely.** None of the comparables describes versioning, staged rollout or
   rollback of the factory. They are single-team tools. This repo serves twelve.
 - **It is frugal.** StrongDM's stated benchmark is $1,000 a day in tokens per engineer. This fleet's
@@ -1442,25 +1443,25 @@ comments, labels and markers on a surface shared with humans and third-party bot
 
 - **Every comparable that orchestrates has an always-on orchestrator.** Symphony ticks every 30
   seconds. Tide syncs every minute. Gas Town runs as a standing process. Each holds its claim set in
-  one process, so double dispatch is avoided by a variable, and a timer is a timer. ADR-0012
+  one process, so double dispatch is avoided by a variable, and a timer is a timer. ADR-0013
   emulates that process with wake-ups, concurrency lanes and a cron that drops about 60% of its
   ticks. Symphony's own non-goals include being a "general-purpose workflow engine or distributed
-  job scheduler"; ADR-0012 builds one out of Actions.
+  job scheduler"; ADR-0013 builds one out of Actions.
 - **Files in git as the work ledger is a design another project abandoned.** Beads kept a local
   database synchronized through a JSONL file in git. Its maintainers record stale overwrites,
   resurrected deletions and split-brain failures from that period, and moved to a database with
-  merge semantics. ADR-0012's store differs in one way that matters: only the Controller writes it,
+  merge semantics. ADR-0013's store differs in one way that matters: only the Controller writes it,
   so there is no multi-writer merge. Concurrent Controller runs still race on one ref.
 - **Assurance rests on review by the same model family that wrote the change.** StrongDM's answer
   to agents that "return true" or rewrite a test is validation the author cannot see. The compiler
-  experiment needed a reference oracle. ADR-0012 verifies that a claimed commit exists. It adds
+  experiment needed a reference oracle. ADR-0013 verifies that a claimed commit exists. It adds
   nothing that tells a correct change from a plausible one, and this repo's holdout sets are public.
 - **A mandatory quality gate is a bottleneck by construction.** Cursor built an integrator role for
   quality control and removed it: it "created more bottlenecks than it solved." The contexts differ,
   since Cursor was building greenfield on one branch with no protected trunk. The observation still
   applies to a single approval that five gates can withhold.
 - **It is much larger.** Symphony is one specification. The compiler harness is a shell loop.
-  ADR-0012 requires a kernel, a harness, a controller and eight further ADRs, for one maintainer.
+  ADR-0013 requires a kernel, a harness, a controller and eight further ADRs, for one maintainer.
 - **Nobody has shown this problem solved.** A September 2026 synthesis of industrial evidence
   concludes that no company has implemented a full control plane of this kind, and cites agents
   raising commits by 180% while releases rose 30%. The comparables are single-repo, mostly
@@ -1468,7 +1469,7 @@ comments, labels and markers on a surface shared with humans and third-party bot
 
 ### 13.5 Choices the proposal makes that others abandoned
 
-| Choice in ADR-0012 | Who abandoned it | Why it may still hold here | What would show it does not |
+| Choice in ADR-0013 | Who abandoned it | Why it may still hold here | What would show it does not |
 |---|---|---|---|
 | Work state as files in git | Beads | Single writer identity; no merge of concurrent edits to one record | Rejected pushes per decision, or time to clone the store, rising with load |
 | Leases taken by optimistic write | Cursor moved past it | Cursor called optimistic control "simpler and more robust" than locks; its remaining problems were about who owns hard work, which hierarchy answers | Re-decisions per admitted Run above a small constant |
@@ -1496,7 +1497,7 @@ comments, labels and markers on a surface shared with humans and third-party bot
 
 ## 14. Adversarial review: the ceiling, and where it fails first
 
-An independent pass attacked ADR-0012 after §§4–13 were written. It had no part in the design. Its
+An independent pass attacked ADR-0013 after §§4–13 were written. It had no part in the design. Its
 platform claims were read from GitHub's documentation on 2026-10-10 and its repo claims re-checked
 here. Figures marked *est.* are estimates with the stated range.
 
@@ -1508,7 +1509,7 @@ budget and no stopping rule. §14.7 lists what was changed in the ADR as a resul
 
 ### 14.1 The ceiling
 
-| Rank | Constraint | Where it binds | What ADR-0012 does to it |
+| Rank | Constraint | Where it binds | What ADR-0013 does to it |
 |---:|---|---|---|
 | 1 | **The maintainer's attention** | About 30–36 hosting-repo merges a week, the observed plateau (*est.* from a time model; see below) | Nothing directly. It rises only if approvals issue *and* can be trusted |
 | 2 | **First-pass correctness** | The autonomy rate at which escaped defects exceed what one person can absorb (§14.4) | Nothing. Review depth is out of scope |
@@ -1538,13 +1539,13 @@ sampled job time is a runner asleep, waiting for a rate-limit reset
 (`.github/workflows/pr-review-delayed-retry.yml:16`, `:79`).
 
 What the design adds to that: a comment that needs no work costs one runner job today and two
-skipped listeners. Under ADR-0012 as first drafted it costs three runner jobs: the consumer's
+skipped listeners. Under ADR-0013 as first drafted it costs three runner jobs: the consumer's
 ingress, ring resolution in the entry shim, and the decision. Scaled from the measured event mix,
 that is at least 12,500 wakes a week from the hosting repo alone. Unfiltered, wake handling would
 take about 18% of the org's runner slots on average and about 83% at the measured peak. With events
 authored by the factory's own identities dropped at the ingress, 7% and 33%. The filter matters
 because the fleet is its own largest event source: 85% of sampled comment, review and push events
-were authored by the two agent accounts, and under ADR-0012 those become App-authored events that
+were authored by the two agent accounts, and under ADR-0013 those become App-authored events that
 start workflows.
 
 ### 14.2 Where it fails first
@@ -1679,7 +1680,7 @@ the rest of the rewrite rests on classes B, C and D alone and should be re-argue
 
 **A poller in place of per-event wakes.** Symphony, Tide and Zuul all poll or hold state in one
 standing process, and in all three the control state is disposable: it is rebuilt from the platform
-on restart. ADR-0012's first draft chose two things none of them did: no standing process, and a
+on restart. ADR-0013's first draft chose two things none of them did: no standing process, and a
 second authoritative store that cannot be rebuilt. A poller needs no inbound endpoint, no file in
 any consumer, no credential in any consumer, and no wake handling. Polling twelve repos once a
 minute is 60–300 GraphQL points an hour, under 6% of the App's limit. It can run in three places:
@@ -1710,7 +1711,7 @@ poller at once and compare latency, runner minutes, API points per evaluation an
   magnitude away.
 - **Python with the standard library only:** no objection found.
 
-### 14.7 What changed in ADR-0012 as a result
+### 14.7 What changed in ADR-0013 as a result
 
 | # | Required change | In the ADR |
 |---|---|---|
@@ -1742,11 +1743,11 @@ poller at once and compare latency, runner minutes, API points per evaluation an
 The maintainer's core hypothesis is that it takes a team to reach an optimal outcome: a council of
 models, tools and perspectives working across research, analysis, architecture, design,
 implementation, validation, release and operation. This section asks two questions. Did the first
-draft of ADR-0012 consider it? And what does the evidence say?
+draft of ADR-0013 consider it? And what does the evidence say?
 
 ### 15.1 Did the proposal consider it?
 
-No. ADR-0012 as first drafted is about the control plane. It made every Role data, gave every Run
+No. ADR-0013 as first drafted is about the control plane. It made every Role data, gave every Run
 one contract and put one gate function in the Kernel. It listed review depth as not addressed, and
 the PRD listed it as a non-goal. The adversarial pass then named first-pass correctness as the
 second ceiling the proposal does not raise (§14.1). A council is the obvious lever on that ceiling,
@@ -1769,7 +1770,7 @@ What can be measured is the cost of the protocol: 343 review dismissals on 150 m
 requests, commits per merged pull request up from 2–4 to 7–10, and the largest failure class in the
 issue history (§2.3, class A).
 
-ADR-0012 now carries decision 12, and the PRD carries §6.11, as a result of this section.
+ADR-0013 now carries decision 12, and the PRD carries §6.11, as a result of this section.
 
 ### 15.2 What the evidence says
 
@@ -1841,7 +1842,7 @@ nothing, and it matches the pattern.
 
 ### 15.4 A starting shape for the council, by stage
 
-This is where the evidence points, not a decision. ADR-0012 leaves composition to a follow-on record
+This is where the evidence points, not a decision. ADR-0013 leaves composition to a follow-on record
 decided from measurement.
 
 | Stage | Shape the evidence supports | Strength of evidence |
@@ -1872,7 +1873,7 @@ GitHub offers three structured surfaces a reviewer can report through:
 | A summary comment | Nothing | No |
 
 Which of the nine current reviewers expose which surface is established in §16. The rule in
-ADR-0012 does not depend on the answer: a reviewer is as influential as its contract surface
+ADR-0013 does not depend on the answer: a reviewer is as influential as its contract surface
 allows.
 
 ### 15.6 Sources
@@ -1938,7 +1939,7 @@ proposes a council to start measuring from.
 For comparison, **CodeQL** has every surface: a check whose conclusion reflects findings,
 annotations, alerts with a stable number, a state and a rule severity, and a REST API.
 
-What this means for the contract in ADR-0012, decision 12:
+What this means for the contract in ADR-0013, decision 12:
 
 1. **SonarQube Cloud has the strongest contract of the nine, and the POC reads its weakest
    surface.** The registry classifies it as "top-level quality-gate comment only" and recognises a
@@ -2007,7 +2008,7 @@ deeper integration to come. Secondary coverage dates the acquisition to May 2026
 | Structured surface | Check, annotations, issue keys through the Web API and MCP, code-scanning alerts | Review state (requests changes at a configurable threshold, approves when clean) and inline threads. No check run, SARIF or GitHub findings API is documented |
 | Model | None for analysis | Not named; its bring-your-own-model page lists Anthropic models |
 | Cost for public repos | Free. An open-source plan adds unlimited pull-request analysis and custom quality gates | Paid plans on the product page; its docs describe a free open-source plan granted per repo on application |
-| Fit with ADR-0012 | A Lens with a full contract | **It is a writer.** Pushing commits to an agent's branch conflicts with one author per change, dismisses approvals under the ruleset, and needs write access to workflows |
+| Fit with ADR-0013 | A Lens with a full contract | **It is a writer.** Pushing commits to an agent's branch conflicts with one author per change, dismisses approvals under the ruleset, and needs write access to workflows |
 
 Recommendations:
 
@@ -2056,7 +2057,7 @@ Cloud version. That was not confirmed against the org's installation.
 
 ### 16.6 A council to start measuring from
 
-ADR-0012 leaves composition to a follow-on record decided from each Lens's measured contribution.
+ADR-0013 leaves composition to a follow-on record decided from each Lens's measured contribution.
 This is a starting set for that measurement, chosen for independence per unit of cost and noise.
 
 | Seat | Lens | What it sees that the others do not | Contract surface | Status |
@@ -2299,7 +2300,7 @@ how a second system fails.
   eval set exists for it.
 - This repo is not renamed while anything references it.
 
-ADR-0012 carries these as decisions 1 and 10.
+ADR-0013 carries these as decisions 1 and 10.
 
 ### 18.6 Sources
 

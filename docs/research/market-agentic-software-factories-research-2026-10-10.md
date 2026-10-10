@@ -386,7 +386,7 @@ bounds, audit, configuration in the operator's own Git and CI).
 
 1. **The differentiated part is small, and it is the right part.** The market has commoditised the
    workers and first-pass review. What it does not offer is the control plane around them: the merge
-   decision, the council, portfolio rollout, budget admission. That is the part ADR-0012 proposes to
+   decision, the council, portfolio rollout, budget admission. That is the part ADR-0013 proposes to
    build. The research supports the choice and narrows it.
 2. **Adopt what is commodity.** Building a worker harness is competing with ten vendors and with an
    open-licensed toolkit from the platform owner. The run contract should be shaped so that toolkit,

@@ -1,4 +1,4 @@
-# 0012. Factory MVP reference architecture: a declared control plane, one run contract, one release
+# 0013. Factory MVP reference architecture: a declared control plane, one run contract, one release
 
 ## Status
 
@@ -79,6 +79,16 @@ always-on infrastructure" half stands.
 
 In this record "the factory repo" is the new repository and "this repo" is
 `petry-projects/.github-private`, which hosts the POC.
+
+**A note on the number.** This record was drafted and discussed as ADR-0012. While it was in review,
+ADR-0012 was assigned on `main` to the maintainer comment gate's exemption set, so this record
+takes the next number. Earlier links and comments that say "ADR-0012" about the factory MVP mean
+this record.
+
+**ADR-0012 (the comment gate's exemption set, proposed)** narrows which pull-request comments the
+POC's gate counts, by registered marker or one exact body form. It governs the POC. Decisions 7 and
+12 below replace that gate's premise, that a comment body is what gates, and the merge-integrity
+follow-on will supersede ADR-0012 when the factory's gate takes over.
 
 **Scope and precedence.** This record fixes the structure every new factory component follows. It
 supersedes no ADR by itself. An accepted ADR keeps governing the POC code path it describes until a
@@ -371,7 +381,8 @@ Numbers are assigned when each is written. Each lands with the migration step th
 | **Factory repository** | The new repo's name and ruleset; how the forwarders in this repo are tested and frozen; the final re-pin of consumers; what this repo keeps afterwards; where these three documents and the ADR log live once the factory repo exists. | New. Decision 1 fixes that there is one. |
 | **Council composition** | Which Lenses are required for each class of work item and stage (PRD OQ-12); how their Findings are aggregated; what counts as independent; the cost each stage may spend on its council. Decided from the Ledger's measure of each Lens, not in advance; review §16.6 proposes the set to start measuring from. | New. Extends ADR-0003, whose registry binds a review target to a rubric and is the nearest existing form of a Lens declaration. |
 
-ADR-0001 and ADR-0003 are kept without change. ADR-0000 is kept; adding a forward link for
+ADR-0001 and ADR-0003 are kept without change. ADR-0012 governs the POC's comment gate until the
+merge-integrity follow-on supersedes it. ADR-0000 is kept; adding a forward link for
 extension remains a separate decision.
 
 ## Consequences

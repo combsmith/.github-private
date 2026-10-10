@@ -16,7 +16,7 @@ It is one of four documents produced by the October 2026 architecture review:
 - [`docs/architecture/factory-mvp-architecture-review.md`](../architecture/factory-mvp-architecture-review.md)
   — the review of the current system and the analysis of architectural options against these
   requirements.
-- [`docs/architecture/adr/0012-factory-mvp-reference-architecture.md`](../architecture/adr/0012-factory-mvp-reference-architecture.md)
+- [`docs/architecture/adr/0013-factory-mvp-reference-architecture.md`](../architecture/adr/0013-factory-mvp-reference-architecture.md)
   — the proposed decision.
 - [`docs/research/market-agentic-software-factories-research-2026-10-10.md`](../research/market-agentic-software-factories-research-2026-10-10.md)
   — market research: what the market offers, who the customer is, and where this Factory sits.
@@ -806,7 +806,7 @@ From the competitive analysis ([market research](../research/market-agentic-soft
 7. **OQ-7. Are the `[ASSUMPTION]` targets in §7 the right ones?**
 8. **OQ-8. Where does the Ledger live and who may read it?** Everything in a public repo is public.
 9. **OQ-9. What is the budget for the migration itself**, in weeks and in LLM spend, given that the
-   POC must keep delivering while it is replaced? ADR-0012 is not in force until a dated limit, a
+   POC must keep delivering while it is replaced? ADR-0013 is not in force until a dated limit, a
    POC defect policy and a kill criterion are written.
 10. **OQ-10. Should third-party reviewer comments keep gating approvals?** Decided by the Maintainer
     on 2026-10-10: reviewers are integrated through a contract, and structured Findings gate where
@@ -825,7 +825,7 @@ From the competitive analysis ([market research](../research/market-agentic-soft
     required set (CodeAnt, Graphite, Copilot, Qodo) and funding or dropping a fifth (Codex). Each
     is a subscription or an installation the Maintainer controls.
 14. **OQ-14. Is GitHub's Agentic Workflows adopted as the worker half of the run contract?** It is
-    the nearest substitute for what ADR-0012 proposes to build there. Its documentation does not
+    the nearest substitute for what ADR-0013 proposes to build there. Its documentation does not
     list a subscription credential for the Claude engine, which conflicts with C-3 until C-11
     forces the question anyway.
 15. **OQ-15. What is the metered fallback budget?** FR-73 needs a monthly figure in currency at
