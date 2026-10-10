@@ -28,9 +28,16 @@
 #
 # PURITY / TESTABILITY (ADR-0004)
 #   ssg_template_path, ssg_has_sync_label and ssg_declined_body are PURE.
-#   ssg_pass_touches_stubs, ssg_scan_pass and ssg_evaluate are the impure
-#   gatherers (git only — the caller reads the PR from the API). Sourced under
-#   `set -euo pipefail`; helpers only `return`, never `exit`.
+#   ssg_pass_touches_stubs, ssg_scan_pass, ssg_evaluate and ssg_evaluate_rebase
+#   are the impure gatherers (git only); ssg_read_pr reads the PR from the API and
+#   ssg_install_push_blocker writes a git shim. Sourced under `set -euo pipefail`;
+#   helpers only `return`, never `exit`.
+#
+# WHO RUNS IT
+#   fix-bot-comment / fix-reviews (commit_and_push), fix-ci (dev-lead-fix-ci.sh)
+#   and rebase (the rebase arm of dev-lead-fix-reviews.sh, #2212). The rebase
+#   engine force-pushes its own resolution, so on a sync PR the harness blocks
+#   that push (ssg_install_push_blocker), evaluates, and pushes only when clean.
 
 set -euo pipefail
 
@@ -229,4 +236,114 @@ ssg_evaluate() {
     mb=$(ttg_resolve_merge_base "$base" "$pre" "$head_ref" 2>/dev/null) || mb=""
   fi
   ssg_scan_pass "$pre" "$head" "$mb"
+}
+
+# ssg_read_pr <repo> <pr_number>
+#   Echoes the GitHub pulls API object, retrying up to three times (sleeping
+#   SSG_RETRY_SLEEP between tries). Echoes nothing when it stays unreadable, so
+#   ssg_evaluate applies the unreadable-PR rule. Always returns 0. Impure.
+ssg_read_pr() {
+  local repo="${1:-}" pr="${2:-}" json="" try
+  [[ -n "$repo" && -n "$pr" ]] || return 0
+  for try in 1 2 3; do
+    json=$(gh api "repos/${repo}/pulls/${pr}" 2>/dev/null) || json=""
+    if jq -e 'type == "object"' <<<"$json" >/dev/null 2>&1; then
+      printf '%s\n' "$json"
+      return 0
+    fi
+    (( try < 3 )) && sleep "${SSG_RETRY_SLEEP:-2}"
+  done
+  return 0
+}
+
+# _ssg_matches_base <base_ref> <head> <path>
+#   0 when <path> at <head> is byte-identical to origin/<base_ref> (both absent
+#   counts). 1 otherwise, including an unreadable base ref. Impure.
+_ssg_matches_base() {
+  local base="$1" head="$2" path="$3" base_blob head_blob
+  git rev-parse -q --verify "origin/${base}^{commit}" >/dev/null 2>&1 || return 1
+  base_blob=$(git --literal-pathspecs rev-parse -q --verify "origin/${base}:${path}" 2>/dev/null) || base_blob=""
+  head_blob=$(git --literal-pathspecs rev-parse -q --verify "${head}:${path}" 2>/dev/null) || head_blob=""
+  [[ "$head_blob" == "$base_blob" ]]
+}
+
+# ssg_evaluate_rebase <pre_pass_sha> <head> <pr_json> <head_ref> <base_ref>
+#   The rebase rule (#2212). A rebase pulls in everything the base branch changed,
+#   so a synced stub may end equal to the sync commit's content (ssg_evaluate) OR
+#   to the template content now on origin/<base_ref>; anything else is drift.
+#   Wraps ssg_evaluate unchanged: drift rows whose path matches the base are
+#   dropped, and on an unreadable PR only header stubs that differ from the base
+#   fail closed. Same output and return codes as ssg_evaluate. Impure.
+ssg_evaluate_rebase() {
+  local pre="${1:-}" head="${2:-HEAD}" pr_json="${3:-}" head_ref="${4:-}" base="${5:-}"
+  local out rc=0 rows path tpl left=""
+  out=$(ssg_evaluate "$pre" "$head" "$pr_json" "$head_ref") || rc=$?
+  case "$rc" in
+    0)
+      echo "clean"
+      return 0
+      ;;
+    1)
+      rows=$(printf '%s\n' "$out" | sed '1d')
+      ;;
+    *)
+      # Only the unreadable-PR verdict can be narrowed; a readable sync PR whose
+      # scan could not run stays unknown.
+      if jq -e 'type == "object"' <<<"$pr_json" >/dev/null 2>&1; then
+        echo "unknown"
+        return 2
+      fi
+      rows=$(_ssg_changed_stubs "$pre" "$head") || { echo "unknown"; return 2; }
+      ;;
+  esac
+  while IFS=$'\t' read -r path tpl; do
+    [[ -z "${path:-}" ]] && continue
+    _ssg_matches_base "$base" "$head" "$path" && continue
+    left+="${path}"$'\t'"${tpl:-}"$'\n'
+  done <<<"$rows"
+  if [[ -z "$left" ]]; then
+    if (( rc == 2 )); then
+      echo "::warning::Sync-stub guard: PR could not be read, so the sync-stub check was skipped (no header stub touched beyond the base branch) (#2212)" >&2
+    fi
+    echo "clean"
+    return 0
+  fi
+  if (( rc == 2 )); then
+    echo "unknown"
+    return 2
+  fi
+  echo "drift"
+  printf '%s' "$left"
+  return 1
+}
+
+# ssg_install_push_blocker
+#   Creates a temp dir holding a `git` shim that refuses `git push` and passes
+#   every other command to the real git; echoes the dir for the caller to put
+#   first on the engine's PATH (and remove afterwards). Used when the harness, not
+#   the engine, must decide whether a pass is pushed (#2212). Impure.
+ssg_install_push_blocker() {
+  local real dir
+  real=$(command -v git 2>/dev/null) || return 1
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/dev-lead-push-block.XXXXXX") || return 1
+  {
+    printf '#!/usr/bin/env bash\nreal=%q\n' "$real"
+    cat <<'SHIM'
+skip=0
+for a in "$@"; do
+  if [ "$skip" = 1 ]; then skip=0; continue; fi
+  case "$a" in
+    -C|-c|--git-dir|--work-tree|--namespace|--exec-path|--config-env) skip=1 ;;
+    -*) ;;
+    push)
+      echo "git push is disabled for this pass: the harness checks the synced org-standard stubs and pushes the branch itself. Do not retry the push (#2212)." >&2
+      exit 1
+      ;;
+    *) break ;;
+  esac
+done
+exec "$real" "$@"
+SHIM
+  } > "${dir}/git" && chmod +x "${dir}/git" || { rm -rf "$dir"; return 1; }
+  printf '%s\n' "$dir"
 }

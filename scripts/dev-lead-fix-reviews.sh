@@ -200,6 +200,9 @@ build_and_run() {
     echo "::warning::could not install the reply recorder — no-change dispositions are disabled this pass (#2079)"
     [ -n "${PASS_REPLY_RECORD:-}" ] && printf 'UNATTRIBUTED\n' > "$PASS_REPLY_RECORD"
   fi
+  # ENGINE_PATH_PREFIX: shims a caller puts in front of the engine only (the
+  # rebase arm's push blocker on a standards-sync PR, #2212).
+  [ -n "${ENGINE_PATH_PREFIX:-}" ] && engine_path="${ENGINE_PATH_PREFIX}:${engine_path}"
   PATH="$engine_path" run_writer_with_fallback "$prompt_file" "${INTENT_TYPE:-}" || rc=$?
   [ -n "$shim_dir" ] && rm -rf "$shim_dir"
   rm -f "${prompt_file:-}"
@@ -3957,12 +3960,36 @@ case "$INTENT_TYPE" in
       handle_rebase_failure "Conflict too large for automated resolution: ${rebase_conflict_file_count} files conflict against \`${BASE_REF}\` (limit ${REBASE_MAX_CONFLICT_FILES}). Please rebase manually."
       exit 1
     fi
+    # Sync-stub guard (#2212): the engine force-pushes its own resolution, so a
+    # check after it could not stop the push. On a standards-sync PR, or one that
+    # cannot be read (the #2185 unreadable rule decides after the engine), the
+    # push is deferred: the prompt tells the engine not to push, a git shim on its
+    # PATH enforces it, and the harness pushes only a clean result. A readable PR
+    # without the label keeps today's flow.
+    REBASE_PR_JSON=$(ssg_read_pr "$REPO" "$PR_NUMBER")
+    REBASE_DEFER_PUSH=false
+    if ! jq -e 'type == "object"' <<<"$REBASE_PR_JSON" >/dev/null 2>&1 \
+       || ssg_has_sync_label "$(jq -r '[.labels[]?.name // empty] | join("\n")' <<<"$REBASE_PR_JSON" 2>/dev/null || true)"; then
+      REBASE_DEFER_PUSH=true
+    fi
+    REBASE_PUSH_NOTE=""
+    if [ "$REBASE_DEFER_PUSH" = "true" ]; then
+      ENGINE_PATH_PREFIX=$(ssg_install_push_blocker) || {
+        echo "::error::rebase: could not install the push blocker for a standards-sync PR — not invoking the engine (#2212)"
+        exit 1
+      }
+      REBASE_PUSH_NOTE="**Do not push — this overrides step 6.** This PR syncs org-standard stubs from \`petry-projects/.github\`, so the harness checks the rebased branch and pushes it itself: a synced stub must end equal to the PR's sync commit or to \`${BASE_REF}\`. Stop after \`git rebase --continue\`; \`git push\` is disabled for this run."
+    fi
+    export REBASE_PUSH_NOTE
     # Capture the branch tip *before* the resolution so the integrity check can
     # use it as one parent (the base ref is the other) when scanning the resolved
     # tree for introduced duplicate declarations (#1482).
     PRE_RESOLVE_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
     rc=0
     build_and_run "rebase" || rc=$?
+    # The push blocker (#2212) only guards the engine run; drop it on every path.
+    [ -n "${ENGINE_PATH_PREFIX:-}" ] && rm -rf "$ENGINE_PATH_PREFIX"
+    ENGINE_PATH_PREFIX=""
     [ "$rc" -eq 2 ] && handle_rate_limit "rebase"
     # A per-tier timeout (exit 124) or a hard engine failure means the conflict
     # was not resolved. Convert it into a clean terminal abort with a comment —
@@ -3987,6 +4014,33 @@ case "$INTENT_TYPE" in
         echo "::error::No-op guard: PR #${PR_NUMBER} nets to zero changed files against ${BASE_REF} after rebase — flagging for human, not reporting applied (#1786)"
         flag_noop_pr "rebase"
         exit "$rc"
+      fi
+      if [ "$REBASE_DEFER_PUSH" = "true" ]; then
+        # Commit what the engine left uncommitted so the check sees what is pushed.
+        if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+          git add -A
+          git commit -q -m "chore: resolve rebase conflicts [skip ci-relay]" \
+            || { echo "::error::git commit failed — check git identity configuration on the runner" >&2; exit 1; }
+        fi
+        [ -n "$REBASE_PR_JSON" ] || REBASE_PR_JSON=$(ssg_read_pr "$REPO" "$PR_NUMBER")
+        rebase_head_ref="${HEAD_REF:-$(jq -r '.head.ref // empty' <<<"$REBASE_PR_JSON" 2>/dev/null || true)}"
+        rebase_ssg_rc=0
+        rebase_ssg_out=$(ssg_evaluate_rebase "${RESOLUTION_BASE_SHA:-}" HEAD "$REBASE_PR_JSON" "$rebase_head_ref" "$BASE_REF") || rebase_ssg_rc=$?
+        if [ "$rebase_ssg_rc" -ne 0 ]; then
+          echo "::error::Sync-stub guard: the rebase left a synced org-standard stub equal to neither the sync commit nor ${BASE_REF} ($(printf '%s\n' "$rebase_ssg_out" | head -1)) — refusing to push (#2212)"
+          flag_sync_stub_drift "rebase" "$(printf '%s\n' "$rebase_ssg_out" | sed '1d')"
+          exit 0
+        fi
+        if [ -z "$rebase_head_ref" ] || [ -z "${RESOLUTION_BASE_SHA:-}" ]; then
+          echo "::error::rebase: head branch or pre-pass head unknown — cannot push the rebased branch (#2212)"
+          exit 1
+        fi
+        # Explicit lease on the head this pass started from (#1607): a commit
+        # pushed to the branch since then is never overwritten.
+        git push --force-with-lease="refs/heads/${rebase_head_ref}:${RESOLUTION_BASE_SHA}" origin "HEAD:refs/heads/${rebase_head_ref}" || {
+          echo "::error::rebase: push of the rebased branch was refused — the remote head moved since this pass started (#2212)" >&2
+          exit 1
+        }
       fi
       cp_rc=0
       commit_and_push "rebase" || cp_rc=$?
