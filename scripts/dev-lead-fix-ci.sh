@@ -332,7 +332,7 @@ main() {
   local prompt_file
   prompt_file=$(build_prompt)
 
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ] && ! shadow_mode_active; then
     echo "[dry-run] fix-ci: would run engine with prompt: $prompt_file"
     post_summary "dry-run" "Would apply fix for: $(echo "$CHECKS_JSON" | jq -r '[.[].name] | join(", ")')"
     exit 0
@@ -360,7 +360,12 @@ main() {
     echo "  [fix-ci] cycle $cycle/$MAX_CI_CYCLES"
 
     local engine_rc=0
-    run_writer_with_fallback "$prompt_file" "fix-ci" || engine_rc=$?
+    local capture_file="${SHADOW_OUTPUT_FILE:-}"
+    if [ -n "$capture_file" ]; then
+      run_writer_with_fallback "$prompt_file" "fix-ci" 2>&1 | tee -a "$capture_file" || engine_rc=$?
+    else
+      run_writer_with_fallback "$prompt_file" "fix-ci" || engine_rc=$?
+    fi
 
     if [ "$engine_rc" -ne 0 ]; then
       if [ "$engine_rc" -eq 2 ]; then
