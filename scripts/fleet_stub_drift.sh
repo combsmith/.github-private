@@ -130,11 +130,15 @@ patch_job_block() {
 #     back to the legacy file, which would mask/resurrect a removed stub).
 #   • otherwise (no ingress file — a legacy repo mid-rollout): classify on the
 #     legacy whole-file SHAs, exactly as before (backward compatibility, AC #4).
+#     With no legacy canonical SHA (the role has no published per-role template)
+#     the legacy file cannot be compared, so it is MISSING, never DRIFTED (#1729).
 classify_role_drift() {
   local ingress_present="${1:-}" canon_block="${2:-}" ingress_block="${3:-}"
   local legacy_canon="${4:-}" legacy_repo="${5:-}"
   if [ "$ingress_present" = "yes" ]; then
     classify_stub_drift "$canon_block" "$ingress_block"
+  elif [ -z "$legacy_canon" ]; then
+    echo "MISSING"
   else
     classify_stub_drift "$legacy_canon" "$legacy_repo"
   fi
