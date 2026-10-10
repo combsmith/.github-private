@@ -113,6 +113,12 @@ has_rate_limited_marker() {
   [ "${count:-0}" -gt 0 ]
 }
 
+# collect_logs: fetch logs from a failing GitHub Actions run, or the PR diff if an
+# external quality gate (SonarCloud, etc). Exports details for the fix-ci prompt.
+#
+# Arguments:
+#   $1 check_name - name of the failing check (for reference in output)
+#   $2 details_url - URL to the check details/run
 collect_logs() {
   local check_name="$1" details_url="$2"
   local run_id
@@ -129,6 +135,11 @@ collect_logs() {
   fi
 }
 
+# build_prompt: render the fix-ci prompt template with check context, failure logs,
+# and PR annotations. Writes the rendered prompt to a temp file and echoes its path.
+#
+# Returns:
+#   Path to the rendered prompt file
 build_prompt() {
   local prompt_template="${PROMPTS_DIR}/fix-ci.md"
   local check_name app_slug details_url
@@ -150,6 +161,12 @@ build_prompt() {
   echo "$rendered"
 }
 
+# post_summary: post a dev-lead fix-ci status comment to the PR. Embeds a marker
+# with the commit SHA and status for dedup and tracking. Logs instead when DEV_LEAD_DRY_RUN=true.
+#
+# Arguments:
+#   $1 status - status label (e.g. "applied", "failed", "rate-limited", "dry-run")
+#   $2 details - optional details/reason to append to the comment body
 post_summary() {
   local status="$1" details="${2:-}"
   local marker="${MARKER_PREFIX}${HEAD_SHA} status=${status} -->"
@@ -206,6 +223,11 @@ ${details}"
   fi
 }
 
+# post_exhaustion: post a dev-lead exhaustion marker when the fix-ci handler has failed
+# MAX_FAIL_ATTEMPTS times. Includes the reason for the last failure and instructions for recovery.
+#
+# Arguments:
+#   $1 reason - the reason for the final engine failure (timeout, error, rate-limit)
 post_exhaustion() {
   local reason="$1"
   local body="${EXHAUSTION_MARKER}
