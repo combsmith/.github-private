@@ -125,9 +125,10 @@ DRY_RUN="${DRY_RUN:-false}"
 BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC="${BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC:-5}"
 [[ "$BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC" =~ ^[0-9]+$ ]] || BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC=5
 
-CI_MARKER_PREFIX="<!-- dev-lead-fix-ci sha="
-REVIEWS_MARKER_PREFIX="<!-- dev-lead-fix-reviews pr="
-ISSUE_MARKER_PREFIX="<!-- dev-lead-issue "
+# CI_MARKER_PREFIX / REVIEWS_MARKER_PREFIX / ISSUE_MARKER_PREFIX: one definition
+# shared with the budget breaker's marker reader (#2221), values unchanged.
+# shellcheck source=lib/rate-limit-markers.sh
+source "$SCRIPT_DIR/lib/rate-limit-markers.sh"
 
 # Dispatch deduplication guard: prevents duplicate repository_dispatch calls
 # when the event-first resume path and the safety-net cron arrive concurrently

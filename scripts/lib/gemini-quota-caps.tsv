@@ -29,6 +29,14 @@
 #   daily_reset_tz        IANA timezone of daily_reset_time (e.g. America/Los_Angeles).
 #   default_cooldown_sec  how long a key rests after a rate-limit/RESOURCE_EXHAUSTED when
 #                         the error carries no retry hint. 60 = one requests/minute window.
+#                         It doubles per consecutive rejection of the same key and model,
+#                         capped at the next daily reset (#2041).
+#   history_days          previous days the per-day history (gemini_tier_report.sh) shows
+#                         and retains, besides today. GEMINI_HISTORY_DAYS overrides it.
+#
+# A cap of 0 makes that key `unavailable` for the model: rotation never calls it there
+# (#2041). A key whose requests today reach rpd is `exhausted` until the reset and is
+# not called either; keys with `unknown` limits are still tried.
 #
 # key_index	model_glob	tier	rpm	tpm	rpd
 1	gemini-3.8-flash	unknown	unknown	unknown	unknown
@@ -42,3 +50,4 @@
 setting	daily_reset_time	00:00
 setting	daily_reset_tz	America/Los_Angeles
 setting	default_cooldown_sec	60
+setting	history_days	7
