@@ -107,6 +107,138 @@ if [ -n "${PR_NUMBER:-}" ] && [ "${DEV_LEAD_DRY_RUN:-false}" != "true" ] \
   exit 0
 fi
 
+# github_knows_commit <sha> — does GitHub have <sha> in this repo? A commit that was
+# pushed stays retrievable by its full SHA after a force-push; one never pushed is
+# unknown. Returns 0 known, 1 unknown (HTTP 404/422), 2 any other failure (#2032).
+github_knows_commit() {
+  local sha="${1:-}" out
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 2
+  if out=$(gh api "repos/${REPO}/commits/${sha}" --jq .sha 2>&1); then
+    return 0
+  fi
+  case "$out" in
+    *"No commit found"*|*"HTTP 404"*|*"HTTP 422"*) return 1 ;;
+  esac
+  return 2
+}
+
+# sweep_earlier_claims — the start-of-pass sweep over EARLIER passes' claim replies
+# (#2032). retract_unlanded_claims runs only inside the pass that posted a reply, so
+# a run cancelled or killed after its model replied (a concurrency cancel, a lost
+# runner, a budget kill; see #1741) left its false "Fixed" replies standing. Before
+# this pass posts anything, every claim reply OUR account posted before
+# PASS_START_ISO is checked against the remote head with cl_earlier_claim_verdict:
+#   - a claimed reply whose commit is not on the remote head, does not touch its
+#     claimed files, or was committed before the comment it answers is retracted;
+#   - a retracted reply whose claim now passes is restored (cl_restore_body), so a
+#     wrongly retracted fix recovers without a new commit.
+# It never retracts on an unknown reference: when the remote head cannot be read,
+# or a cited commit is missing from a checkout that is still shallow, it skips.
+# Best-effort: returns 1 on a listing/PATCH failure; the caller does not stop.
+sweep_earlier_claims() {
+  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+    echo "[dry-run] would sweep earlier passes' claim replies on PR #${PR_NUMBER:-}"
+    return 0
+  fi
+  [ -z "${PR_NUMBER:-}" ] && return 0
+  [ -z "${PASS_START_ISO:-}" ] && return 0
+
+  # At pass start nothing has been committed, so with no upstream (rc 1) the
+  # checked-out head IS the PR head. A failed fetch (rc 2) is indeterminate.
+  local ref="" ref_rc=0
+  ref=$(cl_remote_head) || ref_rc=$?
+  if [ -z "$ref" ] && [ "$ref_rc" -eq 1 ]; then
+    ref="${RESOLUTION_BASE_SHA:-}"
+  fi
+  if [ -z "$ref" ]; then
+    echo "::notice::sweep_earlier_claims: the remote head could not be read (rc ${ref_rc}) — earlier claim replies on PR #${PR_NUMBER} not checked (#2032)"
+    return 0
+  fi
+
+  local bot_user="${BOT_USER:-donpetry-bot}" comments rows
+  comments=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" 2>/dev/null | jq -s 'add // []' 2>/dev/null) || {
+    echo "::warning::sweep_earlier_claims: could not list review comments on PR #${PR_NUMBER} — earlier claim replies were NOT verified (#2032)"
+    return 1
+  }
+  rows=$(cl_select_earlier_claims "$comments" "$bot_user" "$PASS_START_ISO") || {
+    echo "::warning::sweep_earlier_claims: could not parse the review comments on PR #${PR_NUMBER} — earlier claim replies were NOT verified (#2032)"
+    return 1
+  }
+  [ -z "$rows" ] && return 0
+
+  local id state claim finding_at sha files facts on_ref touches commit_date own cumulative verdict
+  local body new_body deepened=false retracted=0 restored=0 failed=0 known_rc
+  while IFS=$'\x1f' read -r id state claim finding_at; do
+    [ -z "$id" ] && continue
+    sha=""
+    if [ -z "$claim" ]; then
+      verdict="unverifiable"
+    else
+      sha=$(printf '%s' "$claim" | jq -r '.sha // ""' 2>/dev/null || echo "")
+      files=$(printf '%s' "$claim" | jq -c '.files // []' 2>/dev/null || echo "[]")
+      # A commit missing from a shallow checkout is unknown, not "not landed".
+      if ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then
+        if [ "$deepened" = false ]; then
+          git_history_deepen "${BASE_REF:-main}"
+          deepened=true
+        fi
+        if ! git cat-file -e "${sha}^{commit}" 2>/dev/null \
+           && [ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo true)" != "false" ]; then
+          echo "::notice::sweep_earlier_claims: commit ${sha} of reply ${id} is not in this shallow checkout — left as is (#2032)"
+          continue
+        fi
+      fi
+      facts=$(acv_gather_commit_facts "$sha" "" "$ref")
+      on_ref=$(printf '%s' "$facts" | jq -r '.on_head // false' 2>/dev/null || echo "false")
+      commit_date=$(printf '%s' "$facts" | jq -r '.commit_date // ""' 2>/dev/null || echo "")
+      own=$(printf '%s' "$facts" | jq -r '.own_files[]? // empty' 2>/dev/null || echo "")
+      cumulative=$(printf '%s' "$facts" | jq -r '.cumulative_files[]? // empty' 2>/dev/null || echo "")
+      # The same own-then-cumulative rule the thread gate verified the claim with
+      # (resolve_addressed_bot_threads), so a claim it accepted is not retracted.
+      touches=false
+      acv_verify_intersection "$files" "$own" "$cumulative" >/dev/null && touches=true
+      verdict=$(cl_earlier_claim_verdict "$on_ref" "$touches" "$commit_date" "$finding_at") || true
+      # not-on-ref has two causes: never pushed (a false claim) or pushed and then
+      # rewritten by a rebase (a true claim under a new SHA). Ask GitHub; retract
+      # only a commit it has never seen, and leave the claim when it cannot say.
+      if [ "$state" = "claimed" ] && [ "$verdict" = "not-on-ref" ]; then
+        known_rc=0
+        github_knows_commit "$sha" || known_rc=$?
+        if [ "$known_rc" -eq 0 ]; then
+          echo "::notice::sweep_earlier_claims: commit ${sha} of reply ${id} is known to GitHub but not on the remote head (pushed, then rewritten) — left as is (#2032)"
+          continue
+        elif [ "$known_rc" -ne 1 ]; then
+          echo "::notice::sweep_earlier_claims: could not ask GitHub about commit ${sha} of reply ${id} — left as is (#2032)"
+          continue
+        fi
+      fi
+    fi
+
+    body=$(printf '%s' "$comments" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
+    if [ "$state" = "claimed" ] && [ "$verdict" != "kept" ]; then
+      new_body=$(cl_retract_body "$body" "$verdict")
+      if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+        retracted=$((retracted + 1))
+        echo "::warning::retracted earlier claim reply ${id} on PR #${PR_NUMBER} (${verdict}; cited ${sha:-<none>}, remote head ${ref}) (#2032)"
+      else
+        echo "::error::could not retract earlier claim reply ${id} on PR #${PR_NUMBER} (${verdict}) — a false 'Fixed' reply may remain (#2032)"
+        failed=1
+      fi
+    elif [ "$state" = "retracted" ] && [ "$verdict" = "kept" ]; then
+      new_body=$(cl_restore_body "$body" "$claim") || continue
+      if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+        restored=$((restored + 1))
+        echo "::notice::restored retracted claim reply ${id} on PR #${PR_NUMBER}: ${sha} is on the remote head ${ref} and touches its claimed files (#2032)"
+      else
+        echo "::warning::could not restore retracted claim reply ${id} on PR #${PR_NUMBER} (#2032)"
+        failed=1
+      fi
+    fi
+  done <<< "$rows"
+  echo "::notice::sweep_earlier_claims: retracted ${retracted}, restored ${restored} earlier claim reply(ies) on PR #${PR_NUMBER} (#2032)"
+  [ "$failed" -eq 0 ]
+}
+
 # Checkout the PR branch for modification (Requirement 1).
 # Use an isolated worktree so switching to the PR branch never overwrites the
 # agent's own prompts/scripts in the working tree (issue #448).
@@ -143,6 +275,9 @@ if [ "${DEV_LEAD_DRY_RUN:-false}" = "false" ] && [ -n "${PR_NUMBER:-}" ]; then
   # that never runs the engine still has a (empty) record; the engine run installs the
   # recording gh shim that fills it. A missing record disables the no-change path.
   PASS_REPLY_RECORD="$(mktemp "${TMPDIR:-/tmp}/dev-lead-replies.XXXXXX" 2>/dev/null || true)"
+  # Earlier passes' claim replies (#2032): a cancelled run never reached its own
+  # sweep. Check them against the remote head before this pass posts anything.
+  sweep_earlier_claims || true
   setup_git_identity
   # Backfill the five required description sections into a pre-existing PR whose
   # body still lacks them (#1805). Idempotent + marker-keyed, so open PRs heal on
@@ -3142,18 +3277,20 @@ retract_unlanded_claims() {
   fi
 
   local comments
-  if ! comments=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" 2>/dev/null | jq -s 'add // []' 2>/dev/null); then
+  comments=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" 2>/dev/null | jq -s 'add // []' 2>/dev/null) || {
     echo "::warning::retract_unlanded_claims: could not list review comments on PR #${PR_NUMBER} — this pass's claim replies were NOT verified (#2013)"
     return 1
-  fi
+  }
 
   local rows retracted=0 failed=0 id sha facts on_ref in_base reason body new_body
-  if ! rows=$(cl_select_pass_claims "$comments" "$bot_user" "$PASS_START_ISO"); then
+  rows=$(cl_select_pass_claims "$comments" "$bot_user" "$PASS_START_ISO") || {
     echo "::warning::retract_unlanded_claims: could not parse the review comments on PR #${PR_NUMBER} — this pass's claim replies were NOT verified (#2013)"
     return 1
-  fi
+  }
+  local rebased remapped=0
   while IFS=$'\t' read -r id sha; do
     [ -z "$id" ] && continue
+    body=$(printf '%s' "$comments" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
     if [ -z "$sha" ]; then
       reason="unverifiable"
     else
@@ -3164,8 +3301,30 @@ retract_unlanded_claims() {
       if reason=$(acv_claim_in_pass "$base" "$on_ref" "$in_base"); then
         continue
       fi
+      # #2032: the push guard rebased the cited commit onto a foreign commit, so
+      # the cited SHA never reached the remote. If its rebased successor did land
+      # (and is this pass's), the fix is on the branch: re-point the claim at the
+      # successor instead of retracting it, so the thread resolves this pass.
+      rebased=""
+      if [ "$reason" = "not-on-ref" ] && [ -n "$ref" ]; then
+        rebased=$(cl_map_sha "$sha" "${_PUSH_GUARD_REWRITES:-}") || rebased=""
+      fi
+      if [ -n "$rebased" ]; then
+        facts=$(acv_gather_commit_facts "$rebased" "$base" "$ref")
+        on_ref=$(printf '%s' "$facts" | jq -r '.on_head // false' 2>/dev/null || echo "false")
+        in_base=$(printf '%s' "$facts" | jq -r 'if .in_base == false then "false" else "true" end' 2>/dev/null || echo "true")
+        new_body=$(cl_rewrite_claim_sha "$body" "$rebased") || new_body=""
+        if acv_claim_in_pass "$base" "$on_ref" "$in_base" >/dev/null \
+           && [ -n "$new_body" ]; then
+          if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+            remapped=$((remapped + 1))
+            echo "::notice::claim reply ${id} on PR #${PR_NUMBER}: ${sha} was rebased onto a foreign commit and landed as ${rebased} — claim updated, not retracted (#2032)"
+            continue
+          fi
+          echo "::warning::could not update claim reply ${id} on PR #${PR_NUMBER} to the rebased commit ${rebased} — retracting it instead (#2032)"
+        fi
+      fi
     fi
-    body=$(printf '%s' "$comments" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
     new_body=$(cl_retract_body "$body" "$reason")
     if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
       retracted=$((retracted + 1))
@@ -3175,7 +3334,7 @@ retract_unlanded_claims() {
       failed=1
     fi
   done <<< "$rows"
-  echo "::notice::retract_unlanded_claims: retracted ${retracted} claim reply(ies) from this ${intent} pass on PR #${PR_NUMBER} (outcome=${outcome})"
+  echo "::notice::retract_unlanded_claims: retracted ${retracted} claim reply(ies) from this ${intent} pass on PR #${PR_NUMBER} (outcome=${outcome}; ${remapped} re-pointed at rebased commits)"
   # A listing or PATCH failure leaves a possibly-false claim standing: report it so
   # callers do not treat the pass as clean (resolution gate closes).
   [ "$failed" -eq 0 ]
