@@ -131,6 +131,7 @@ readonly _MAINTAINER_GATE_SCOPE_JQ_DEFS='
 _MAINTAINER_GATE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 readonly _MAINTAINER_GATE_LIB_DIR
 
+# log_info — output an informational message to stderr with the gate prefix.
 log_info() {
   echo "[maintainer-gate] $*" >&2
 }
@@ -293,6 +294,7 @@ readonly _MAINTAINER_GATE_DISP_JQ_DEFS='
       else "clear" end;
 '
 
+# log_warn — output a warning message to stderr with the gate prefix.
 log_warn() {
   echo "[maintainer-gate] WARNING: $*" >&2
 }
@@ -490,6 +492,11 @@ maintainer_gate_open_comment_ids() {
 }
 
 # check_maintainer_comments <pr_snapshot_json> [bot_user]
+#   Count PR issue comments that are NOT resolved per gate scope rules. Comments
+#   by our account, with registered markers, or from trusted authors are cleared.
+#   RESOLVED comments by registered bots are re-checked against their latest
+#   covering disposition. Echoes undisposed comment count; returns 2 if input is
+#   unreadable, else 0.
 check_maintainer_comments() {
   local json="${1:-}"
   local bot_user="${2:-donpetry-bot}"
