@@ -28,8 +28,7 @@ GH_QUOTA_EXHAUSTED_RC=75
 gh_quota_refused() {
   local text="${1:-}"
   [ -n "$text" ] || return 1
-  printf '%s\n' "$text" \
-    | grep -qiE 'API rate limit (already )?exceeded|secondary rate limit|HTTP 429([^0-9]|$)'
+  grep -qiE 'API rate limit (already )?exceeded|secondary rate limit|HTTP 429([^0-9]|$)' <<< "$text"
 }
 
 # gh_quota_error <gh api args…>
@@ -49,16 +48,16 @@ gh_quota_error() {
 #   other failure prints gh's own stdout and stderr and keeps gh's exit code.
 gh_api_read() {
   local out_file err_file rc=0
-  out_file=$(mktemp) || { gh api "$@"; return; }
-  err_file=$(mktemp) || { rm -f "$out_file"; gh api "$@"; return; }
+  out_file=$(mktemp) || { gh api "$@"; return $?; }
+  err_file=$(mktemp) || { rm -f "$out_file"; gh api "$@"; return $?; }
   gh api "$@" >"$out_file" 2>"$err_file" || rc=$?
   if [ "$rc" -ne 0 ] && gh_quota_refused "$(cat "$out_file" "$err_file")"; then
     rm -f "$out_file" "$err_file"
     gh_quota_error "$@"
     return "$GH_QUOTA_EXHAUSTED_RC"
   fi
-  cat "$out_file"
-  cat "$err_file" >&2
+  cat "$out_file" || true
+  cat "$err_file" >&2 || true
   rm -f "$out_file" "$err_file"
   return "$rc"
 }
