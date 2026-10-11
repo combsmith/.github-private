@@ -1091,6 +1091,22 @@ list_unresolved_bot_thread_ids() {
 # human or bot cannot resolve a bot thread; and (b) a reply that landed after enumeration
 # is re-checked, so concurrent maintainer feedback can't be resolved against a stale
 # snapshot. isResolved is branched on null explicitly so a failed fetch fails closed.
+# nochange_bot_newer_count <comments-json> <verdict-ts>: prints how many bot comments
+# in the thread postdate the maintainer's no-change verdict, so the verdict cannot
+# stand. A bot comment counts when it was created after the verdict, OR edited after
+# it (bots rewrite findings in place, so the verdict may judge an older body). Fail
+# closed: a missing createdAt, a missing `lastEditedAt` key, or a non-string
+# `lastEditedAt` cannot be ordered and counts too; null means never edited. An
+# unreadable snapshot prints 1.
+nochange_bot_newer_count() {
+  printf '%s' "$1" | jq -r --arg t "$2" \
+    'map(select(((.author.__typename // "") == "Bot" or ((.author.login // "") | endswith("[bot]")))
+                and (((.createdAt // "") == "") or (.createdAt > $t)
+                     or (has("lastEditedAt") | not)
+                     or (.lastEditedAt != null and ((.lastEditedAt | type) != "string" or .lastEditedAt > $t))))) | length' \
+    2>/dev/null || echo "1"
+}
+
 resolve_addressed_bot_threads() {
   local intent="$1"
   if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
@@ -1147,7 +1163,7 @@ resolve_addressed_bot_threads() {
       ... on PullRequestReviewThread {
         isResolved
         path
-        comments(first:100){pageInfo{hasNextPage} nodes{author{login __typename} authorAssociation body createdAt}}
+        comments(first:100){pageInfo{hasNextPage} nodes{author{login __typename} authorAssociation body createdAt lastEditedAt}}
       }
     }
   }'
@@ -1220,11 +1236,9 @@ resolve_addressed_bot_threads() {
       # Reject if any bot comment postdates the no-change verdict (a newer bot finding
       # overrides it). A bot comment with no createdAt cannot be ordered -> fail closed.
       local newer_bot
-      newer_bot=$(printf '%s' "$fresh_comments" | jq -r --arg t "$nochange_disposition" \
-        'map(select(((.author.__typename // "") == "Bot" or ((.author.login // "") | endswith("[bot]")))
-                    and (((.createdAt // "") == "") or (.createdAt > $t)))) | length' 2>/dev/null || echo "1")
+      newer_bot=$(nochange_bot_newer_count "$fresh_comments" "$nochange_disposition")
       if [ "$newer_bot" != "0" ]; then
-        echo "::notice::skipping thread ${id} — a bot comment postdates the no-change disposition; leaving unresolved (#2079)"
+        echo "::notice::skipping thread ${id} — a bot comment was created or edited after the no-change disposition; leaving unresolved (#2079)"
         continue
       fi
       # A failed resolve is a resolver failure, not a skip (#2161 AC3): the caller
@@ -1646,11 +1660,9 @@ resolve_deferred_bot_threads() {
       fi
       # Reject if any bot comment postdates the no-change verdict (a newer bot finding overrides it).
       local newer_bot
-      newer_bot=$(printf '%s' "$fresh_comments" | jq -r --arg t "$nochange_disposition" \
-        'map(select(((.author.__typename // "") == "Bot" or ((.author.login // "") | endswith("[bot]")))
-                    and (((.createdAt // "") == "") or (.createdAt > $t)))) | length' 2>/dev/null || echo "1")
+      newer_bot=$(nochange_bot_newer_count "$fresh_comments" "$nochange_disposition")
       if [ "$newer_bot" != "0" ]; then
-        echo "::notice::skipping thread ${id} — a bot comment postdates the no-change disposition; leaving unresolved (#2079)"
+        echo "::notice::skipping thread ${id} — a bot comment was created or edited after the no-change disposition; leaving unresolved (#2079)"
         continue
       fi
       if gh api graphql -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \

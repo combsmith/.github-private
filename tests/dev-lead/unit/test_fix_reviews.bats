@@ -7009,6 +7009,13 @@ _nochange_resolver_case() {
   # $3 = commit: yes (the pass pushes a fix) | no (a no-commit pass, #2161)
   # NC_RESOLVE_FAIL=1 makes resolveReviewThread fail (#2161).
   local mode="$1" epoch="${2:-set}" commit="${3:-yes}"
+  # NC_BOT_EDIT sets the bot finding's lastEditedAt: null (default) | absent | <timestamp>.
+  local NC_LE
+  case "${NC_BOT_EDIT:-null}" in
+    absent) NC_LE="" ;;
+    null) NC_LE="lastEditedAt:null," ;;
+    *) NC_LE="lastEditedAt:\"${NC_BOT_EDIT}\"," ;;
+  esac
   local tmpdir="$BATS_TEST_TMPDIR/workdir"
   mkdir -p "$tmpdir"
   MUTATIONS_FILE="$BATS_TEST_TMPDIR/mutations"
@@ -7055,7 +7062,7 @@ case "\$ARGS" in
   *"fullDatabaseId"*)
     if [ "$commit" = "no" ]; then
       jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
-        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {${NC_LE}author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",fullDatabaseId:"2401234567"},
         {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
     else
       echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
@@ -7063,7 +7070,7 @@ case "\$ARGS" in
     ;;
   *"PullRequestReviewThread"*)
     jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,path:"fix.txt",comments:{pageInfo:{hasNextPage:false},nodes:[
-      {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z"},
+      {${NC_LE}author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z"},
       {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z"}]}}}}'
     ;;
   *"reviewThreads"*)
@@ -7133,6 +7140,40 @@ GITEOF
 
 @test "resolve_addressed_bot_threads (#2079 AC4): an unset DEV_LEAD_NOCHANGE_EPOCH resolves nothing on a no-change verdict" {
   _nochange_resolver_case maintainer unset
+  ! grep -q "PRRT_nochange_bot" "$MUTATIONS_FILE"
+}
+
+# ── #2161: a bot finding edited after the maintainer's verdict is not resolved on it ──
+# Bots rewrite comments in place, so a verdict about finding A must not resolve a thread
+# whose bot comment now says B. Both no-change branches fail closed on lastEditedAt.
+
+@test "resolve_addressed_bot_threads (#2161): a bot finding edited after the no-change verdict does NOT resolve the thread" {
+  NC_BOT_EDIT=2099-06-01T00:00:00Z _nochange_resolver_case maintainer set
+  ! grep -q "PRRT_nochange_bot" "$MUTATIONS_FILE"
+}
+
+@test "resolve_addressed_bot_threads (#2161): a bot finding edited before the no-change verdict still resolves" {
+  NC_BOT_EDIT=2098-06-01T00:00:00Z _nochange_resolver_case maintainer set
+  grep -q "PRRT_nochange_bot" "$MUTATIONS_FILE"
+}
+
+@test "resolve_addressed_bot_threads (#2161): lastEditedAt absent from the snapshot does NOT resolve the thread" {
+  NC_BOT_EDIT=absent _nochange_resolver_case maintainer set
+  ! grep -q "PRRT_nochange_bot" "$MUTATIONS_FILE"
+}
+
+@test "resolve_deferred_bot_threads (#2161): a bot finding edited after the no-change verdict does NOT resolve the thread" {
+  NC_BOT_EDIT=2099-06-01T00:00:00Z _nochange_resolver_case maintainer set no
+  ! grep -q "PRRT_nochange_bot" "$MUTATIONS_FILE"
+}
+
+@test "resolve_deferred_bot_threads (#2161): a bot finding edited before the no-change verdict still resolves" {
+  NC_BOT_EDIT=2098-06-01T00:00:00Z _nochange_resolver_case maintainer set no
+  grep -q "PRRT_nochange_bot" "$MUTATIONS_FILE"
+}
+
+@test "resolve_deferred_bot_threads (#2161): lastEditedAt absent from the snapshot does NOT resolve the thread" {
+  NC_BOT_EDIT=absent _nochange_resolver_case maintainer set no
   ! grep -q "PRRT_nochange_bot" "$MUTATIONS_FILE"
 }
 
