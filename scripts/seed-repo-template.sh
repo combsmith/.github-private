@@ -23,7 +23,11 @@ set -euo pipefail
 # CLAUDE.md (1-line pointer), .github/CODEOWNERS, .github/dependabot.yml (from the
 # chosen standards/dependabot/<stack>), sonar-project.properties, .gitignore,
 # LICENSE, SECURITY.md, README.md, BOOTSTRAP.md. No issue/PR templates and no
-# labeler config are introduced (AC #5).
+# labeler config are introduced (AC #5). README.md's commercial-support section is
+# read from standards/commercial-support-standard.md at the resolved ref (#2233).
+#
+# A live run that finds an open seed-scaffold/* PR on the target updates that PR's
+# branch rather than opening another (#2233).
 #
 # Cross-repo file creation follows the aw-standards-sync.sh / bootstrap-new-repo.sh
 # pattern (branch + contents API PUT + a single gh pr create); it never pushes
@@ -308,6 +312,35 @@ _emit_workflow() {
   fi
 }
 
+# ── Commercial-support README section (#2233) ─────────────────────────────────
+# Prints the canonical README block of standards/commercial-support-standard.md:
+# the body of the first ```markdown fence under its "## Canonical README Section"
+# heading, fetched at the resolved standards ref. Fails loud if the standard or
+# the block is missing — emitting README.md without it would delete the section.
+readonly COMMERCIAL_SUPPORT_STANDARD="standards/commercial-support-standard.md"
+
+_commercial_support_section() {
+  local content section
+  content="$(_fetch_standard "$COMMERCIAL_SUPPORT_STANDARD")" || content=""
+  if [ -z "$content" ]; then
+    echo "::error::could not fetch ${COMMERCIAL_SUPPORT_STANDARD} from ${STANDARDS_REPO}" >&2
+    return 1
+  fi
+  section="$(printf '%s\n' "$content" | awk '
+    /^## Canonical README Section[[:space:]]*$/ { in_sec = 1; next }
+    in_sec && !in_block && /^## / { exit }
+    in_sec && !in_block && /^```markdown[[:space:]]*$/ { in_block = 1; next }
+    in_block && /^```[[:space:]]*$/ { done = 1; exit }
+    in_block { print }
+    END { if (!done) exit 1 }
+  ')" || section=""
+  if [ -z "$section" ]; then
+    echo "::error::no \`\`\`markdown block under '## Canonical README Section' in ${COMMERCIAL_SUPPORT_STANDARD}" >&2
+    return 1
+  fi
+  printf '%s\n' "$section"
+}
+
 # ── Baseline file content (AC #3, #4) ─────────────────────────────────────────
 _gen_baseline() {
   case "$1" in
@@ -391,7 +424,12 @@ To report a vulnerability, please follow the org-wide policy in
 Do not open public issues for security reports.
 EOF
       ;;
-    README.md) cat <<'EOF'
+    README.md)
+      # The commercial-support section is read from the standard at the resolved
+      # standards ref, never copied here, so the seed cannot strip or fork it (#2233).
+      local section
+      section="$(_commercial_support_section)" || return 1
+      cat <<'EOF'
 # repo-template
 
 Org baseline scaffold for new `petry-projects` repositories. Click **Use this
@@ -404,7 +442,11 @@ one-time, per-stack setup (Dependabot + `ci.yml`).
 The workflow stubs and baseline files here are a distribution artifact of the org
 standards in [`petry-projects/.github`](https://github.com/petry-projects/.github)
 (`standards/`) and are regenerated from it — edit the standards, not this copy.
+
+---
+
 EOF
+      printf '%s\n' "$section"
       ;;
     BOOTSTRAP.md) cat <<'EOF'
 # Bootstrap a new repo from this template
@@ -434,6 +476,10 @@ are not required to start.)
 
 If you enable the `sonarcloud` workflow, set `sonar.projectKey` /
 `sonar.organization` in `sonar-project.properties` to match your repo.
+
+## 4. Contributing & Commercial Support
+
+All repositories in `petry-projects` automatically inherit the organization's canonical `CONTRIBUTING.md` from `petry-projects/.github` (do not add a bespoke `CONTRIBUTING.md` unless repo-specific overrides are strictly necessary). Ensure your repository's `README.md` includes the org-standard **Commercial Support & Integration** section referencing [CombSmith LLC](https://combsmith.com) per `standards/commercial-support-standard.md`.
 
 ---
 
@@ -631,8 +677,14 @@ _seed_report_dry() {
 #   • otherwise         → WRITE    (genuine update).
 # Under DRY_RUN it REPORTS the action (including destructive magnitude) and makes
 # no write API call (AC #4); otherwise writes go through _put_file.
+#
+# <reuse>=1 means <branch> is an already-open seed PR's branch, not a fresh cut
+# of <base_ref> (#2233). It may carry edits from an older run, so the file is made
+# to match what this run wants on the branch — the new content, or for PRESERVE
+# the base content — and is written only if the branch differs from that.
 _seed_file() {
-  local repo="$1" path="$2" content="$3" branch="$4" base_ref="$5" existing action reason
+  local repo="$1" path="$2" content="$3" branch="$4" base_ref="$5" reuse="${6:-0}"
+  local existing action reason desired on_branch
   # Assign, THEN check status: a command substitution in a conditional list disables
   # errexit inside its subshell, so an unreadable existing file (non-404) must fail
   # the seed rather than be treated as absent and overwritten with a CREATE (#1812).
@@ -656,17 +708,29 @@ _seed_file() {
     return 0
   fi
 
+  if [ "$reuse" = 1 ]; then
+    if [ "$action" = "preserve" ]; then desired="$existing"; else desired="$content"; fi
+    on_branch="$(_existing_file_content "$repo" "$path" "$branch")"
+    [ $? -eq 0 ] || return 1
+    if [ "$on_branch" = "$desired" ]; then
+      echo "  [seed] ${path} already current on ${branch} — ${reason}"
+    else
+      _put_file "$repo" "$path" "$desired" "$branch" "seed ${path}"
+    fi
+    return
+  fi
+
   case "$action" in
     create|write) _put_file "$repo" "$path" "$content" "$branch" "seed ${path}" ;;
     preserve|skip) echo "  [seed] preserved ${path} — ${reason}" ;;
   esac
 }
 
-# _seed_all_files <repo> <branch> <base_ref> — emit every workflow stub + baseline
-# file and apply it ownership-aware via _seed_file. Shared by the live and dry-run
-# paths so both make the SAME per-file decisions (#1812).
+# _seed_all_files <repo> <branch> <base_ref> [<reuse>] — emit every workflow stub +
+# baseline file and apply it ownership-aware via _seed_file. Shared by the live and
+# dry-run paths so both make the SAME per-file decisions (#1812).
 _seed_all_files() {
-  local repo="$1" branch="$2" base_ref="$3" row name path content
+  local repo="$1" branch="$2" base_ref="$3" reuse="${4:-0}" row name path content
   for row in "${WORKFLOW_MANIFEST[@]}"; do
     name="${row%%|*}"
     path=".github/workflows/${name}.yml"
@@ -675,13 +739,26 @@ _seed_all_files() {
     # an internal failure of _emit_workflow instead of aborting the seed (#1868 review).
     content="$(_emit_workflow "${name}.yml")"
     [ $? -eq 0 ] || return 1
-    _seed_file "$repo" "$path" "$content" "$branch" "$base_ref" || return 1
+    _seed_file "$repo" "$path" "$content" "$branch" "$base_ref" "$reuse" || return 1
   done
   for row in "${BASELINE_MANIFEST[@]}"; do
     path="${row%%|*}"
-    content="$(_emit_baseline "$path")"
-    [ $? -eq 0 ] || return 1
-    _seed_file "$repo" "$path" "$content" "$branch" "$base_ref" || return 1
+    # README.md carries the commercial-support section read from the standard
+    # (#2233). If that cannot be read, leave README.md alone: writing it without
+    # the section is the deletion this guards against, and one unreadable file
+    # must not block every other update.
+    # Emit once and decide on that single read, so a second fetch cannot fail
+    # after the guard passed and abort the run.
+    if [ "$path" = "README.md" ]; then
+      if ! content="$(_emit_baseline "$path")"; then
+        echo "::warning::skipping README.md — ${COMMERCIAL_SUPPORT_STANDARD} is unreadable; leaving the existing file untouched" >&2
+        continue
+      fi
+    else
+      content="$(_emit_baseline "$path")"
+      [ $? -eq 0 ] || return 1
+    fi
+    _seed_file "$repo" "$path" "$content" "$branch" "$base_ref" "$reuse" || return 1
   done
 }
 
@@ -727,15 +804,32 @@ _seed_repo() {
     echo "::error::cannot read ${default_branch} head on ${repo}" >&2
     return 1
   fi
-  gh api "repos/${repo}/git/refs" --method POST \
-    --field "ref=refs/heads/${branch}" --field "sha=${base_sha}" --silent 2>/dev/null \
-    || gh api "repos/${repo}/git/ref/heads/${branch}" --silent 2>/dev/null \
-    || { echo "::error::cannot create branch ${branch} on ${repo}" >&2; return 1; }
+  # One open seed PR per repo (#2233, #1925): if a seed-scaffold/* PR is already
+  # open, update its branch instead of cutting a new dated one, so seed PRs no
+  # longer pile up. The newest one wins if several are open.
+  local open_seed open_pr="" open_branch="" reuse=0
+  open_seed="$(gh pr list --repo "$repo" --state open --limit 100 --json number,headRefName \
+    --jq '[.[] | select(.headRefName | startswith("seed-scaffold/"))] | sort_by(.number) | last | select(. != null) | "\(.number)\t\(.headRefName)"' \
+    2>/dev/null || true)"
+  IFS=$'\t' read -r open_pr open_branch <<< "$open_seed" || true
+  if [ -n "$open_pr" ] && [ "${open_branch#seed-scaffold/}" != "$open_branch" ]; then
+    branch="$open_branch"; reuse=1
+    echo "[seed] seed PR #${open_pr} is already open on ${repo} — updating its branch ${branch} instead of opening another"
+  else
+    gh api "repos/${repo}/git/refs" --method POST \
+      --field "ref=refs/heads/${branch}" --field "sha=${base_sha}" --silent 2>/dev/null \
+      || gh api "repos/${repo}/git/ref/heads/${branch}" --silent 2>/dev/null \
+      || { echo "::error::cannot create branch ${branch} on ${repo}" >&2; return 1; }
+  fi
 
-  _seed_all_files "$repo" "$branch" "$default_branch" || return 1
+  _seed_all_files "$repo" "$branch" "$default_branch" "$reuse" || return 1
 
   local existing_pr
-  existing_pr="$(gh pr list --repo "$repo" --head "$branch" --state open --json number --jq '.[0].number' 2>/dev/null || true)"
+  # A failed lookup must not read as "no PR": that would open a duplicate.
+  if ! existing_pr="$(gh pr list --repo "$repo" --head "$branch" --state open --json number --jq '.[0].number' 2>/dev/null)"; then
+    echo "::warning::could not list open PRs for ${branch} on ${repo} — not opening a PR to avoid a duplicate" >&2
+    return 1
+  fi
   if [ -n "$existing_pr" ]; then
     echo "[seed] PR #$existing_pr already open for branch $branch on $repo"
   else
