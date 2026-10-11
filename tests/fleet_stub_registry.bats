@@ -286,3 +286,68 @@ registry_rows() {
   [ "$(role_counts Ci-failure-analyst)" = "$(counts_line 0 0 1)" ]
   grep -qF "repos/petry-projects/legacy/contents/.github/workflows/dev-lead.yml" "$CALLS"
 }
+
+# ---------------------------------------------------------------------------
+# #2289 — a legacy repo (no agent-ingress.yml) is classified from its per-role
+# file, but its drift is NOT agent-ingress.yml drift: it is reported (marked
+# legacy) and kept out of fleet_stub_drift.json, the alert + remediation input.
+# ---------------------------------------------------------------------------
+
+# drift_dev_lead_block — print the markets ingress with ONLY the dev-lead job
+# block changed (one line inside it), so its block SHA differs from canon.
+drift_dev_lead_block() {
+  awk '
+    $0 ~ /^  dev-lead:/ { injob = 1 }
+    injob && /^    uses:/ && !done { sub(/@dev-lead\/v139-stable/, "@dev-lead/v1-stable"); done = 1 }
+    { print }
+  ' "$MARKETS_INGRESS"
+}
+
+@test "#2289(a): a legacy repo whose per-role file drifts is reported, marked legacy, but not in fleet_stub_drift.json" {
+  publish_canonicals
+  printf 'name: drifted\n' | put_file "petry-projects/legacy" ".github/workflows/dev-lead.yml"
+
+  run_monitor petry-projects/legacy
+  [ "$status" -eq 0 ]
+  [ "$(role_counts Dev-lead)" = "$(counts_line 0 1 0)" ]
+  sed -n '/^### Legacy per-role stubs/,$p' "${WORK}/fleet_monitor_report.md" | grep -qF '`petry-projects/legacy`'
+  [ "$(jq -c . "${WORK}/fleet_stub_drift.json")" = "[]" ]
+}
+
+@test "#2289(b): a collapsed repo whose block drifts is in fleet_stub_drift.json against agent-ingress.yml" {
+  publish_canonicals
+  drift_dev_lead_block | put_file "petry-projects/markets" "$INGRESS_STUB"
+  # Sanity: only the dev-lead block differs from canon.
+  [ "$(job_block_sha dev-lead < "${FAKE_ROOT}/petry-projects/markets/${INGRESS_STUB}")" != \
+    "$(job_block_sha dev-lead < "$MARKETS_INGRESS")" ]
+
+  run_monitor petry-projects/markets
+  [ "$status" -eq 0 ]
+  [ "$(role_counts Dev-lead)" = "$(counts_line 0 1 0)" ]
+  [ "$(jq -c '[.[] | {repo, stub_file, role}]' "${WORK}/fleet_stub_drift.json")" = \
+    "$(jq -nc --arg sf "$INGRESS_STUB" '[{repo: "petry-projects/markets", stub_file: $sf, role: "dev-lead"}]')" ]
+}
+
+@test "#2289(c): the remediation input never lists agent-ingress.yml for a repo that has no ingress" {
+  publish_canonicals
+  drift_dev_lead_block | put_file "petry-projects/markets" "$INGRESS_STUB"
+  # The legacy repo drifts on every role that has a per-role file.
+  local role
+  for role in "${ROLES[@]}"; do
+    printf 'name: drifted %s\n' "$role" | put_file "petry-projects/legacy" ".github/workflows/${role}.yml"
+  done
+
+  run_monitor petry-projects/legacy petry-projects/markets
+  [ "$status" -eq 0 ]
+  # The legacy repo is reported DRIFTED (dev-lead row) yet absent from the JSON.
+  [ "$(role_counts Dev-lead)" = "$(counts_line 0 2 0)" ]
+  [ "$(jq '[.[] | select(.repo == "petry-projects/legacy")] | length' "${WORK}/fleet_stub_drift.json")" -eq 0 ]
+
+  # The remediation plan built from that JSON targets only markets' ingress.
+  source "$REMEDIATE"
+  plan="$(build_remediation_plan "${WORK}/fleet_stub_drift.json")"
+  [ "$(printf '%s' "$plan" | jq -r '[.[] | select(.stub_file == "'"$INGRESS_STUB"'") | .repo] | unique | join(",")')" = "petry-projects/markets" ]
+  run bash "$REMEDIATE" "${WORK}/fleet_stub_drift.json"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"petry-projects/legacy"* ]]
+}

@@ -289,9 +289,54 @@ INGRESS_NO_DEVLEAD="${BATS_TEST_DIRNAME}/fixtures/agent-ingress/collapsed-no-dev
   [ "$output" = "$(printf 'petry-projects/charlie\tMISSING\t\t%s' "$canon_dl")" ]
 }
 
-@test "stub_drift_row_role: no ingress (legacy repo) emits the legacy whole-file SHAs (AC #4)" {
+@test "stub_drift_row_role: no ingress (legacy repo) emits the legacy whole-file SHAs, tagged legacy (AC #4, #2289)" {
   local canon="cafecafecafecafecafecafecafecafecafecafe"
   run stub_drift_row_role "petry-projects/delta" "no" "block-sha-ignored" "" "$canon" "$canon"
   [ "$status" -eq 0 ]
-  [ "$output" = "$(printf 'petry-projects/delta\tALIGNED\t%s\t%s' "$canon" "$canon")" ]
+  [ "$output" = "$(printf 'petry-projects/delta\tALIGNED\t%s\t%s\tlegacy' "$canon" "$canon")" ]
+}
+
+# ---------------------------------------------------------------------------
+# Legacy-fallback rows (#2289): a role row classified from the legacy per-role
+# file (no agent-ingress.yml) is reported but never alerted or remediated as
+# agent-ingress.yml drift.
+# ---------------------------------------------------------------------------
+
+@test "stub_drift_alert_json: a legacy-tagged DRIFTED row is excluded; an ingress row is kept (#2289)" {
+  tsv="$(mktemp)"
+  stub_drift_row_role "petry-projects/legacy" "no" "" "" "$CANON" "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" > "$tsv"
+  stub_drift_row_role "petry-projects/markets" "yes" "$CANON" "ffffffffffffffffffffffffffffffffffffffff" "" "" >> "$tsv"
+  run stub_drift_alert_json "$tsv" "Dev-lead" ".github/workflows/agent-ingress.yml" "dev-lead"
+  rm -f "$tsv"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | jq -c '[.[] | {repo, stub_file, role}]')" = \
+    '[{"repo":"petry-projects/markets","stub_file":".github/workflows/agent-ingress.yml","role":"dev-lead"}]' ]
+}
+
+@test "generate_stub_drift_report: a legacy DRIFTED row stays in the table, marked legacy and not alerted (#2289)" {
+  tsv="$(mktemp)"
+  stub_drift_row_role "petry-projects/legacy" "no" "" "" "$CANON" "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" > "$tsv"
+  stub_drift_row_role "petry-projects/markets" "yes" "$CANON" "ffffffffffffffffffffffffffffffffffffffff" "" "" >> "$tsv"
+  run generate_stub_drift_report "$tsv" "$CANON" "Dev-lead"
+  rm -f "$tsv"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"🔴 DRIFTED: 2"* ]]
+  local legacy_section before_legacy
+  legacy_section="$(printf '%s\n' "$output" | sed -n '/^### Legacy per-role stubs/,$p')"
+  before_legacy="$(printf '%s\n' "$output" | sed '/^### Legacy per-role stubs/,$d')"
+  [[ "$legacy_section" == *'`petry-projects/legacy`'* ]]
+  [[ "$legacy_section" != *'`petry-projects/markets`'* ]]
+  [[ "$before_legacy" == *'`petry-projects/markets`'* ]]
+  [[ "$before_legacy" != *'`petry-projects/legacy`'* ]]
+  [[ "$output" == *"not alerted"* ]]
+}
+
+@test "generate_stub_drift_report: legacy-only drift omits the re-sync remediation table (#2289)" {
+  tsv="$(mktemp)"
+  stub_drift_row_role "petry-projects/legacy" "no" "" "" "$CANON" "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" > "$tsv"
+  run generate_stub_drift_report "$tsv" "$CANON" "Dev-lead"
+  rm -f "$tsv"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"re-sync them"* ]]
+  [[ "$output" == *"### Legacy per-role stubs"* ]]
 }
