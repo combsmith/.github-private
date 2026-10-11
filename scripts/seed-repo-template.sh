@@ -479,7 +479,7 @@ If you enable the `sonarcloud` workflow, set `sonar.projectKey` /
 
 ## 4. Contributing & Commercial Support
 
-All repositories in `petry-projects` automatically inherit the organization's canonical `CONTRIBUTING.md` from `petry-projects/.github` (do not add a bespoke `CONTRIBUTING.md` unless repo-specific overrides are strictly necessary). Ensure your repository's `README.md` includes the org-standard **Commercial Support & Integration** section referencing [CombSmith LLC](https://combsmith.com) per `standards/commercial-support-standard.md`.
+All repositories in `petry-projects` automatically inherit the organization's canonical `CONTRIBUTING.md` from `petry-projects/.github` (do not add a bespoke `CONTRIBUTING.md` unless repo-specific overrides are strictly necessary). Ensure your repository's `README.md` includes the org-standard **Commercial Support & Enterprise Services** section referencing [CombSmith LLC](https://combsmith.com) per `standards/commercial-support-standard.md`.
 
 ---
 
@@ -825,7 +825,11 @@ _seed_repo() {
   _seed_all_files "$repo" "$branch" "$default_branch" "$reuse" || return 1
 
   local existing_pr
-  existing_pr="$(gh pr list --repo "$repo" --head "$branch" --state open --json number --jq '.[0].number' 2>/dev/null || true)"
+  # A failed lookup must not read as "no PR": that would open a duplicate.
+  if ! existing_pr="$(gh pr list --repo "$repo" --head "$branch" --state open --json number --jq '.[0].number' 2>/dev/null)"; then
+    echo "::warning::could not list open PRs for ${branch} on ${repo} — not opening a PR to avoid a duplicate" >&2
+    return 1
+  fi
   if [ -n "$existing_pr" ]; then
     echo "[seed] PR #$existing_pr already open for branch $branch on $repo"
   else
