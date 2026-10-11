@@ -3576,7 +3576,13 @@ finalize_review_application() {
   local substantive="true" changed_regions="" named_regions verdict
   if [ -n "$pre_sha" ] && [ -n "$cur_sha" ] \
      && git rev-parse --verify --quiet "${pre_sha}^{commit}" >/dev/null 2>&1; then
-    if [ -z "$(git diff -w --name-only "$pre_sha" "$cur_sha" 2>/dev/null)" ]; then
+    # --numstat, not --name-only: git lists a file under --name-only even when
+    # -w leaves nothing to show, so a whitespace-only commit read as substantive
+    # and was announced as applied (#2263). A failed diff stays substantive
+    # (fail-open, as above).
+    local ws_diff ws_rc=0
+    ws_diff="$(git diff -w --numstat "$pre_sha" "$cur_sha" 2>/dev/null)" || ws_rc=$?
+    if [ "$ws_rc" -eq 0 ] && [ -z "$ws_diff" ]; then
       substantive="false"
     fi
     changed_regions="$(git diff --unified=0 "$pre_sha" "$cur_sha" 2>/dev/null | rce_parse_hunks)"
