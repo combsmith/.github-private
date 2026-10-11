@@ -367,37 +367,6 @@ cdv_fixed_verdict() {
   return 0
 }
 
-# cdv_rewrite_disposition_sha <reply_body> <cid> <old_sha> <new_sha>
-#   <reply_body> with the `sha=` of its disposition marker changed from <old_sha>
-#   to <new_sha>; every other byte is kept. Used when the push guard rebased the
-#   commit a `fixed` disposition cites, so the marker must name the commit that
-#   actually landed (#2261), as cl_rewrite_claim_sha does for a thread claim.
-#   Returns 1 (echoing nothing) unless the body carries exactly one marker, that
-#   marker is a `fixed` disposition for <cid> citing <old_sha>, both shas are full
-#   40-hex, and the rewritten body parses back to the same disposition citing
-#   <new_sha>. Pure.
-cdv_rewrite_disposition_sha() {
-  local body="${1:-}" cid="${2:-}" old="${3:-}" new="${4:-}"
-  [[ -n "$cid" ]] || return 1
-  [[ "$old" =~ ^[0-9a-f]{40}$ && "$new" =~ ^[0-9a-f]{40}$ ]] || return 1
-
-  local parsed
-  parsed=$(cdv_parse_disposition "$body" 2>/dev/null) || return 1
-  [[ "$(jq -r '[.id, .disposition, .sha] | join(" ")' <<<"$parsed" 2>/dev/null)" == "$cid fixed $old" ]] || return 1
-
-  local before rest attrs after rewritten
-  before="${body%%"$_CDV_MARKER_PREFIX"*}"
-  rest="${body#*"$_CDV_MARKER_PREFIX"}"
-  attrs="${rest%%"$_CDV_MARKER_SUFFIX"*}"
-  after="${rest#*"$_CDV_MARKER_SUFFIX"}"
-  rewritten="${before}${_CDV_MARKER_PREFIX}${attrs//sha=${old}/sha=${new}}${_CDV_MARKER_SUFFIX}${after}"
-
-  # Re-parse: the result must be the same disposition, citing the new sha.
-  parsed=$(cdv_parse_disposition "$rewritten" 2>/dev/null) || return 1
-  [[ "$(jq -r '[.id, .disposition, .sha] | join(" ")' <<<"$parsed" 2>/dev/null)" == "$cid fixed $new" ]] || return 1
-  printf '%s' "$rewritten"
-}
-
 # cdv_select_disposition <cid> <bot_user> <comments_json>
 #   Duplicate recovery / idempotency (#1992). The pre-#1992 resolver required
 #   EXACTLY ONE authorized disposition per comment and failed closed on more, so

@@ -29,6 +29,12 @@
 #     from earlier passes (a cancelled run never reached its own sweep, #2032) and
 #     cl_earlier_claim_verdict decides each: an unlanded one is retracted, and a
 #     retracted one whose fix is on the remote head is restored (cl_restore_body).
+#   - both sweeps also cover OUR PR issue-comment replies marked
+#     `disposition=fixed` (#2156): cl_select_fixed_dispositions picks them, and one
+#     whose cited commit is not on the remote head is rewritten with
+#     cl_retract_disposition_body (or re-pointed with cl_rewrite_disposition_sha
+#     when the push guard rebased it). Other dispositions cite no commit and are
+#     never selected.
 #
 # PURITY / TESTABILITY (ADR-0004)
 #   Every cl_* function except cl_remote_head is PURE: no network, no git, no gh.
@@ -41,6 +47,11 @@ set -euo pipefail
 if ! declare -F acv_parse_claim >/dev/null 2>&1; then
   # shellcheck source=addressed-claim-verify.sh
   source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/addressed-claim-verify.sh"
+fi
+# cdv_parse_disposition is the single disposition parser (#2156).
+if ! declare -F cdv_parse_disposition >/dev/null 2>&1; then
+  # shellcheck source=comment-disposition-verify.sh
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/comment-disposition-verify.sh"
 fi
 
 # The retraction marker. Matches the shared `<!-- dev-lead… -->` agent-marker
@@ -237,6 +248,20 @@ cl_escape_dashes() {
   printf '%s' "${t//--/-\\u002d}"
 }
 
+# cl_strip_claim_markers <body>
+#   <body> without its addressed-marker and claim comment, and without trailing
+#   whitespace. The claim comment ends at its FIRST `-->` (as acv_parse_claim reads
+#   it), so a different marker later on the same line, such as a
+#   comment-disposition, is kept (#2261). Returns 1 when the body cannot be
+#   processed. Pure.
+cl_strip_claim_markers() {
+  jq -Rsr --arg marker "$_DEV_LEAD_ADDRESSED_MARKER" '
+      gsub($marker; "")
+      | gsub("<!--[[:space:]]*dev-lead:claim[^\\n]*?-->"; "")
+      | sub("\\s+$"; "")
+    ' <<<"${1:-}" 2>/dev/null
+}
+
 # cl_retract_body <body> <reason>
 #   The retracted form of a claim reply. Removes the addressed-marker and the claim
 #   comment (so neither the thread gate nor another bot can treat it as a fix),
@@ -263,15 +288,8 @@ cl_retract_body() {
     unaddressed_line="${_CL_UNADDRESSED_MARKER}"$'\n'
   fi
 
-  # The claim comment ends at its FIRST `-->` (as acv_parse_claim reads it), so a
-  # different marker later on the same line, such as a comment-disposition, is
-  # kept (#2261).
   local stripped
-  stripped=$(jq -Rsr --arg marker "$_DEV_LEAD_ADDRESSED_MARKER" '
-      gsub($marker; "")
-      | gsub("<!--[[:space:]]*dev-lead:claim[^\\n]*?-->"; "")
-      | sub("\\s+$"; "")
-    ' <<<"$body" 2>/dev/null) || stripped=""
+  stripped=$(cl_strip_claim_markers "$body") || stripped=""
   local quoted
   quoted=$(printf '%s\n' "$stripped" | sed 's/^/> /')
 
@@ -436,6 +454,117 @@ cl_earlier_claim_verdict() {
   fi
   echo "kept"
   return 0
+}
+
+# cl_select_fixed_dispositions <comments_json> <bot_user> <since_iso> <pass|earlier>
+#   The issue-comment counterpart of the claim selectors (#2156). <comments_json> is
+#   the REST `issues/{pr}/comments` array ({id, user.login, body, created_at}).
+#   Emits one `<id>\t<sha>` row per comment that our account authored and that
+#   carries a `disposition=fixed` comment-disposition marker, created at or after
+#   <since_iso> (`pass`) or before it (`earlier`). <sha> is the cited commit, or
+#   empty when the marker does not parse (unverifiable -> the caller retracts).
+#   invalid / answered / informational / out-of-scope replies cite no commit and
+#   are never selected. An empty <since_iso> or a non-array payload selects
+#   nothing. Pure.
+cl_select_fixed_dispositions() {
+  local comments_json="${1:-}" bot_user="${2:-}" since="${3:-}" window="${4:-pass}"
+  [[ -z "$since" ]] && return 0
+  local bot_stripped="${bot_user%\[bot\]}"
+
+  local rows
+  rows=$(jq -r \
+    --arg u "$bot_user" --arg us "$bot_stripped" --arg since "$since" --arg w "$window" \
+    --arg prefix "$_CDV_MARKER_PREFIX" '
+      if type == "array" then
+        .[] | objects
+        | (.user.login // "") as $l
+        | select($l == $u or $l == $us or $l == ($us + "[bot]"))
+        | (.created_at // "") as $at
+        | select(if $w == "earlier" then $at < $since else $at >= $since end)
+        | (.body // "") as $b
+        | select($b | contains($prefix))
+        | select($b | test("<!-- dev-lead:comment-disposition [^\\n]*disposition=fixed\\s"))
+        | [(.id | tostring), ($b | @base64)]
+        | @tsv
+      else empty end
+    ' <<<"$comments_json" 2>/dev/null) || return 1
+  [[ -z "$rows" ]] && return 0
+
+  local id body_b64 body parsed sha
+  while IFS=$'\t' read -r id body_b64; do
+    [[ -z "$id" ]] && continue
+    body=$(base64 --decode <<<"$body_b64" 2>/dev/null || base64 -d <<<"$body_b64" 2>/dev/null || printf '')
+    sha=""
+    if parsed=$(cdv_parse_disposition "$body"); then
+      [[ "$(jq -r '.disposition // ""' <<<"$parsed" 2>/dev/null)" == "fixed" ]] || continue
+      sha=$(jq -r '.sha // ""' <<<"$parsed" 2>/dev/null || printf '')
+    fi
+    printf '%s\t%s\n' "$id" "$sha"
+  done <<<"$rows"
+}
+
+# cl_without_fixed_dispositions <comments_json>
+#   <comments_json> (the REST `issues/{pr}/comments` array) without the comments
+#   that carry a `disposition=fixed` marker, by the same test
+#   cl_select_fixed_dispositions selects them with. Those replies belong to the
+#   `fixed`-disposition sweep, which also handles a claim they carry; the claim
+#   sweep reads the rest, so no reply is rewritten by both (#2261). Returns 1 on a
+#   payload that is not an array. Pure.
+cl_without_fixed_dispositions() {
+  jq -ce '
+      if type == "array" then
+        map(select(((objects | .body // "")
+                    | test("<!-- dev-lead:comment-disposition [^\\n]*disposition=fixed\\s")) | not))
+      else error("not an array") end
+    ' <<<"${1:-}" 2>/dev/null
+}
+
+# cl_retract_disposition_body <body> <reason>
+#   The retracted form of a `fixed` disposition reply (#2156): every
+#   comment-disposition marker is removed (so the minimizer can never act on it), a
+#   plain-language retraction is prefixed, the original text is kept as a quote,
+#   and `<!-- dev-lead:retracted reason=<reason> -->` is appended so the reply is
+#   still recognised as ours. <reason> is restricted to [a-z-] (anything else
+#   becomes `unknown`). Pure.
+cl_retract_disposition_body() {
+  local body="${1:-}" reason="${2:-unknown}"
+  [[ "$reason" =~ ^[a-z][a-z-]*$ ]] || reason="unknown"
+
+  local stripped quoted
+  stripped=$(jq -Rsr '
+      gsub("<!--[[:space:]]*dev-lead:comment-disposition[^\\n]*?-->"; "")
+      | sub("\\s+$"; "")
+    ' <<<"$body" 2>/dev/null) || stripped=""
+  quoted=$(printf '%s\n' "$stripped" | sed 's/^/> /')
+
+  printf '%s\n\n%s\n\n%s\n\n%s%s -->\n' \
+    "**⚠️ Retracted by the dev-lead harness (\`${reason}\`).** This reply's \`fixed\` disposition cited a commit that is not on the PR branch (the push did not land), so it no longer counts as a fix. The comment stays open; the next dev-lead pass re-answers it against the pushed branch." \
+    "${_CL_ORIGINAL_HEADER} (unverified — it does not count as a fix):" \
+    "$quoted" \
+    "$_CL_RETRACTED_PREFIX" "$reason"
+}
+
+# cl_rewrite_disposition_sha <body> <new_sha>
+#   <body> with its `fixed` disposition marker's sha replaced by <new_sha> (a full
+#   40-hex SHA); every other byte is kept. Used when the push guard rebased the
+#   cited commit and it landed under a new SHA (#2156, as cl_rewrite_claim_sha).
+#   Returns 1 (echoing nothing) when the body has no valid `fixed` disposition or
+#   <new_sha> is not a full SHA. Pure.
+cl_rewrite_disposition_sha() {
+  local body="${1:-}" new_sha="${2:-}"
+  [[ "$new_sha" =~ ^[0-9a-f]{40}$ ]] || return 1
+  local parsed old
+  parsed=$(cdv_parse_disposition "$body") || return 1
+  [[ "$(jq -r '.disposition // ""' <<<"$parsed" 2>/dev/null)" == "fixed" ]] || return 1
+  old=$(jq -r '.sha // ""' <<<"$parsed" 2>/dev/null) || return 1
+
+  local before rest after middle new_middle
+  before="${body%%"$_CDV_MARKER_PREFIX"*}"
+  rest="${body#*"$_CDV_MARKER_PREFIX"}"
+  after="${rest#*"$_CDV_MARKER_SUFFIX"}"
+  middle="${rest%%"$_CDV_MARKER_SUFFIX"*}"
+  new_middle="${middle/"sha=${old}"/"sha=${new_sha}"}"
+  printf '%s%s%s%s%s\n' "$before" "$_CDV_MARKER_PREFIX" "$new_middle" "$_CDV_MARKER_SUFFIX" "$after"
 }
 
 # cl_remote_head

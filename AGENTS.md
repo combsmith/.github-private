@@ -501,9 +501,50 @@ PR-triggered check on the existing Lint workflow — **no new cron/scheduled wor
     in another repo, which no PR in this repo can make, so failing would only turn unrelated PRs red. It
     mirrors the N-1 rule (the same lag in the other direction), which is also accepted and flagged.
   - **Only a file that matches no standards emission is DRIFTED**, and that still fails.
-  - **A comparison that cannot be made is said so.** If the standards HEAD commit or its emission cannot
-    be read, the file stays DRIFTED and fails, but the row is tagged `ahead-unchecked` and the message
-    tells you to re-run with `STANDARDS_REF=<standards main commit>` before re-seeding.
+  - **HEAD is compared only when it is newer (#2237).** A SHA that differs from HEAD does not prove HEAD
+    is newer: an explicit `STANDARDS_REF` can name a standards branch that is not in `main`'s history. So
+    the AHEAD comparison runs only when the baseline commit is an ancestor of the standards HEAD. This is
+    read once per run from the compare API. A baseline that is ahead of HEAD or diverged from it never
+    yields AHEAD; a `::notice::` says why.
+  - **A comparison that cannot be made is said so.** If the standards HEAD commit, its relation to the
+    baseline, or its emission cannot be read, the file stays DRIFTED and fails. The row is tagged
+    `ahead-unchecked`, and the message tells you to re-run with `STANDARDS_REF=<standards main commit>`
+    before re-seeding.
+  - **A file may also match a commit between the channel and HEAD (#2237).** The comparison checks only
+    the channel and HEAD, so a template synced from a standards commit between them is still DRIFTED.
+    When HEAD is newer than the channel, the DRIFTED message does not give the bare "Re-seed it" remedy.
+    It says an intermediate-commit sync is possible and how to check it: re-run with
+    `STANDARDS_REF=<commit>` for the commits in that range that touched the file's source. If one reports
+    ALIGNED, re-seed at standards HEAD and promote standards. Never re-seed from the channel.
+    - **Decision: a message, not detection.** To match intermediate commits, the guard would need each
+      file's standards source paths, which only `seed-repo-template.sh` knows. It would also need one
+      commits-list call per DRIFTED file and one emission per commit in the range. That adds network
+      cost to every PR's lint run. The message removes the wrong advice without that cost.
+
+- **`seed-repo-template.sh` has one home: this repo (#1927).** `petry-projects/.github` once carried a
+  different, smaller script under the same name, and the two were mistaken for diverged copies. That
+  script only prints one standard file from a local checkout and is now `scripts/emit-standard-file.sh`
+  there; a CI guard in that repo fails if a `seed-repo-template.sh` reappears. Change the seeder here.
+
+- **Seeding is an operator procedure with recorded provenance (#1925).** No workflow runs
+  `seed-repo-template.sh`. An operator follows
+  [`docs/release/seeding-repo-template.md`](./docs/release/seeding-repo-template.md): dry run first, leave
+  `STANDARDS_REF` unset so the published channel is used. If the channel cannot be resolved the script
+  falls back to standards HEAD and reports `source head-fallback`; the operator stops there.
+  - **Provenance.** Every seed PR body states the resolved standards ref, how it was chosen (channel,
+    explicit, HEAD fallback or local) and the commit. Files are fetched at that commit, not through the
+    ref name. A local `STANDARDS_DIR` has no commit, so the body records `unknown`. A reused PR's body is
+    rewritten on each run.
+  - **One seed PR.** An open `seed-scaffold/*` PR is updated in place (#2233). If several are open, the
+    newest is kept and each older one is closed with a comment linking it. A PR that cannot be closed
+    fails the run. If the open PRs cannot be listed, the run stops before it writes anything.
+  - **No downgrades.** A file that differs from the run's emission but matches the emission at standards
+    HEAD is **refused**, with "standards channel is behind the template — promote standards". This is the
+    seed-side twin of the drift guard's AHEAD status and reuses its HEAD and ancestry reads. If every
+    differing file is refused, no PR is opened. A local `STANDARDS_DIR` has no ref, so this check does
+    not run there; do not use it for a real seed.
+  - **Cannot check means stop.** If the HEAD commit, its relation to the resolved ref, or the HEAD emission
+    cannot be read, the seed aborts instead of overwriting the file.
 
 - **Reference rows — `agent-ingress.yml` (#1729, AC #12):** `.github/workflows/agent-ingress.yml` is
   enrolled in the drift manifest for **post-collapse byte-identity coverage**, but
@@ -755,8 +796,13 @@ dev-lead regress to committing as the review-only machine user `donpetry-bot`
 To take the agents offline deliberately (quota conservation, incident response),
 set the Actions **variable** `AGENTS_PAUSED=true` (repo- or org-level) — do
 **not** delete or withhold `CLAUDE_CODE_OAUTH_TOKEN`. With the variable set,
-dev-lead's dispatch/relay/resume jobs skip cleanly (neutral, not red) and
-`validate-engines.sh` reports the paused state distinctly. Withholding the
+every model-calling workflow in this repository skips its model-calling jobs
+cleanly (neutral, not red), **except** the ones the registry lists as not paused
+because their model call lives in another repository. Today that is one:
+`feature-ideation.yml`, which keeps running through a pause until
+[petry-projects/.github#1295](https://github.com/petry-projects/.github/issues/1295)
+lands. The full list is in
+["Which workflows honour the pause"](#which-workflows-honour-the-pause-2249) below. Withholding the
 secret instead presents as a fleet-wide outage of failing dispatch runs that
 took real diagnosis time when it happened (2026-08-16, #1525). Resume by
 deleting the variable or setting it to anything other than `true`. If the
@@ -765,8 +811,139 @@ preflight" step fails with a single actionable error naming the secret.
 
 `AGENTS_PAUSED` is read as `vars.AGENTS_PAUSED` in the **calling** repository's context, so
 only an **organisation** variable pauses every repository, and a repository variable of the
-same name overrides the organisation's for that repository. The jobs that gate on it today
-are dev-lead's dispatch, relay and resume jobs (`dev-lead-reusable.yml`).
+same name overrides the organisation's for that repository. GitHub compares the value without
+regard to case, so `TRUE` pauses too.
+
+#### Which workflows honour the pause (#2249)
+
+Until #2249 only dev-lead read the variable, so a pause stopped one agent while pr-review, the
+persona runner and every other model-calling workflow kept starting runs. Now each of them is
+gated (with the one upstream exception above), and a test keeps it that way.
+
+- **How a workflow is paused.** The model-calling job carries `vars.AGENTS_PAUSED != 'true'` as
+  the **first term** of its job-level `if:`, followed only by `&&` terms (the job's existing event
+  filter, unchanged), so nothing after it can bypass the pause and the condition is the old one
+  whenever the variable is unset or `false`. A job skipped by `if:` cannot log, so most gated
+  workflows also have a small `fleet-paused` job on the complementary condition
+  (`vars.AGENTS_PAUSED == 'true'` and the same event filter). It prints one `::notice` line naming
+  the workflow, the pause source (`vars.AGENTS_PAUSE_SOURCE`) and the until time
+  (`vars.AGENTS_PAUSE_UNTIL`), each shown as "not set" when absent. A paused run of such a
+  workflow ends **green** with the model job skipped; read the notice, not the conclusion.
+- **Four gated workflows have no notice job**, so a paused run of them ends **skipped**:
+  `dev-lead-reusable.yml`, `pr-review.yml`, `ci-failure-analyst-reusable.yml` and `spec-drift.yml`
+  (reasons in the table). For the three reusables this is deliberate and load-bearing: the canary
+  promotion gate (`scripts/canary-rollout.sh` in `petry-projects/.github`) counts every run of an
+  agent that ends `success` or `failure` as a health sample, so a run whose only work was the
+  notice would count as a healthy sample of a release that did nothing. Do not add a
+  `fleet-paused` job to a reusable the gate samples; the test fails a `job-gate-silent` workflow
+  that has one.
+- **The notice can never reach a model.** It runs while the fleet is paused, so the test requires
+  every `fleet-paused` job and pause-notice step to hold no model credential, no AI CLI or
+  action, no `secrets:` and no `secrets.*` or `github.token` reference, and to blank (`NAME: ''`)
+  any credential it would inherit from a workflow-level or job-level `env:`. `permissions: {}`
+  does not remove an inherited env value.
+- **One registry.** `scripts/lib/fleet-pause-registry.tsv` records the decision for each workflow:
+  gated (which jobs or steps), a thin caller of a gated reusable, exempt (with the reason),
+  exempt although it holds a credential (with the reason it makes no model call), or
+  not paused because the model call lives in another repository. The table below is generated
+  from it: `python3 tests/dev-lead/integration/test_fleet_pause_coverage.py --markdown`.
+- **The check.** `tests/dev-lead/integration/test_fleet_pause_coverage.py` (CI: the
+  `agents-paused-preflight` job in `test-dev-lead.yml`) treats a workflow as **model-calling**
+  when, outside comments, a job (1) names a model credential (`CLAUDE_CODE_OAUTH_TOKEN`,
+  `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY*`, `GEMINI_API_KEY`, `COPILOT_GITHUB_TOKEN`,
+  `OPENAI_API_KEY`); (2) names an AI CLI or action (`@anthropic-ai/claude-code`,
+  `@google/gemini-cli`, `anthropics/claude-code-action`), a model CLI call (`claude -p`,
+  `gemini -p`, `gh copilot`, `gh models`) or a model API host; (3) runs a script under `scripts/`
+  whose own text holds such a call or host; or (4) calls a reusable workflow and hands it any
+  secret, by `secrets: inherit` or a `secrets:` mapping, whatever the secrets are called. It fails
+  when such a workflow has no registry row; when a registered job or step has lost its
+  condition; when a gated workflow gains a second model-calling job, or a step-gated job gains
+  an ungated model-calling step; when the notice job is missing, runs on different events, or
+  could reach a credential; and when a workflow listed as plain `exempt` starts to match the
+  rule. `tests/test_fleet_pause_coverage.bats` holds the mutation cases and fails when this table
+  and the registry differ.
+- **Known limits of the check.** It reads workflow YAML and, one level deep, the scripts a `run:`
+  step invokes. It does **not** see: a model call in a library that a script sources (the engine
+  wrapper is reached this way; its callers are caught because the wrapper needs a credential
+  only a workflow can hand over); a call that needs no listed credential and is made outside
+  rules 2 and 3, such as GitHub Models reached with an ordinary GitHub token from a sourced
+  library, a script fetched at run time, or a third-party action; and what a reusable in another
+  repository does with the secrets it is given (rule 4 flags the call, and the row records what
+  was checked there by hand, with the ref and date). When a new way to reach a model appears,
+  add it to `SIGNALS` in the test in the same change.
+- **Adding a model-calling workflow.** Copy the `if:` line and the `fleet-paused` job from any
+  gated workflow, add a `job-gate` row to the registry, and regenerate this table. Use an `exempt`
+  row only for a workflow that must run through a pause, and say why in the row; if the rule
+  flags it, the row must be `exempt-credential`, name the flagged jobs, and say why they make no
+  model call.
+
+| Workflow | How it is paused | Jobs, steps or reusable | Note |
+|---|---|---|---|
+| `dev-lead-reusable.yml` | Job condition, no notice | `dispatch,ci-relay,resume` | The original gate (#1525). No notice job: a contract test requires every job of this reusable to carry the condition, and a notice job would start a runner for every event in every consumer repository during a pause. |
+| `pr-review.yml` | Job condition, no notice | `review` | Reusable. A job condition, because the AGENTS_PAUSED branch of validate-engines.sh is not enough: with Claude as the primary engine, review-batch.sh carries on. No notice job: the canary promotion gate counts a green run as a health sample, so a paused run must end skipped. |
+| `persona-runner-reusable.yml` | Job condition | `run` | Runs every persona advisory (qa-lead, the architects and the rest). |
+| `ci-failure-analyst-reusable.yml` | Job condition, no notice | `analyze` | Reusable. No notice job, for the same reason as pr-review.yml: the canary promotion gate samples its runs. |
+| `gh-aw-cross-org.yml` | Job condition | `dispatch` |  |
+| `issue-triage-runner.yml` | Job condition | `triage` | The apply job needs triage, so it is skipped with it. |
+| `initiative-planner.yml` | Job condition | `plan` | The redispatch bridge makes no model call and still runs; the run it starts is the one that reports the pause. |
+| `idea-triage.yml` | Job condition | `triage` |  |
+| `spec-drift.yml` | Job condition, no notice | `spec-drift` | Opt-in and off by default. No notice job: its contract test requires every job to hold issues: write and the workflow to cost nothing when it does not run. |
+| `dependency-advisory.yml` | Job condition | `advisory` |  |
+| `docs-health-check.yml` | Job condition | `health-check` |  |
+| `readme-refresh.yml` | Job condition | `refresh` |  |
+| `release-notes.yml` | Job condition | `release-notes` |  |
+| `stale-manager.yml` | Job condition | `stale` |  |
+| `skill-eval-report.yml` | Job condition | `eval-report` | The discover job makes no model call and still runs. |
+| `model-ab.yml` | Job condition | `model-ab` | Manual dispatch only; paused like the rest, so resume the fleet to run an A/B. |
+| `daily-pr-review-health.yml` | Step condition | `health-check:Run health check\|Assert MCP connectivity` | A monitor: the runaway, stall and merge-ready scans make no model call and keep running. The three CLI setup steps are skipped too. |
+| `dev-lead-retry.yml` | Job condition | `retry` | No model call. Gated because a sweep records a retry attempt before it dispatches, and a paused dev-lead skips the run, so attempts would be spent on nothing. |
+| `pr-review-sweep.yml` | Job condition | `sweep` | No model call. Gated because it would re-dispatch up to 20 reviews every 15 minutes into a paused pr-review. |
+| `dev-lead.yml` | Through its reusable | `dev-lead-reusable.yml` |  |
+| `pr-review-trigger.yml` | Through its reusable | `pr-review.yml` |  |
+| `persona-runner.yml` | Through its reusable | `persona-runner-reusable.yml` |  |
+| `ci-failure-analyst.lock.yml` | Through its reusable | `ci-failure-analyst-reusable.yml` |  |
+| `feature-ideation.yml` | **Not paused** | `petry-projects/.github/.github/workflows/feature-ideation-reusable.yml` | That reusable does not read AGENTS_PAUSED, and this file is a frozen caller stub, so the fix belongs there: petry-projects/.github#1295. |
+| `budget-breaker.yml` | Exempt |  | Control plane: it sets and lifts the pause, so it has to run while paused. No model call. |
+| `budget-poller.yml` | Exempt, holds a credential | `poll` | Control plane. Holds the Claude credential only to read the usage windows (a dry run), and names the CLI package only to look up its version. No model call. |
+| `actions-fleet-monitor.yml` | Exempt |  | Monitor. No model call. |
+| `engine-token-liveness.yml` | Exempt |  | Monitor. No model call; it reads AGENTS_PAUSED itself to stay silent during a pause. |
+| `persona-mention.yml` | Exempt, holds a credential | `persona-mention` | Mention router: hands its secrets to a reusable in petry-projects/.github that makes no model call (checked at persona-mention/v1-next, 2026-10-10). It dispatches persona-runner.yml, which is gated. |
+| `auto-rebase.yml` | Exempt, holds a credential | `auto-rebase` | Hands its secrets to a reusable in petry-projects/.github that makes no model call (checked at auto-rebase/v2-next, 2026-10-10); a conflict goes to dev-lead, which is gated. |
+| `dependabot-automerge.yml` | Exempt, holds a credential | `dependabot-automerge` | Hands its secrets to a reusable in petry-projects/.github that makes no model call (checked at dependabot-automerge/v2-next, 2026-10-10). |
+| `pr-review-mention.yml` | Exempt, holds a credential | `pr-review-mention` | Passes two GitHub tokens to a reusable in petry-projects/.github that makes no model call (checked at pr-review-mention/v2-next, 2026-10-10); it dispatches pr-review, which is gated. |
+| `pr-auto-review.yml` | Exempt, holds a credential | `pr-auto-review` | Passes a GitHub token to a reusable in petry-projects/.github that makes no model call (checked at pr-auto-review/v1-next, 2026-10-10); it dispatches pr-review, which is gated. |
+| `dependabot-rebase.yml` | Exempt, holds a credential | `dependabot-rebase` | Passes a GitHub App identity to a reusable in petry-projects/.github that makes no model call (checked at dependabot-rebase/v2-next, 2026-10-10). |
+| `add-to-project.yml` | Exempt, holds a credential | `add-to-project` | Passes a GitHub App identity to a reusable in petry-projects/.github that makes no model call (checked at add-to-project/v1-stable, 2026-10-10). |
+| `pr-review-delayed-retry.yml` | Exempt |  | No model call: it re-dispatches through pr-review-sweep.yml, which is gated. |
+| `auto-rebase-retry.yml` | Exempt |  | No model call: it re-runs failed Auto-rebase jobs or dispatches dev-lead's rebase intent, which is gated. |
+| `initiative-driver.yml` | Exempt |  | No model call: it releases issues to dev-lead by label. Known gap: an issue it labels during a pause is not picked up, because dev-lead skips that event. |
+
+Every workflow not listed makes no model call (the rule above finds nothing in it) and is not
+affected by the pause: linters, tests, CodeQL, SonarCloud, reports and the canaries.
+
+**What a pause does not do.**
+
+- **It does not queue work.** An event that arrives during a pause is skipped, not replayed on
+  resume. The two timers that re-dispatch work (`dev-lead-retry.yml`, `pr-review-sweep.yml`) are
+  gated so they do not spend retry attempts or runner time on skipped runs, and they pick up
+  again on their first tick after the pause lifts. An issue labelled `dev-lead` during a pause
+  (by a person or by `initiative-driver.yml`) is not picked up afterwards: re-dispatch it as in
+  ["Steering dev-lead"](#steering-dev-lead).
+- **It does not pause `feature-ideation.yml`.** Its model call is in
+  `petry-projects/.github/.github/workflows/feature-ideation-reusable.yml`, which does not read
+  the variable, and the file here is a frozen caller stub. The fix is tracked in
+  [petry-projects/.github#1295](https://github.com/petry-projects/.github/issues/1295).
+- **It is not live in a consumer repository until the channel tag it pins has moved** (see
+  ["Merging to `main` does not activate agent code"](#merging-to-main-does-not-activate-agent-code--say-when-it-will-reach-each-channel)):
+
+  | Reusable | Live in consumer repositories when |
+  |---|---|
+  | `pr-review.yml` | `pr-review/v1-next` moves (this repository's `pr-review-trigger.yml`), then `pr-review/v1-stable` by ring promotion (the standards stub). Repositories still pinning the legacy bare `pr-review/stable` tag need that tag moved too, or a repin |
+  | `ci-failure-analyst-reusable.yml` | `ci-failure-analyst/v1-stable` moves (this repository's stub and `templates/ci-failure-analyst.yml` both pin it) |
+  | `persona-runner-reusable.yml` | on merge: `persona-runner.yml` calls it by local path, and every persona advisory runs in this repository |
+  | `dev-lead-reusable.yml` | unchanged by #2249 |
+
+  Every other gated workflow runs from this repository's default branch and is live on merge.
 
 #### Budget breaker (`budget-breaker.yml`, #2153, slice 3b of #1565)
 
@@ -784,11 +961,14 @@ as soon as the workflow is on `main`.
   `scripts/lib/budget-breaker-writer.sh`, the only file that writes the variables:
   - **trip** (at least `BUDGET_BREAKER_MIN_ITEMS` distinct items, default 3, refused for
     quota in the last `BUDGET_BREAKER_WINDOW_MIN` minutes, default 30): sets
-    `AGENTS_PAUSE_SOURCE=rate-limit-observed`, then `AGENTS_PAUSE_UNTIL=<ISO time>`, then
+    `AGENTS_PAUSE_SOURCE=rate-limit-observed`, then `AGENTS_PAUSE_UNTIL=<ISO time>`, reads
+    the state once more (see "A human pause is never touched"), then sets
     `AGENTS_PAUSED=true`.
   - **resume** (its own pause, `AGENTS_PAUSE_UNTIL` passed): sets `AGENTS_PAUSED=false`,
     then deletes `AGENTS_PAUSE_SOURCE` and `AGENTS_PAUSE_UNTIL`.
-  - **hold** and **none**: writes nothing.
+  - **hold** and **none**: writes nothing. There are two exceptions, both removals of the
+    breaker's own values only: the roll-back of a stopped trip, and the removal of leftover
+    ownership markers (both described below).
 
   The order means a failure between two writes never leaves a pause without its source. Only
   dev-lead's three quota markers count; pr-review's `rate-limited` marker (an advisory
@@ -799,10 +979,57 @@ as soon as the workflow is on `main`.
   `NOT WRITING (disarmed). Would have written: ...`, which is the dry-run evidence to review
   before arming. Armed without the secret, it logs
   `breaker armed but BUDGET_BREAKER_PAT is not configured` and exits green.
+- **Only lowercase `true` arms (#2251).** The script compares the variable with the exact
+  string `true`. `TRUE`, `True`, `true` with a space before or after it, `1`, `yes` and `on`
+  do **not** arm it. The ordinary ways to be disarmed are the exact string `false`, an empty
+  value, or no variable at all: none of them logs anything about the value. Any **other**
+  value that is not exactly `true` (`TRUE`, `1`, `yes`, `False`, a padded `true` or `false`)
+  keeps the breaker disarmed **and** logs one `::error::` line on every run
+  (`BUDGET_BREAKER_ARMED is set to "...", which is neither the exact lowercase string true
+  nor the exact lowercase string false`), in a run that still exits green. The reason this
+  is an error and not a silent off: the workflow hands the write credential to the step
+  with an Actions expression, and an expression compares strings without regard to case, so
+  `TRUE` or `True` delivers the credential to a run that will not use it. That cannot be
+  fixed in the expression. The script drops the credential unused and says so in the error;
+  fix the variable (set it to `true` or to `false`) rather than leave the error standing.
 - **A human pause is never touched.** The breaker sets and lifts only a pause that carries
   `AGENTS_PAUSE_SOURCE=rate-limit-observed`. `AGENTS_PAUSED=true` with no source, or with any
   other source, is left exactly as it is, by trip and by resume. A writing run also re-reads
   the state immediately before its first write and writes nothing if it changed.
+- **A pause set by hand during a trip is not claimed (#2251).** A trip writes the source and
+  the until, then reads the state a **second** time before it sets `AGENTS_PAUSED`. If the
+  fleet is by then paused by anyone, or the state is in any other way not what the run left
+  (for example someone deleted the source), the run does **not** set the pause, posts no
+  notice, deletes the `AGENTS_PAUSE_SOURCE` and `AGENTS_PAUSE_UNTIL` it wrote (the source
+  first), sets nothing else, and raises a `::warning::` in a green run. This roll-back is the
+  only write a run makes outside its plan, and it removes only what the same run wrote and
+  that still holds the value it wrote. Two limits to know:
+  - The window is narrowed, not closed: a pause set by hand in the one API call between that
+    second read and the write of `AGENTS_PAUSED` is still claimed. To be sure a pause set by
+    hand stays, check afterwards that `AGENTS_PAUSE_SOURCE` is absent, and delete it if not.
+  - If the roll-back itself fails, the run is red with one `::error::` that says what is
+    left. A failed delete of the source leaves `AGENTS_PAUSE_SOURCE=rate-limit-observed`
+    **and** `AGENTS_PAUSE_UNTIL` in place on purpose (a pause carrying the breaker's source
+    with no end time would be lifted by the very next run; with its end time it stands at
+    least until then): delete `AGENTS_PAUSE_SOURCE` by hand to keep the pause. A failed
+    delete of the until leaves a human pause plus a leftover until, which has no effect.
+- **Leftover ownership markers are removed (#2251).** `AGENTS_PAUSE_SOURCE=rate-limit-observed`
+  on a fleet that is **not** paused is left over: from a trip that failed before it set the
+  pause, or from a pause someone ended by hand without deleting the source. While it is
+  there, a pause set by hand reads as the breaker's own and the breaker would lift it. An
+  armed run that finds one deletes `AGENTS_PAUSE_SOURCE`, then `AGENTS_PAUSE_UNTIL` if there
+  is one, straight after reading the state, raises one `::warning::` (`leftover ownership
+  markers from an earlier run were removed`) and does nothing else: that is the run's one
+  state change, so the same run neither scans the fleet nor trips, and the next run decides
+  normally. Next to the roll-back above, this is the one further exception to "none writes
+  nothing". It removes only the breaker's own value: a source with any other value, and an
+  until with no source of the breaker's, are left alone, and so is everything on a fleet
+  that is paused. A delete that fails is one `::error::` and a red run with no retry. A run
+  that is not armed logs `Would have written: delete AGENTS_PAUSE_SOURCE; ...` and a
+  `::warning::` asking for the markers to be deleted by hand. One window remains: a pause
+  set by hand **while** the leftover source is still there, before the next armed run, is
+  indistinguishable from the breaker's own; the removal shortens that to at most the gap
+  between two runs.
 - **The secret.** `BUDGET_BREAKER_PAT` is a **fine-grained personal access token** whose
   resource owner is the `petry-projects` organisation, with the **organisation permission
   "Variables: read and write"** and nothing else (no repository permissions). It is an
@@ -810,17 +1037,42 @@ as soon as the workflow is on `main`.
   nowhere else (a static test enforces that), is handed to the step only when armed, and is
   used only for the organisation-variable calls. Never add it to another workflow, and never
   widen `GH_PAT_DON_PETRY` to do this job.
-- **Arming.** (1) Review a full weekly window of disarmed runs (#1565 criterion 9): the
-  `Would have written` lines and the job summaries. (2) Confirm the secret is set. (3) Set
-  the repository variable `BUDGET_BREAKER_ARMED=true`. The first trip creates the three
+- **Arming preconditions (#2251). Do not arm until every one of these holds.**
+  1. "Budget breaker: close the gaps found in review before it is armed" (#2251) is closed.
+  2. "AGENTS_PAUSED stops only dev-lead" (#2249) has landed: until then a pause set by the
+     breaker stops dev-lead's dispatch, relay and resume jobs and nothing else.
+  3. The five live checks below are recorded on "Auto-pause companion" (#1565), each with
+     the date and what was observed. They are mocked in the tests and must be confirmed
+     against the real API by the maintainer, with a **throwaway organisation variable**
+     (for example `BUDGET_BREAKER_PROBE`), **never** with `AGENTS_PAUSED`,
+     `AGENTS_PAUSE_SOURCE` or `AGENTS_PAUSE_UNTIL`:
+     - a value-only `PATCH` of an organisation variable keeps its visibility;
+     - a `PATCH` updates the variable's `updated_at` (the minimum hold is measured from it);
+     - the variable list paginates as the code expects: `gh api --paginate` on
+       `orgs/petry-projects/actions/variables?per_page=30` with a `--jq` filter returns every
+       variable when there are more than 30 (the filter runs once per page);
+     - the dedicated write credential can read, create, update and delete an organisation
+       variable, and nothing else;
+     - with the read credential the workflow uses, dev-lead's quota markers read as trusted:
+       the run log and summary report `quota markers read: N trusted, M dropped as
+       untrusted`; confirm a real marker is counted as trusted.
+  4. A full weekly window of disarmed runs has been reviewed (#1565 criterion 9): the
+     `Would have written` lines and the job summaries, with no `::error::` about the arming
+     value.
+  5. The secret `BUDGET_BREAKER_PAT` is set.
+- **Arming.** With the preconditions met, set the repository variable
+  `BUDGET_BREAKER_ARMED` to `true`, lowercase, with no space around it, and check that the
+  next run logs `mode: armed` and no `::error::`. The first trip creates the three
   organisation variables with the visibility of `AI_ENGINES`, read from the API (an existing
   `AGENTS_PAUSED` is the reference instead, and is updated in place without touching its
   visibility). The breaker supports the visibilities `all` and `private` only: it does not
   copy a repository selection. If the reference is visible to selected repositories only, or
   none exists, the run fails with one error before writing anything; create `AGENTS_PAUSED`
   (value `false`) by hand, visible to all repositories.
-- **Disarming.** Set `BUDGET_BREAKER_ARMED` to anything but `true`, or delete it. This stops
-  further writes; it does not lift a pause that is already set (see the next point).
+- **Disarming.** Set the repository variable `BUDGET_BREAKER_ARMED` to `false`, or delete
+  it. (Any other value that is not exactly `true` also disarms, but logs the `::error::`
+  described above on every run.) This stops further writes; it does not lift a pause that
+  is already set (see the next point).
 - **Overriding a breaker pause by hand.** To **keep** the fleet paused past the breaker's
   time, delete `AGENTS_PAUSE_SOURCE` (leave `AGENTS_PAUSED=true`): the pause is then a human
   one and automation never lifts it. To **end** a breaker pause early, set
@@ -829,23 +1081,42 @@ as soon as the workflow is on `main`.
   To hold the fleet paused regardless of the breaker, set `AGENTS_PAUSED=true` **without**
   `AGENTS_PAUSE_SOURCE` (the manual path). Ownership is the source and nothing else: a
   `AGENTS_PAUSE_SOURCE=rate-limit-observed` left behind on an unpaused fleet makes the next
-  pause set by hand look like the breaker's, so every run that sees one raises a
-  `::warning::` asking for it to be deleted (the breaker does not write on `none`).
+  pause set by hand look like the breaker's, so the next armed run removes it (see "Leftover
+  ownership markers are removed"); a run that is not armed raises a `::warning::` asking for
+  it to be deleted by hand.
 - **Anti-flap.** One decision and at most one state change per run; a variable that already
   holds the wanted value is not written again; a resume waits until the pause has stood for
-  `BUDGET_BREAKER_MIN_HOLD_MIN` minutes (default 30).
+  `BUDGET_BREAKER_MIN_HOLD_MIN` minutes (default 30). The hold is measured from the
+  `updated_at` the API reports for `AGENTS_PAUSED`. If an armed run cannot use that time
+  (missing, malformed, or later than now), it does not skip the hold: it raises a
+  `::warning::` and measures the hold from the pause's own end time (`AGENTS_PAUSE_UNTIL`)
+  instead, which is the latest moment the pause can have been set. A bad timestamp therefore
+  delays a resume by at most the minimum hold after the end time (three scheduled ticks at
+  the defaults) and can never block it; nothing is remembered between runs. If the end time
+  cannot be read either, the resume goes ahead.
 - **Fail open.** A collector that could not read, an unreadable state, or a decision that
   does not fit the state all mean no write. Missing data never pauses the fleet.
 - **Failure is loud once.** A refused credential (401, 403 or 404 on the state read) or any
   failed write is **one** `::error::` naming the token and the permission, a red run, and no
   retry. The message lists what was written before the failure. After such a run, check the
   three variables: an `AGENTS_PAUSE_SOURCE=rate-limit-observed` left behind while the fleet
-  is not paused should be deleted, because a pause set by hand while it is there would look
-  like the breaker's own and be lifted.
+  is not paused is removed by the next armed run, but until that run a pause set by hand
+  would look like the breaker's own and be lifted, so delete it by hand if you are about to
+  pause by hand. A trip that failed part-way is therefore completed two runs later, not one:
+  the next run removes the markers and the one after decides again.
 - **Notification.** One comment when the breaker trips and one when it clears, on a single
   tracking issue in this repository ("Budget breaker: automatic fleet pauses (tracking)",
   created on first use, labelled `budget-breaker` and `dev-lead:hands-off`). If the comment
   cannot be posted the run fails, so a pause is never silent.
+- **A pause notice that failed is posted late, once (#2251).** Every pause notice starts
+  with a hidden marker carrying the pause's end time. A run that **holds** the breaker's own
+  pause, while `AGENTS_PAUSED` was set less than 60 minutes ago (or when that time cannot be
+  read), looks for a comment with that marker on the tracking issue and, if there is none,
+  posts a "late notice" with the same marker. The next run finds it, so it is posted once.
+  This writes no variable. If the look-up or the late notice fails, that run is red with one
+  `::error::` too. After the first hour the breaker stops looking, so a pause whose notice
+  never got through in that hour is announced only by those red runs. A failed **resume**
+  notice is not posted late: the fleet is already running and the red run is the signal.
 - **Which credential reads.** The collector trusts a marker only when its author reads as
   OWNER, MEMBER or COLLABORATOR, and GitHub reports that relative to the token doing the
   read. The scan therefore uses the fleet's read credential

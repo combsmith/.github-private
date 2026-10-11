@@ -43,6 +43,12 @@ set -euo pipefail
 #   bash scripts/seed-repo-template.sh --emit-baseline AGENTS.md     # print a baseline file
 #   printf '%s' "$content" | bash scripts/seed-repo-template.sh --repin auto-rebase  # pure repin
 #
+# No workflow runs a seed. An operator does, following
+# docs/release/seeding-repo-template.md (dry run first; leave STANDARDS_REF unset).
+# The seed PR body records the standards ref, its source and its commit; older open
+# seed PRs are closed as superseded; and a file that is AHEAD of the resolved ref is
+# refused rather than downgraded (#1925).
+#
 # Env:
 #   DRY_RUN          "true" → print intent, make no write API calls.
 #   TEMPLATE_REPO    target repo to seed (default petry-projects/repo-template).
@@ -242,6 +248,10 @@ _fetch_standard() {
   fi
   _require gh || return 1
   ref="$(_resolve_standards_ref)"
+  # A seed run pins every read to the commit it recorded in the PR body (#1925).
+  # Reading through the ref name would follow a channel that moved mid-run, and the
+  # PR would then name a commit its content did not come from.
+  [ -z "${_STD_PIN:-}" ] || ref="$_STD_PIN"
   local -a ref_q=()
   case "$ref" in
     ""|STANDARDS_DIR) : ;;                 # no explicit ref (local seam / default)
@@ -663,8 +673,158 @@ _seed_report_dry() {
         echo "  [dry-run] would UPDATE ${path}: ${old_lines} → ${new_lines} lines (${reason})"
       fi ;;
     preserve) echo "  [dry-run] would PRESERVE ${path} (${old_lines} lines) — ${reason}; NOT overwriting" ;;
+    ahead)    echo "  [dry-run] would REFUSE ${path} (${old_lines} lines) — ${reason}; NOT overwriting" ;;
     skip)     echo "  [dry-run] would SKIP ${path} — ${reason} (no change)" ;;
   esac
+}
+
+# ── No downgrades (#1925 AC #3) ───────────────────────────────────────────────
+# The seed writes each file as it is at the RESOLVED standards ref, normally the
+# published channel. The channel lags the standards default branch until someone
+# promotes it. A template file that already matches the emission at a NEWER
+# standards commit is therefore ahead of the channel, and writing the channel's
+# version over it is a downgrade: on 2026-09-23 a seed PR would have stripped the
+# merge_group trigger a previous seed had shipped.
+#
+# So a file that differs from this run's emission is compared once more, against
+# the emission at the standards default-branch HEAD. A match is AHEAD: the seed
+# refuses to overwrite it and reports that the channel is behind the template.
+# This is the same test template_stub_drift.sh uses for its AHEAD status, and it
+# reuses that file's HEAD + ancestry reads (#1926, #2237).
+#
+# "Cannot tell" is never "not ahead": if the HEAD commit, its relation to the
+# resolved ref, or the HEAD emission cannot be read, the seed aborts instead of
+# overwriting a file it could not check.
+_SEED_NEWER_STATE=""   # "" (not resolved yet) | none | newer | unknown
+_SEED_NEWER_SHA=""
+_SEED_WRITES=0         # files written by this run
+_SEED_AHEAD=()         # paths refused because the template is ahead
+
+# _seed_newer_standards — resolve ONCE whether the standards default branch is past
+# the resolved ref. Sets _SEED_NEWER_STATE / _SEED_NEWER_SHA; call it in the
+# current shell (not $()) so the result is kept.
+#   none    — nothing newer: the resolved ref already is HEAD, or it is ahead of /
+#             diverged from HEAD (an explicit STANDARDS_REF off the default
+#             branch), or the STANDARDS_DIR local seam, which has no ref at all.
+#   newer   — the resolved commit is an ancestor of HEAD (_SEED_NEWER_SHA).
+#   unknown — HEAD, the resolved commit, or their relation could not be read.
+_seed_newer_standards() {
+  [ -z "$_SEED_NEWER_STATE" ] || return 0
+  _SEED_NEWER_STATE="none"; _SEED_NEWER_SHA=""
+  [ "${_STD_SRC:-}" != "local" ] || return 0
+  local head relation
+  head="$(_template_drift_head_sha)"
+  if [ -z "$head" ] || [ -z "${_STD_SHA:-}" ]; then
+    _SEED_NEWER_STATE="unknown"
+    return 0
+  fi
+  [ "$head" != "$_STD_SHA" ] || return 0
+  relation="$(_template_drift_compare "$_STD_SHA" "$head")"
+  case "$relation" in
+    ahead) _SEED_NEWER_STATE="newer"; _SEED_NEWER_SHA="$head" ;;
+    identical|behind|diverged) : ;;
+    *) _SEED_NEWER_STATE="unknown" ;;
+  esac
+}
+
+# _seed_emit_at <ref> <emit_flag> <emit_arg> — the content this script emits for one
+# file with standards pinned at <ref>. A child process, because the resolved ref is
+# memoized per process. Non-zero when the emission fails or is empty.
+_seed_emit_at() {
+  local out
+  out="$(STANDARDS_REF="$1" DRY_RUN=false bash "${SEED_REPO_ROOT}/scripts/seed-repo-template.sh" "$2" "$3" 2>/dev/null)" || return 1
+  [ -n "$out" ] || return 1
+  printf '%s' "$out"
+}
+
+# _seed_is_ahead <existing_content> <emit_flag> <emit_arg>
+#   0 — <existing_content> matches the emission at a newer standards commit.
+#   1 — it does not (or there is no newer commit): a normal update.
+#   2 — it could not be checked; an ::error:: names what could not be read.
+_seed_is_ahead() {
+  local existing="$1" flag="$2" arg="$3" newer
+  _seed_newer_standards
+  case "$_SEED_NEWER_STATE" in
+    none) return 1 ;;
+    unknown)
+      echo "::error::cannot tell whether ${STANDARDS_REPO} has a standards commit newer than ${_STD_REF:-the resolved ref} — refusing to overwrite a differing file that may be ahead of it (#1925)" >&2
+      return 2 ;;
+  esac
+  if ! newer="$(_seed_emit_at "$_SEED_NEWER_SHA" "$flag" "$arg")"; then
+    echo "::error::cannot compute the standards HEAD (${_SEED_NEWER_SHA:0:12}) emission for ${arg} — refusing to overwrite a differing file that may be ahead of ${_STD_REF} (#1925)" >&2
+    return 2
+  fi
+  [ "$existing" = "$newer" ]
+}
+
+# _seed_report_ahead — after the per-file pass, say once that the channel is behind
+# the template when any file was refused. Prints nothing otherwise.
+_seed_report_ahead() {
+  [ "${#_SEED_AHEAD[@]}" -gt 0 ] || return 0
+  echo "::warning::standards channel is behind the template — promote standards (scripts/cut-standards-release.sh in ${STANDARDS_REPO}). ${#_SEED_AHEAD[@]} file(s) already match the emission at standards HEAD ${_SEED_NEWER_SHA:0:12}, newer than ${_STD_REF}, and were NOT overwritten: ${_SEED_AHEAD[*]} (#1925)"
+}
+
+# ── Seed PR provenance + supersede (#1925 AC #1, #2) ──────────────────────────
+
+# _seed_source_label <source> — one line saying how the standards ref was chosen.
+# shellcheck disable=SC2016
+_seed_source_label() {
+  case "${1:-}" in
+    channel)       printf 'channel — the published standards channel `%s`' "$STANDARDS_CHANNEL" ;;
+    explicit)      printf 'explicit — `STANDARDS_REF` was set for this run' ;;
+    head-fallback) printf 'HEAD fallback — the channel `%s` is not published, so the default-branch HEAD was used' "$STANDARDS_CHANNEL" ;;
+    local)         printf 'local — a `STANDARDS_DIR` checkout, not a ref on %s' "$STANDARDS_REPO" ;;
+    *)             printf 'unknown' ;;
+  esac
+}
+
+# _seed_pr_body <ref> <sha> <source> [<ahead_path>...] — the seed PR body. It
+# states which standards ref the seed was generated from, how that ref was chosen
+# and the commit it resolved to, so a regressing seed can be explained without
+# reconstructing it from blob diffs. The hidden marker carries the same three
+# values for tooling. Any refused (ahead) files are listed. Pure.
+# shellcheck disable=SC2016
+_seed_pr_body() {
+  local ref="${1:-}" sha="${2:-}" src="${3:-}" p
+  [ $# -lt 3 ] || shift 3
+  printf 'Seeds the org baseline scaffold (workflow stubs pinned to published channel tags + root/baseline files) from %s standards/. Generated by seed-repo-template.sh (#966).\n\n' "$STANDARDS_REPO"
+  printf '## Standards provenance\n\n'
+  printf -- '- **Resolved ref:** `%s`\n' "$ref"
+  printf -- '- **Source:** %s\n' "$(_seed_source_label "$src")"
+  printf -- '- **Commit:** `%s`\n\n' "${sha:-unknown}"
+  printf '<!-- seed-repo-template standards_ref=%s standards_sha=%s source=%s -->\n' "$ref" "${sha:-unknown}" "$src"
+  if [ $# -gt 0 ]; then
+    printf '\n## Left alone: the template is ahead of the channel\n\n'
+    printf 'These files already match the seed emission at a newer standards commit than `%s`, so this run did not overwrite them. The standards channel is behind the template: promote standards.\n\n' "$ref"
+    for p in "$@"; do printf -- '- `%s`\n' "$p"; done
+  fi
+}
+
+# _seed_close_superseded <repo> <keep_pr> <open_seed_lines> — close every open
+# seed-scaffold/* PR other than <keep_pr>, each with a comment linking it, so one
+# seed PR is open per repo. <open_seed_lines> is "<number>\t<branch>" per line.
+# Returns non-zero when a PR that should have been closed was not.
+_seed_close_superseded() {
+  local repo="$1" keep="$2" lines="$3" n b failed=0
+  while IFS=$'\t' read -r n b; do
+    [[ "$n" =~ ^[0-9]+$ ]] || continue
+    [ "${b#seed-scaffold/}" != "$b" ] || continue
+    [ "$n" != "$keep" ] || continue
+    if [ -z "$keep" ]; then
+      echo "::warning::could not identify this run's seed PR on ${repo} — leaving older seed PR #${n} open; close it by hand" >&2
+      failed=1
+      continue
+    fi
+    if gh pr close "$n" --repo "$repo" \
+        --comment "Superseded by #${keep}, which carries the current seed (standards ref \`${_STD_REF:-unknown}\`, commit \`${_STD_SHA:-unknown}\`). Closing this one so a single seed PR is open (#1925)." \
+        > /dev/null 2>&1; then
+      echo "[seed] closed superseded seed PR #${n} on ${repo} (kept #${keep})"
+    else
+      echo "::warning::could not close superseded seed PR #${n} on ${repo} — close it by hand; #${keep} carries the current seed" >&2
+      failed=1
+    fi
+  done <<< "$lines"
+  return "$failed"
 }
 
 # _seed_file <repo> <path> <new_content> <branch> <base_ref>
@@ -674,6 +834,8 @@ _seed_report_dry() {
 #   • drift-allowlisted → PRESERVE (intentionally customized per consumer, AC #2).
 #   • managed marker    → PRESERVE (owned by another managed process, AC #1).
 #   • byte-identical    → SKIP     (a re-seed writes nothing, AC #3).
+#   • ahead of the ref  → REFUSE   (it matches the emission at a newer standards
+#                         commit; writing would downgrade it — #1925 AC #3).
 #   • otherwise         → WRITE    (genuine update).
 # Under DRY_RUN it REPORTS the action (including destructive magnitude) and makes
 # no write API call (AC #4); otherwise writes go through _put_file.
@@ -682,9 +844,14 @@ _seed_report_dry() {
 # of <base_ref> (#2233). It may carry edits from an older run, so the file is made
 # to match what this run wants on the branch — the new content, or for PRESERVE
 # the base content — and is written only if the branch differs from that.
+#
+# <emit_flag> <emit_arg> name how this file is emitted (--emit-workflow <name.yml>
+# or --emit-baseline <path>). They enable the no-downgrade check; a caller that
+# omits them gets no such check.
 _seed_file() {
   local repo="$1" path="$2" content="$3" branch="$4" base_ref="$5" reuse="${6:-0}"
-  local existing action reason desired on_branch
+  local emit_flag="${7:-}" emit_arg="${8:-}"
+  local existing action reason desired on_branch ahead_rc
   # Assign, THEN check status: a command substitution in a conditional list disables
   # errexit inside its subshell, so an unreadable existing file (non-404) must fail
   # the seed rather than be treated as absent and overwritten with a CREATE (#1812).
@@ -701,6 +868,20 @@ _seed_file() {
     action="skip"; reason="unchanged (AC #3)"
   else
     action="write"; reason="content differs from the standards-derived baseline"
+    # Only a file that would be overwritten pays for the newer-commit comparison.
+    if [ -n "$emit_flag" ]; then
+      ahead_rc=0
+      _seed_is_ahead "$existing" "$emit_flag" "$emit_arg" || ahead_rc=$?
+      case "$ahead_rc" in
+        0)
+          action="ahead"
+          reason="the template is ahead of ${_STD_REF}: it matches the emission at standards HEAD ${_SEED_NEWER_SHA:0:12}"
+          _SEED_AHEAD+=("$path")
+          ;;
+        1) : ;;
+        *) return 1 ;;
+      esac
+    fi
   fi
 
   if _is_dry; then
@@ -709,7 +890,7 @@ _seed_file() {
   fi
 
   if [ "$reuse" = 1 ]; then
-    if [ "$action" = "preserve" ]; then desired="$existing"; else desired="$content"; fi
+    if [ "$action" = "preserve" ] || [ "$action" = "ahead" ]; then desired="$existing"; else desired="$content"; fi
     on_branch="$(_existing_file_content "$repo" "$path" "$branch")"
     [ $? -eq 0 ] || return 1
     if [ "$on_branch" = "$desired" ]; then
@@ -723,6 +904,7 @@ _seed_file() {
   case "$action" in
     create|write) _put_file "$repo" "$path" "$content" "$branch" "seed ${path}" ;;
     preserve|skip) echo "  [seed] preserved ${path} — ${reason}" ;;
+    ahead) echo "  [seed] REFUSED ${path} — ${reason}; not overwriting" ;;
   esac
 }
 
@@ -739,7 +921,7 @@ _seed_all_files() {
     # an internal failure of _emit_workflow instead of aborting the seed (#1868 review).
     content="$(_emit_workflow "${name}.yml")"
     [ $? -eq 0 ] || return 1
-    _seed_file "$repo" "$path" "$content" "$branch" "$base_ref" "$reuse" || return 1
+    _seed_file "$repo" "$path" "$content" "$branch" "$base_ref" "$reuse" --emit-workflow "${name}.yml" || return 1
   done
   for row in "${BASELINE_MANIFEST[@]}"; do
     path="${row%%|*}"
@@ -758,7 +940,7 @@ _seed_all_files() {
       content="$(_emit_baseline "$path")"
       [ $? -eq 0 ] || return 1
     fi
-    _seed_file "$repo" "$path" "$content" "$branch" "$base_ref" "$reuse" || return 1
+    _seed_file "$repo" "$path" "$content" "$branch" "$base_ref" "$reuse" --emit-baseline "$path" || return 1
   done
 }
 
@@ -770,6 +952,12 @@ _seed_repo() {
   # Resolve in the current shell (not $()) so the memoized _STD_* globals persist.
   _resolve_standards_ref > /dev/null
   _resolved_standards_sha > /dev/null
+  # From here on, fetch standards at the resolved COMMIT, not through the ref name,
+  # so the content and the provenance the PR records cannot come apart. A local
+  # STANDARDS_DIR has no commit, and reads the checkout as before.
+  if [[ "${_STD_SHA:-}" =~ ^[0-9a-f]{40}$ ]]; then
+    _STD_PIN="$_STD_SHA"
+  fi
   echo "[seed] target repo: ${repo} (stack: ${DEPENDABOT_STACK})"
   echo "[seed] standards ref: ${_STD_REF} (commit ${_STD_SHA:-unknown}, source ${_STD_SRC:-?}) on ${STANDARDS_REPO}"
   if [ "${_STD_SRC:-}" = "head-fallback" ]; then
@@ -794,7 +982,8 @@ _seed_repo() {
 
   if _is_dry; then
     echo "[seed] [dry-run] planning per-file writes against ${default_branch} on ${repo} (no writes will be made):"
-    _seed_all_files "$repo" "$branch" "$default_branch"
+    _seed_all_files "$repo" "$branch" "$default_branch" || return 1
+    _seed_report_ahead
     echo "[seed] PASS (dry-run) — ${repo}"
     return 0
   fi
@@ -806,38 +995,96 @@ _seed_repo() {
   fi
   # One open seed PR per repo (#2233, #1925): if a seed-scaffold/* PR is already
   # open, update its branch instead of cutting a new dated one, so seed PRs no
-  # longer pile up. The newest one wins if several are open.
-  local open_seed open_pr="" open_branch="" reuse=0
-  open_seed="$(gh pr list --repo "$repo" --state open --limit 100 --json number,headRefName \
-    --jq '[.[] | select(.headRefName | startswith("seed-scaffold/"))] | sort_by(.number) | last | select(. != null) | "\(.number)\t\(.headRefName)"' \
-    2>/dev/null || true)"
+  # longer pile up. The newest one wins if several are open; the others are closed
+  # as superseded once this run's PR is settled (#1925 AC #2).
+  # The limit is applied before the jq filter, so it must cover every open PR on
+  # the repo, not just the seed ones: a seed PR cut off by it would be missed and
+  # a second one opened.
+  # A failed listing must not read as "no seed PR is open": that would open a second
+  # seed PR and leave the older ones open, which is the pile-up this prevents.
+  local open_seeds open_seed open_pr="" open_branch="" reuse=0 branch_created=0
+  if ! open_seeds="$(gh pr list --repo "$repo" --state open --limit 1000 --json number,headRefName \
+      --jq '[.[] | select(.headRefName | startswith("seed-scaffold/"))] | sort_by(.number) | .[] | "\(.number)\t\(.headRefName)"' \
+      2>/dev/null)"; then
+    echo "::error::cannot list open pull requests on ${repo} — not seeding, because an open seed PR could not be ruled out" >&2
+    return 1
+  fi
+  open_seed="$(printf '%s\n' "$open_seeds" | tail -n 1)"
   IFS=$'\t' read -r open_pr open_branch <<< "$open_seed" || true
   if [ -n "$open_pr" ] && [ "${open_branch#seed-scaffold/}" != "$open_branch" ]; then
     branch="$open_branch"; reuse=1
     echo "[seed] seed PR #${open_pr} is already open on ${repo} — updating its branch ${branch} instead of opening another"
+  elif gh api "repos/${repo}/git/refs" --method POST \
+      --field "ref=refs/heads/${branch}" --field "sha=${base_sha}" --silent 2>/dev/null; then
+    branch_created=1
   else
-    gh api "repos/${repo}/git/refs" --method POST \
-      --field "ref=refs/heads/${branch}" --field "sha=${base_sha}" --silent 2>/dev/null \
-      || gh api "repos/${repo}/git/ref/heads/${branch}" --silent 2>/dev/null \
+    gh api "repos/${repo}/git/ref/heads/${branch}" --silent 2>/dev/null \
       || { echo "::error::cannot create branch ${branch} on ${repo}" >&2; return 1; }
+    # Today's branch already exists, left by an earlier run. Like an open seed PR's
+    # branch it may carry that run's edits, so every file is made to match what
+    # THIS run wants. Otherwise a file this run skips, preserves or refuses would
+    # keep the earlier run's content, and a refused downgrade could still ship.
+    reuse=1
+    echo "[seed] branch ${branch} already exists on ${repo} — bringing it in line with this run"
   fi
 
   _seed_all_files "$repo" "$branch" "$default_branch" "$reuse" || return 1
+  _seed_report_ahead
 
-  local existing_pr
+  # Nothing was written to a fresh branch: there is nothing to open a PR for. This
+  # is the outcome when the template already matches the ref, or when every
+  # differing file is ahead of it — a refused downgrade must not become a PR.
+  if [ "$branch_created" = 1 ] && [ "$_SEED_WRITES" -eq 0 ]; then
+    gh api "repos/${repo}/git/refs/heads/${branch}" --method DELETE --silent 2>/dev/null \
+      || echo "::warning::could not delete the empty branch ${branch} on ${repo}" >&2
+    if [ "${#_SEED_AHEAD[@]}" -gt 0 ]; then
+      echo "[seed] no PR opened on ${repo}: the only differing files are ahead of ${_STD_REF} (see the warning above)"
+    else
+      echo "[seed] no PR opened on ${repo}: it already matches ${_STD_REF}"
+    fi
+    echo "[seed] PASS — ${repo}"
+    return 0
+  fi
+
+  local existing_pr pr_body pr_url keep_pr=""
+  pr_body="$(_seed_pr_body "$_STD_REF" "${_STD_SHA:-}" "${_STD_SRC:-}" "${_SEED_AHEAD[@]}")"
   # A failed lookup must not read as "no PR": that would open a duplicate.
   if ! existing_pr="$(gh pr list --repo "$repo" --head "$branch" --state open --json number --jq '.[0].number' 2>/dev/null)"; then
     echo "::warning::could not list open PRs for ${branch} on ${repo} — not opening a PR to avoid a duplicate" >&2
     return 1
   fi
+  # A dated branch left by an earlier run, with no open PR, and nothing written by
+  # this run: open a PR only if the branch still has something the base lacks. If
+  # that cannot be read, go on to `gh pr create`, which fails loudly on an empty PR.
+  if [ -z "$existing_pr" ] && [ "$branch_created" != 1 ] && [ "$_SEED_WRITES" -eq 0 ]; then
+    local ahead_by
+    ahead_by="$(gh api "repos/${repo}/compare/${default_branch}...${branch}" --jq '.ahead_by' 2>/dev/null || true)"
+    if [ "$ahead_by" = "0" ]; then
+      echo "[seed] no PR opened on ${repo}: branch ${branch} has nothing ${default_branch} lacks"
+      echo "[seed] PASS — ${repo}"
+      return 0
+    fi
+  fi
+
   if [ -n "$existing_pr" ]; then
     echo "[seed] PR #$existing_pr already open for branch $branch on $repo"
+    keep_pr="$existing_pr"
+    # The PR now carries THIS run's content, so its body must name this run's ref.
+    gh pr edit "$existing_pr" --repo "$repo" --body "$pr_body" > /dev/null 2>&1 \
+      || { echo "::error::cannot update the standards provenance on PR #${existing_pr} on ${repo}" >&2; return 1; }
   else
-    gh pr create --repo "$repo" --head "$branch" --base "$default_branch" \
+    pr_url="$(gh pr create --repo "$repo" --head "$branch" --base "$default_branch" \
       --title "chore: seed org baseline file scaffold" \
-      --body "$(printf 'Seeds the org baseline scaffold (workflow stubs pinned to published channel tags + root/baseline files) from %s standards/. Generated by seed-repo-template.sh (#966).\n' "$STANDARDS_REPO")" \
-      2>/dev/null \
+      --body "$pr_body" 2>/dev/null)" \
       || { echo "::error::cannot open PR on ${repo}" >&2; return 1; }
+    keep_pr="${pr_url##*/}"
+    [[ "$keep_pr" =~ ^[0-9]+$ ]] || keep_pr=""
+    [ -z "$keep_pr" ] || echo "[seed] opened seed PR #${keep_pr} on ${repo}"
+  fi
+
+  if ! _seed_close_superseded "$repo" "$keep_pr" "$open_seeds"; then
+    echo "::error::the seed PR is open on ${repo}, but an older seed PR could not be closed — see the warning above" >&2
+    return 1
   fi
   echo "[seed] PASS — ${repo}"
 }
@@ -854,6 +1101,7 @@ _put_file() {
     --field "message=${msg}" --field "content=${encoded}" --field "branch=${branch}" \
     "${sha_arg[@]}" --silent 2>/dev/null \
     || { echo "::error::cannot write ${path} on ${repo}" >&2; return 1; }
+  _SEED_WRITES=$((_SEED_WRITES + 1))
   echo "  [seed] wrote ${path}"
 }
 
