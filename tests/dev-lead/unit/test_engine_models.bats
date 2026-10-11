@@ -14,6 +14,8 @@ setup() {
   unset COPILOT_API_MODEL COPILOT_API_MODEL_DEFAULTED AI_ENGINES AI_DUCK_ENGINE AI_DUCK_MODEL GEMINI_AVAILABLE
   # shellcheck source=../../../scripts/lib/engine-models.sh
   source "$LIB"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 }
 
 # Sources engine.sh for <engine> in a subshell and prints the requested vars.

@@ -151,7 +151,7 @@ post_rate_limited() {
   fi
 
   local reset_time
-  reset_time=$(cat /tmp/dev-lead-rate-limit-reset 2>/dev/null || true)
+  reset_time=$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" 2>/dev/null || true)
   local reset_detail=""
   if [ -n "$reset_time" ]; then
     reset_detail=" reset=${reset_time}"

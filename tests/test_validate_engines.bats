@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 setup() {
-  export TEST_DIR="$BATS_TMPDIR/validate-test"
+  export TEST_DIR="$BATS_TEST_TMPDIR/validate-test"
   mkdir -p "$TEST_DIR/bin"
   export PATH="$TEST_DIR/bin:$PATH"
 

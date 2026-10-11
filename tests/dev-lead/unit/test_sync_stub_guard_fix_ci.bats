@@ -25,6 +25,8 @@ setup() {
   export SSG_RETRY_SLEEP=0
   export GIT_AUTHOR_NAME=T GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=T GIT_COMMITTER_EMAIL=t@t
   export GIT_EDITOR=true
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 }
 
 _stub_body() {
