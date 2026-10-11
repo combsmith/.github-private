@@ -203,11 +203,9 @@ failed_file=$(mktemp)
 # metrics TSV so the existing high-failure JSON export contract is untouched.
 # TSV: repo <TAB> wf_file <TAB> expected <TAB> actual <TAB> hit_rate <TAB> missed <TAB> label
 schedule_metrics_file=$(mktemp)
-# Normalized {role,conclusion} JSONL for the legacy (non-ingress) runs sampled in
-# the loop below, combined with the ingress runs of 2e for the per-role
-# attribution report (#1727). Created HERE, before the loop that appends to it:
-# under `set -u` an append to a not-yet-assigned name aborts the whole monitor.
-legacy_attr_file=$(mktemp)
+# Normalized legacy runs for role parity (2e). Created here, not beside
+# ingress_attr_file, because the per-repo loop below already appends to it (#2277).
+legacy_attr_file=$(mktemp) || { echo "::error::Failed to create legacy_attr_file" >&2; exit 1; }
 any_failures=0
 total_workflows=0
 
