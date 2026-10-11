@@ -5369,6 +5369,74 @@ GITEOF
   ! grep -q -- "--auto" "$merge_file"
 }
 
+@test "review-changes evidence: whitespace-only change → not applied on a git that names the file under -w --name-only (#2263)" {
+  local git_repo="$BATS_TEST_TMPDIR/r" comment_file="$BATS_TEST_TMPDIR/c" merge_file="$BATS_TEST_TMPDIR/m" push_file="$BATS_TEST_TMPDIR/p"
+  mkdir -p "$git_repo"; touch "$comment_file" "$merge_file" "$push_file"
+  _ev_setup_repo "$git_repo" 'line1\nline2\nline3\nline4\nline5   \nline6\nline7\nline8\nline9\nline10\n'
+  _ev_gh_stub "$comment_file" "$merge_file"
+  # Whether `git diff -w --name-only` names a whitespace-only file depends on the
+  # git version (2.50 does). Pin that answer here, so this test fails on the old
+  # check whatever git the runner has.
+  cat > "$STUB_BIN_DIR/git" << GITEOF
+#!/usr/bin/env bash
+if [ "\$1" = "push" ]; then echo "\$*" >> "${push_file}"; exit 0; fi
+if [ "\$1" = "diff" ] && [ "\$2" = "-w" ] && [ "\$3" = "--name-only" ]; then
+  shift 2
+  exec /usr/bin/git diff "\$@"
+fi
+exec /usr/bin/git "\$@"
+GITEOF
+  chmod +x "$STUB_BIN_DIR/git"
+
+  cd "$git_repo"
+  run bash -c "
+    export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=false
+    export PR_NUMBER=54 HEAD_SHA=$EV_HEAD_SHA REPO='petry-projects/.github-private'
+    export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead' ACTOR=humanreviewer
+    export PATH="$STUB_BIN_DIR:\$PATH"
+    bash '$FIX_REVIEWS_SCRIPT'
+  " 2>&1
+
+  [ "$status" -eq 0 ]
+  ! grep -q "status=applied" "$comment_file" || false
+  grep -q "status=not-applied" "$comment_file"
+  grep -q "no substantive change" "$comment_file"
+}
+
+@test "review-changes evidence: a whitespace diff that cannot be computed stays applied, fail-open (#2263)" {
+  local git_repo="$BATS_TEST_TMPDIR/r" comment_file="$BATS_TEST_TMPDIR/c" merge_file="$BATS_TEST_TMPDIR/m" push_file="$BATS_TEST_TMPDIR/p"
+  mkdir -p "$git_repo"; touch "$comment_file" "$merge_file" "$push_file"
+  # Engine reworks line 5 (the region the review named): a real fix.
+  _ev_setup_repo "$git_repo" 'line1\nline2\nline3\nline4\nline5 REWORKED\nline6\nline7\nline8\nline9\nline10\n'
+  _ev_gh_stub "$comment_file" "$merge_file"
+  # The whitespace-insensitive diff fails with no output. Empty output alone must
+  # not read as "nothing but whitespace changed".
+  cat > "$STUB_BIN_DIR/git" << GITEOF
+#!/usr/bin/env bash
+if [ "\$1" = "push" ]; then echo "\$*" >> "${push_file}"; exit 0; fi
+if [ "\$1" = "diff" ] && [ "\$2" = "-w" ]; then
+  echo "fatal: bad object" >&2
+  exit 128
+fi
+exec /usr/bin/git "\$@"
+GITEOF
+  chmod +x "$STUB_BIN_DIR/git"
+
+  cd "$git_repo"
+  run bash -c "
+    export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=false
+    export PR_NUMBER=54 HEAD_SHA=$EV_HEAD_SHA REPO='petry-projects/.github-private'
+    export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead' ACTOR=humanreviewer
+    export PATH="$STUB_BIN_DIR:\$PATH"
+    bash '$FIX_REVIEWS_SCRIPT'
+  " 2>&1
+
+  [ "$status" -eq 0 ]
+  [ -s "$push_file" ]
+  grep -q "status=applied" "$comment_file"
+  ! grep -q "status=not-applied" "$comment_file" || false
+}
+
 # ── empty net-diff guard extended to review-changes + rebase (#1786, #1620) ────
 #
 # #1340 shipped the net-zero guard for fix-reviews/fix-bot-comment only. #1786

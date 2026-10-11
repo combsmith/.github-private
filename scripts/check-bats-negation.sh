@@ -23,10 +23,14 @@ set -euo pipefail
 #     run ! cmd               # bats >= 1.5; note it overwrites $status/$output
 #     if cmd; then false; fi
 #
-# What is flagged: a statement that starts with `!`, in a .bats file, unless
+# What is flagged: a command that starts with `!`, in a .bats file, unless
 #   - it ends in `|| false` (or `|| return <n>`, `|| exit <n>`, `|| fail …`), or
 #   - it is the last command before a closing `}` in column 0, or
 #   - its line carries the marker `bats-negation-ok:` with a reason.
+# A line is split into commands at each `;`, so `foo; ! bar` is judged like a
+# `! bar` on its own line, and in `! foo; bar` the negation is flagged because a
+# command follows it on the same line. Quoted text and a trailing comment are
+# blanked first: a `;`, a `!` or a `|| false` inside either is not syntax.
 # Heredoc bodies are skipped (they are data, often an embedded script), and a
 # statement continued with a trailing backslash is read as one statement.
 # `foo && ! bar` is not flagged: it is just as inert, but cannot be told apart
@@ -44,9 +48,18 @@ fi
 files=()
 for target in "$@"; do
   if [ -d "$target" ]; then
+    # The listing is captured so its status is checked (pipefail covers find): in
+    # a process substitution a failed find is ignored, and a partial traversal
+    # would leave files unscanned while the tree is reported clean.
+    found=$(find "$target" -type f -name '*.bats' | LC_ALL=C sort) || {
+      echo "check-bats-negation: could not list the .bats files under $target (find or sort failed), so the tree cannot be certified clean" >&2
+      exit 2
+    }
     while IFS= read -r f; do
-      files+=("$f")
-    done < <(find "$target" -type f -name '*.bats' | LC_ALL=C sort)
+      if [ -n "$f" ]; then
+        files+=("$f")
+      fi
+    done <<< "$found"
   elif [ -f "$target" ]; then
     files+=("$target")
   else
@@ -108,6 +121,30 @@ findings=$(awk '
     }
     return ""
   }
+  # mask(statement) — the statement with quoted text blanked and a trailing
+  # comment dropped, so `;`, `!` and `|| false` are matched only where the shell
+  # reads them as syntax.
+  function mask(s,    i, n, c, q, out) {
+    n = length(s); q = ""; out = ""
+    for (i = 1; i <= n; i++) {
+      c = substr(s, i, 1)
+      if (q == "\047") {
+        if (c == "\047") { q = ""; out = out c } else out = out "_"
+        continue
+      }
+      if (q == "\"") {
+        if (c == "\\") { i++; out = out "__" }
+        else if (c == "\"") { q = ""; out = out c }
+        else out = out "_"
+        continue
+      }
+      if (c == "\\") { i++; out = out "__"; continue }
+      if (c == "\047" || c == "\"") { q = c; out = out c; continue }
+      if (c == "#" && (i == 1 || substr(s, i - 1, 1) ~ /[ \t;]/)) break
+      out = out c
+    }
+    return out
+  }
   FNR == 1 {
     # A negation still pending at the end of the previous file was never closed
     # by a `}`: report it rather than drop it.
@@ -150,15 +187,26 @@ findings=$(awk '
     heredoc = heredoc_word(stmt)
     if (heredoc != "") { hfile = FILENAME; hline = start }
 
-    if (stmt !~ /^[ \t]*![ \t]+[^ \t]/) next
     if (stmt ~ /bats-negation-ok:/) next
-    if (stmt ~ /\|\|[ \t]*(false|fail([ \t]|$)|return[ \t]+[1-9]|exit[ \t]+[1-9])/) next
 
-    pending = 1
-    pfile = FILENAME
-    pline = start
-    ptext = stmt
-    sub(/^[ \t]+/, "", ptext)
+    # Judge each `;`-separated command of the statement. A negation with another
+    # command after it on the same line is inert whatever the next line holds;
+    # one that ends the line is decided by the next line, as before. A lone `}`
+    # closes a group and is not a command.
+    nseg = split(mask(stmt), seg, ";")
+    for (k = 1; k <= nseg; k++) {
+      if (seg[k] !~ /^[ \t]*![ \t]+[^ \t]/) continue
+      if (seg[k] ~ /\|\|[ \t]*(false|fail([ \t]|$)|return[ \t]+[1-9]|exit[ \t]+[1-9])/) continue
+      pfile = FILENAME
+      pline = start
+      ptext = stmt
+      sub(/^[ \t]+/, "", ptext)
+      later = 0
+      for (j = k + 1; j <= nseg; j++) if (seg[j] !~ /^[ \t]*}?[ \t]*$/) later = 1
+      if (later) flag()
+      else pending = 1
+      break
+    }
   }
   END {
     if (pending) flag()
