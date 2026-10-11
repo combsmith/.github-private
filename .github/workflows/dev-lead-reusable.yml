@@ -457,7 +457,22 @@ jobs:
           # Log the CLI version in use, cached or fresh (#1957).
           echo "claude-code version: $(claude --version 2>/dev/null || echo unavailable)"
 
-          case "$DEV_LEAD_ENGINE" in
+          # DEV_LEAD_ENGINE is empty when no legacy override is set and AI_ENGINES
+          # does not start with gemini/copilot. Resolve the primary from the
+          # checked-out config so the fallback CLIs still install; claude is the
+          # last resort when the config cannot be read.
+          engine="${DEV_LEAD_ENGINE:-}"
+          if [ -z "$engine" ]; then
+            # shellcheck source=scripts/lib/engine-chain.sh
+            if source .dev-lead/scripts/lib/engine-chain.sh 2>/dev/null \
+               && primary="$(ai_engine_primary "")" && [ -n "$primary" ]; then
+              engine="$primary"
+            else
+              engine=claude
+            fi
+          fi
+
+          case "$engine" in
             claude)
               npm install -g @google/gemini-cli || true
               if ! gh copilot --version >/dev/null 2>&1; then

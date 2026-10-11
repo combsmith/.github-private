@@ -545,6 +545,20 @@ jobs:
             echo "claude-code installed: $(claude --version 2>/dev/null || echo unavailable)"
           }
 
+          # REVIEW_ENGINE is empty when no legacy override is set and AI_ENGINES
+          # does not start with gemini/copilot. Resolve the primary from the
+          # checked-out config so an empty value never reaches the case below;
+          # claude is the last resort when the config cannot be read.
+          if [ -z "${REVIEW_ENGINE:-}" ]; then
+            # shellcheck source=scripts/lib/engine-chain.sh
+            if source scripts/lib/engine-chain.sh 2>/dev/null \
+               && primary="$(ai_engine_primary "")" && [ -n "$primary" ]; then
+              REVIEW_ENGINE="$primary"
+            else
+              REVIEW_ENGINE=claude
+            fi
+          fi
+
           case "$REVIEW_ENGINE" in
             claude)
               install_claude
