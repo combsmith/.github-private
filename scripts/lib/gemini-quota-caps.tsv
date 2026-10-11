@@ -46,6 +46,10 @@
 # A cap of 0 makes that key `unavailable` for the model: rotation never calls it there
 # (#2041). A key whose requests today reach rpd is `exhausted` until the reset and is
 # not called either; keys with `unknown` limits are still tried.
+# The glob of a cap-0 row must not also match a model that has a live row on the same
+# key (for example `*` at 0 next to a Flash row): the engine-level headroom leaves the
+# cap-0 row out, but the per-model percent counts every matching row, so that model
+# would read 100% on the key while the engine reads the key as having headroom.
 #
 # key_index	model_glob	tier	rpm	tpm	rpd
 1	gemini-3.8-flash	paid	5	250000	20

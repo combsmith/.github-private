@@ -732,3 +732,123 @@ _flash_calls_today() {
   [ "$status" -eq 0 ]
   [ "$(cat "$KEY_RECORD")" = "fake-secret-a" ]
 }
+
+# ── #2146 follow-ups: glob overlap, the minute window, the PST reset ──────────
+
+@test "#2146: no shipped cap-0 row's glob matches the model of another row for the same key index" {
+  # gq_key_pct leaves a cap-0 row out only for the engine-level verdict. If its glob
+  # also matched a model with a live row on the same key (`*` at 0 next to Flash), the
+  # per-model percent would read that model as 100% while the engine reads headroom.
+  # Checked two ways: against the other rows' model column (stricter than needed: it
+  # also flags two overlapping cap-0 rows), and against every model the default chains
+  # use, which also catches a cap-0 glob overlapping a live glob.
+  source "$SCRIPT_DIR/scripts/lib/engine-models.sh"
+  local chain_models="" tier m
+  for tier in triage action deep audit single; do
+    for m in $(ai_models_default gemini "$tier" | tr ',' ' '); do chain_models="$chain_models$m "; done
+  done
+  run awk -F'\t' -v models="$chain_models" '
+    function glob2re(g,   re) {
+      re = g
+      gsub(/[.[\]()^$+{}|\\]/, "\\\\&", re)
+      gsub(/\*/, ".*", re)
+      gsub(/\?/, ".", re)
+      return "^" re "$"
+    }
+    /^[[:space:]]*#/ || NF < 6 || $1 == "setting" { next }
+    { n++; key[n] = $1; glob[n] = $2
+      zero[n] = ($4 ~ /^0+$/ || $5 ~ /^0+$/ || $6 ~ /^0+$/); if (zero[n]) zeros++ }
+    END {
+      for (i = 1; i <= n; i++) {
+        if (!zero[i]) continue
+        for (j = 1; j <= n; j++)
+          if (i != j && key[i] == key[j] && glob[j] ~ glob2re(glob[i]))
+            printf "overlap: key %s cap-0 row %s matches the row for %s\n", key[i], glob[i], glob[j]
+      }
+      # Per model: the row that governs it on a key is the most specific match (as in
+      # gq_caps_row_for). If that row is live, no cap-0 row of the key may match too.
+      nm = split(models, mm, " ")
+      for (x = 1; x <= nm; x++) for (i = 1; i <= n; i++) {
+        if (zero[i] || mm[x] !~ glob2re(glob[i])) continue
+        lit = glob[i]; gsub(/[*?]/, "", lit); governs = 1
+        for (j = 1; j <= n; j++) if (j != i && key[j] == key[i] && mm[x] ~ glob2re(glob[j])) {
+          l2 = glob[j]; gsub(/[*?]/, "", l2)
+          if (length(l2) > length(lit) || (length(l2) == length(lit) && j < i)) governs = 0
+        }
+        if (!governs) continue
+        for (j = 1; j <= n; j++)
+          if (zero[j] && key[j] == key[i] && mm[x] ~ glob2re(glob[j]))
+            printf "overlap: key %s model %s is governed by live row %s but also matches cap-0 row %s\n", key[i], mm[x], glob[i], glob[j]
+      }
+      printf "checked %d cap-0 row(s)\n", zeros
+    }' "$SHIPPED_CAPS"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"overlap:"* ]]
+  # Not vacuous: the shipped file does have cap-0 rows (Pro, one per key index).
+  [[ "$output" == *"checked 4 cap-0 row(s)"* ]]
+}
+
+@test "#2146: shipped caps, five Flash calls in the last minute on key 1 → rotation moves to key 2" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  export GOOGLE_API_KEY="fake-secret-a" GOOGLE_API_KEY_2="fake-secret-b"
+  export STUB_ENGINE_EXIT=0
+  local age
+  for age in 50 40 30 20 10; do _ledger_call 1 gemini-3.8-flash "$age"; done   # 5 of 5 requests/minute
+  _source_engine gemini
+
+  run gq_remaining 1 gemini-3.8-flash
+  [ "$(jq -r .state <<< "$output")" = "cooling" ]
+  [ "$(jq -r .remaining.rpm <<< "$output")" = "0" ]
+  [ "$(jq -r .until <<< "$output")" = "$(( NOW - 50 + 60 ))" ]   # the oldest call leaves the minute
+
+  run gq_rotation_plan gemini-3.8-flash 75 GOOGLE_API_KEY GOOGLE_API_KEY_2
+  [[ "$output" == *$'skip\tGOOGLE_API_KEY\t1\t'*"cooling"* ]]
+  [[ "$output" != *$'use\tGOOGLE_API_KEY\t'* ]]
+  [[ "$output" == *$'use\tGOOGLE_API_KEY_2\t2'* ]]
+
+  run _gemini_chain_invoke "gemini-3.8-flash" "$TEST_PROMPT" 30
+  [ "$status" -eq 0 ]
+  [ "$(cat "$KEY_RECORD")" = "fake-secret-b" ]      # key 1 was not called
+  [[ "$output" == *"key index 1"*"cooling"* ]]
+  [[ "$output" != *"fake-secret"* ]]
+
+  # One minute later the five calls have left the window: key 1 is back at the front.
+  : > "$KEY_RECORD"
+  export GEMINI_QUOTA_NOW=$(( NOW + 61 ))
+  run _gemini_chain_invoke "gemini-3.8-flash" "$TEST_PROMPT" 30
+  [ "$status" -eq 0 ]
+  [ "$(head -1 "$KEY_RECORD")" = "fake-secret-a" ]
+}
+
+@test "#2146: shipped caps in PST (after the 2026-11-01 DST change) → calls before Pacific midnight do not count toward today" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  # 2026-11-10T20:00:00Z = 12:00 PST. Pacific midnight is 08:00Z in PST (07:00Z in PDT).
+  NOW=1794340800; export GEMINI_QUOTA_NOW="$NOW"
+  local midnight=1794297600 k i
+  _all_four_keys
+  _source_engine gemini
+  run gq_day_window
+  [ "$output" = "$midnight"$'\t'"$(( midnight + 86400 ))"$'\t'"0" ]
+
+  # 15 calls per key at 07:30Z = 23:30 PST yesterday. A reset still computed at the
+  # PDT offset (07:00Z) would count them as today and skip at 75%.
+  for k in 1 2 3 4; do
+    for (( i = 0; i < 15; i++ )); do _ledger_call "$k" gemini-3.8-flash $(( NOW - (midnight - 1800) + i )); done
+  done
+  run check_provider_headroom gemini
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[headroom] gemini usage 0% — ok"* ]]
+  run gq_remaining 1 gemini-3.8-flash
+  [ "$(jq -r .used.rpd <<< "$output")" = "0" ]
+  [ "$(jq -r .remaining_calls <<< "$output")" = "20" ]
+
+  # The same 15 per key at 08:30Z = 00:30 PST today do count: 15 of 20 is the skip.
+  for k in 1 2 3 4; do
+    for (( i = 0; i < 15; i++ )); do _ledger_call "$k" gemini-3.8-flash $(( NOW - (midnight + 1800) - i )); done
+  done
+  run check_provider_headroom gemini
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"[headroom] gemini usage 75% >= threshold 75% — skipping"* ]]
+  run gq_remaining 1 gemini-3.8-flash
+  [ "$(jq -r .used.rpd <<< "$output")" = "15" ]
+}
