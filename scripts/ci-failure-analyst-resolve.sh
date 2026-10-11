@@ -69,9 +69,9 @@ resolve() {
   fi
 
   # Prefer the pull_requests array embedded in the payload, filtered to
-  # non-fork PRs (head repo must equal base repo).
-  pr_number="$(payload_field "[(.$key.pull_requests // [])[]
-                               | select(.head.repo.id == .base.repo.id) | .number][0]")"
+  # non-fork, open PRs (head repo must equal base repo).
+  pr_number="$(payload_field '[(.'"$key"'.pull_requests // [])[]
+                               | select(.state == "open" and .head.repo.id == .base.repo.id) | .number][0]')"
   if [ -z "$pr_number" ]; then
     # Fallback: the commits-to-pulls API covers a second push that arrived
     # before this event, and a workflow_run whose payload omits the PR. Only
@@ -115,7 +115,7 @@ idempotency() {
   existing="$(gh api "repos/$REPO/issues/${PR_NUMBER:?PR_NUMBER is required}/comments" \
     --paginate \
     --jq ".[] | select(.body | startswith(\"<!-- ci-analyst sha=${HEAD_SHA:?HEAD_SHA is required} -->\")) | .id" \
-    2>/dev/null | head -n 1 || true)"
+    2>/dev/null | head -n 1)" || return
   if [ -n "$existing" ]; then
     echo "::notice::Diagnostic comment already posted (id=$existing) — idempotency skip"
     emit exists true

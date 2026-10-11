@@ -86,6 +86,7 @@ check_run_event() {
     "details_url": "https://sonarcloud.io/dashboard?id=petry-projects_x",
     "pull_requests": [
       {"number": 42,
+       "state": "open",
        "head": {"repo": {"id": 1}},
        "base": {"repo": {"id": 1}}}
     ]
@@ -172,7 +173,7 @@ failed_jobs_fixture() {
 # ── workflow_run ─────────────────────────────────────────────────────────────
 
 @test "workflow_run: SHA, PR, run id and failed jobs come from the workflow_run payload" {
-  workflow_run_event '[{"number": 99, "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
+  workflow_run_event '[{"number": 99, "state": "open", "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
   failed_jobs_fixture
   run bash "$SCRIPT" resolve
   [ "$status" -eq 0 ]
@@ -275,7 +276,7 @@ failed_jobs_fixture() {
   fixture "repos/$REPO/issues/99/comments" '[]'
 
   # First failure: a workflow_run for Lint.
-  workflow_run_event '[{"number": 99, "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
+  workflow_run_event '[{"number": 99, "state": "open", "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
   run bash "$SCRIPT" resolve
   [ "$status" -eq 0 ]
   first_sha="$(out head_sha)"
@@ -289,7 +290,7 @@ failed_jobs_fixture() {
   # Second failure on the same commit: a different workflow (Tests), and a
   # third-party check_run, both resolve to the same SHA and so the same marker.
   : > "$GITHUB_OUTPUT"
-  workflow_run_event '[{"number": 99, "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
+  workflow_run_event '[{"number": 99, "state": "open", "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
   jq '.workflow_run.name = "Tests" | .workflow_run.id = 778' "$GITHUB_EVENT_PATH" > "$TMP/e" && mv "$TMP/e" "$GITHUB_EVENT_PATH"
   run bash "$SCRIPT" resolve
   [ "$(out head_sha)" = "$first_sha" ]
