@@ -761,11 +761,15 @@ scan_pr_for_rate_limits() {
           gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
             -f body="**dev-lead: stale bot comment disposition needs human action**
 
-A bot comment on this PR was edited, and dev-lead retried the review workflow up to ${max_passes} time(s) to disposition it, but no fresh disposition was written. The comment remains unresolved, blocking the merge (\`required_review_thread_resolution\`).
+A bot comment on this PR was edited after dev-lead dispositioned it, and ${max_passes} fix-reviews pass(es) since the edit wrote no fresh disposition. Automatic retries have stopped.
 
-A maintainer needs to either:
-- Resolve or address the unresolved bot comments on this PR, or
-- @mention dev-lead to re-try the fix-reviews workflow
+This blocks pr-review's approval (its comment gate reports \`undispositioned-pr-comment\`). It is not a branch-protection block.
+
+A maintainer can:
+- re-dispatch dev-lead for that comment: \`repository_dispatch\` \`dev-lead-reviews-retry\` with \`intent_type=fix-bot-comment\`, \`pr_number\`, \`head_sha\` and the comment's \`comment_node_id\`; or
+- review the PR and merge it by hand.
+
+An \`@dev-lead\` mention from the owner account does not start a pass (#2027).
 
 $hold_marker" >/dev/null 2>&1 || true
         fi

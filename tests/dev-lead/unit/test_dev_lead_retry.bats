@@ -221,6 +221,14 @@ _sweep_nodes() {
   [ "$status" -eq 3 ]
 }
 
+@test "sweep(#2166): the stale-disposition hold comment names the real gate and no dead-end advice" {
+  local body
+  body=$(sed -n '/stale bot comment disposition needs human action/,/\$hold_marker/p' "$RETRY_SCRIPT")
+  [[ "$body" == *'undispositioned-pr-comment'* ]]
+  [[ "$body" != *'required_review_thread_resolution'* ]]
+  [[ "$body" != *'@mention dev-lead'* ]]
+}
+
 @test "sweep(#2008): a run marker for a DIFFERENT PR does not suppress the dispatch" {
   export STALE_DISPOSITION_MAX_PASSES=1  # one counted pass reaches the cap
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z)" 20
