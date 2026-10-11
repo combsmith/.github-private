@@ -5,7 +5,9 @@
 #   1. read the fleet pause state (AGENTS_PAUSED, AGENTS_PAUSE_SOURCE,
 #      AGENTS_PAUSE_UNTIL);
 #   2. collect the fleet's quota markers (bb_collect) unless the fleet is paused,
-#      in which case the decision does not consult them;
+#      in which case the decision does not consult them. A run woken by
+#      `workflow_run` may exit here instead, before the scan, when an earlier
+#      run already scanned moments ago (see "THE EARLY EXIT" below);
 #   3. decide (bb_decide, scripts/lib/budget-breaker.sh: the decision is slice 3a
 #      and is not re-implemented here);
 #   4. apply:  trip    AGENTS_PAUSE_SOURCE, AGENTS_PAUSE_UNTIL, AGENTS_PAUSED=true
@@ -54,6 +56,24 @@
 # A failed write or a refused credential is ONE `::error::` naming the
 # permission needed, a red run, and no retry.
 #
+# THE WAKE-UP IS NOT AN INPUT (#2259). The workflow runs on `schedule` and on
+# `workflow_run` (an agent workflow run completed in this repository). Anyone
+# who can make such a run complete chooses when this script runs and what the
+# event payload says, so the script reads the event's NAME (GITHUB_EVENT_NAME)
+# and nothing else about it: never the payload file, never a ref, a SHA or a
+# branch of the triggering run. A static test holds the script and its
+# libraries to that. Every run logs, and puts in its summary, which event woke
+# it and how long ago the workflow last ran to a conclusion, so poor delivery
+# of either trigger shows.
+#
+# THE EARLY EXIT (#2259; rule and reasons in scripts/lib/budget-breaker-writer.sh).
+# A run woken by `workflow_run` on a fleet that is NOT paused exits 0 before the
+# organisation scan when an earlier run was created in the same clock slot of
+# BUDGET_BREAKER_MIN_INTERVAL_MIN minutes AND this repository shows no quota
+# marker created in that slot. It never applies to a scheduled run, never while
+# the fleet is paused (by anyone: a resume is never delayed by it), and never
+# when anything it needs could not be read (then the run decides).
+#
 # Env (set by .github/workflows/budget-breaker.yml; all optional here):
 #   BUDGET_BREAKER_ARMED          `true` (exactly) arms the write path
 #   BUDGET_BREAKER_TOKEN          write credential: organisation Variables read
@@ -84,6 +104,14 @@
 #   BUDGET_BREAKER_ROTATE_DAYS    rotation policy for the write secret (default 90)
 #   BUDGET_BREAKER_MIN_ITEMS / _WINDOW_MIN / _PROBE_HOURS / _NOW
 #                                 the decision's settings (scripts/lib/budget-breaker.sh)
+#   BUDGET_BREAKER_MIN_INTERVAL_MIN
+#                                 length of the early exit's clock slot, minutes
+#                                 (default 2; 0 switches the early exit off)
+#   GITHUB_EVENT_NAME             what woke the run (set by the runner; the name
+#                                 only, see "THE WAKE-UP IS NOT AN INPUT")
+#   GITHUB_WORKFLOW_REF / GITHUB_RUN_ID
+#                                 this workflow's file and this run, to list the
+#                                 workflow's earlier runs (set by the runner)
 #   GITHUB_STEP_SUMMARY           job summary (written when set)
 #
 # BUDGET_BREAKER_MARKER_KINDS is deliberately NOT honoured: pr-review's
@@ -113,6 +141,9 @@ trap 'rm -rf "$WORKDIR"' EXIT
 
 MODE="disarmed"
 MODE_NOTE=""
+EVENT="unknown"
+PREV_OK="false"
+PREV_TEXT="not looked up"
 STATE_ORIGIN=""
 STATE_TEXT="not read"
 MARKERS_TEXT="not collected"
@@ -127,6 +158,8 @@ write_summary() {
     printf '## Budget breaker\n\n'
     printf '| Field | Value |\n|---|---|\n'
     printf '| Mode | %s%s |\n' "$MODE" "$MODE_NOTE"
+    printf '| Triggered by | %s |\n' "$EVENT"
+    printf '| Previous run | %s |\n' "$PREV_TEXT"
     printf '| Pause state (%s) | `%s` |\n' "${STATE_ORIGIN:-n/a}" "$STATE_TEXT"
     printf '| Quota markers | %s |\n' "$MARKERS_TEXT"
     printf '| Decision | %s |\n' "$DECISION_TEXT"
@@ -180,6 +213,59 @@ report_secret_age() {
   else
     bbw_log "age of ${SECRET_LABEL}: last updated ${days} day(s) ago (${at}); rotation policy: every ${rotate} days"
   fi
+}
+
+# report_previous_run — how long ago this workflow last ran to a conclusion
+# (#2259), for the log and the summary, and for the early exit. Best effort,
+# read credential, one listing call. Sets PREV_TEXT, and PREV_OK to `true` only
+# when the earlier runs were read (BBW_PREV_RUNS).
+report_previous_run() {
+  local file="${GITHUB_WORKFLOW_REF:-}"
+  file="${file%%@*}"
+  file="${file##*/}"
+  if ! bbw_read_previous_runs "$NOTIFY_REPO" "$file" "${GITHUB_RUN_ID:-}"; then
+    PREV_TEXT="not available (HTTP ${BBW_HTTP:-none})"
+    bbw_log "previous run: not available (HTTP ${BBW_HTTP:-none}; ${BBW_ERR:-no detail})"
+    return 0
+  fi
+  PREV_OK="true"
+  PREV_TEXT="$(bbw_previous_run_text "$BBW_PREV_RUNS" "$NOW")"
+  bbw_log "previous run: ${PREV_TEXT}"
+}
+
+# exit_early_if_covered — the early exit (#2259): finishes the run before the
+# organisation scan when an earlier run already covered this clock slot and
+# this repository shows nothing new in it; returns, so that the run decides, in
+# every other case. Called only on a fleet that is not paused. Whatever cannot
+# be read means "decide": the lookup of the earlier runs, the slot, the listing
+# of this repository's markers.
+exit_early_if_covered() {
+  local interval="${BUDGET_BREAKER_MIN_INTERVAL_MIN:-2}" slot earlier recent fresh
+  # A scheduled run is the backstop and always decides.
+  [ "$EVENT" = "workflow_run" ] || return 0
+  if ! [[ "$interval" =~ ^[0-9]{1,4}$ ]]; then
+    bbw_warn "BUDGET_BREAKER_MIN_INTERVAL_MIN is not a whole number of minutes; using 2"
+    interval=2
+  fi
+  interval="$((10#$interval))"
+  [ "$interval" -gt 0 ] || return 0
+  [ "$PREV_OK" = "true" ] || return 0
+  slot="$(bbw_slot_start "$NOW" "$interval")" || return 0
+  earlier="$(bbw_runs_since "$BBW_PREV_RUNS" "$slot")"
+  [[ "$earlier" =~ ^[0-9]+$ ]] && [ "$earlier" -gt 0 ] || return 0
+  if ! recent="$(bbw_collect_recent "$NOTIFY_REPO" "$interval" 2>/dev/null)" \
+      || ! fresh="$(bbw_markers_since "$recent" "$slot")"; then
+    bbw_log "no early exit: the quota markers of ${NOTIFY_REPO} since ${slot} could not be read, so this run decides"
+    return 0
+  fi
+  if [ "$fresh" != "0" ]; then
+    bbw_log "no early exit: ${fresh} quota marker(s) appeared in ${NOTIFY_REPO} since ${slot}, so this run decides"
+    return 0
+  fi
+  MARKERS_TEXT="not collected (early exit)"
+  DECISION_TEXT="not taken this run (early exit)"
+  bbw_log "early exit: an earlier run was created in this ${interval} min slot (since ${slot}) and ${NOTIFY_REPO} shows no quota marker since; no scan, no decision"
+  finish 0 "no scan: an earlier run covered this ${interval} min slot (since ${slot}) and ${NOTIFY_REPO} shows no quota marker since"
 }
 
 # collect — run the collector with the read credential. Sets OBS, COLLECT_OK,
@@ -367,6 +453,17 @@ fi
 
 report_secret_age
 
+# What woke this run: the event's name, from the runner, and nothing else of
+# the event (see "THE WAKE-UP IS NOT AN INPUT"). An unexpected name is not
+# echoed.
+case "${GITHUB_EVENT_NAME:-}" in
+  schedule|workflow_run) EVENT="$GITHUB_EVENT_NAME" ;;
+  "") EVENT="unknown" ;;
+  *) EVENT="other" ;;
+esac
+bbw_log "triggered by: ${EVENT}"
+report_previous_run
+
 # --- 1. the pause state -----------------------------------------------------
 
 if [ "$MODE" = "armed" ]; then
@@ -439,6 +536,9 @@ if [ "${PAUSED,,}" = "true" ]; then
   MARKERS_TEXT="not collected (the fleet is paused; the decision does not consult them)"
   bbw_log "the fleet is paused: quota markers are not consulted while paused, so none are collected"
 else
+  # Not paused, so a resume cannot be waiting on this run: the early exit may
+  # apply. It is never reached on a paused fleet.
+  exit_early_if_covered
   collect
   if [ "$COLLECT_OK" = "true" ]; then
     MARKERS_TEXT="${TRUSTED} trusted, ${UNTRUSTED} dropped as untrusted"
