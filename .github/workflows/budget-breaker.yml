@@ -12,7 +12,8 @@
 #   • DEFAULT OFF, TWICE: nothing is written unless the repository variable
 #     BUDGET_BREAKER_ARMED is exactly `true` AND the secret is set. Disarmed, the
 #     run still decides and logs the write it would have made. Only lowercase
-#     `true` arms: any other non-empty value is disarmed plus one `::error::`.
+#     `true` arms; `false`, empty or unset disarm quietly; any other value is
+#     disarmed plus one `::error::`.
 #   • DO NOT ARM before the preconditions in AGENTS.md ("Arming preconditions",
 #     #2251) are met.
 #   • SCHEDULE ONLY. Do NOT add workflow_dispatch, pull_request, push or any other
@@ -60,8 +61,9 @@ jobs:
 
       - name: Decide and apply
         env:
-          # Arm switch. The script requires the exact string `true`, and logs one
-          # error for any other value that is set (TRUE, 1, yes, a padded value).
+          # Arm switch. The script requires the exact string `true`. `false`,
+          # empty and unset disarm quietly; any other value (TRUE, 1, yes, a
+          # padded value) disarms and logs one error.
           BUDGET_BREAKER_ARMED: ${{ vars.BUDGET_BREAKER_ARMED }}
           # WRITE credential: organisation Variables read and write, nothing else.
           # Handed to the step only when armed. An expression compares without

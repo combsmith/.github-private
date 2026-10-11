@@ -17,8 +17,9 @@
 #
 # DEFAULT OFF, TWICE. Nothing is written unless BUDGET_BREAKER_ARMED is exactly
 # `true` AND the write credential is present. In every other case the run still
-# reads, decides and logs the write it WOULD have made. A value that is set but
-# is not exactly `true` (`TRUE`, ` true`, `1`, `yes`, `false`) is one
+# reads, decides and logs the write it WOULD have made. Unset, empty and the
+# exact string `false` are the ordinary ways to be disarmed. Any other value
+# that is not exactly `true` (`TRUE`, ` true`, `1`, `yes`, `False`) is one
 # `::error::` line and a disarmed run.
 #
 # FAIL OPEN. A collector that could not read, an unreadable state, a decision
@@ -34,6 +35,14 @@
 # run deletes the source and until it wrote; scripts/lib/budget-breaker-writer.sh,
 # "The pause guard"). That roll-back is the only write a run makes that is not
 # a step of its plan, and it only removes what the same run wrote.
+#
+# LEFTOVER OWNERSHIP MARKERS ARE REMOVED. The breaker's own source on a fleet
+# that is NOT paused (left by a trip that failed before the pause, or by a pause
+# ended by hand) would make the next pause set by hand read as the breaker's
+# own. An armed run that finds one deletes the source, then the until, warns,
+# and does nothing else: that is its one state change, and the next run decides
+# normally. This is the one further exception to "none writes nothing". It
+# removes only the breaker's own value, never another source.
 #
 # Anti-flap: one decision and at most one state change per run; a step whose
 # target already holds the wanted value is skipped; a resume waits until the
@@ -137,7 +146,7 @@ finish() {
 
 # permission_error <what failed> <state note> — the ONE actionable error.
 permission_error() {
-  bbw_error "${1} failed (HTTP ${BBW_HTTP:-none}; gh said: ${BBW_ERR:-nothing}). The token in ${SECRET_LABEL} must be a fine-grained personal access token whose resource owner is the organisation ${ORG}, with the organisation permission \"Variables: read and write\"; it is missing that permission, expired, revoked, or not the token this workflow expects. ${2} Nothing is retried in this run. Fix the secret (AGENTS.md, \"Budget breaker\"), or disarm by deleting the repository variable BUDGET_BREAKER_ARMED."
+  bbw_error "${1} failed (HTTP ${BBW_HTTP:-none}; gh said: ${BBW_ERR:-nothing}). The token in ${SECRET_LABEL} must be a fine-grained personal access token whose resource owner is the organisation ${ORG}, with the organisation permission \"Variables: read and write\"; it is missing that permission, expired, revoked, or not the token this workflow expects. ${2} Nothing is retried in this run. Fix the secret (AGENTS.md, \"Budget breaker\"), or disarm by setting the repository variable BUDGET_BREAKER_ARMED to false."
 }
 
 # state_read_failed <rc> — a writing run could not read the organisation.
@@ -295,6 +304,9 @@ guard_stopped_trip() {
     finish 1 "FAILED: trip stopped (${BBW_GUARD}); roll-back failed at: ${BBW_ROLLBACK_FAILED}; removed: ${removed}"
   fi
 
+  # Defence in depth: this run removes a leftover source before it ever plans a
+  # trip (section 1b), so a trip here always writes the source itself and this
+  # is not expected to be reached. If it ever is, it must be loud, not green.
   if [ "$BBW_GUARD" = "paused" ] && [ "$BBW_ROLLBACK_OWN_SOURCE" = "true" ]; then
     bbw_error "${cause}. But ${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} was already set before this run (an earlier run left it; this run did not write it, so it does not remove it), and that makes the pause look like the breaker's own: the breaker will lift it after ${DECISION_UNTIL}. To keep the pause, delete ${BBW_VAR_SOURCE} from the organisation's Actions variables by hand. ${BBW_VAR_PAUSED} was not set by this run. Removed: ${removed}.${kept}"
     finish 1 "FAILED: trip stopped (paused by someone else); an earlier run's ${BBW_VAR_SOURCE} is still set"
@@ -315,10 +327,12 @@ guard_stopped_trip() {
 
 # --- 0. mode ----------------------------------------------------------------
 
-# Only the exact string `true` arms. The workflow's own test of the variable
-# cannot be exact (an Actions expression compares strings without regard to
-# case), so a value like `TRUE` reaches this step WITH the write credential:
-# it is dropped here, unused, and the mistake is said out loud, once per run.
+# Only the exact string `true` arms. Unset, empty and the exact string `false`
+# are the ordinary ways to be disarmed and are not remarked on. Any other value
+# is a mistake and is said out loud, once per run: the workflow's own test of
+# the variable cannot be exact (an Actions expression compares strings without
+# regard to case), so a value like `TRUE` reaches this step WITH the write
+# credential, which is dropped here, unused.
 ARMED_VALUE="${BUDGET_BREAKER_ARMED:-}"
 if [ "$ARMED_VALUE" != "true" ]; then
   MODE="disarmed"
@@ -327,9 +341,9 @@ if [ "$ARMED_VALUE" != "true" ]; then
     HANDED_NOTE=" The workflow handed the write credential to this step all the same, because its own test of the variable ignores case; the script has dropped it and uses it for nothing."
   fi
   bbw_drop_write_credentials
-  if [ -n "$ARMED_VALUE" ]; then
-    bbw_error "BUDGET_BREAKER_ARMED is set to \"$(bbw_show "$ARMED_VALUE")\", which is not the exact lowercase string true, so the breaker is DISARMED and writes nothing. Only true arms it: TRUE, True, 1, yes, on and a value with a space before or after it do not.${HANDED_NOTE} Set the repository variable to true to arm, or delete it to disarm (AGENTS.md, \"Budget breaker\")."
-    MODE_NOTE=" (BUDGET_BREAKER_ARMED is set but is not exactly true)"
+  if [ -n "$ARMED_VALUE" ] && [ "$ARMED_VALUE" != "false" ]; then
+    bbw_error "BUDGET_BREAKER_ARMED is set to \"$(bbw_show "$ARMED_VALUE")\", which is neither the exact lowercase string true nor the exact lowercase string false, so the breaker is DISARMED and writes nothing. Only true arms it: TRUE, True, 1, yes, on and a value with a space before or after it do not.${HANDED_NOTE} Set the repository variable to true to arm, or to false (or delete it) to disarm (AGENTS.md, \"Budget breaker\")."
+    MODE_NOTE=" (BUDGET_BREAKER_ARMED is set but is neither true nor false)"
   fi
 elif ! bbw_has_write_credential; then
   MODE="armed, no credential"
@@ -375,6 +389,50 @@ STATE_TEXT="$(bbw_state_key "$BBW_VARS")"
 bbw_log "mode: ${MODE}"
 bbw_log "pause state from ${STATE_ORIGIN}: [${BBW_VAR_PAUSED}, ${BBW_VAR_SOURCE}, ${BBW_VAR_UNTIL}] = ${STATE_TEXT}"
 
+# --- 1b. leftover ownership markers ------------------------------------------
+
+# The breaker's own source on a fleet that is not paused is left over (a trip
+# that failed before it set the pause, or a pause someone ended by hand). A
+# pause set by hand while it is there would read as the breaker's own and be
+# lifted by it, so it is removed before anything else is considered: the
+# source, then the until. This is the one further exception to "none writes
+# nothing" (the other is the roll-back of a stopped trip), and it is this run's
+# ONE state change: nothing is collected or decided here, and the next run
+# decides on the clean state. It is applied straight after the read above, so
+# the only window for a pause set by hand to slip in is that one call. A source
+# with any other value is not the breaker's and is never touched.
+LEFTOVER="$(bbw_leftover_plan "$BBW_VARS")"
+if [ -n "$LEFTOVER" ] && [ "$LEFTOVER" != "[]" ]; then
+  PLAN_TEXT="$(bbw_plan_text "$LEFTOVER")"
+  MARKERS_TEXT="not collected (leftover ownership markers are dealt with first)"
+  DECISION_TEXT="not taken this run: ${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} is set while the fleet is not paused, and removing it is this run's one state change"
+  bbw_log "decision: ${DECISION_TEXT}"
+  if [ "$MODE" != "armed" ]; then
+    bbw_warn "${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} is set while the fleet is not paused. A pause set by hand now would look like the breaker's own. An armed run removes these leftover ownership markers; this run is not armed, so delete ${BBW_VAR_SOURCE} (and ${BBW_VAR_UNTIL}) from the organisation's Actions variables by hand."
+    bbw_log "NOT WRITING (${MODE}). Would have written: ${PLAN_TEXT}"
+    finish 0 "no write (${MODE}); would have written: ${PLAN_TEXT}"
+  fi
+  bbw_log "writing: ${PLAN_TEXT}"
+  if ! bbw_apply "$ORG" "$LEFTOVER"; then
+    DONE_TEXT="nothing"
+    if [ "${#BBW_DONE[@]}" -gt 0 ]; then
+      DONE_TEXT="$(printf '%s; ' "${BBW_DONE[@]}")"
+    fi
+    if [ "${#BBW_DONE[@]}" -eq 0 ]; then
+      LEFT_NOTE="${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} is still set, so a pause set by hand now would read as the breaker's own and be lifted by it: delete ${BBW_VAR_SOURCE} (and ${BBW_VAR_UNTIL}) by hand."
+    else
+      LEFT_NOTE="${BBW_VAR_SOURCE} is gone, so a pause set by hand is a human pause; ${BBW_VAR_UNTIL} is left over and has no effect without the source: delete it by hand."
+    fi
+    permission_error "Removing the breaker's leftover ownership markers (step: ${BBW_FAILED_STEP})" "Planned: ${PLAN_TEXT}. Completed before the failure: ${DONE_TEXT%; }. ${LEFT_NOTE}"
+    finish 1 "FAILED removing leftover ownership markers at step: ${BBW_FAILED_STEP}; completed: ${DONE_TEXT%; }"
+  fi
+  for step in "${BBW_DONE[@]}"; do
+    bbw_log "wrote: ${step}"
+  done
+  bbw_warn "leftover ownership markers from an earlier run were removed (${PLAN_TEXT}): ${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} was set while the fleet was not paused, so a pause set by hand would have read as the breaker's own and been lifted by it. That was this run's one state change; nothing else is written and the next run decides normally."
+  finish 0 "wrote: ${PLAN_TEXT} (leftover ownership markers removed; no decision this run)"
+fi
+
 # --- 2. the evidence --------------------------------------------------------
 
 if [ "${PAUSED,,}" = "true" ]; then
@@ -413,14 +471,6 @@ EVIDENCE="$(jq -r '.evidence_count // 0' <<< "$DECISION")"
 DECISION_UNTIL="$(jq -r '.until // ""' <<< "$DECISION")"
 DECISION_TEXT="${ACTION} (evidence_count=${EVIDENCE}): ${REASON}"
 bbw_log "decision: ${DECISION_TEXT}"
-
-# A source of ours on a fleet that is not paused is left over from a run that
-# failed between two writes, or from a pause someone ended by hand. It is not
-# written away here (hold and none write nothing), but it must not go unseen:
-# a pause set by hand while it is there would carry the breaker's source.
-if [ "${PAUSED,,}" != "true" ] && [ "$SOURCE" = "$BUDGET_BREAKER_PAUSE_SOURCE" ] && [ "$ACTION" = "none" ]; then
-  bbw_warn "${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} is set while the fleet is not paused. A pause set by hand now would look like the breaker's own and be lifted by it. Delete ${BBW_VAR_SOURCE} (and ${BBW_VAR_UNTIL}) from the organisation's Actions variables."
-fi
 
 # Minimum hold: a resume waits until the pause switch has stood long enough.
 HOLD_DEFERRED="false"

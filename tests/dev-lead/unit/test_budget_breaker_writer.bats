@@ -829,28 +829,49 @@ DELETE AGENTS_PAUSE_SOURCE" ]
 @test "anti-flap: a step whose target already holds the wanted value is not written again" {
   armed
   seed_quota
-  # Left behind by a trip that failed before it reached the pause switch.
-  set_vars "$(var AI_ENGINES claude all)" "$(var AGENTS_PAUSE_SOURCE rate-limit-observed all -600)" \
+  # An until that already holds the wanted time, with no source (#2251: a
+  # leftover source of the breaker's own is removed first, see below, so the
+  # value that can already be in place when a trip runs is the until).
+  set_vars "$(var AI_ENGINES claude all)" \
     "$(var AGENTS_PAUSE_UNTIL "$(ts "$TRIP_UNTIL_OFFSET")" all -600)"
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
-  [ "$(writes)" = "POST AGENTS_PAUSED=true visibility=all" ]
+  [ "$(writes)" = "POST AGENTS_PAUSE_SOURCE=rate-limit-observed visibility=all
+POST AGENTS_PAUSED=true visibility=all" ]
 }
 
-@test "a source of the breaker's left on an unpaused fleet is warned about every run, and not written away" {
+@test "a source of the breaker's left on an unpaused fleet is removed with its until, with one warning, and nothing else is written" {
   armed
+  # Enough evidence to trip: the removal is the run's one state change, so the
+  # same run does not also trip.
+  seed_quota
   set_vars "$(var AI_ENGINES claude all)" "$(var AGENTS_PAUSED false all -600)" \
     "$(var AGENTS_PAUSE_SOURCE rate-limit-observed all -7200)" "$(var AGENTS_PAUSE_UNTIL "$(ts -600)" all -7200)"
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"decision: none"* ]]
-  [[ "$output" == *"::warning::budget-breaker: AGENTS_PAUSE_SOURCE=rate-limit-observed is set while the fleet is not paused"* ]]
-  no_writes
+  [[ "$output" == *"decision: not taken this run"* ]]
+  [ "$(grep -c '::warning::' <<< "$output")" = "1" ]
+  [[ "$output" == *"::warning::budget-breaker: leftover ownership markers from an earlier run were removed (delete AGENTS_PAUSE_SOURCE; delete AGENTS_PAUSE_UNTIL)"* ]]
+  [[ "$output" != *"::error::"* ]]
+  # The source first, then the until; the switch itself is not touched.
+  [ "$(writes)" = "DELETE AGENTS_PAUSE_SOURCE
+DELETE AGENTS_PAUSE_UNTIL" ]
+  [ "$(org_var AGENTS_PAUSED)" = "false" ]
+  [ "$(org_var AGENTS_PAUSE_SOURCE)" = "<absent>" ]
+  [ "$(org_var AGENTS_PAUSE_UNTIL)" = "<absent>" ]
   no_notice
-  # No such warning for a clean, quiet fleet.
-  set_vars "$(var AI_ENGINES claude all)"
+  # The fleet was not even scanned: nothing was decided in this run.
+  [ -z "$(calls_by read | grep 'issues/comments')" ]
+  grep -q 'leftover ownership markers removed; no decision this run' "$GITHUB_STEP_SUMMARY"
+
+  # The next run decides normally, on the clean state: it trips.
+  : > "$MOCK_DIR/writes.log"
   run bash "$SCRIPT"
-  [[ "$output" != *"is set while the fleet is not paused"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"decision: trip"* ]]
+  [[ "$output" != *"leftover ownership markers"* ]]
+  [ "$(org_var AGENTS_PAUSED)" = "true" ]
+  [ "$(org_var AGENTS_PAUSE_SOURCE)" = "rate-limit-observed" ]
 }
 
 @test "anti-flap: a resume before the minimum hold does not write; after it, it does" {
@@ -1355,16 +1376,22 @@ DELETE AGENTS_PAUSE_UNTIL" ]
   [ "$(org_var AGENTS_PAUSED)" = "true" ]
   [ "$(listings)" = "3" ]
 
-  # Source and until already as wanted (a trip that failed at the switch): the
-  # look before the first write IS the look before the pause.
+  # A plan that is the pause step alone (source and until already as wanted)
+  # has written nothing, so bbw_apply takes no second look. The script removes
+  # such leftovers before it ever plans a trip, so this is the library's rule.
+  # shellcheck source=../../../scripts/lib/budget-breaker.sh
+  source "$DECISION_LIB"
+  # shellcheck source=../../../scripts/lib/budget-breaker-writer.sh
+  source "$WRITER_LIB"
+  bbw_take_credentials
   set_vars "$(var AI_ENGINES claude all)" "$(var AGENTS_PAUSE_SOURCE rate-limit-observed all -600)" \
     "$(var AGENTS_PAUSE_UNTIL "$(ts "$TRIP_UNTIL_OFFSET")" all -600)"
   : > "$MOCK_DIR/calls.log"
   : > "$MOCK_DIR/writes.log"
-  run bash "$SCRIPT"
-  [ "$status" -eq 0 ]
+  bbw_read_org_vars acme
+  bbw_apply acme '[{"op":"set","name":"AGENTS_PAUSED","value":"true"}]'
   [ "$(writes)" = "POST AGENTS_PAUSED=true visibility=all" ]
-  [ "$(listings)" = "2" ]
+  [ "$(listings)" = "1" ]
 }
 
 @test "race: a source that someone deleted before the pause was set does not leave a pause without its source" {
@@ -1431,22 +1458,31 @@ FAILED DELETE AGENTS_PAUSE_UNTIL" ]
   no_writes
 }
 
-@test "race with a source an earlier run left: it is not this run's to remove, so the run fails loudly and removes nothing" {
-  armed
-  seed_quota
-  # A trip that failed at the switch left the source and an older until.
+@test "roll-back in the library: a source an earlier run left is not this call's to remove, and the until is then left too" {
+  # The script can no longer reach this (it removes a leftover source before it
+  # plans a trip); bbw_apply still must not make such a state worse.
+  # shellcheck source=../../../scripts/lib/budget-breaker.sh
+  source "$DECISION_LIB"
+  # shellcheck source=../../../scripts/lib/budget-breaker-writer.sh
+  source "$WRITER_LIB"
+  bbw_take_credentials
   set_vars "$(var AI_ENGINES claude all)" "$(var AGENTS_PAUSE_SOURCE rate-limit-observed all -600)" \
     "$(var AGENTS_PAUSE_UNTIL "$(ts 600)" all -600)"
   human_pauses_after AGENTS_PAUSE_UNTIL
-  run bash "$SCRIPT"
-  [ "$status" -eq 1 ]
-  [ "$(grep -c '::error::' <<< "$output")" = "1" ]
-  [[ "$output" == *"was already set before this run (an earlier run left it; this run did not write it, so it does not remove it)"* ]]
-  [[ "$output" == *"To keep the pause, delete AGENTS_PAUSE_SOURCE"* ]]
+  bbw_read_org_vars acme
+  local plan rc=0
+  plan="$(bbw_plan "$(jq -cn --arg u "$(ts "$TRIP_UNTIL_OFFSET")" '{action: "trip", until: $u, reason: "x", evidence_count: 3}')" "$BBW_VARS")"
+  [ "$(jq -r 'map(.name) | join(",")' <<< "$plan")" = "AGENTS_PAUSE_UNTIL,AGENTS_PAUSED" ]
+  bbw_apply acme "$plan" || rc=$?
+  [ "$rc" -ne 0 ]
+  [ "$BBW_FAILED_KIND" = "guard" ]
+  [ "$BBW_GUARD" = "paused" ]
+  [ "$BBW_ROLLBACK_OWN_SOURCE" = "true" ]
+  [ -z "$BBW_ROLLBACK_FAILED" ]
+  [ "${#BBW_ROLLED_BACK[@]}" -eq 0 ]
   [ "$(writes)" = "PATCH AGENTS_PAUSE_UNTIL=$(ts "$TRIP_UNTIL_OFFSET")" ]
   [ "$(org_var AGENTS_PAUSE_SOURCE)" = "rate-limit-observed" ]
   [ "$(org_var AGENTS_PAUSE_UNTIL)" = "$(ts "$TRIP_UNTIL_OFFSET")" ]
-  no_notice
 }
 
 @test "race: a second look that cannot read takes back what the run wrote and never sets the pause" {
@@ -1762,15 +1798,15 @@ DELETE AGENTS_PAUSE_SOURCE" ]
 
 # ── item 5: the arming value ─────────────────────────────────────────────────
 
-@test "arming value: a value that is set but is not exactly true is ONE error line and a disarmed run" {
+@test "arming value: a value that is set but is neither true nor false is ONE error line and a disarmed run" {
   local v
   seed_quota
-  for v in TRUE True tRuE " true" "true " 1 yes on false " "; do
+  for v in TRUE True tRuE " true" "true " 1 yes on False FALSE " false" "false " 0 no off " "; do
     : > "$MOCK_DIR/calls.log"
     BUDGET_BREAKER_ARMED="$v" run bash "$SCRIPT"
     [ "$status" -eq 0 ] || { echo "armed='$v' status=$status"; false; }
     [ "$(grep -c '::error::' <<< "$output")" = "1" ] || { echo "armed='$v': not one error: $output"; false; }
-    [[ "$output" == *"::error::budget-breaker: BUDGET_BREAKER_ARMED is set to \"${v}\", which is not the exact lowercase string true, so the breaker is DISARMED and writes nothing."* ]] || { echo "armed='$v': $output"; false; }
+    [[ "$output" == *"::error::budget-breaker: BUDGET_BREAKER_ARMED is set to \"${v}\", which is neither the exact lowercase string true nor the exact lowercase string false, so the breaker is DISARMED and writes nothing."* ]] || { echo "armed='$v': $output"; false; }
     [[ "$output" == *"NOT WRITING (disarmed)"* ]]
     # The credential the workflow would have handed over for TRUE is dropped.
     [[ "$output" == *"The workflow handed the write credential to this step all the same"* ]]
@@ -1778,7 +1814,7 @@ DELETE AGENTS_PAUSE_SOURCE" ]
     no_notice
     [ -z "$(calls_by write)" ] || { echo "armed='$v' used the write credential"; false; }
   done
-  grep -q '| Mode | disarmed (BUDGET_BREAKER_ARMED is set but is not exactly true) |' "$GITHUB_STEP_SUMMARY"
+  grep -q '| Mode | disarmed (BUDGET_BREAKER_ARMED is set but is neither true nor false) |' "$GITHUB_STEP_SUMMARY"
   assert_no_credential_anywhere
 }
 
@@ -1790,7 +1826,7 @@ DELETE AGENTS_PAUSE_SOURCE" ]
   [[ "$output" != *"handed the write credential"* ]]
 }
 
-@test "arming value: unset, empty and the exact true log no such error" {
+@test "arming value: unset, empty and the exact false are quiet ways to be disarmed; the exact true arms; none logs the error" {
   seed_quota
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
@@ -1800,6 +1836,20 @@ DELETE AGENTS_PAUSE_SOURCE" ]
   [ "$status" -eq 0 ]
   [[ "$output" == *"NOT WRITING (disarmed)"* ]]
   [[ "$output" != *"::error::"* ]]
+  # `false` is the ordinary way to switch it off: no error, no warning about
+  # the value, the credentials dropped, nothing written.
+  : > "$MOCK_DIR/calls.log"
+  BUDGET_BREAKER_ARMED="false" run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"mode: disarmed"* ]]
+  [[ "$output" == *"NOT WRITING (disarmed). Would have written: AGENTS_PAUSE_SOURCE=rate-limit-observed"* ]]
+  [[ "$output" != *"::error::"* ]]
+  [[ "$output" != *"BUDGET_BREAKER_ARMED is set to"* ]]
+  no_writes
+  no_notice
+  [ -z "$(calls_by write)" ]
+  run grep -c 'is neither true nor false' "$GITHUB_STEP_SUMMARY"
+  [ "$output" = "0" ]
   grep -q '| Mode | disarmed |' "$GITHUB_STEP_SUMMARY"
   BUDGET_BREAKER_ARMED="true" run bash "$SCRIPT"
   [ "$status" -eq 0 ]
@@ -1842,4 +1892,194 @@ DELETE AGENTS_PAUSE_SOURCE" ]
   run bbw_find_tracking_issue acme/.github-private
   [ "$status" -ne 0 ]
   [ ! -s "$MOCK_DIR/calls.log" ]
+}
+
+# ── #2251 follow-up: leftover ownership markers on a fleet that is not paused ──
+
+@test "leftover markers: a source of the breaker's with no until is removed, whatever the unpaused switch says" {
+  local paused
+  armed
+  # No switch at all, an explicit false, and any value that is not a pause.
+  for paused in "" false off; do
+    if [ -n "$paused" ]; then
+      set_vars "$(var AI_ENGINES claude all)" "$(var AGENTS_PAUSED "$paused" all -600)" \
+        "$(var AGENTS_PAUSE_SOURCE rate-limit-observed all -7200)"
+    else
+      set_vars "$(var AI_ENGINES claude all)" "$(var AGENTS_PAUSE_SOURCE rate-limit-observed all -7200)"
+    fi
+    : > "$MOCK_DIR/writes.log"
+    run bash "$SCRIPT"
+    [ "$status" -eq 0 ] || { echo "paused='$paused' status=$status"; false; }
+    [ "$(writes)" = "DELETE AGENTS_PAUSE_SOURCE" ] || { echo "paused='$paused': $(writes)"; false; }
+    [[ "$output" == *"::warning::budget-breaker: leftover ownership markers from an earlier run were removed (delete AGENTS_PAUSE_SOURCE)"* ]]
+    [ "$(org_var AGENTS_PAUSE_SOURCE)" = "<absent>" ]
+    no_notice
+  done
+  # One look, taken straight before the delete: no second listing in between.
+  [ "$(grep -c 'actions/variables?per_page=30' "$MOCK_DIR/calls.log")" = "3" ]
+}
+
+@test "leftover markers: a source that is not the breaker's own value, or an until with no source, is left alone" {
+  armed
+  set_vars "$(var AI_ENGINES claude all)" "$(var AGENTS_PAUSED false all -600)" \
+    "$(var AGENTS_PAUSE_SOURCE maintenance all -7200)" "$(var AGENTS_PAUSE_UNTIL "$(ts -600)" all -7200)"
+  cp "$MOCK_DIR/vars.json" "$BATS_TEST_TMPDIR/before.json"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"decision: none"* ]]
+  [[ "$output" != *"leftover ownership markers"* ]]
+  no_writes
+  no_notice
+  cmp "$MOCK_DIR/vars.json" "$BATS_TEST_TMPDIR/before.json"
+
+  # A value that only looks like the breaker's is not the breaker's.
+  local other
+  for other in Rate-Limit-Observed "rate-limit-observed " rate-limit; do
+    set_vars "$(var AI_ENGINES claude all)" "$(var AGENTS_PAUSE_SOURCE "$other" all -7200)"
+    run bash "$SCRIPT"
+    [ "$status" -eq 0 ]
+    no_writes
+    [ "$(org_var AGENTS_PAUSE_SOURCE)" = "$other" ]
+  done
+
+  # An until on its own is not an ownership marker.
+  set_vars "$(var AI_ENGINES claude all)" "$(var AGENTS_PAUSE_UNTIL "$(ts -600)" all -7200)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"decision: none"* ]]
+  no_writes
+  [ "$(org_var AGENTS_PAUSE_UNTIL)" = "$(ts -600)" ]
+}
+
+@test "leftover markers: the breaker's source on a PAUSED fleet is an own pause, not a leftover" {
+  armed
+  own_pause 1800
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"decision: hold"* ]]
+  [[ "$output" != *"leftover ownership markers"* ]]
+  no_writes
+  [ "$(org_var AGENTS_PAUSE_SOURCE)" = "rate-limit-observed" ]
+}
+
+@test "leftover markers: after the removal, a pause set by hand reads as a human pause and is never resumed" {
+  armed
+  # A trip that failed at the switch left the source and an until that has
+  # since passed: paused by hand as it stands, this would be resumed at once.
+  set_vars "$(var AI_ENGINES claude all)" "$(var AGENTS_PAUSE_SOURCE rate-limit-observed all -7200)" \
+    "$(var AGENTS_PAUSE_UNTIL "$(ts -3600)" all -7200)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(writes)" = "DELETE AGENTS_PAUSE_SOURCE
+DELETE AGENTS_PAUSE_UNTIL" ]
+
+  # A maintainer now pauses the fleet by hand.
+  jq -c --argjson v "$(var AGENTS_PAUSED true all -3600)" '.AGENTS_PAUSED = $v' "$MOCK_DIR/vars.json" \
+    > "$MOCK_DIR/vars.json.tmp" && mv "$MOCK_DIR/vars.json.tmp" "$MOCK_DIR/vars.json"
+  cp "$MOCK_DIR/vars.json" "$BATS_TEST_TMPDIR/before.json"
+  : > "$MOCK_DIR/writes.log"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"decision: none"* ]]
+  [[ "$output" == *"a human pause is never tripped over and never resumed"* ]]
+  no_writes
+  no_notice
+  cmp "$MOCK_DIR/vars.json" "$BATS_TEST_TMPDIR/before.json"
+  # ... and it is still left alone long after.
+  BUDGET_BREAKER_NOW=$(( NOW + 86400 )) run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  no_writes
+  cmp "$MOCK_DIR/vars.json" "$BATS_TEST_TMPDIR/before.json"
+}
+
+@test "leftover markers: a delete that fails is ONE actionable error, one attempt, and the run stops there" {
+  armed
+  seed_quota
+  set_vars "$(var AI_ENGINES claude all)" "$(var AGENTS_PAUSE_SOURCE rate-limit-observed all -7200)" \
+    "$(var AGENTS_PAUSE_UNTIL "$(ts -600)" all -7200)"
+  export MOCK_FAIL_DELETE=AGENTS_PAUSE_SOURCE
+  run bash "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [ "$(grep -c '::error::' <<< "$output")" = "1" ]
+  [[ "$output" == *"Removing the breaker's leftover ownership markers (step: delete AGENTS_PAUSE_SOURCE) failed (HTTP 403"* ]]
+  [[ "$output" == *"The token in ${PAT_NAME} must be"* ]]
+  [[ "$output" == *"AGENTS_PAUSE_SOURCE=rate-limit-observed is still set"* ]]
+  [[ "$output" == *"Nothing is retried in this run"* ]]
+  # One attempt; the until is not tried after the source failed; no trip.
+  [ "$(writes)" = "FAILED DELETE AGENTS_PAUSE_SOURCE" ]
+  [ "$(org_var AGENTS_PAUSED)" = "<absent>" ]
+  no_notice
+
+  # Failing at the until: the source is gone, so nothing is left to clean up
+  # and the next run does not try again; it decides normally.
+  : > "$MOCK_DIR/writes.log"
+  export MOCK_FAIL_DELETE=AGENTS_PAUSE_UNTIL
+  run bash "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [ "$(grep -c '::error::' <<< "$output")" = "1" ]
+  [[ "$output" == *"AGENTS_PAUSE_UNTIL is left over and has no effect without the source"* ]]
+  [ "$(writes)" = "DELETE AGENTS_PAUSE_SOURCE
+FAILED DELETE AGENTS_PAUSE_UNTIL" ]
+  unset MOCK_FAIL_DELETE
+  : > "$MOCK_DIR/writes.log"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"decision: trip"* ]]
+  [[ "$output" != *"leftover ownership markers"* ]]
+  [ "$(org_var AGENTS_PAUSED)" = "true" ]
+}
+
+@test "leftover markers: a run that is not armed logs the removal it would make and writes nothing" {
+  seed_quota
+  export BUDGET_BREAKER_VARS_SOURCE="rate-limit-observed"
+  BUDGET_BREAKER_VARS_UNTIL="$(ts -600)"
+  export BUDGET_BREAKER_VARS_UNTIL
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NOT WRITING (disarmed). Would have written: delete AGENTS_PAUSE_SOURCE; delete AGENTS_PAUSE_UNTIL"* ]]
+  [[ "$output" == *"::warning::budget-breaker: AGENTS_PAUSE_SOURCE=rate-limit-observed is set while the fleet is not paused"* ]]
+  no_writes
+  no_notice
+  [ -z "$(calls_by write)" ]
+  grep -q 'would have written: delete AGENTS_PAUSE_SOURCE; delete AGENTS_PAUSE_UNTIL' "$GITHUB_STEP_SUMMARY"
+
+  # Armed with no secret is the same.
+  armed
+  unset BUDGET_BREAKER_TOKEN BUDGET_BREAKER_VARS_UNTIL
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NOT WRITING (armed, no credential). Would have written: delete AGENTS_PAUSE_SOURCE"* ]]
+  [[ "$output" != *"delete AGENTS_PAUSE_UNTIL"* ]]
+  no_writes
+
+  # A foreign source in the vars context is nobody's to remove.
+  export BUDGET_BREAKER_VARS_SOURCE="maintenance"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"delete AGENTS_PAUSE_SOURCE"* ]]
+}
+
+@test "bbw_leftover_plan: only the breaker's own source on a fleet that is not paused is planned away" {
+  # shellcheck source=../../../scripts/lib/budget-breaker.sh
+  source "$DECISION_LIB"
+  # shellcheck source=../../../scripts/lib/budget-breaker-writer.sh
+  source "$WRITER_LIB"
+  local own_src until_v
+  own_src="$(var AGENTS_PAUSE_SOURCE rate-limit-observed)"
+  until_v="$(var AGENTS_PAUSE_UNTIL "$(ts 600)")"
+  st() { printf '%s\n' "$@" | jq -cs 'map({key: .name, value: .}) | from_entries'; }
+  [ "$(bbw_leftover_plan "$(st "$own_src" "$until_v")")" = '[{"op":"delete","name":"AGENTS_PAUSE_SOURCE"},{"op":"delete","name":"AGENTS_PAUSE_UNTIL"}]' ]
+  [ "$(bbw_leftover_plan "$(st "$own_src")")" = '[{"op":"delete","name":"AGENTS_PAUSE_SOURCE"}]' ]
+  [ "$(bbw_leftover_plan "$(st "$own_src" "$(var AGENTS_PAUSED false)")")" = '[{"op":"delete","name":"AGENTS_PAUSE_SOURCE"}]' ]
+  # Paused, in any letter case: an own pause, not a leftover.
+  [ "$(bbw_leftover_plan "$(st "$own_src" "$until_v" "$(var AGENTS_PAUSED true)")")" = '[]' ]
+  [ "$(bbw_leftover_plan "$(st "$own_src" "$until_v" "$(var AGENTS_PAUSED TRUE)")")" = '[]' ]
+  # Not the breaker's own value, or no source at all.
+  [ "$(bbw_leftover_plan "$(st "$(var AGENTS_PAUSE_SOURCE maintenance)" "$until_v")")" = '[]' ]
+  [ "$(bbw_leftover_plan "$(st "$(var AGENTS_PAUSE_SOURCE "")" "$until_v")")" = '[]' ]
+  [ "$(bbw_leftover_plan "$(st "$until_v")")" = '[]' ]
+  [ "$(bbw_leftover_plan '{}')" = '[]' ]
+  # Unreadable state plans nothing.
+  [ "$(bbw_leftover_plan 'not json')" = '[]' ]
+  [ "$(bbw_leftover_plan '')" = '[]' ]
 }

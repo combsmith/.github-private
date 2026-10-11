@@ -49,6 +49,15 @@
 # That narrows the window in which a pause set by hand can be claimed to the
 # one call between this read and the write of the pause. It does not close it.
 #
+# Leftover ownership markers (#2251). The breaker's own source on a fleet that
+# is NOT paused is left over: from a trip that failed before it set the pause,
+# or from a pause someone ended by hand without deleting the source. While it
+# is there, a pause set by hand reads as the breaker's own and would be lifted
+# by it. bbw_leftover_plan plans its removal (the source, then the until), and
+# an armed run applies that INSTEAD of deciding: it is that run's one state
+# change. Only the breaker's own value is ever removed; a source with any other
+# value is somebody else's and is left alone, as is an until with no own source.
+#
 # ----------------------------------------------------------------------------
 # Credentials
 #
@@ -368,6 +377,24 @@ bbw_plan() {
     --arg own "$BUDGET_BREAKER_PAUSE_SOURCE" \
     --arg np "$BBW_VAR_PAUSED" --arg ns "$BBW_VAR_SOURCE" --arg nu "$BBW_VAR_UNTIL" \
     "$_BBW_PLAN_JQ" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# bbw_leftover_plan <vars_json> — PURE. The steps that remove the breaker's
+# leftover ownership markers (see the header): `[]` unless the fleet is NOT
+# paused AND AGENTS_PAUSE_SOURCE holds exactly the breaker's own value; then
+# delete the source, and delete the until when there is one. `[]` too when the
+# state cannot be read: unreadable data never causes a write.
+# ---------------------------------------------------------------------------
+bbw_leftover_plan() {
+  local plan
+  plan=$(jq -c --arg own "$BUDGET_BREAKER_PAUSE_SOURCE" \
+    --arg np "$BBW_VAR_PAUSED" --arg ns "$BBW_VAR_SOURCE" --arg nu "$BBW_VAR_UNTIL" '
+    if (((.[$np].value // "") | ascii_downcase) != "true") and ((.[$ns].value // "") == $own)
+    then [ {op: "delete", name: $ns} ]
+         + (if .[$nu] != null then [ {op: "delete", name: $nu} ] else [] end)
+    else [] end' <<< "${1:-}" 2>/dev/null) || plan=""
+  printf '%s' "${plan:-[]}"
 }
 
 # bbw_plan_text <plan_json> — the plan as one line for a log.
@@ -776,7 +803,7 @@ It pauses the fleet when the fleet itself reports that the model provider is ref
 
 - To keep the fleet paused by hand: set `AGENTS_PAUSED=true` and delete `AGENTS_PAUSE_SOURCE`. The breaker never touches a pause without its own source.
 - To end a breaker pause early: set `AGENTS_PAUSED=false` and delete `AGENTS_PAUSE_SOURCE`.
-- To switch the breaker off: delete the repository variable `BUDGET_BREAKER_ARMED`. Only the exact lowercase value `true` arms it; any other value also keeps it off, and logs an error on every run until it is deleted or corrected.
+- To switch the breaker off: set the repository variable `BUDGET_BREAKER_ARMED` to `false`, or delete it. Only the exact lowercase value `true` arms it.
 
 See AGENTS.md, "Pausing the agent fleet". Keep this issue open; it is labelled so that dev-lead ignores it.
 BODY

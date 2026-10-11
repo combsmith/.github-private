@@ -805,7 +805,9 @@ as soon as the workflow is on `main`.
     `AGENTS_PAUSED=true`.
   - **resume** (its own pause, `AGENTS_PAUSE_UNTIL` passed): sets `AGENTS_PAUSED=false`,
     then deletes `AGENTS_PAUSE_SOURCE` and `AGENTS_PAUSE_UNTIL`.
-  - **hold** and **none**: writes nothing.
+  - **hold** and **none**: writes nothing. There are two exceptions, both removals of the
+    breaker's own values only: the roll-back of a stopped trip, and the removal of leftover
+    ownership markers (both described below).
 
   The order means a failure between two writes never leaves a pause without its source. Only
   dev-lead's three quota markers count; pr-review's `rate-limited` marker (an advisory
@@ -817,16 +819,18 @@ as soon as the workflow is on `main`.
   before arming. Armed without the secret, it logs
   `breaker armed but BUDGET_BREAKER_PAT is not configured` and exits green.
 - **Only lowercase `true` arms (#2251).** The script compares the variable with the exact
-  string `true`. `TRUE`, `True`, `true` with a space before or after it, `1`, `yes`, `on`
-  and `false` do **not** arm it. The only clean "off" is an absent or empty variable: any
-  other value that is not exactly `true` keeps the breaker disarmed **and** logs one
-  `::error::` line on every run (`BUDGET_BREAKER_ARMED is set to "...", which is not the
-  exact lowercase string true`), in a run that still exits green. The reason this is an
-  error and not a silent off: the workflow hands the write credential to the step with an
-  Actions expression, and an expression compares strings without regard to case, so `TRUE`
-  or `True` delivers the credential to a run that will not use it. That cannot be fixed in
-  the expression. The script drops the credential unused and says so in the error; fix the
-  variable (set it to `true`, or delete it) rather than leave the error standing.
+  string `true`. `TRUE`, `True`, `true` with a space before or after it, `1`, `yes` and `on`
+  do **not** arm it. The ordinary ways to be disarmed are the exact string `false`, an empty
+  value, or no variable at all: none of them logs anything about the value. Any **other**
+  value that is not exactly `true` (`TRUE`, `1`, `yes`, `False`, a padded `true` or `false`)
+  keeps the breaker disarmed **and** logs one `::error::` line on every run
+  (`BUDGET_BREAKER_ARMED is set to "...", which is neither the exact lowercase string true
+  nor the exact lowercase string false`), in a run that still exits green. The reason this
+  is an error and not a silent off: the workflow hands the write credential to the step
+  with an Actions expression, and an expression compares strings without regard to case, so
+  `TRUE` or `True` delivers the credential to a run that will not use it. That cannot be
+  fixed in the expression. The script drops the credential unused and says so in the error;
+  fix the variable (set it to `true` or to `false`) rather than leave the error standing.
 - **A human pause is never touched.** The breaker sets and lifts only a pause that carries
   `AGENTS_PAUSE_SOURCE=rate-limit-observed`. `AGENTS_PAUSED=true` with no source, or with any
   other source, is left exactly as it is, by trip and by resume. A writing run also re-reads
@@ -847,9 +851,24 @@ as soon as the workflow is on `main`.
     **and** `AGENTS_PAUSE_UNTIL` in place on purpose (a pause carrying the breaker's source
     with no end time would be lifted by the very next run; with its end time it stands at
     least until then): delete `AGENTS_PAUSE_SOURCE` by hand to keep the pause. A failed
-    delete of the until leaves a human pause plus a leftover until, which has no effect. The
-    same error is raised, and nothing is removed, when the source was already there from an
-    earlier failed run: this run did not write it, so it does not remove it.
+    delete of the until leaves a human pause plus a leftover until, which has no effect.
+- **Leftover ownership markers are removed (#2251).** `AGENTS_PAUSE_SOURCE=rate-limit-observed`
+  on a fleet that is **not** paused is left over: from a trip that failed before it set the
+  pause, or from a pause someone ended by hand without deleting the source. While it is
+  there, a pause set by hand reads as the breaker's own and the breaker would lift it. An
+  armed run that finds one deletes `AGENTS_PAUSE_SOURCE`, then `AGENTS_PAUSE_UNTIL` if there
+  is one, straight after reading the state, raises one `::warning::` (`leftover ownership
+  markers from an earlier run were removed`) and does nothing else: that is the run's one
+  state change, so the same run neither scans the fleet nor trips, and the next run decides
+  normally. Next to the roll-back above, this is the one further exception to "none writes
+  nothing". It removes only the breaker's own value: a source with any other value, and an
+  until with no source of the breaker's, are left alone, and so is everything on a fleet
+  that is paused. A delete that fails is one `::error::` and a red run with no retry. A run
+  that is not armed logs `Would have written: delete AGENTS_PAUSE_SOURCE; ...` and a
+  `::warning::` asking for the markers to be deleted by hand. One window remains: a pause
+  set by hand **while** the leftover source is still there, before the next armed run, is
+  indistinguishable from the breaker's own; the removal shortens that to at most the gap
+  between two runs.
 - **The secret.** `BUDGET_BREAKER_PAT` is a **fine-grained personal access token** whose
   resource owner is the `petry-projects` organisation, with the **organisation permission
   "Variables: read and write"** and nothing else (no repository permissions). It is an
@@ -889,10 +908,10 @@ as soon as the workflow is on `main`.
   copy a repository selection. If the reference is visible to selected repositories only, or
   none exists, the run fails with one error before writing anything; create `AGENTS_PAUSED`
   (value `false`) by hand, visible to all repositories.
-- **Disarming.** Delete the repository variable `BUDGET_BREAKER_ARMED` (or set it to the
-  empty string). Any other value that is not exactly `true` also disarms, but logs the
-  `::error::` described above on every run. This stops further writes; it does not lift a
-  pause that is already set (see the next point).
+- **Disarming.** Set the repository variable `BUDGET_BREAKER_ARMED` to `false`, or delete
+  it. (Any other value that is not exactly `true` also disarms, but logs the `::error::`
+  described above on every run.) This stops further writes; it does not lift a pause that
+  is already set (see the next point).
 - **Overriding a breaker pause by hand.** To **keep** the fleet paused past the breaker's
   time, delete `AGENTS_PAUSE_SOURCE` (leave `AGENTS_PAUSED=true`): the pause is then a human
   one and automation never lifts it. To **end** a breaker pause early, set
@@ -901,8 +920,9 @@ as soon as the workflow is on `main`.
   To hold the fleet paused regardless of the breaker, set `AGENTS_PAUSED=true` **without**
   `AGENTS_PAUSE_SOURCE` (the manual path). Ownership is the source and nothing else: a
   `AGENTS_PAUSE_SOURCE=rate-limit-observed` left behind on an unpaused fleet makes the next
-  pause set by hand look like the breaker's, so every run that sees one raises a
-  `::warning::` asking for it to be deleted (the breaker does not write on `none`).
+  pause set by hand look like the breaker's, so the next armed run removes it (see "Leftover
+  ownership markers are removed"); a run that is not armed raises a `::warning::` asking for
+  it to be deleted by hand.
 - **Anti-flap.** One decision and at most one state change per run; a variable that already
   holds the wanted value is not written again; a resume waits until the pause has stood for
   `BUDGET_BREAKER_MIN_HOLD_MIN` minutes (default 30). The hold is measured from the
@@ -919,8 +939,10 @@ as soon as the workflow is on `main`.
   failed write is **one** `::error::` naming the token and the permission, a red run, and no
   retry. The message lists what was written before the failure. After such a run, check the
   three variables: an `AGENTS_PAUSE_SOURCE=rate-limit-observed` left behind while the fleet
-  is not paused should be deleted, because a pause set by hand while it is there would look
-  like the breaker's own and be lifted.
+  is not paused is removed by the next armed run, but until that run a pause set by hand
+  would look like the breaker's own and be lifted, so delete it by hand if you are about to
+  pause by hand. A trip that failed part-way is therefore completed two runs later, not one:
+  the next run removes the markers and the one after decides again.
 - **Notification.** One comment when the breaker trips and one when it clears, on a single
   tracking issue in this repository ("Budget breaker: automatic fleet pauses (tracking)",
   created on first use, labelled `budget-breaker` and `dev-lead:hands-off`). If the comment
