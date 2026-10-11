@@ -1,0 +1,83 @@
+# fleet-pause registry: how each workflow in this repository answers the fleet
+# pause switch, the Actions variable AGENTS_PAUSED (#1525, #2249).
+#
+# Data, not code. This file is the ONE place the decision is recorded:
+#   - tests/dev-lead/integration/test_fleet_pause_coverage.py reads it and fails
+#     when a model-calling workflow has no row, or when a row does not match the
+#     workflow (CI: test-dev-lead.yml job `agents-paused-preflight`);
+#   - the inventory table in AGENTS.md ("Pausing the agent fleet") is generated
+#     from it (`--markdown`), and tests/test_fleet_pause_coverage.bats fails when
+#     the two differ.
+#
+# A workflow is MODEL-CALLING when, outside comments, a job
+#   1. names a model credential (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY,
+#      GOOGLE_API_KEY*, GEMINI_API_KEY, COPILOT_GITHUB_TOKEN, OPENAI_API_KEY), or
+#   2. names an AI CLI or action (@anthropic-ai/claude-code, @google/gemini-cli,
+#      anthropics/claude-code-action, gh copilot, gh models), or
+#   3. calls a reusable workflow with `secrets: inherit` (every secret, the
+#      model credentials included, reaches that reusable).
+# The engine scripts cannot reach a model without one of those credentials, and
+# only a workflow can hand one over, so rule 1 covers them.
+#
+# Columns (tab-separated): workflow	mode	detail	note
+#   workflow  file name under .github/workflows/
+#   mode      job-gate         the jobs in `detail` (comma-separated) carry
+#                              `vars.AGENTS_PAUSED != 'true'` as the first term
+#                              of their `if:`, and a `fleet-paused` job logs why
+#                              on the same events
+#             job-gate-silent  the same job condition, with no notice job
+#             step-gate        `detail` is `<job>:<step>|<step>`: those steps
+#                              carry the condition, the rest of the job still
+#                              runs, and one step logs why
+#             caller           thin caller of the reusable in `detail`, a file
+#                              in this repository that is itself gated
+#             upstream         NOT PAUSED: the model call is in the reusable in
+#                              `detail`, hosted in another repository
+#             exempt           deliberately not paused; `note` says why
+#   detail    see mode; `-` when unused
+#   note      one sentence; required for upstream and exempt; `-` when unused
+#
+# To add a model-calling workflow: gate its model-calling job (copy the `if:` and
+# the `fleet-paused` job from any job-gate workflow) and add a row, or add an
+# exempt row with the reason. Then regenerate the AGENTS.md table.
+#
+# ── Agents and model-calling workflows, gated here ───────────────────────────
+dev-lead-reusable.yml	job-gate-silent	dispatch,ci-relay,resume	The original gate (#1525). No notice job: a contract test requires every job of this reusable to carry the condition, and a notice job would start a runner for every event in every consumer repository during a pause.
+pr-review.yml	job-gate	review	Reusable. A job condition, because the AGENTS_PAUSED branch of validate-engines.sh is not enough: with Claude as the primary engine, review-batch.sh carries on with every engine marked unavailable.
+persona-runner-reusable.yml	job-gate	run	Runs every persona advisory (qa-lead, the architects and the rest).
+ci-failure-analyst-reusable.yml	job-gate	analyze	Reusable.
+gh-aw-cross-org.yml	job-gate	dispatch	-
+issue-triage-runner.yml	job-gate	triage	The apply job needs triage, so it is skipped with it.
+initiative-planner.yml	job-gate	plan	The redispatch bridge makes no model call and still runs; the run it starts is the one that reports the pause.
+idea-triage.yml	job-gate	triage	-
+spec-drift.yml	job-gate-silent	spec-drift	Opt-in and off by default. No notice job: its contract test requires every job to hold issues: write and the workflow to cost nothing when it does not run.
+dependency-advisory.yml	job-gate	advisory	-
+docs-health-check.yml	job-gate	health-check	-
+readme-refresh.yml	job-gate	refresh	-
+release-notes.yml	job-gate	release-notes	-
+stale-manager.yml	job-gate	stale	-
+skill-eval-report.yml	job-gate	eval-report	The discover job makes no model call and still runs.
+model-ab.yml	job-gate	model-ab	Manual dispatch only; paused like the rest, so resume the fleet to run an A/B.
+daily-pr-review-health.yml	step-gate	health-check:Run health check|Assert MCP connectivity	A monitor: the runaway, stall and merge-ready scans make no model call and keep running.
+# ── Timers that re-dispatch agent work: no model call, gated all the same ────
+dev-lead-retry.yml	job-gate	retry	No model call. Gated because a sweep records a retry attempt before it dispatches, and a paused dev-lead skips the run, so attempts would be spent on nothing.
+pr-review-sweep.yml	job-gate	sweep	No model call. Gated because it would re-dispatch up to 20 reviews every 15 minutes into a paused pr-review.
+# ── Thin callers of a gated reusable in this repository ──────────────────────
+dev-lead.yml	caller	dev-lead-reusable.yml	-
+pr-review-trigger.yml	caller	pr-review.yml	-
+persona-runner.yml	caller	persona-runner-reusable.yml	-
+ci-failure-analyst.lock.yml	caller	ci-failure-analyst-reusable.yml	-
+# ── Not paused: the model call lives in another repository ───────────────────
+feature-ideation.yml	upstream	petry-projects/.github/.github/workflows/feature-ideation-reusable.yml	That reusable does not read AGENTS_PAUSED, and this file is a frozen caller stub, so the fix belongs there.
+# ── Exempt: control plane and monitors, which must run through a pause ───────
+budget-breaker.yml	exempt	-	Control plane: it sets and lifts the pause, so it has to run while paused. No model call.
+budget-poller.yml	exempt	-	Control plane: holds the Claude credential only to read the usage windows (dry run). No model call.
+actions-fleet-monitor.yml	exempt	-	Monitor. No model call.
+engine-token-liveness.yml	exempt	-	Monitor. No model call; it reads AGENTS_PAUSED itself to stay silent during a pause.
+# ── Exempt: no model call, and what they start is gated ──────────────────────
+persona-mention.yml	exempt	-	Mention router (reusable in petry-projects/.github, inherits secrets). No model call: it dispatches persona-runner.yml, which is gated.
+auto-rebase.yml	exempt	-	Inherits secrets, but its reusable (petry-projects/.github) makes no model call; a conflict goes to dev-lead, which is gated.
+dependabot-automerge.yml	exempt	-	Inherits secrets, but its reusable (petry-projects/.github) makes no model call.
+pr-review-delayed-retry.yml	exempt	-	No model call: it re-dispatches through pr-review-sweep.yml, which is gated.
+auto-rebase-retry.yml	exempt	-	No model call: it re-runs failed Auto-rebase jobs or dispatches dev-lead's rebase intent, which is gated.
+initiative-driver.yml	exempt	-	No model call: it releases issues to dev-lead by label. Known gap: an issue it labels during a pause is not picked up, because dev-lead skips that event.

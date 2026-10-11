@@ -162,7 +162,13 @@ jobs:
     #   pull_request_review — skip COMMENTED reviews; they don't change merge-readiness.
     #                         CHANGES_REQUESTED reviews are also skipped because the PR
     #                         is now blocked; review-one-pr.sh would skip it anyway.
+    #
+    # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
+    # (neutral, not red) and `fleet-paused` below reports why. A job condition,
+    # not the AGENTS_PAUSED branch of validate-engines.sh: with every engine
+    # marked unavailable review-batch.sh still continues on Claude.
     if: >-
+      vars.AGENTS_PAUSED != 'true' &&
       (github.event_name != 'check_suite' ||
        (github.event.check_suite.conclusion == 'success' &&
         github.event.check_suite.pull_requests[0] != null))
@@ -607,3 +613,30 @@ jobs:
           path: /tmp/token-usage-${{ github.run_id }}.jsonl
           if-no-files-found: ignore
           retention-days: 30
+
+  # Fleet pause notice (#2249). With AGENTS_PAUSED=true the `review` job above is
+  # skipped by its `if:`, and a skipped job cannot log. This job runs instead, on
+  # the same events, and says why in one line. Inventory and rules: AGENTS.md
+  # "Pausing the agent fleet" and scripts/lib/fleet-pause-registry.tsv.
+  fleet-paused:
+    if: >-
+      vars.AGENTS_PAUSED == 'true' &&
+      (github.event_name != 'check_suite' ||
+       (github.event.check_suite.conclusion == 'success' &&
+        github.event.check_suite.pull_requests[0] != null))
+      &&
+      (github.event_name != 'pull_request_review' ||
+       github.event.review.state == 'approved' ||
+       github.event.review.state == 'dismissed')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    env:
+      PAUSE_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
+      PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
+    steps:
+      - name: Report the fleet pause
+        run: |
+          echo "::notice title=Agent fleet paused::PR Review Agent: not run, the agent fleet is paused (AGENTS_PAUSED=true)." \
+            "Pause source: ${PAUSE_SOURCE:-not set (paused by hand)}." \
+            "Paused until: ${PAUSE_UNTIL:-not set}."
