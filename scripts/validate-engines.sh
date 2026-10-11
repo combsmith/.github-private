@@ -9,7 +9,8 @@
 #   GEMINI_AVAILABLE   — "true" if gemini CLI + at least one Gemini key with
 #                        credits (GOOGLE_API_KEY, GOOGLE_API_KEY_2, _3, _4) are present
 #   COPILOT_AVAILABLE  — "true" if gh copilot is usable with COPILOT_GITHUB_TOKEN
-#                        (a classic ghp_ PAT is not: Copilot rejects it)
+#                        (a classic ghp_ PAT is not: Copilot rejects it; a policy
+#                        denial or any other probe failure gets one warning)
 #
 # Engines left out of AI_ENGINES (scripts/lib/engine-chain.sh) are reported as
 # disabled and not probed — turning an engine off is a configuration choice, not
@@ -37,6 +38,11 @@ _VALIDATE_ENGINES_MODELS_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-models.s
 # shellcheck source=lib/engine-models.sh
 [ -f "$_VALIDATE_ENGINES_MODELS_LIB" ] && source "$_VALIDATE_ENGINES_MODELS_LIB"
 unset _VALIDATE_ENGINES_MODELS_LIB
+
+# Copilot licensing/policy denial (#1546, #1960). Same phrases as engine.sh's
+# _license_denied_pattern (a bats case keeps the two in sync); copied rather than
+# sourced because engine.sh sets `set -euo pipefail` and initialises the engine.
+_VALIDATE_LICENSE_DENIED_RE="(access denied by policy settings|not supported by copilot)"
 
 # _gemini_probe_model — the configured Gemini triage model (the tier the probe
 # stands in for), without Google's optional "models/" prefix; gemini-3.8-flash
@@ -241,9 +247,21 @@ validate_engines() {
     echo "::warning::Copilot unavailable — COPILOT_GITHUB_TOKEN is not set. Provide a fine-grained PAT with the Copilot entitlement or remove copilot from AI_ENGINES."
   elif [[ "$_copilot_tok" == ghp_* ]]; then
     echo "::warning::Copilot unavailable — COPILOT_GITHUB_TOKEN is a classic PAT (ghp_), which Copilot rejects. Use a fine-grained PAT or remove copilot from AI_ENGINES."
-  elif env GH_TOKEN="$_copilot_tok" \
-       gh copilot --version >/dev/null 2>&1; then
-    copilot_ok=true
+  else
+    # A policy denial (no Copilot subscription/policy for the token's org) or any
+    # other probe failure is reported once, never left as a silent false (#1960).
+    # The CLI output is matched, not echoed: only the matched phrase is logged.
+    local _copilot_out _copilot_rc=0 _denied
+    _copilot_out="$(env GH_TOKEN="$_copilot_tok" gh copilot --version 2>&1)" || _copilot_rc=$?
+    _denied="$(printf '%s\n' "$_copilot_out" | grep -oiE "$_VALIDATE_LICENSE_DENIED_RE" | head -n 1 \
+      | tr '[:upper:]' '[:lower:]' || true)"
+    if [ -n "$_denied" ]; then
+      echo "::warning::Copilot unavailable — ${_denied} (the token's account or org has no usable Copilot entitlement). Fix the Copilot policy/subscription or remove copilot from AI_ENGINES."
+    elif [ "$_copilot_rc" -ne 0 ]; then
+      echo "::warning::Copilot unavailable — \`gh copilot --version\` failed (exit ${_copilot_rc}). Check the gh CLI and COPILOT_GITHUB_TOKEN, or remove copilot from AI_ENGINES."
+    else
+      copilot_ok=true
+    fi
   fi
 
   if [ -n "$_disabled" ]; then

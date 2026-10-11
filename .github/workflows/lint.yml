@@ -125,6 +125,7 @@ jobs:
             tests/test_model_pin_token_log.bats \
             tests/dev-lead/unit/test_engine_chain_config.bats \
             tests/dev-lead/unit/test_engine_models.bats \
+            tests/test_validate_engines.bats \
             tests/test_review_cycle.bats \
             tests/test_pr_automation_budget.bats \
             tests/test_pr_runaway_regression.bats \

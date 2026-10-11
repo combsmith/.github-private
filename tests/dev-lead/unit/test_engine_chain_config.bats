@@ -289,6 +289,72 @@ _duck_chain() {
   grep -q 'read -r DUCK_ENGINE DUCK_MODEL < "${DUCK_OUTPUT}.engine"' "$SCRIPT_DIR/scripts/review-one-pr.sh"
 }
 
+# ── A skipped duck is visible in the review body (#1960) ─────────────────────
+
+# _verdict <file> — a cascade-action verdict with the usual body layout.
+_verdict() {
+  jq -n --arg body $'<!-- pr-review-agent v1 sha=abc123 decision=approved risk=LOW -->\n\n## Automated review — APPROVED ✓\n\n### Summary\nLooks fine.\n\n### Findings\n- **INFO**: none\n\n---\n_Reviewed by the PR-review cascade._' \
+    '{decision: "approve", risk: "LOW", body: $body}' > "$1"
+}
+
+@test "duck skip note: a duck skipped for an unavailable engine adds one line to the review body" {
+  f="$(mktemp)"; _verdict "$f"
+  run bash -c "source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1
+    duck_skip_note '$f' 'no enabled, available engine for it (Gemini unavailable per the pre-flight probe)'"
+  [ "$status" -eq 0 ]
+  body="$(jq -r '.body' "$f")"
+  [ "$(grep -c 'Second opinion skipped' <<< "$body")" -eq 1 ]
+  [[ "$body" == *"Second opinion skipped"*"Gemini unavailable per the pre-flight probe"* ]]
+  # The marker stays on the first line and the note sits before the findings.
+  [[ "$(head -n 1 <<< "$body")" == "<!-- pr-review-agent v1 sha=abc123 "* ]]
+  [ "$(grep -n 'Second opinion skipped' <<< "$body" | cut -d: -f1)" -lt "$(grep -n '^### Findings' <<< "$body" | cut -d: -f1)" ]
+  [ "$(jq -r '.decision' "$f")" = "approve" ]
+  rm -f "$f"
+}
+
+@test "duck skip note: a duck that ran (no skip reason) leaves the review body unchanged" {
+  f="$(mktemp)"; _verdict "$f"
+  before="$(cat "$f")"
+  run bash -c "source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1; duck_skip_note '$f' ''"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$f")" = "$before" ]
+  rm -f "$f"
+}
+
+@test "duck skip note: a body without a Findings heading gets the line appended" {
+  f="$(mktemp)"
+  jq -n '{decision: "escalate", body: "<!-- pr-review-agent v1 sha=abc -->\nbody"}' > "$f"
+  run bash -c "source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1; duck_skip_note '$f' 'reason x'"
+  [ "$status" -eq 0 ]
+  [[ "$(jq -r '.body' "$f")" == $'<!-- pr-review-agent v1 sha=abc -->\nbody\n\n'*"Second opinion skipped"*"reason x"* ]]
+  rm -f "$f"
+}
+
+@test "duck chain: no verdict from any engine records why, for the review body" {
+  DC="$(mktemp -d)"
+  run _duck_chain $'gemini gemini-3.8-flash'
+  [[ "$(cat "$DC/duck.json.skip")" == "no duck engine produced a verdict (tried: gemini)" ]]
+  run _duck_chain $'copilot o4-mini'
+  [[ "$(cat "$DC/duck.json.skip")" == *"copilot (o4-mini) timed out"* ]]
+  rm -rf "$DC"
+}
+
+@test "duck chain: a duck that ran leaves no skip reason" {
+  DC="$(mktemp -d)"
+  echo stale > "$DC/duck.json.skip"
+  run _duck_chain $'gemini gemini-3.8-flash\nclaude claude-sonnet-4-6'
+  [[ "$output" == *"rc=0"* ]]
+  [ ! -e "$DC/duck.json.skip" ]
+  rm -rf "$DC"
+}
+
+@test "review-one-pr.sh puts the duck skip note on both posted verdicts (tier 2 and audit)" {
+  s="$SCRIPT_DIR/scripts/review-one-pr.sh"
+  [ "$(grep -c 'duck_skip_note "$VERDICT_JSON" "$DUCK_SKIP_REASON"' "$s")" -eq 2 ]
+  grep -q 'DUCK_SKIP_REASON="no enabled, available engine for it' "$s"
+  grep -q '"${DUCK_OUTPUT}.skip"' "$s"
+}
+
 # ── validate-engines.sh probes ────────────────────────────────────────────────
 
 _setup_validate_bin() {
