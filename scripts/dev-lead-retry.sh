@@ -481,7 +481,7 @@ fetch_pr_comment_nodes() {
 #   marker after the edit is not proof the edit was handled: on
 #   empower-personal-dashboard#65/#66/#67 passes ran after the edit, wrote no
 #   fresh disposition, and that marker stopped every later dispatch.
-#   Run markers only BOUND the retry. A successful fix-reviews pass for THIS PR
+#   Run markers only BOUND the retry. A fix-reviews pass for THIS PR
 #   (`<!-- dev-lead-fix-reviews pr=<N> … intent=fix-reviews
 #   status=<any>`) that started at/after the latest such edit counts
 #   as one attempt. After STALE_DISPOSITION_MAX_PASSES (default 2) it returns 3:
@@ -489,9 +489,13 @@ fetch_pr_comment_nodes() {
 #   starts a new count. A pass counts from when it STARTED (the marker's
 #   read_at=, a lower bound on when it read the comments), not when its marker
 #   was posted: a pass that began before the edit never saw the edited body. A
-#   legacy marker without read_at= falls back to its createdAt. Only a marker
-#   from a trusted author (OWNER/MEMBER/COLLABORATOR, as dev-lead's own markers
-#   are) counts, so an outside commenter cannot exhaust the cap.
+#   legacy marker without read_at= falls back to its createdAt. A pass's start
+#   marker (`<!-- dev-lead-fix-reviews-start pr=<N> … intent=fix-reviews`, posted
+#   before the model runs, #2247) counts too, so a pass that dies before its
+#   terminal marker still uses up an attempt. Markers are counted by distinct
+#   read_at, so a pass that posts both a start and a terminal marker counts once.
+#   Only a marker from a trusted author (OWNER/MEMBER/COLLABORATOR, as dev-lead's
+#   own markers are) counts, so an outside commenter cannot exhaust the cap.
 #   1 otherwise, including unreadable input (never dispatch on a guess). Pure
 #   apart from reading the reviewer registry.
 stale_disposition_needs_dispatch() {
@@ -503,13 +507,14 @@ stale_disposition_needs_dispatch() {
   latest_edit=$(jq -r 'map(.lastEditedAt) | max // ""' <<< "$stale" 2>/dev/null) || return 1
   [ -n "$latest_edit" ] || return 1
   later_runs=$(jq -r --arg e "$latest_edit" \
-    --arg re "<!-- dev-lead-fix-reviews pr=${pr_number} [^>]*intent=fix-reviews status=" '
+    --arg re "<!-- dev-lead-fix-reviews pr=${pr_number} [^>]*intent=fix-reviews status=" \
+    --arg start "<!-- dev-lead-fix-reviews-start pr=${pr_number} [^>]*intent=fix-reviews[ >]" '
       [ .[] | objects
         | select((.authorAssociation // "") as $a | ["OWNER","MEMBER","COLLABORATOR"] | index($a) != null)
-        | select((.body // "") | test($re))
+        | select((.body // "") | test($re) or test($start))
         | (.createdAt // "") as $posted
         | ([(.body // "") | capture("read_at=(?<r>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)") | .r] | first // $posted) as $seen
-        | select($seen >= $e) ] | length' <<< "$nodes" 2>/dev/null) || return 1
+        | select($seen >= $e) | $seen ] | unique | length' <<< "$nodes" 2>/dev/null) || return 1
   [[ "$later_runs" =~ ^[0-9]+$ ]] || return 1
   [ "$later_runs" -lt "$max_passes" ] || return 3
   return 0

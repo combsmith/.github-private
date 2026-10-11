@@ -257,6 +257,98 @@ _sweep_nodes() {
   [ "$status" -eq 3 ]
 }
 
+# ── #2247: a pass that dies before any terminal marker still counts ────────────
+# A fix-reviews pass that sees a stale disposition posts a start marker before the
+# model runs. A pass whose runner is lost after that posts nothing else, so the cap
+# has to count start markers too. A pass that posts both counts once (same read_at).
+
+# _start_node <id> <createdAt> <read_at> [pr] [association]: a start-marker node.
+_start_node() {
+  jq -cn --arg id "$1" --arg c "$2" --arg r "$3" --arg pr "${4:-2000}" --arg a "${5:-OWNER}" '
+    {id:$id, author:{login:"don-petry", __typename:"User"}, authorAssociation:$a,
+     body:"<!-- dev-lead-fix-reviews-start pr=\($pr) sha=abc intent=fix-reviews edit=2026-10-01T20:35:00Z read_at=\($r) -->",
+     createdAt:$c, isMinimized:false, minimizedReason:null, lastEditedAt:null}'
+}
+
+# _with_nodes <nodes-json> <node-json>...: append nodes to a node array.
+_with_nodes() {
+  local nodes="$1" n
+  shift
+  for n in "$@"; do nodes=$(jq -c --argjson n "$n" '. + [$n]' <<< "$nodes"); done
+  printf '%s' "$nodes"
+}
+
+@test "sweep(#2247): two passes that only posted a start marker reach the cap (rc 3)" {
+  local base nodes
+  base=$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z)
+  nodes=$(_with_nodes "$base" "$(_start_node IC_s1 2026-10-01T20:40:01Z 2026-10-01T20:40:00Z)")
+  run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 0 ]
+  nodes=$(_with_nodes "$nodes" "$(_start_node IC_s2 2026-10-01T20:55:01Z 2026-10-01T20:55:00Z)")
+  run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 3 ]
+}
+
+@test "sweep(#2247): a pass that posts a start and a terminal marker counts once" {
+  local nodes
+  # The terminal marker (IC_run) carries the same read_at as the start marker.
+  nodes=$(_with_nodes "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:45:00Z OWNER 2026-10-01T20:40:00Z)" \
+    "$(_start_node IC_s1 2026-10-01T20:40:01Z 2026-10-01T20:40:00Z)")
+  run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 0 ]
+  STALE_DISPOSITION_MAX_PASSES=1 run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 3 ]
+}
+
+@test "sweep(#2247): a start marker before the edit, for another PR, or from an untrusted author does not count" {
+  export STALE_DISPOSITION_MAX_PASSES=1  # one counted pass reaches the cap
+  local base
+  base=$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z)
+  run stale_disposition_needs_dispatch "$(_with_nodes "$base" "$(_start_node IC_s 2026-10-01T20:36:00Z 2026-10-01T20:30:00Z)")" 2000
+  [ "$status" -eq 0 ]
+  run stale_disposition_needs_dispatch "$(_with_nodes "$base" "$(_start_node IC_s 2026-10-01T20:41:00Z 2026-10-01T20:40:00Z 20)")" 2000
+  [ "$status" -eq 0 ]
+  run stale_disposition_needs_dispatch "$(_with_nodes "$base" "$(_start_node IC_s 2026-10-01T20:41:00Z 2026-10-01T20:40:00Z 2000 NONE)")" 2000
+  [ "$status" -eq 0 ]
+  run stale_disposition_needs_dispatch "$(_with_nodes "$base" "$(_start_node IC_s 2026-10-01T20:41:00Z 2026-10-01T20:40:00Z)")" 2000
+  [ "$status" -eq 3 ]
+}
+
+@test "sweep(#2247): two passes start and post no terminal marker — the third sweep holds and posts the capped hold" {
+  export DRY_RUN="false" POSTS_FILE="$BATS_TEST_TMPDIR/posts"
+  : > "$POSTS_FILE"
+  gh() {
+    case "$*" in
+      *"--method POST"*) printf '%s\n' "$*" >> "$POSTS_FILE" ;;
+      *"/pulls/2000"*) echo '{"state":"open","head":{"sha":"abc"},"labels":[]}' ;;
+      *"/comments"*) jq -c 'map(.body)' <<< "$SWEEP_NODES" ;;
+      *) echo '[]' ;;
+    esac
+  }
+  pr_resume_suppressed() { return 1; }
+  post_dispatch_guard() { :; }
+  fetch_pr_comment_nodes() { printf '%s' "$SWEEP_NODES"; }
+  dispatch_reviews_retry() { echo "DISPATCH intent=$4" >&2; }
+
+  # Sweeps 1 and 2 dispatch; each dispatched pass posts its start marker, then dies.
+  export SWEEP_NODES
+  SWEEP_NODES=$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z)
+  run scan_pr_for_rate_limits "petry-projects/.github-private" 2000
+  [[ "$output" == *"DISPATCH intent=fix-reviews"* ]]
+  SWEEP_NODES=$(_with_nodes "$SWEEP_NODES" "$(_start_node IC_s1 2026-10-01T20:40:01Z 2026-10-01T20:40:00Z)")
+  run scan_pr_for_rate_limits "petry-projects/.github-private" 2000
+  [[ "$output" == *"DISPATCH intent=fix-reviews"* ]]
+  [ ! -s "$POSTS_FILE" ]
+  SWEEP_NODES=$(_with_nodes "$SWEEP_NODES" "$(_start_node IC_s2 2026-10-01T20:55:01Z 2026-10-01T20:55:00Z)")
+
+  # Sweep 3: no dispatch, and the capped hold comment is posted.
+  run scan_pr_for_rate_limits "petry-projects/.github-private" 2000
+  [ "${lines[-1]}" = "0" ]
+  [[ "$output" != *"DISPATCH"* ]]
+  [[ "$output" == *"::warning::"*"#2166"* ]]
+  grep -q 'dev-lead-stale-disposition-hold pr=2000 sha=abc max_passes=2' "$POSTS_FILE"
+}
+
 @test "sweep(#2008): unreadable comment data never dispatches (no guessing)" {
   run stale_disposition_needs_dispatch "not json" 2000
   [ "$status" -eq 1 ]
