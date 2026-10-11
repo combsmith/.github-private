@@ -40,6 +40,9 @@ Made by the Maintainer on 2026-10-10, in addition to ADR-0013's twelve decisions
 | Every panel of the control room is public | §8.6 |
 | Only required Lenses gate, and domain owners start in shadow (from the pre-mortem, §9.3) | §4.2, §5.2 |
 | The Maintainer records continue or stop at two decision points | §9.2 |
+| Decisions read GitHub only; the control room is written and never read back (from the simplification pass, §9.4) | §3.9 |
+| Every `run` job reads through one shared reader App; a Role gets its own App when it first writes | §5.1 |
+| An external timer may start a pass | §7.3 |
 | Each Lens has a declared scope of paths | Role manifests (§5.3) |
 | A Consumer repo's setup and test commands are part of its onboarding contract | The Consumer entry (§3.12) |
 | Design by simulation first, with a formal model held in reserve | §4.5 |
@@ -81,7 +84,6 @@ flowchart LR
   F -- Effects --> C
   F -- every Run --> R
   R -- folded by the poller --> V
-  V -- what only the Factory knows --> F
   V -- dashboard --> M
   F -- Task --> E
   E -- Result --> F
@@ -89,7 +91,8 @@ flowchart LR
 
 Everything the Factory knows about a Work item it reads from GitHub: the item itself, and the
 Factory's own run records. Nothing authoritative lives anywhere else. The control room is a view of
-those, and can be deleted and rebuilt. Everything the Factory does to a Work item is an Effect
+those for people. The Factory writes it and never reads it, so it can be wrong, missing or rebuilt
+without changing a decision. Everything the Factory does to a Work item is an Effect
 applied by one job.
 
 ### 2.2 Components
@@ -145,11 +148,11 @@ flowchart TB
 |---|---|---|
 | Entry shim | Run from the default branch and call the pinned Release | Contain a step or a `run:` block |
 | Brakes | Human Pause, Run ceiling, loop count, monthly spend cap | Import from `kernel/` or read the control room for the loop count |
-| Controller | One pass: read facts, run records and the view; call the Kernel; start Runs; write the view | Decide anything itself |
+| Controller | One pass: read facts and run records; call the Kernel; start Runs; write the view | Decide anything itself, or read the view |
 | Kernel | Every decision: Lifecycle, Admission, Convergence, the gate, content identity, what the item shows and how urgently it needs a person | Open a file, a socket, a process or the environment; read the clock except as an argument; take a comment body |
 | Facts port | One snapshot of a Work item from GitHub | Return text to the Kernel |
 | Records port | List the Factory's own run records and read their artifacts | Write anything |
-| View port | Read and write the control room's files | Be the only source of anything a decision needs |
+| View port | Write the control room's files | Be read by anything that decides |
 | Effects port | Apply one Effect and read it back | Run in a job that holds an LLM credential |
 | Engine port | Run one vendor CLI on one Task and return its output | Hold a GitHub write credential |
 | Identity port | Mint a token for the Role's App, narrowed to the Effects requested | Mint for a Role other than the one in the Result |
@@ -174,8 +177,7 @@ sequenceDiagram
 
   P->>G: read facts for every open item
   P->>Ac: list recent run records
-  P->>CR: read the view
-  P->>K: decide(facts, runs, view, capacity, now)
+  P->>K: decide(facts, runs, capacity, now)
   K-->>P: Decision: admit(role, intent)
   P->>Ac: start a Run, named for its item
   R->>R: Engine turns, pre-flight, bounded repair
@@ -191,7 +193,7 @@ sequenceDiagram
   P->>G: update the status on the item if the decision changed
 ```
 
-Steps 8 to 10 are skipped for an Intent that changes no code. The Result artifact of step 8 exists
+The `verify` steps are skipped for an Intent that changes no code. The Result artifact exists
 before `apply` starts, so it is the record of what was intended (§3.6).
 
 ### 2.4 Four rules restated
@@ -218,29 +220,25 @@ A reader rejects a major version it does not know. Messages are JSON. Files a pe
 
 | Contract | From | To | Carries |
 |---|---|---|---|
-| Wake | Consumer ingress or timer | Controller | At most a Work item's identity |
 | Facts | Facts port | Kernel | What GitHub holds about one Work item, as data |
 | Decision | Kernel | Controller | Nothing, defer, hold, transition or admit, with a reason |
 | Task | Harness | Engine | Everything one Run needs |
 | Result | Engine | Harness | Status, requested Effects, Findings, Dispositions, usage |
 | Effect | Result | `apply` | One requested change to the outside world |
 | Finding | Any Lens | Kernel | One observation, with a non-text identity |
-| Disposition | Author and owner Roles | Kernel | A proposal and a decision on one Finding |
+| Disposition | Author and owner Roles, inside a Result | `apply` | A proposal or a decision on one Finding |
 | Run record | Actions, and the Run's own artifacts | Controller | That a Run happened, how it ended and what it produced |
-| Control-room view | Controller | Kernel, dashboards | What only the Factory knows, folded from run records; and every item's computed State |
+| Control-room view | Controller | People, through dashboards | Every item's computed State, and what only the Factory knows, folded from run records |
 | Role manifest | Factory developer | Kernel, Harness | What a Role sees, raises, owns and may do |
 | Authority table | Maintainer | Kernel | Who decides each category of Finding |
 | Consumer entry | Repo owner | Kernel, `verify` | How one Consumer repo is served |
 | Lifecycle | Factory developer | Kernel | States, Transitions, Gates and actors |
 
-### 3.2 Wake
+### 3.2 Nudge
 
-```json
-{ "schema": "wake/1", "repo": "petry-projects/markets", "item": { "type": "pull_request", "number": 521 } }
-```
-
-`item` is optional. A wake with no item means "evaluate everything overdue". The Kernel's functions
-take no wake, so the property "no event carries work" is a matter of signatures.
+A nudge is a request for a pass now. It carries nothing. Every pass evaluates every open item, so
+there is nothing for it to say, and "no event carries work" holds because there is no payload to
+carry it in.
 
 ### 3.3 Facts
 
@@ -274,16 +272,14 @@ receives them.
   "item": { "repo": "petry-projects/software-factory", "type": "pull_request", "number": 42 },
   "outcome": "admit",
   "reason": "blocking_findings_proposed",
-  "evidence": ["finding:f_9c1e", "finding:f_22ab"],
-  "admit": { "role": "qa-lead", "intent": "adjudicate-findings", "lease_seconds": 1800 },
-  "transition": { "from": "addressing", "to": "adjudicating" },
-  "next_eval_at": "2026-10-10T19:30:00Z"
+  "evidence": ["thread:PRRT_kw7", "run:r_01JA6Z"],
+  "admit": { "role": "pr-review", "intent": "adjudicate-findings" },
+  "transition": { "from": "addressing", "to": "adjudicating" }
 }
 ```
 
 `outcome` is one of `nothing`, `defer`, `hold`, `transition`, `admit`. `reason` is an enumerated
-code, never a sentence; the sentence a person reads is rendered from it. Every outcome except a
-terminal one carries `next_eval_at`.
+code, never a sentence; the sentence a person reads is rendered from it.
 
 ### 3.5 Task and Result
 
@@ -361,14 +357,13 @@ There is no Effect that starts a Run. Only Admission does that.
 {
   "schema": "finding/1",
   "id": "f_9c1e",
-  "source": { "lens": "coderabbit", "kind": "advisory", "actor": "coderabbitai[bot]" },
-  "surface": { "type": "thread", "key": "PRRT_kw1" },
+  "source": { "lens": "pr-review", "kind": "role", "actor": "combsmith-sf-pr-review[bot]" },
+  "surface": { "type": "thread", "key": "PRRT_kw7" },
   "location": { "path": "kernel/admission.py", "start_line": 88, "end_line": 94 },
   "category": "functional",
   "severity": "major",
-  "typed_by": { "kind": "intake", "run": "r_01JA6Z" },
-  "content_id": "sha256:5d0c",
-  "status": "open"
+  "adopted_from": { "lens": "coderabbit", "surface": { "type": "thread", "key": "PRRT_kw1" } },
+  "content_id": "sha256:5d0c"
 }
 ```
 
@@ -378,31 +373,39 @@ There is no Effect that starts a Run. Only Admission does that.
 - `category` is one of `functional`, `security`, `architecture`, `delivery`, `reliability`,
   `requirements`, `mechanical`, `uncategorised`, or `human`.
 - `severity` is `blocking`, `major`, `minor` or `info`.
-- `typed_by.kind` is `native` when the surface supplies category and severity as fields (an alert,
-  a Role's own Finding) and `intake` when a listed Role read the prose and typed it. This is the
-  one place a model reads a third party's text to produce a record the gate uses, and it is
-  recorded on the Finding so that it can be measured.
+- Category and severity are always fields. A deterministic tool supplies them. A Role supplies them
+  for its own Findings. A third-party reviewer that writes them only as prose gets them by
+  **adoption**: `pr-review` is given that reviewer's Finding as input and, if it agrees, raises a
+  Finding of its own with `adopted_from` set. No code parses the prose and no separate Role exists
+  to type it.
+- A Finding has no stored status. Whether it is open is read from its surface: the thread's
+  resolved flag, the alert's state, the tool's latest report.
 
 ### 3.8 Disposition
 
 ```json
 {
-  "schema": "disposition/1",
   "finding": "f_9c1e",
   "content_id": "sha256:5d0c",
-  "proposal": { "outcome": "fixed", "by": "dev-lead", "evidence": { "commit": "written-by-apply" } },
-  "decision": { "result": "accepted", "by": "qa-lead", "run": "r_01JA7Q" }
+  "proposal": { "outcome": "fixed", "by": "dev-lead" },
+  "decision": { "result": "accepted", "by": "pr-review" }
 }
 ```
 
-A Disposition has two halves, written by two different Roles. The author proposes `fixed`,
-`declined`, `deferred` or `not_applicable`. The owner of the Finding's category decides `accepted`
-or `rejected`. There is exactly one Disposition per Finding per content version.
+A Disposition has two halves, made by two different Roles. The author proposes `fixed`, `declined`,
+`deferred` or `not_applicable`. The owner of the Finding's category decides `accepted` or
+`rejected`.
 
-### 3.9 State: derived, with a small residue
+It is not kept as a record of its own. Each half travels in the Result of the Run that made it, and
+`apply` checks it when it acts: it will not resolve a `security` thread on a decision of declined
+or deferred, whichever Role asks. What the gate reads afterwards is the surface itself. A thread
+resolved by the owning Role's App is an accepted Disposition. A thread still open after the owner's
+Run on this content is a rejected one.
+
+### 3.9 State: derived
 
 The State of a Work item is not stored. It is computed at every evaluation by one Kernel function
-from three inputs: the facts, the Factory's run records, and the residue below. A stored copy could
+from two inputs, both held by GitHub: the facts and the Factory's run records. A stored copy could
 only go stale, which is how the POC's markers came to outlive the objects they described.
 
 | Computed every time | From |
@@ -410,23 +413,21 @@ only go stale, which is how the POC's markers came to outlive the objects they d
 | The Lifecycle state and its reason | Facts |
 | Whether the item is held, and by whom | A label, and who applied it |
 | Whether a Run holds the item now | A run record in progress |
-| How many attempts an Intent has had | Run records |
-| The status of a Finding that lives in a thread or an alert | Facts |
-| Whether this content was already reviewed | The review on an earlier commit with the same `content_id` |
-
-The residue is what only the Factory knows and GitHub has no field for. It is written once, by the
-Run that produced it, into that Run's artifact:
-
-| Residue | Why it cannot be computed |
-|---|---|
-| What a Run cost | Tokens are known only to the Harness |
-| What a model judged: a Finding's category and severity, an owner's decision | Recomputing costs a model call and may give a different answer, so the gate would flap |
-| Which `content_id` a Lens examined and found clean | A Lens that finds nothing writes nothing on the item |
+| How many attempts an Intent has had, and how many Runs the item has had | Run records |
+| Whose turn it is | The Role of the last completed Run on this content |
+| Whether a Finding is open | Its thread, alert or tool report |
+| Whether an owner accepted or rejected a proposal | The thread, and whether the owner's Run on this content has completed |
+| Whether this content was already reviewed | The reviewer's completed Run on this `content_id`, and the review object |
 
 One example shows why attempts must be counted and not assumed. A pull request has a red test, and
 nothing else has changed. Either nobody has tried to fix it, or three fix Runs each ran fifteen
 minutes, timed out and pushed nothing. The item looks the same in both cases. The run records tell
 them apart, and Actions writes a run record even when the job is killed.
+
+Some things only the Factory knows: what a Run cost, and the detail of what a model judged. They
+stay in each Run's artifact and are shown in the control room. **No decision reads them.** One
+consequence follows: money does not gate. The ceiling that places a Hold is a number of Runs per
+Work item, and the Hold states the amount spent (PRD FR-39).
 
 ### 3.10 The record of a Run
 
@@ -548,7 +549,7 @@ stateDiagram-v2
   held --> verifying: Hold released
 ```
 
-| State | Meaning | Next actor | Longest wait before re-evaluation |
+| State | Meaning | Next actor | Stale after |
 |---|---|---|---|
 | `draft` | Not ready; the Factory watches and does nothing | Human | 24 h |
 | `verifying` | Waiting for required Lenses to report on the current content | Lenses, with deadlines | 30 min |
@@ -571,7 +572,7 @@ The issue Lifecycle is sketched only, because the review Intent is built first: 
 
 ### 4.2 Convergence and the gate
 
-Convergence is one Kernel function of facts, run records and the view:
+Convergence is one Kernel function of facts and run records:
 
 1. every Lens **required** for this class of item, this stage and these changed paths has reported
    on the current `content_id`;
@@ -581,9 +582,8 @@ Convergence is one Kernel function of facts, run records and the view:
 Which Lenses are required is data. The starting set is the deterministic checks, `pr-review` and
 humans. A Lens joins it only with a measured contribution (ADR-0013, decision 12).
 
-A Finding from a Lens that is not required is recorded, shown and measured. It is given to
-`pr-review` as input, and `pr-review` records for each one whether it adopts it as its own. Only an
-adopted Finding gates. An Advisory reviewer that posts twenty threads therefore costs the reviewer
+A Finding from a Lens that is not required is shown and measured. It is given to `pr-review` as
+input. If `pr-review` adopts it, it raises a Finding of its own (§3.7), and that one gates. An Advisory reviewer that posts twenty threads therefore costs the reviewer
 some reading and cannot hold a pull request by volume, which is how the POC's comment gate failed.
 
 The approval is issued only in `converged`, by the reviewer identity, for that `content_id`. If a
@@ -594,39 +594,37 @@ push changes the head and not the `content_id`, the approval is re-issued with n
 ```mermaid
 sequenceDiagram
   autonumber
-  participant L as Lens (reviewer, tool or Role)
+  participant L as Lens outside the required set
   participant K as Kernel
-  participant I as intake Role
+  participant Rv as pr-review
   participant Au as author Role
   participant Ow as owner Role
   participant G as GitHub
 
   L->>G: thread, alert or annotation
   K->>G: read facts
-  K->>I: admit: type new Findings (only where the surface has no fields)
-  I-->>K: category and severity per Finding
+  K->>Rv: admit: review this content, with third-party Findings as input
+  Rv-->>K: its own Findings, some adopted
   K->>Au: admit: address open Findings (one Run)
   Au-->>K: proposals, plus a commit bundle
   K->>Ow: admit: adjudicate (one Run per owner per content version)
   Ow-->>K: accepted or rejected, per Finding
-  K->>G: owner's App resolves each accepted thread
+  K->>G: the owner's App resolves each accepted thread
   K->>K: Convergence?
 ```
 
 - Lenses never address each other. Every arrow passes through the Kernel.
+- At first the owner of every model-judged category is `pr-review` itself (§5.2).
 - An owner decides in one batched Run per content version, so the number of Runs does not grow with
   the number of threads.
-- A shadow Role is given the same Findings on a sample of items. Its decisions are recorded beside
-  the owner's and compared. They move nothing.
-- The intake step is needed only for Findings from Lenses that carry severity as prose. It arrives
-  with the control room, after the first slice (§9.1).
+- A shadow Role is given the same Findings on a sample of items. Its decisions are recorded in its
+  Run's artifact and compared with the owner's. They move nothing.
 - A rejected proposal returns the item to `addressing`. After `max_rounds` the item is placed on
   Hold with the open Findings listed.
 - A `security` Finding cannot be accepted as `declined` or `deferred` by any Role. Only an Override
   by the Maintainer does that.
 - A `mechanical` Finding is never judged by a model. It closes when its tool stops reporting it.
 - A `human` Finding closes only when that person resolves it.
-- A Finding whose source no longer reports it on new content becomes `superseded`.
 
 ### 4.4 Invariants
 
@@ -652,8 +650,7 @@ These are the properties the simulator asserts. Each is a sentence a test can fa
 | I-16 | A `security` Finding is never closed as declined without an Override record | Maintainer, 2026-10-10 |
 | I-17 | The status on an item changes only when the decision changes | ADR-0013 §2 |
 | I-18 | A Run that ends with no Result counts as an attempt, and its item is re-evaluated | ADR-0013 §4 |
-| I-19 | A view rebuilt from GitHub equals the view updated pass by pass | §8 |
-| I-20 | A decision that finds the view missing or behind recomputes or defers; it never admits | C-1 |
+| I-19 | No decision reads the control room: the same facts and run records give the same Decision whatever the view holds | §3.9 |
 
 ### 4.5 The simulator
 
@@ -670,9 +667,9 @@ decision logic against a fake world, quickly, thousands of times.
   nudge is delivered next.
 - **Faults.** A tick dropped or delayed by hours. A nudge dropped or duplicated. A job killed at
   every step boundary, including between two Effects and before any artifact is uploaded. The
-  view missing, or one pass behind. A facts read that fails or is stale. A missing capacity reading.
+  control room unwritable, or holding nonsense. A facts read that fails or is stale. A missing capacity reading.
   A Result that fails validation. An Engine that times out. A human acting mid-Run.
-- **Properties.** I-2 to I-17 are checked after every step, as are I-19 and I-20. I-1 and I-18 are checked once faults
+- **Properties.** I-2 to I-17 are checked after every step, as is I-19. I-1 and I-18 are checked once faults
   stop and the world is left to settle.
 - **Reproduction.** Each run has a seed from the standard library's generator. A failure prints the
   seed and the trace, and the trace renders as a sequence diagram.
@@ -687,7 +684,7 @@ Lifecycle graph (every state reaches a terminal one, every non-terminal state ha
 and the authority data (§5.4).
 
 The simulator samples interleavings. It does not prove their absence. A formal model in TLA+ would,
-for a small model, and is held in reserve for leases and crash recovery if the simulator finds a
+for a small model, and is held in reserve for crash recovery if the simulator finds a
 fault there that it cannot pin down.
 
 ## 5. Team interactions
@@ -710,6 +707,10 @@ A token is still narrowed at mint time to the Effects one Result requests.
 | `scrum-master` | Advisor | None on code | None | Comment |
 | Controller | Not a Role | None | None | Write the control room, the status on the item, labels and the queue |
 
+- **Reading is shared; writing is not.** Every `run` job reads GitHub through one App,
+  `combsmith-sf-reader`, which can write nothing. A Role is given an App of its own when it first
+  needs to write, and `apply` mints that App's token. A Role in shadow writes nothing, so it runs
+  on the reader alone until it is promoted.
 - The approving review stays with the existing machine user, because a code owner must be a user.
 - The Apps share the name prefix `combsmith-sf-`, so `qa-lead` acts as `combsmith-sf-qa-lead[bot]`. The frozen Consumer file drops
   Factory-authored events by that prefix, so adding a Role never changes a Consumer file.
@@ -724,8 +725,8 @@ The authority table of §3.12 is the whole rule. Five points follow from it.
 - **Ownership is by category, not by path.** A security defect can sit in any file.
 - **An owner judges; it does not rewrite.** There is one author per change.
 - **A domain Role starts in shadow.** `pr-review` owns every model-judged category at first. A
-  domain Role adjudicates a sample of the same Findings, and its decisions are recorded and bind
-  nothing.
+  domain Role adjudicates a sample of the same Findings on the reader App, and its decisions are
+  recorded and bind nothing.
 - **A domain Role is promoted on evidence, one Role at a time.** It needs an eval set for its
   adjudicating Intent (FR-55) and a record in shadow that shows it adds something: agreement with
   the owner where the owner was later proved right, and disagreement where the owner was later
@@ -807,6 +808,7 @@ it observed as a recorded fixture, which is what the simulator's fake GitHub is 
 | P-17 | Is a run's name set when the run is created, and visible for a run whose job never started? Can recent runs of one workflow be listed and matched by name within the request budget? | Yes to both |
 | P-18 | Does a final step still run, and upload partial usage, when a job times out or is cancelled? | Yes, or duration is the only estimate |
 | P-19 | Can a static page in a separate public repo be published from files the Controller writes? | Yes |
+| P-20 | Can a credential held outside GitHub start the poller and do nothing else of consequence? | Yes: it can start and cancel workflow runs in one repo, and cannot write code, secrets or settings |
 
 ## 7. State, records and noticing work
 
@@ -847,9 +849,8 @@ What this costs:
 - **A killed Run's cost is unknown.** The vendor CLI reports usage when an invocation ends.
   Duration is the estimate, and a final step uploads whatever partial usage exists.
 - **History is 90 days.** The Maintainer accepted this in place of the PRD's 180.
-- **Decisions read a view.** Cost and model judgements reach the Kernel through the control room,
-  because downloading every artifact on every pass is too slow. I-19 and I-20 are the guard: the
-  view must equal a rebuild, and a missing view defers.
+- **Money does not gate.** No decision reads the control room, and cost is known only there. The
+  ceiling that places a Hold is a number of Runs per Work item; the Hold states the amount spent.
 - **An issue with no pull request has no Run on it yet,** so there is nothing to record until the
   first Run, which is then a run record like any other.
 
@@ -889,9 +890,14 @@ late or not at all.
 - One pass is the only decider, so an org-wide limit is a decision inside one process. No lease and
   no race.
 - A Run is still its own workflow run, holding its item's lane from `run` to `apply`.
-- A watchdog stands outside the poller: a second, small scheduled workflow on a different schedule
-  that restarts the chain when the last pass is too old. The poller cannot be the only thing that
-  notices the poller has stopped.
+- Several staggered schedule lines on the poller restart a broken chain. A second scheduled
+  workflow was considered as a watchdog and dropped: it is the same unreliable scheduler twice.
+- **An external timer may start a pass.** A hosted timer outside GitHub calls the poller on a fixed
+  interval. It holds one credential that can start the poller, keeps no state and decides nothing.
+  It is the only truly independent tick available, and it would also close most of the latency gap
+  in W-2. Correctness never depends on it: without it the Factory falls back to GitHub's schedule.
+  It is the one permitted exception to "no always-on service", and it is optional. Which service,
+  and where its credential is kept, are open.
 - The Factory's own repo carries the nudge file from the first day.
 - Option 3 is held until GitHub's terms are answered. Option 1 is held unless a requirement appears
   for a response in seconds; none is in the PRD.
@@ -927,7 +933,7 @@ this design changes.
 |---|---|---|
 | CR-1 | Answers "what needs me?" first. Items are ordered by the human action they need, and each states the decision, the evidence and the choices | UJ-2, FR-27 |
 | CR-2 | Shows one definition of State. Every status is computed by the Kernel, the same function that decides. The page computes nothing | FR-2 |
-| CR-3 | Is never a source of truth. It is rebuilt from GitHub, and the page computes the view's age in the browser, so a stalled Factory shows as stale without anything having to run | FR-43 |
+| CR-3 | Is never a source of truth, and the Factory never reads it. It is rebuilt from GitHub, and the page computes the view's age in the browser, so a stalled Factory shows as stale without anything having to run | FR-43 |
 | CR-4 | Is read-only. A person acts in GitHub, through a declared human transition, and the page links there | FR-22 |
 | CR-5 | Covers every Consumer repo on one page | PRD §1 |
 | CR-6 | Shows cost and capacity: a budget gauge, cost per change, the share that was rework, cost by Role | UJ-8, UJ-9, FR-38 |
@@ -1040,16 +1046,16 @@ Anything not needed for that event is in a later slice.
 
 | Slice | Delivers | Who approves Factory changes |
 |---|---|---|
-| 0. Foundations | The repo, its ruleset and `factory / verify`. The schemas the first slice uses, with golden examples. The pull-request Lifecycle. The simulator with a skeleton Kernel. Two Apps: the Controller's and the reviewer's. The trials of §6 that the first slice rests on, each leaving a fixture | The Maintainer |
-| 1. First approval | The facts and records ports. The Kernel's Lifecycle, Convergence and gate. The poller, its watchdog and the nudge file on the Factory's own repo. `run` and `apply` for the review Intent. Deterministic checks read as Findings. The status on the item. A feed of two files, `meta` and `items` | The Maintainer, until the first `stable` Release; then the Factory's reviewer, with the Maintainer able to block |
-| 2. Control room and measurement | The rest of the feed and the dashboard page. Finding intake, so that Advisory reviewers' threads are typed and measured. Runs per merge on every item | The Factory |
-| 3. Domain Roles in shadow | The adjudicating Intents of `qa-lead`, `security-lead`, `solution-architect` and `devops-lead`, each with its App and its eval set, deciding on a sample and binding nothing. Promotion follows, one Role at a time | The Factory |
+| 0. Foundations | The repo, its ruleset and `factory / verify`. The schemas the first slice uses, with golden examples. The pull-request Lifecycle. The simulator with a skeleton Kernel. Three Apps: the Controller's, the reviewer's and the shared reader. The trials of §6 that the first slice rests on, each leaving a fixture | The Maintainer |
+| 1. First approval | The facts and records ports. The Kernel's Lifecycle, Convergence and gate. The poller and the nudge file on the Factory's own repo. `run` and `apply` for the review Intent. Deterministic checks read as Findings. The status on the item. A feed of two files, `meta` and `items` | The Maintainer, until the first `stable` Release; then the Factory's reviewer, with the Maintainer able to block |
+| 2. Control room and measurement | The rest of the feed and the dashboard page. Adoption counted per Advisory reviewer, so that each one's contribution is measured. Runs per merge on every item | The Factory |
+| 3. Domain Roles in shadow | The adjudicating Intents of `qa-lead`, `security-lead`, `solution-architect` and `devops-lead`, each with its eval set, running on the reader App, deciding on a sample and binding nothing. Promotion follows, one Role at a time, and brings that Role its own App | The Factory |
 | 4. Fix Intents | Fix CI and fix review findings under the run contract, with `verify` | The Factory |
 | 5. A Consumer repo | One low-risk Consumer on the `next` ring | The Factory |
 | 6. Onward | Implementation, the initiative driver, the remaining personas, as in the review's migration shape | The Factory |
 
-**Not in slice 1:** Finding intake, domain Roles, path scopes, the dashboard page, the private
-Artifact board, the comparator against the POC, any App beyond the two named, any Consumer repo.
+**Not in slice 1:** adoption measurement, domain Roles, path scopes, the dashboard page, the private
+Artifact board, the comparator against the POC, any App beyond the three named, any Consumer repo.
 
 Until the first `stable` Release the Maintainer's attention is the line's capacity. That is why
 slice 1 is cut this narrowly, and why §9.2 counts the approvals it takes. The self-hosting rule
@@ -1097,9 +1103,27 @@ ranked, and each changed this document.
 | Domain owners make it slower and no better | Owners start in shadow and are promoted on evidence (§5.2) |
 | Third-party threads become the new comment gate | Only required Lenses gate; other Findings gate only when the reviewer adopts them (§4.2) |
 | The simulator passes and GitHub disagrees | The fake GitHub is grounded in recorded responses (§4.5, §6) |
-| The poller goes quiet | A watchdog outside the poller; staleness computed in the browser (§7.3, §8.2) |
+| The poller goes quiet | Staggered schedule lines, an optional external timer, and staleness computed in the browser (§7.3, §8.2) |
 | Two systems run forever | Decision points keyed to events (§9.2) |
 | The model window runs out | Shadow Roles run on a sample; Runs per merge shown on every item (§3.12, §8.4) |
+
+### 9.4 What a simplification pass removed
+
+A second pass on 2026-10-10 asked of each part what requirement would fail without it.
+
+| Part | Replaced by |
+|---|---|
+| The control room as an input to decisions | Decisions read GitHub only. The view is written and never read back (§3.9) |
+| A separate intake Role typing third-party prose | Adoption by `pr-review`, whose own Finding carries the fields (§3.7) |
+| Dispositions as standing records | The thread, resolved by the owner's App; the two halves travel in Results (§3.8) |
+| An App for every Role from the first day | One shared reader App; a Role's own App when it first writes (§5.1) |
+| A watchdog workflow | Staggered schedule lines, and an optional external timer (§7.3) |
+| The Wake contract and a next-evaluation time on every Decision | A nudge that carries nothing; a staleness limit per state (§3.2, §4.1) |
+
+Kept after the same question: the three-job split, content identity, the four brakes, the
+simulator, a separate control-room repo, and both channels with their rings. The channels and rings
+stay in place from the first commit and are simply not used until there is a Consumer to put on
+`next`, because the entry shim is frozen and should have its final shape from the start.
 
 ## 10. What this design changes elsewhere
 
@@ -1107,14 +1131,15 @@ Recorded in the same change as this document.
 
 | Document | Change |
 |---|---|
-| ADR-0013, decision 2 | State is derived and never stored. The record of a Run is its Actions run record and its artifact. The control room is a rebuildable view |
+| ADR-0013, decision 2 | State is derived and never stored. The record of a Run is its Actions run record and its artifact. The control room is a rebuildable view that no decision reads |
 | ADR-0013, decision 3 | The Controller is a poller. An event may only ask for a pass. The Consumer file is optional |
 | ADR-0013, decision 4 | The Result artifact is the intent record |
-| ADR-0013, decision 5 | One App per Role |
+| ADR-0013, decision 5 | One App per Role, registered when the Role first writes; one shared reader App |
 | ADR-0013, decision 7 | An owning Role resolving a thread is a declared Role transition, beside the human one. An owning Role starts in shadow |
 | ADR-0013, decision 10 | The review Intent on the Factory's own repo is the first component. The comparison with the POC is a measure, not a gate. Stopping is the Maintainer's decision, on adoption and use |
 | ADR-0013, decision 11 | No longer two provisional mechanisms. The poller's latency and cost are measured against the same thresholds |
-| ADR-0013, decision 12 | A listed intake Role may read a thread's prose to type a Finding; the gate reads only the typed record. The starting required set is named, and other Findings gate only when adopted |
+| ADR-0013, decision 12 | The starting required set is named. A third-party Finding gates only when the reviewer adopts it, and adoption is what gives it typed fields |
 | PRD, FR-40 and the glossary | History is 90 days. The State record is computed; the Ledger is the run records and artifacts, indexed in the control room |
 | PRD, OQ-2, OQ-3, OQ-8, OQ-9 | Recorded as decided, with what remains open |
 | PRD, NFR-11 | A new Role is one pull request plus one App registration |
+| PRD, FR-39, C-4 | The ceiling that gates is Runs per Work item, with the amount shown. An optional external timer is permitted |

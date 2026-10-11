@@ -135,8 +135,8 @@ provisional choice. The maintainer replaced it on 2026-10-10: most of what that 
 already on the work item, and a stored copy can only go stale. In this record "the Ledger" now
 means the factory's run records and artifacts in GitHub Actions, as indexed in the control room.
 
-- **State is computed, never stored.** One Kernel function derives it from facts, the factory's run
-  records and the residue below.
+- **State is computed, never stored.** One Kernel function derives it from facts and the factory's
+  run records, both held by GitHub.
 - **Every transition the factory performs for a Release is declared in that Release's Lifecycle.**
   An undeclared one fails a check and is reported.
 - **No module under `kernel/` takes a comment body as input.** Text written by third
@@ -152,7 +152,8 @@ means the factory's run records and artifacts in GitHub Actions, as indexed in t
   an index of the run records and artifacts and every item's computed State. Only the Controller
   writes it. It is public, reaches back 90 days, and can be deleted and rebuilt from GitHub. A view
   rebuilt from GitHub equals the view updated pass by pass, and a check asserts it.
-- **A decision that finds the view missing or behind recomputes or defers.** It never admits.
+- **No decision reads the control room.** The same facts and run records give the same decision
+  whatever the view holds, so the view can be wrong or missing without the factory misbehaving.
 - **The projection on a work item is rewritten only when the decision changes,** and at most once
   per item per stated interval. It contains no value that changes when the decision does not.
 
@@ -165,8 +166,10 @@ collapse into one more pass. The Controller runs in the factory repo. A Run is i
 run, one lane per work item, held from `run` to applied Effects. The first draft woke the
 Controller once per event; the maintainer replaced that on 2026-10-10 (decision 11).
 
-- **A nudge carries a schema version and at most a work item's identity.** The Kernel's admission
-  function takes no event payload.
+- **A nudge carries nothing.** The Kernel's admission function takes no event payload.
+- **An external timer may also start a pass.** It holds one credential that can start the poller,
+  keeps no state and decides nothing. Correctness never depends on it. It is optional, and it is
+  the one permitted exception to "no always-on component".
 - **`factory-controller.yml` is the only workflow that invokes an Engine or references an LLM
   credential.**
 - **At most one Run that can produce Effects is active per work item,** by the lane. Org-wide
@@ -241,6 +244,9 @@ account, as a person. "The App" in the boundaries below means the App of the Rol
 - **The factory's Apps share the name prefix `combsmith-sf-`,** and the consumer file drops
   factory-authored events by that prefix. Adding a Role changes no consumer file.
 - **Registering an App is a manual step.** A new Role is one pull request and one registration.
+- **Reading is shared; writing is not.** Every `run` job reads GitHub through one reader App that
+  can write nothing. A Role is given its own App when it first needs to write, so a Role in shadow
+  has none.
 
 - **No factory workflow references the owner account's token.**
 - **Every Effect in the Ledger has a factory App or the reviewer as its actor.**
@@ -393,9 +399,9 @@ the Kernel.
   annotations, code-scanning alerts, or review threads. A comment body is presentation for people.
   Nothing parses one to decide, waits for one, or is gated by one. A reviewer with no structured
   surface gates nothing and is not awaited.
-- **Where a structured surface carries category and severity only as prose, one listed intake Role
-  reads it and types the Finding.** No code parses the prose, the gate reads only the typed record,
-  and the record says a Role typed it. This is the one such reader, under decision 2's list.
+- **A third-party Finding whose category and severity are prose is typed by adoption.** The
+  in-house reviewer is given it as input and, if it agrees, raises a Finding of its own that
+  carries those fields. No code parses the prose, and no separate Role exists to type it.
 - **What people read is rendered from the records** by the Harness. No Role writes prose that
   another component must interpret.
 - **Lenses do not address each other.** No Lens's output is another Lens's trigger. Each reports to
@@ -472,8 +478,8 @@ extension remains a separate decision.
   worse (review §15). Each owner therefore needs an eval set before it gates and is measured like
   any other Lens.
 
-- **One App per Role means about ten private keys,** each a high-value secret, and a manual
-  registration for every new Role.
+- **One App per Role means up to about ten private keys in the end,** each a high-value secret,
+  and a manual registration when a Role first writes.
 
 - **A greenfield build can fail to reach parity.** The POC's tests encode incident history that a
   new codebase does not have. The read-only comparison in decision 10 is the only measure of how
@@ -534,9 +540,9 @@ extension remains a separate decision.
 - **The factory's history is 90 days.** That is how long GitHub keeps run records and artifacts in
   a public repo. Nothing older can be replayed or audited.
 
-- **Decisions read a view.** Cost and model judgements reach the Kernel through the control room,
-  because reading every artifact on every pass is too slow. A view that drifted would mislead a
-  decision; the rebuild check is what stands against that.
+- **Money does not gate.** No decision reads the control room, and what a Run cost is known only
+  there. The ceiling that places a Hold is a number of Runs per work item; the Hold states the
+  amount spent.
 
 - **A killed Run's cost is not known exactly.** The model CLI reports usage when an invocation
   ends, so a Run that dies mid-turn has only its duration.

@@ -95,7 +95,11 @@ Decided on 2026-10-10 and carried into the design:
 
 - State is derived from GitHub at every evaluation and never stored. The record of a Run is its
   Actions run record and its artifact. History is 90 days (design document, §3.9, §3.10, §7).
-- Work is noticed by a poller. An event may only ask for a pass.
+- Work is noticed by a poller. An event may only ask for a pass, and an optional external timer
+  may start one.
+- Decisions read GitHub only. The control room is written and never read back.
+- Every `run` job reads through one shared reader App. A Role gets its own App when it first
+  writes.
 - `petry-projects/software-factory-control-room` is a public, rebuildable view with a dashboard,
   shaped by the situation-room analysis in `petry-projects/.github-private#2242 — Situation-room
   view for the agent fleet: build it from native Claude Code parts, not a command-center product`
@@ -117,8 +121,8 @@ Decided on 2026-10-10 and carried into the design:
   recovery key that is not text in a body.
 - **Finding authority.** Each category of Finding has exactly one owning Role. No Role decides on
   its own work. A security Finding is never declined without an Override.
-- **Typing third-party prose.** Thread reviewers carry category and severity as text. One listed
-  intake Role types them, and the record says so.
+- **Typing third-party prose.** Thread reviewers carry category and severity as text. They are
+  typed only when the in-house reviewer adopts a Finding and raises its own.
 - **Brakes outside the Kernel.** The pause variable, the Run ceiling, the actor-based loop count
   and the monthly spend cap live where a Kernel defect cannot reach them.
 - **Bootstrap.** Until the first `stable` Release the Maintainer's attention is the line's

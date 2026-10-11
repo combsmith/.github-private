@@ -483,8 +483,10 @@ allows. Realizes UJ-8, UJ-9.
 - **FR-38. Complete cost attribution.** Every Run records tokens, cost, duration and outcome,
   including Runs that failed, timed out or were cancelled, attributed to Work item, Role, Intent,
   repo and Release, and marked as first-pass or rework.
-- **FR-39. Cost ceiling per Work item.** Each class of Work item has a declared cost ceiling.
-  Reaching it places a Hold that states the amount spent.
+- **FR-39. Cost ceiling per Work item.** Each class of Work item has a declared ceiling.
+  Reaching it places a Hold that states the amount spent. The ceiling that gates is a number of
+  Runs, because decisions read GitHub only and what a Run cost is known only to the control room
+  (ADR-0013, decision 2).
 
 ### 6.7 Observability
 
@@ -790,7 +792,9 @@ From the competitive analysis ([market research](../research/market-agentic-soft
 ## 11. Open questions
 
 1. **OQ-1. Is "no always-on infrastructure" still a hard constraint?** It decides whether an
-   off-GitHub control plane is a candidate for the MVP or a later option.
+   off-GitHub control plane is a candidate for the MVP or a later option. One exception was allowed
+   by the Maintainer on 2026-10-10: an optional external timer that only starts the poller, keeps
+   no state and decides nothing.
 2. **OQ-2. Will the Maintainer move the code-writing Role off the owner account?** FR-26 and FR-17
    need it. It reverses the choice made in `petry-projects/.github-private#1316 — dev-lead regressed
    to committing as donpetry-bot (review-only machine user) instead of don-petry` and recorded in
