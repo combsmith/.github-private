@@ -116,6 +116,10 @@ minimized with classifier `RESOLVED`. In practice:
   `::warning::… fixed-unverified:<reason>`. The harness then re-answers with the
   branch commit whose diff removes the token, when one exists. Otherwise the next
   pass re-answers the disposition, which is not settled.
+  When the push guard rebased the cited commit during the pass, that sha never
+  reaches the branch. The harness then judges the commit's rebased successor by
+  the same rules and, when it verifies, edits the reply so its marker cites the
+  successor (#2261).
 - **A maintainer clears it without dev-lead (#1910/#1918).** When dev-lead is
   suppressed, rate-limited, cancelled, or never dispatched, a maintainer can run
   [`scripts/maintainer-resolve-comment.sh`](../../scripts/maintainer-resolve-comment.sh)

@@ -1345,6 +1345,45 @@ rdc_find_fixing_commit() {
   return 1
 }
 
+# rdc_repoint_rebased_fixed <cid> <sha> <reason> <reply_id> <reply_body> <finding_body> <finding_created>
+#   The #2032 treatment for a `fixed` disposition (#2261). The model cites the
+#   commit it made BEFORE the push. When the push guard rebased that commit onto a
+#   concurrent one (#1607), the cited sha never reaches the branch (PR #2205), and
+#   rdc_find_fixing_commit cannot find a fix whose diff removes no token. So map
+#   the cited sha through _PUSH_GUARD_REWRITES and judge its rebased successor.
+#   Returns 0, with the successor in RDC_REPOINTED_SHA, only when ALL of these hold:
+#     - <reason> is not-on-head (any other failure is not a rebase);
+#     - _PUSH_GUARD_REWRITES maps <sha> to a successor (cl_map_sha);
+#     - the successor passes the whole rdc_fixed_verdict: on the pushed head, not
+#       on the base branch, its diff content, its date;
+#     - OUR reply <reply_id> was edited in place so its marker cites the successor,
+#       leaving no disposition on the PR that names a commit GitHub never saw.
+#   Anything else returns 1 and the caller's unverified path runs (fail closed).
+rdc_repoint_rebased_fixed() {
+  local cid="$1" sha="$2" reason="$3" reply_id="$4" reply_body="$5" body="$6" created="$7"
+  local rebased rebased_reason new_body
+  RDC_REPOINTED_SHA=""
+  [ "$reason" = "not-on-head" ] || return 1
+  rebased=$(cl_map_sha "$sha" "${_PUSH_GUARD_REWRITES:-}") || return 1
+  if ! rebased_reason=$(rdc_fixed_verdict "$rebased" "$body" "$created"); then
+    echo "::warning::comment ${cid}: the push guard rebased the cited ${sha} to ${rebased}, which did not verify either (fixed-unverified:${rebased_reason}) (#2261)"
+    return 1
+  fi
+  if ! new_body=$(cdv_rewrite_disposition_sha "$reply_body" "$cid" "$sha" "$rebased") || [ -z "$new_body" ]; then
+    echo "::warning::comment ${cid}: the push guard rebased the cited ${sha} to ${rebased}, but disposition reply ${reply_id} could not be rewritten to cite it; it stays open (#2261)"
+    return 1
+  fi
+  if ! gh api graphql \
+      -f query='mutation($id:ID!,$body:String!){updateIssueComment(input:{id:$id,body:$body}){issueComment{id}}}' \
+      -f id="$reply_id" -f body="$new_body" >/dev/null 2>&1; then
+    echo "::warning::comment ${cid}: the push guard rebased the cited ${sha} to ${rebased}, but disposition reply ${reply_id} could not be updated to cite it; it stays open (#2261)"
+    return 1
+  fi
+  RDC_REPOINTED_SHA="$rebased"
+  echo "::notice::comment ${cid}: \`fixed\` disposition cited ${sha}, which the push guard rebased onto a concurrent commit; it landed as ${rebased} (${rebased_reason}) — disposition reply ${reply_id} now cites the rebased commit (#2261)"
+  return 0
+}
+
 # resolve_deferred_bot_threads: resolves bot-originated review threads whose finding
 # dev-lead judged valid but OUT OF SCOPE and deferred to a tracking issue (#2045) —
 # the review-thread sibling of the issue-comment `out-of-scope` disposition (#1813).
@@ -1984,6 +2023,11 @@ resolve_dispositioned_comments() {
         if fixed_reason=$(rdc_fixed_verdict "$sha" "$orig_body" "$orig_created"); then
           verified="true"
           echo "::notice::comment ${cid}: \`fixed\` disposition verified against ${sha} (${fixed_reason}) (#2004)"
+        elif rdc_repoint_rebased_fixed "$cid" "$sha" "$fixed_reason" "$chosen_reply_id" "$reply_body" "$orig_body" "$orig_created"; then
+          # #2261: the cited commit was rebased by the push guard and its successor
+          # verified; our reply now cites the successor.
+          sha="$RDC_REPOINTED_SHA"
+          verified="true"
         else
           # AC2: loud and distinguishable from "dev-lead has not run yet".
           echo "::warning::comment ${cid}: \`fixed\` disposition citing ${sha} did not verify (fixed-unverified:${fixed_reason}); the cited commit's diff must remove what the finding names (#2004)"
@@ -3288,6 +3332,8 @@ stamp_pass_replies() {
 # posted since PASS_START_ISO, verify its commit is one this pass produced AND is
 # on the REMOTE head (acv_claim_in_pass); otherwise rewrite it with
 # cl_retract_body, which strips both markers so it can never resolve a thread.
+# Both surfaces are swept (#2261): review-thread replies, and the PR issue
+# comments the model posts when it answers a bot's issue comment the same way.
 #
 # The reference head is the remote head. When there is no upstream (rc 1) on an
 # `ok` outcome, the local HEAD is what was pushed; in every other case — including
@@ -3328,10 +3374,41 @@ retract_unlanded_claims() {
     echo "::warning::retract_unlanded_claims: could not parse the review comments on PR #${PR_NUMBER} — this pass's claim replies were NOT verified (#2013)"
     return 1
   }
-  local rebased remapped=0
-  while IFS=$'\t' read -r id sha; do
+
+  # #2261: the model can also post its addressed/claim reply as a PR ISSUE comment
+  # (PR #2205: "Fixed in …" answering a bot's issue comment). That reply is not in
+  # the review-comment listing above, so its claim was never checked and kept
+  # citing a commit that was never pushed. Sweep the same selection (our account,
+  # since the pass start, carrying the marker or a claim) over the issue comments.
+  # An unreadable listing is reported as a failure: those replies were NOT
+  # verified. The thread replies above are still swept.
+  local issue_raw="" issue_comments="" issue_rows=""
+  if ! issue_raw=$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" 2>/dev/null) \
+     || ! issue_comments=$(jq -s 'add // []' <<<"$issue_raw" 2>/dev/null) \
+     || ! issue_rows=$(cl_select_pass_claims "$issue_comments" "$bot_user" "$PASS_START_ISO"); then
+    echo "::warning::retract_unlanded_claims: could not list the issue comments on PR #${PR_NUMBER} — claim replies this pass posted as PR comments were NOT verified (#2261)"
+    issue_comments=""
+    issue_rows=""
+    failed=1
+  fi
+  # One row per reply: `<surface>\t<id>\t<sha>`. <surface> is the REST collection
+  # the reply lives in (pulls = review-thread reply, issues = PR issue comment),
+  # which is also the path segment its PATCH uses.
+  rows=$(
+    [ -z "$rows" ] || awk '{ print "pulls\t" $0 }' <<<"$rows"
+    [ -z "$issue_rows" ] || awk '{ print "issues\t" $0 }' <<<"$issue_rows"
+  )
+
+  local rebased remapped=0 surface listing what
+  while IFS=$'\t' read -r surface id sha; do
     [ -z "$id" ] && continue
-    body=$(printf '%s' "$comments" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
+    listing="$comments"
+    what="claim reply"
+    if [ "$surface" = "issues" ]; then
+      listing="$issue_comments"
+      what="PR-comment claim reply"
+    fi
+    body=$(printf '%s' "$listing" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
     if [ -z "$sha" ]; then
       reason="unverifiable"
     else
@@ -3357,21 +3434,24 @@ retract_unlanded_claims() {
         new_body=$(cl_rewrite_claim_sha "$body" "$rebased") || new_body=""
         if acv_claim_in_pass "$base" "$on_ref" "$in_base" >/dev/null \
            && [ -n "$new_body" ]; then
-          if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+          if gh api -X PATCH "repos/${REPO}/${surface}/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
             remapped=$((remapped + 1))
-            echo "::notice::claim reply ${id} on PR #${PR_NUMBER}: ${sha} was rebased onto a foreign commit and landed as ${rebased} — claim updated, not retracted (#2032)"
+            echo "::notice::${what} ${id} on PR #${PR_NUMBER}: ${sha} was rebased onto a foreign commit and landed as ${rebased} — claim updated, not retracted (#2032)"
             continue
           fi
-          echo "::warning::could not update claim reply ${id} on PR #${PR_NUMBER} to the rebased commit ${rebased} — retracting it instead (#2032)"
+          echo "::warning::could not update ${what} ${id} on PR #${PR_NUMBER} to the rebased commit ${rebased} — retracting it instead (#2032)"
         fi
       fi
     fi
+    # cl_retract_body removes only the addressed-marker and the claim. A
+    # `dev-lead:comment-disposition` marker in the same reply is kept: the
+    # disposition resolver verifies that one on its own (#2261).
     new_body=$(cl_retract_body "$body" "$reason")
-    if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+    if gh api -X PATCH "repos/${REPO}/${surface}/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
       retracted=$((retracted + 1))
-      echo "::warning::retracted claim reply ${id} on PR #${PR_NUMBER} (${reason}; cited ${sha:-<none>}, remote head ${ref:-<unknown>}) (#2013)"
+      echo "::warning::retracted ${what} ${id} on PR #${PR_NUMBER} (${reason}; cited ${sha:-<none>}, remote head ${ref:-<unknown>}) (#2013)"
     else
-      echo "::error::could not retract claim reply ${id} on PR #${PR_NUMBER} (${reason}) — a false 'Fixed' reply may remain (#2013)"
+      echo "::error::could not retract ${what} ${id} on PR #${PR_NUMBER} (${reason}) — a false 'Fixed' reply may remain (#2013)"
       failed=1
     fi
   done <<< "$rows"

@@ -85,7 +85,8 @@ cl_push_landed_verdict() {
 
 # cl_select_pass_claims <comments_json> <bot_user> <since_iso>
 #   <comments_json> is the REST `pulls/{pr}/comments` array ({id, user.login, body,
-#   created_at}). Emits one `<id>\t<sha>` row per comment that (a) our account
+#   created_at}), or the `issues/{pr}/comments` array, which has the same fields
+#   (#2261). Emits one `<id>\t<sha>` row per comment that (a) our account
 #   authored (bot_user or its [bot]-suffixed / stripped form), (b) was created at or
 #   after <since_iso> (the pass start), and (c) still carries the addressed-marker or
 #   a claim comment. <sha> is the parsed claim SHA, or empty when the claim is
@@ -262,10 +263,13 @@ cl_retract_body() {
     unaddressed_line="${_CL_UNADDRESSED_MARKER}"$'\n'
   fi
 
+  # The claim comment ends at its FIRST `-->` (as acv_parse_claim reads it), so a
+  # different marker later on the same line, such as a comment-disposition, is
+  # kept (#2261).
   local stripped
   stripped=$(jq -Rsr --arg marker "$_DEV_LEAD_ADDRESSED_MARKER" '
       gsub($marker; "")
-      | gsub("<!--[[:space:]]*dev-lead:claim[^\\n]*-->"; "")
+      | gsub("<!--[[:space:]]*dev-lead:claim[^\\n]*?-->"; "")
       | sub("\\s+$"; "")
     ' <<<"$body" 2>/dev/null) || stripped=""
   local quoted
