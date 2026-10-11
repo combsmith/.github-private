@@ -1584,9 +1584,14 @@ elif [ -n "${DUCK_ENGINE:-}" ]; then
 fi
 # A Gemini duck also needs the pre-flight probe to have passed (unset counts as
 # unavailable here, unlike ai_engine_available).
+# DUCK_SKIP_REASON: why no duck verdict reached this review; when set, the
+# posted review body says so (duck_skip_note, #1960). Empty when the duck ran.
+DUCK_SKIP_REASON=""
+_duck_gemini_skipped=false
 if [ "${GEMINI_AVAILABLE:-false}" != "true" ] && grep -q '^gemini ' <<< "$DUCK_CANDIDATES"; then
   echo "::notice::Skipping the Gemini duck — GEMINI_AVAILABLE=false per pre-flight probe"
   DUCK_CANDIDATES="$(grep -v '^gemini ' <<< "$DUCK_CANDIDATES" || true)"
+  _duck_gemini_skipped=true
 fi
 DUCK_ENGINE="none"
 DUCK_MODEL=""
@@ -1609,9 +1614,14 @@ DEEP_PID=$!
 
 DUCK_OUTPUT="/tmp/cascade/rubber-duck.json"
 DUCK_PID=""
-rm -f "$DUCK_OUTPUT" "${DUCK_OUTPUT}.engine"
+rm -f "$DUCK_OUTPUT" "${DUCK_OUTPUT}.engine" "${DUCK_OUTPUT}.skip"
 if [ "${DUCK_ENGINE:-none}" = "none" ]; then
   echo "::notice::Skipping rubber-duck reviewer — no enabled, available engine for it (AI_DUCK_ENGINE / AI_ENGINES, pre-flight probe)"
+  if [ "$_duck_gemini_skipped" = true ]; then
+    DUCK_SKIP_REASON="no enabled, available engine for it (Gemini unavailable per the pre-flight probe)"
+  else
+    DUCK_SKIP_REASON="no enabled, available engine for it (AI_DUCK_ENGINE / AI_ENGINES)"
+  fi
 elif declare -F run_duck_chain >/dev/null 2>&1; then
   (
     export OUTPUT_FILE="$DUCK_OUTPUT"
@@ -1701,6 +1711,13 @@ if [ "$_duck_ok" = true ]; then
 else
   echo "    [tier2] rubber duck did not produce a valid verdict — continuing with deep review only"
   cat /tmp/cascade/duck.log 2>/dev/null || true
+  if [ -z "$DUCK_SKIP_REASON" ]; then
+    DUCK_SKIP_REASON="$(head -n 1 "${DUCK_OUTPUT}.skip" 2>/dev/null || true)"
+    DUCK_SKIP_REASON="${DUCK_SKIP_REASON:-the rubber duck ($DUCK_ENGINE) did not produce a valid verdict}"
+    if [ "$_duck_gemini_skipped" = true ]; then
+      DUCK_SKIP_REASON="$DUCK_SKIP_REASON; Gemini skipped per the pre-flight probe"
+    fi
+  fi
 fi
 
 # --- Tier 2b: Synthesize deep + duck verdicts ---
@@ -1736,6 +1753,7 @@ if [ "$DUCK_VALID" = "true" ]; then
     [ -n "$SYNTH_STDERR" ] && echo "    stderr: $SYNTH_STDERR"
     OUTPUT_FILE="/tmp/cascade/deep.json"
     DUCK_VALID=false
+    DUCK_SKIP_REASON="${DUCK_SKIP_REASON:-the rubber duck verdict was discarded because synthesis failed}"
     COMBINED_ESCALATE=$(jq -r '.escalate_to_opus' "$OUTPUT_FILE")
   fi
 else
@@ -1774,6 +1792,7 @@ if [ "$COMBINED_ESCALATE" != "true" ]; then
     exit 1
   fi
   rm -f "$VERDICT_JSON.raw"
+  duck_skip_note "$VERDICT_JSON" "$DUCK_SKIP_REASON"
 
   # Post the review using the verdict. Propagate the output channel's exit status
   # (0 posted, 100 no-op, 101 escalated-to-human, non-zero error) so review-batch.sh
@@ -1851,6 +1870,7 @@ if ! extract_verdict_json "$VERDICT_JSON.raw" "$VERDICT_JSON"; then
   exit 1
 fi
 rm -f "$VERDICT_JSON.raw"
+duck_skip_note "$VERDICT_JSON" "$DUCK_SKIP_REASON"
 
 # Post the review using the verdict. Propagate the output channel's exit status
 # (0 posted, 100 no-op, 101 escalated-to-human, non-zero error) so review-batch.sh
