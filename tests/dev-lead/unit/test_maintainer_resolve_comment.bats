@@ -420,7 +420,7 @@ SHIM
   run bash "$MRC" "IC_kwDOfake1" --reason "status only"
   unset COMMENTS_JSON
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qi "already exists"
+  ! echo "$output" | grep -qi "already exists" || false
   [ -s "$BATS_TEST_TMPDIR/gh-reply.log" ]
   [ -s "$BATS_TEST_TMPDIR/gh-min.log" ]
 }
@@ -445,7 +445,7 @@ SHIM
   run bash "$MRC" "IC_kwDOfake1" --reason "status only"
   unset COMMENTS_JSON
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qi "already exists"
+  ! echo "$output" | grep -qi "already exists" || false
   [ -s "$BATS_TEST_TMPDIR/gh-reply.log" ]
   [ -s "$BATS_TEST_TMPDIR/gh-min.log" ]
 }

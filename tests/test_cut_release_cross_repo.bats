@@ -45,7 +45,7 @@ STUB
   echo "$output" | grep -q '(dry-run) no tags created'
   # resolved a SHA, but no tag object / ref was created
   grep -q 'commits/main' "$GH_CALLS"
-  ! grep -qE 'POST .*git/(tags|refs)' "$GH_CALLS"
+  ! grep -qE 'POST .*git/(tags|refs)' "$GH_CALLS" || false
   ! grep -qE 'PATCH ' "$GH_CALLS"
 }
 
@@ -53,7 +53,7 @@ STUB
   run env GH_TOKEN=x bash "$SCRIPT" agent-shield 2.1.0 --channel next
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'print only — re-run with --push'
-  ! grep -qE 'POST .*git/(tags|refs)' "$GH_CALLS"
+  ! grep -qE 'POST .*git/(tags|refs)' "$GH_CALLS" || false
   ! grep -qE 'PATCH ' "$GH_CALLS"
 }
 
@@ -115,7 +115,7 @@ STUB
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'moved agent-shield/v2-ring1'
   # the immutable release tag object is never (re)created
-  ! grep -qE 'POST repos/petry-projects/\.github/git/tags' "$GH_CALLS"
+  ! grep -qE 'POST repos/petry-projects/\.github/git/tags' "$GH_CALLS" || false
   # the channel ref WAS moved
   grep -qE '(PATCH|POST) repos/petry-projects/\.github/git/refs' "$GH_CALLS"
 }

@@ -30,6 +30,8 @@ source "$(dirname "$0")/lib/claim-landing.sh"
 source "$(dirname "$0")/lib/test-tamper-guard.sh"
 # Sync-stub guard (#2185): a bot pass may not edit a synced org-standard stub.
 source "$(dirname "$0")/lib/sync-stub-guard.sh"
+# Channel-pin guard (#2220): no pass may change a caller stub's channel pin.
+source "$(dirname "$0")/lib/channel-pin-guard.sh"
 # Test-regression guard (#2013): a pass may not push with the suite newly red.
 source "$(dirname "$0")/lib/test-regression-guard.sh"
 # Review-thread deferral verifier (#2045): the thread-side sibling of the
@@ -2894,7 +2896,7 @@ post_reviews_rate_limited() {
   # resolve-failed (a thread/comment resolution or finalization failure) is not a
   # quota hold either: it takes the same non-quota status and backoff (#2045).
   if [ "$reason" = "blocked" ] || [ "$reason" = "resolve-failed" ]; then
-    printf '%s' "$(date -u -d '+30 minutes' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)" > /tmp/dev-lead-rate-limit-reset
+    printf '%s' "$(date -u -d '+30 minutes' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
   fi
 
   # Expire any stale terminal markers (applied/no-changes/failed) for this SHA+intent
@@ -2928,7 +2930,7 @@ post_reviews_rate_limited() {
   fi
 
   local reset_time
-  reset_time=$(cat /tmp/dev-lead-rate-limit-reset 2>/dev/null || true)
+  reset_time=$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" 2>/dev/null || true)
   local reset_detail=""
   if [ -n "$reset_time" ]; then
     reset_detail=" reset=${reset_time}"
@@ -3234,6 +3236,24 @@ commit_and_push() {
         fi
         ;;
     esac
+    # Channel-pin guard (#2220): no pass may change a caller stub's first-party
+    # channel pin (`uses:` ref or `agent_ref`); the #2157/#1796 passes repinned
+    # dev-lead.yml to a stale channel to "fix" template-drift. Unlike the sync-stub
+    # guard this covers every pushing intent — a maintainer who wants a repin makes
+    # it in a reviewed PR. Ending on the base branch's pin (a rebase, or restoring
+    # main's pin) is allowed.
+    case "$intent" in
+      enable-auto-merge) ;;  # never pushes; nothing to guard
+      *)
+        local cpg_out cpg_rc=0
+        cpg_out=$(cpg_scan_pass "${RESOLUTION_BASE_SHA:-${HEAD_SHA:-}}" HEAD "origin/${BASE_REF:-main}") || cpg_rc=$?
+        if [ "$cpg_rc" -ne 0 ]; then
+          echo "::error::Channel-pin guard: the ${intent} pass changed a caller stub's channel pin ($(printf '%s\n' "$cpg_out" | head -1)) — refusing to push (#2220)"
+          cpg_flag_refused "$intent" "$(printf '%s\n' "$cpg_out" | sed '1d')"
+          return 4
+        fi
+        ;;
+    esac
     # Test-tamper guard (#2013): a bot-driven fix pass must not silently rewrite an
     # existing test to make its own change pass (the petry-projects/.github#1220
     # `13927fc` shape). Refuse the push and escalate, like the no-op guard (rc 3).
@@ -3294,7 +3314,7 @@ commit_and_push() {
     # A rejected push — or one the remote head does not reflect (#2013) — must not
     # leave this pass's "Fixed" replies standing: retract them before failing.
     # (commit_and_push returns 3 for the no-op guard and 4 for the sync-stub,
-    # test-tamper and test-regression guards.)
+    # channel-pin, test-tamper and test-regression guards.)
     push_no_clobber || {
       echo "::error::git push failed — check remote access and branch permissions" >&2
       retract_unlanded_claims "$intent" failed || true
@@ -3791,7 +3811,13 @@ finalize_review_application() {
   local substantive="true" changed_regions="" named_regions verdict
   if [ -n "$pre_sha" ] && [ -n "$cur_sha" ] \
      && git rev-parse --verify --quiet "${pre_sha}^{commit}" >/dev/null 2>&1; then
-    if [ -z "$(git diff -w --name-only "$pre_sha" "$cur_sha" 2>/dev/null)" ]; then
+    # --numstat, not --name-only: git lists a file under --name-only even when
+    # -w leaves nothing to show, so a whitespace-only commit read as substantive
+    # and was announced as applied (#2263). A failed diff stays substantive
+    # (fail-open, as above).
+    local ws_diff ws_rc=0
+    ws_diff="$(git diff -w --numstat "$pre_sha" "$cur_sha" 2>/dev/null)" || ws_rc=$?
+    if [ "$ws_rc" -eq 0 ] && [ -z "$ws_diff" ]; then
       substantive="false"
     fi
     changed_regions="$(git diff --unified=0 "$pre_sha" "$cur_sha" 2>/dev/null | rce_parse_hunks)"
@@ -3996,7 +4022,7 @@ case "$INTENT_TYPE" in
         # marker and do not re-enable auto-merge or resolve threads.
         echo "::warning::fix-reviews produced a net-zero diff — flagged for human, not pushed (#1340)"
       elif [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::fix-reviews was refused by a push guard (test tamper/regression or sync-stub) — flagged for human, not pushed (#2013/#2185)"
+        echo "::warning::fix-reviews was refused by a push guard (test tamper/regression, sync-stub or channel-pin) — flagged for human, not pushed (#2013/#2185/#2220)"
       else
         notify_coderabbit_resolve
         if has_hard_blockers; then
@@ -4095,7 +4121,7 @@ case "$INTENT_TYPE" in
         # re-enable auto-merge or resolve threads.
         echo "::warning::fix-bot-comment produced a net-zero diff — flagged for human, not pushed (#1340)"
       elif [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::fix-bot-comment was refused by a push guard (test tamper/regression or sync-stub) — flagged for human, not pushed (#2013/#2185)"
+        echo "::warning::fix-bot-comment was refused by a push guard (test tamper/regression, sync-stub or channel-pin) — flagged for human, not pushed (#2013/#2185/#2220)"
       else
         notify_coderabbit_resolve
         if has_hard_blockers; then
@@ -4182,6 +4208,12 @@ case "$INTENT_TYPE" in
         echo "::notice::on-mention: no-op guard aborted the push for PR #${PR_NUMBER} — flagged for human, not merged (#1786)"
         exit "$rc"
       fi
+      if [ "$cp_rc" -eq 4 ]; then
+        # A push guard refused the pass and flagged the PR; never report it or
+        # re-enable auto-merge (#2220).
+        echo "::warning::on-mention was refused by a push guard — flagged for human, not pushed (#2220)"
+        exit "$rc"
+      fi
       if [ "$cp_rc" -eq 0 ]; then
         post_reviews_terminal "on-mention" "applied" "Changes committed and pushed."
       else
@@ -4234,7 +4266,7 @@ case "$INTENT_TYPE" in
       # Nothing landed, so a `fixed` disposition would cite a local-only commit; no
       # thread resolves and auto-merge stays off.
       if [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::review-changes was refused by a test guard (tamper/regression) — flagged for human, not pushed (#2013)"
+        echo "::warning::review-changes was refused by a push guard (test tamper/regression, sync-stub or channel-pin) — flagged for human, not pushed (#2013/#2185/#2220)"
         resolve_dispositioned_comments "review-changes" failed || _DISPOSITIONS_UNRESOLVED=1
         resolve_deferred_bot_threads "review-changes" || rc=1
         [ "${_DISPOSITIONS_UNRESOLVED:-0}" -eq 1 ] && rc=1
@@ -4414,6 +4446,10 @@ case "$INTENT_TYPE" in
         # commit_and_push committed a script-side change that nets to zero and
         # already flagged it. Stop — never report a self-cancelling rebase applied.
         echo "::notice::rebase: no-op guard aborted the push for PR #${PR_NUMBER} — flagged for human, not merged (#1786)"
+        exit "$rc"
+      fi
+      if [ "$cp_rc" -eq 4 ]; then
+        echo "::warning::rebase was refused by a push guard — flagged for human, not pushed (#2220)"
         exit "$rc"
       fi
       # Post-resolution integrity gate (#1890 AC #7): a corrupted resolution

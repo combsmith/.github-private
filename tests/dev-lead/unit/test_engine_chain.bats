@@ -12,6 +12,8 @@ STUB_ENGINES_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/engines"
 setup() {
   export GITHUB_ENV="$(mktemp)"
   export GITHUB_OUTPUT="$(mktemp)"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 
   # Clear any pre-set chain vars from the runner environment so engine.sh
   # defaults are evaluated fresh for every test.
@@ -313,12 +315,12 @@ _source_engine() {
   local f
   f="$(mktemp)"
   echo "You've hit your limit · resets 11:20pm (UTC)" > "$f"
-  rm -f /tmp/dev-lead-rate-limit-reset
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
   parse_reset_time_files "$f"
   rm -f "$f"
-  [ -f /tmp/dev-lead-rate-limit-reset ]
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" ]
   # Result should look like an ISO-8601 UTC timestamp ending in Z
-  grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' /tmp/dev-lead-rate-limit-reset
+  grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
 }
 
 @test "parse_reset_time_files: writes empty when no reset time present" {
@@ -328,8 +330,8 @@ _source_engine() {
   echo "ordinary failure with no reset hint" > "$f"
   parse_reset_time_files "$f"
   rm -f "$f"
-  [ -f /tmp/dev-lead-rate-limit-reset ]
-  [ ! -s /tmp/dev-lead-rate-limit-reset ]
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" ]
+  [ ! -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" ]
 }
 
 # ── Codex review findings: warning phrasing + config errors + model pin ─────
@@ -378,7 +380,7 @@ _source_engine() {
   # Only one invocation, and it's the pinned model — not opus-5-5 or sonnet.
   [ "$(wc -l < "$MODEL_RECORD")" -eq 1 ]
   grep -q "claude-haiku-4-5-20251001" "$MODEL_RECORD"
-  ! grep -q "claude-sonnet-5" "$MODEL_RECORD"
+  ! grep -q "claude-sonnet-5" "$MODEL_RECORD" || false
   ! grep -q "claude-opus-5-5" "$MODEL_RECORD"
 }
 
@@ -391,7 +393,7 @@ _source_engine() {
   [ "$status" -eq 0 ]
   [ "$(wc -l < "$MODEL_RECORD")" -eq 1 ]
   grep -q "claude-haiku-4-5-20251001" "$MODEL_RECORD"
-  ! grep -q "claude-sonnet-5" "$MODEL_RECORD"
+  ! grep -q "claude-sonnet-5" "$MODEL_RECORD" || false
   ! grep -q "claude-opus-4-8" "$MODEL_RECORD"
 }
 
@@ -473,7 +475,7 @@ _source_engine() {
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
-  ! grep -q -- "--effort" "$args_rec"
+  ! grep -q -- "--effort" "$args_rec" || false
   rm -f "$args_rec"
 }
 
@@ -488,6 +490,6 @@ _source_engine() {
   run run_triage "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
-  ! grep -q -- "--effort" "$args_rec"
+  ! grep -q -- "--effort" "$args_rec" || false
   rm -f "$args_rec"
 }

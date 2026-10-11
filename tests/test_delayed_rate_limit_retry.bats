@@ -111,7 +111,7 @@ url_for() { echo "https://github.com/petry-projects/demo/pull/$1"; }
   [ "$status" -eq 0 ]
   grep -qF -- "workflow run pr-review-trigger.yml" "$GH_LOG"
   grep -qF -- "-f pr_url=$(url_for 2002)" "$GH_LOG"
-  ! grep -qF -- "force_review" "$GH_LOG"
+  ! grep -qF -- "force_review" "$GH_LOG" || false
   # Must not re-arm itself (no recursive delayed-retry dispatch).
   ! grep -qF -- "pr-review-delayed-retry.yml" "$GH_LOG"
 }

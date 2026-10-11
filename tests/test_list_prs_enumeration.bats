@@ -110,7 +110,7 @@ run_list_prs() {
 
   run_list_prs
   # Not in the candidate list (stdout)...
-  ! grep -q '/pull/2000' "$OUT"
+  ! grep -q '/pull/2000' "$OUT" || false
   # ...but observably excluded with its reason (stderr notice).
   grep -q '::notice::' "$ERR"
   grep -q '/pull/2000' "$ERR"
@@ -122,7 +122,7 @@ run_list_prs() {
     '[{"url":"https://github.com/petry-projects/.github-private/pull/2001","author":{"login":"donpetry-bot"},"createdAt":"2026-09-13T00:00:00Z","isDraft":false}]'
 
   run_list_prs
-  ! grep -q '/pull/2001' "$OUT"
+  ! grep -q '/pull/2001' "$OUT" || false
   grep -q '::notice::' "$ERR"
   grep -q '/pull/2001' "$ERR"
   grep -qi 'self-authored' "$ERR"
@@ -134,7 +134,7 @@ run_list_prs() {
 
   run_list_prs
   grep -qx 'https://github.com/petry-projects/.github-private/pull/1710' "$OUT"
-  ! grep -q '/pull/2000' "$OUT"
+  ! grep -q '/pull/2000' "$OUT" || false
   grep -q '/pull/2000' "$ERR"
   grep -qi 'draft' "$ERR"
 }

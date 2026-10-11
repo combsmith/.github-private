@@ -171,7 +171,7 @@ _landed_fix() {
   [ -f "$PATCHES/201" ]
   grep -q "Retracted" "$PATCHES/201"
   grep -q "<!-- dev-lead:retracted reason=not-on-ref -->" "$PATCHES/201"
-  ! grep -q "dev-lead:addressed" "$PATCHES/201"
+  ! grep -q "dev-lead:addressed" "$PATCHES/201" || false
   # The original claim is kept (not as a claim) so a later pass can re-verify it.
   grep -q "dev-lead:retracted-claim .*${ghost}" "$PATCHES/201"
 }
@@ -276,8 +276,8 @@ _landed_fix() {
   run sweep_earlier_claims
   [ "$status" -eq 0 ]
   [ -f "$PATCHES/207" ]
-  ! grep -q "Retracted" "$PATCHES/207"
-  ! grep -q "dev-lead:retracted" "$PATCHES/207"
+  ! grep -q "Retracted" "$PATCHES/207" || false
+  ! grep -q "dev-lead:retracted" "$PATCHES/207" || false
   grep -q "Fixed in f: handled the empty case." "$PATCHES/207"
   grep -q "<!-- dev-lead:addressed -->" "$PATCHES/207"
   run acv_parse_claim "$(cat "$PATCHES/207")"
@@ -323,7 +323,7 @@ _landed_fix() {
   run retract_unlanded_claims fix-reviews ok
   [ "$status" -eq 0 ]
   [ -f "$PATCHES/210" ]
-  ! grep -q "Retracted" "$PATCHES/210"
+  ! grep -q "Retracted" "$PATCHES/210" || false
   grep -q "<!-- dev-lead:addressed -->" "$PATCHES/210"
   run acv_parse_claim "$(cat "$PATCHES/210")"
   [ "$status" -eq 0 ]
@@ -387,7 +387,7 @@ _serve_issue() {
   grep -q "Retracted" "$PATCHES/issue-6073169970"
   grep -q "<!-- dev-lead:retracted reason=not-on-ref -->" "$PATCHES/issue-6073169970"
   # The marker is gone, so neither the minimizer nor a reader sees "fixed" any more…
-  ! grep -q "dev-lead:comment-disposition" "$PATCHES/issue-6073169970"
+  ! grep -q "dev-lead:comment-disposition" "$PATCHES/issue-6073169970" || false
   run cdv_parse_disposition "$(cat "$PATCHES/issue-6073169970")"
   [ "$status" -eq 1 ]
   # …and the original text is kept as a quote.
@@ -481,7 +481,7 @@ _serve_issue() {
   run retract_unlanded_claims fix-bot-comment ok
   [ "$status" -eq 0 ]
   [ -f "$PATCHES/issue-323" ]
-  ! grep -q "Retracted" "$PATCHES/issue-323"
+  ! grep -q "Retracted" "$PATCHES/issue-323" || false
   run cdv_parse_disposition "$(cat "$PATCHES/issue-323")"
   [ "$status" -eq 0 ]
   [ "$(jq -r .sha <<<"$output")" = "$rebased" ]

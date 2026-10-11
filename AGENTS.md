@@ -285,6 +285,10 @@ calling it a regression, and treat CI as authoritative.**
   independent of the live `scripts/lib/consumer-manifest.json` so a legitimate manifest refresh does not break
   the guard — only a change to the mapper's output does, which then requires an explicit fixture update visible
   in the diff. It runs in the always-run `bats` job (no `paths:` filter) so it stays a stable check.
+- **Exception:** The `bats-negation` job in `lint.yml` (#2263) is a repo-specific lint with no org template
+  equivalent. It runs `scripts/check-bats-negation.sh` (tests: `tests/test_check_bats_negation.bats`), which
+  fails on a negated command in a `.bats` file that can never fail its test. Template syncs must not remove
+  it. If the org template gains an equivalent, remove this exception and defer to the template instead.
 - **Exception:** `holdout-guard.yml` (#692, epic #581) is a documented repo-specific workflow with no
   corresponding org template in `standards/workflows/`. It is the hard CI enforcement behind the advisory
   `.github/CODEOWNERS` rule over `evals/`: it fails any PR authored by the automated skill-proposer identity
@@ -521,6 +525,16 @@ PR-triggered check on the existing Lint workflow — **no new cron/scheduled wor
       commits-list call per DRIFTED file and one emission per commit in the range. That adds network
       cost to every PR's lint run. The message removes the wrong advice without that cost.
 
+- **A red `template-drift` is never fixed from a PR here (#2220).** The check reads `repo-template`, never
+  this repo's own stubs, so nothing in a PR here can clear it. It is not a fix-ci trigger: the reusable's
+  `ci-relay` job does not relay it, and `dev-lead-fix-ci.sh` drops it (`FIX_CI_IGNORED_CHECKS`). Its
+  annotations still carry a `file=` anchor, so GitHub pins them to the PR's own same-named file (dropping
+  the anchor is tracked in #2215). That is how two passes (#2157, #1796) "fixed" the drift by repinning
+  this repo's `dev-lead.yml` from `dev-lead/v139-ring0` to the stale `dev-lead/v1-stable`. As a backstop, `scripts/lib/channel-pin-guard.sh`
+  refuses any dev-lead pass (fix-ci and every fix-reviews intent) that changes a first-party channel pin
+  (`uses: petry-projects/…@<channel>` or `agent_ref`) on a workflow file, and escalates the PR. Ending on the
+  base branch's pin (a rebase, or restoring `main`'s pin) is allowed.
+
 - **`seed-repo-template.sh` has one home: this repo (#1927).** `petry-projects/.github` once carried a
   different, smaller script under the same name, and the two were mistaken for diverged copies. That
   script only prints one standard file from a local checkout and is now `scripts/emit-standard-file.sh`
@@ -718,6 +732,24 @@ artifact). **The human go/no-go to enable live pilot remediation — and, later,
 recorded as a comment on the tracking issue/PR**, consistent with the repo's go/no-go pattern and the
 initiative-planner inert-epic model: the loop stays inert (dry-run) until a human explicitly flips a
 run to `remediate=live` for the configured pilot.
+
+### Bats tests — a negated command must be able to fail
+
+Bash exempts a `!`-negated command from `errexit`, and bats fails a test through `errexit`. So a
+line like `! grep -q "pr comment" "$GH_LOG"` in the **middle** of a test runs, has its result thrown
+away, and the test passes either way. It only counts as the **last** command of the test. By the time
+this was caught (#2263), 113 such lines across 41 files were asserting nothing, and two of them were
+hiding a test whose setup was wrong.
+
+**Rule: write a negative assertion so it can fail.**
+
+```bash
+! grep -q "pr comment" "$GH_LOG" || false   # fails the test when grep matches
+run ! grep -q "pr comment" "$GH_LOG"        # bats >= 1.5; overwrites $status and $output
+```
+
+`scripts/check-bats-negation.sh` enforces this in the `bats-negation` lint job. When a new negative
+assertion is added for a fix, prove it: run the test against the unfixed code and watch it fail.
 
 ### Agent Profiles (`agents/*.md`)
 
@@ -963,10 +995,10 @@ The same switch is flipped automatically by `.github/workflows/budget-breaker.ym
 that the model provider is refusing work for quota, and lifts that pause at the reset time
 those refusals report. It does not read the usage endpoint (the fleet's credential cannot,
 see #2029), so the dry-run poller below is a separate, read-only report and is not its input.
-It is not channel-pinned: it runs the default branch's code, so the disarmed schedule starts
+It is not channel-pinned: it runs the default branch's code, so the disarmed runs start
 as soon as the workflow is on `main`.
 
-- **What a run does.** Every 10 minutes (schedule only), `scripts/budget_breaker.sh` reads
+- **What a run does.** On every wake-up (see "When it runs"), `scripts/budget_breaker.sh` reads
   the pause state, collects the fleet's quota markers (`bb_collect`), decides (`bb_decide`,
   both in `scripts/lib/budget-breaker.sh`, #2221) and applies the decision through
   `scripts/lib/budget-breaker-writer.sh`, the only file that writes the variables:
@@ -984,6 +1016,105 @@ as soon as the workflow is on `main`.
   The order means a failure between two writes never leaves a pause without its source. Only
   dev-lead's three quota markers count; pr-review's `rate-limited` marker (an advisory
   reviewer bot out of quota) never does, and the workflow cannot opt it in.
+- **When it runs (#2259).** The workflow has exactly two triggers, and a test rejects any
+  other:
+  - `workflow_run`, type `completed`, for three workflows of **this repository**, matched by
+    their `name:`: "Dev-Lead Agent" and "GitHub Agentic Workflows — Cross-Org Dispatcher"
+    (the two that run the scripts that post a dev-lead quota marker), and "Dev-Lead Retry
+    (rate-limited)" (it posts no quota marker; it is one more wake-up, every few hours,
+    that does not depend on agent traffic). A rename would silently unhook the trigger, so
+    a test requires every listed name to be the `name:` of a workflow file here.
+    pr-review's workflows are not listed: its marker is not quota evidence.
+  - `schedule`, every 10 minutes, as the backstop. GitHub delivers few of these ticks in
+    this repository: after the workflow merged on 2026-10-11 at 01:55 UTC, two arrived in
+    the first 13 hours (08:35 and 15:03 UTC, of about 79 slots).
+
+  **Why `workflow_run` still runs only default-branch code.** GitHub's documentation
+  ("Events that trigger workflows", read 2026-10-11) says of it: "This event will only
+  trigger a workflow run if the workflow file exists on the default branch.", and lists
+  `GITHUB_SHA` as "Last commit on default branch" and `GITHUB_REF` as "Default branch". The
+  checkout has no `ref:`, so that commit is what it checks out. The same page says: "The
+  workflow started by the `workflow_run` event is able to access secrets and write tokens,
+  even if the previous workflow was not." So the property holds **only while the job never
+  uses anything from the run that triggered it**. Anyone who can make a listed workflow's
+  run complete here (a comment on an issue, a pull request from a fork, a pull request that
+  adds a workflow carrying a listed name) chooses when the breaker runs and what the event
+  payload says. They choose nothing else: the workflow file does not reference the event
+  context anywhere, the checkout has no `ref:` and no `repository:`, no artifact is
+  downloaded, and the script reads the event's name and nothing else of it. More runs
+  cannot cause a pause (a trip needs quota markers from trusted authors) and cannot run in
+  parallel (one concurrency group).
+
+  **`workflow_run` sees this repository only.** An agent run in another repository of the
+  organisation does not wake the breaker. Its quota markers are read by the next run,
+  whatever woke it; if none comes within the 30 minute window they have aged out and are
+  never acted on.
+
+  **No filter on the triggering run's conclusion.** About half of the Dev-Lead Agent runs
+  here end `cancelled` in their lane within seconds, and the breaker runs for those too.
+  Skipping them with a job-level `if:` would need the event context, and it is not known
+  to be safe: the concurrency group keeps one pending run and the newest arrival replaces
+  it, and GitHub does not document whether a run whose only job is skipped still takes
+  that place. If it does, a run that only skips replaces a waiting one that carries news.
+  The cost is bounded instead by the group (one run at a time and at most one waiting; a
+  replaced run loses nothing, because the run that replaced it starts later and reads the
+  same state) and by the early exit below. Measured on 2026-10-11: 988 Dev-Lead Agent runs
+  completed in 13.4 hours; replayed against the group that is about 630 breaker runs (47
+  an hour), each a job of 8 to 10 seconds.
+
+  **The early exit.** A run woken by `workflow_run` on a fleet that is **not paused** exits
+  before the organisation scan when both hold: an earlier run of this workflow that
+  succeeded was created in the same clock slot of `BUDGET_BREAKER_MIN_INTERVAL_MIN` minutes
+  (default 2; `0` switches the early exit off; a failed run covers nothing, because it may
+  have ended before its scan), and this repository shows no quota marker created in that
+  slot (one listing instead of one per repository). It is slots, not "the previous run
+  finished less than two minutes ago", because a run that exits early is itself a previous
+  run: under a steady stream of wake-ups that rule would exit early for ever, while the
+  first run to look in a slot always decides. The earlier runs are listed with the read
+  credential (the repository is public, so the workflow's `permissions:` are unchanged).
+  The early exit never applies to a scheduled run, never while the fleet is paused by
+  anyone (so it cannot delay a resume), and never when the earlier runs, the slot or this
+  repository's markers could not be read: then the run decides. Its one cost: a marker
+  posted in **another** repository in a slot that already had a run is read by the first
+  run of a later slot.
+
+  Every run logs `triggered by: schedule|workflow_run` and
+  `previous run: finished <time> (<conclusion>), N min before this one`, and shows both in
+  its summary, so poor delivery of either trigger is visible.
+- **How fast it reacts, and how late it can resume (#2259).** All figures are from this
+  repository on 2026-10-11 unless dated otherwise; none is a guarantee by GitHub.
+  - **Trip, marker posted in this repository.** The run that posts the deciding marker
+    ends seconds after posting it, with the conclusion `success` (run 37472943876 on
+    2026-10-06: marker at 13:44:15 UTC, run completed at 13:44:24), and its completion wakes
+    the breaker. From that completion:
+    delivery of the event (1 to 3 seconds: the 8 `workflow_run` deliveries to "Auto-rebase
+    retry" checked, 2026-09-19 to 2026-10-10), plus at most one breaker run already under
+    way (a job of 8 to 10 seconds), plus the wait for a runner (3 seconds for run
+    38125345031, 144 seconds for run 38149673170), plus the job itself. That is under a
+    minute when a runner is free and a few minutes when the job cap is full. The early exit
+    does not hide such a marker. The quota bursts this has to catch are short: on
+    2026-10-06, nine pull requests were refused within 96 seconds (13:44 UTC) and fourteen
+    within 98 seconds (15:18 UTC).
+  - **Trip, markers only in other repositories, or no agent run completing here.** The next
+    wake-up of any kind. With agent traffic here that is seconds to minutes (the gap
+    between Dev-Lead Agent completions: median 8 seconds, 95th percentile 71 seconds), but
+    the same 13.4 hours contain a gap of 2 hours 54 minutes. With no traffic it is the next
+    delivered scheduled tick: the two delivered so far were 6.5 hours apart. **There is no
+    upper bound**, and evidence older than the window is not acted on.
+  - **Resume.** The breaker lifts its pause at its first run after `AGENTS_PAUSE_UNTIL`
+    (and after the minimum hold). During a pause three things wake it. (1) Any event that
+    starts Dev-Lead Agent here: the paused run ends `skipped` within seconds, and GitHub
+    documents that "A workflow run is triggered regardless of the conclusion of the
+    previous workflow." This has been seen here for `cancelled` runs, not yet for
+    `skipped` ones (arming precondition 6). How often such events arrive during a pause
+    is not measured: most of today's traffic is the fleet's own, which a pause stops.
+    (2) A delivered tick of the retry sweep, whose run completes whether paused or not:
+    over its last 100 scheduled runs the gap was 5.8 hours at the median and 8.9 hours at
+    the longest. (3) A delivered tick of the breaker's own schedule (above). So the resume
+    follows the end time by seconds to minutes while people or other tools are active in
+    this repository, and **by hours when it is quiet: up to about 9 hours on these
+    measurements, with no guaranteed bound.** To end a pause sooner, lift it by hand
+    ("Overriding a breaker pause by hand").
 - **Default off, twice.** Nothing is written unless the repository variable
   `BUDGET_BREAKER_ARMED` is **exactly** `true` (absent, `TRUE`, `1`, `yes` all mean off)
   **and** the secret `BUDGET_BREAKER_PAT` is set. Disarmed, every run still decides and logs
@@ -1071,6 +1202,12 @@ as soon as the workflow is on `main`.
      `Would have written` lines and the job summaries, with no `::error::` about the arming
      value.
   5. The secret `BUDGET_BREAKER_PAT` is set.
+  6. The event trigger (#2259) has been seen working in disarmed runs, recorded on #1565
+     with the run ids: a run with `triggered by: workflow_run` whose `previous run:` line
+     shows a time (the read credential can list the workflow's runs); and a Budget Breaker
+     run that starts within seconds of a Dev-Lead Agent run that ended `skipped`, which is
+     what a resume relies on. The second is visible without a pause: Dev-Lead Agent runs
+     end `skipped` every day (61 in 13.4 hours on 2026-10-11).
 - **Arming.** With the preconditions met, set the repository variable
   `BUDGET_BREAKER_ARMED` to `true`, lowercase, with no space around it, and check that the
   next run logs `mode: armed` and no `::error::`. The first trip creates the three
@@ -1145,14 +1282,18 @@ as soon as the workflow is on `main`.
   raises a `::warning::` once it is older than 90 days.
 - **Tuning** (repository variables, all optional): `BUDGET_BREAKER_MIN_ITEMS`,
   `BUDGET_BREAKER_WINDOW_MIN`, `BUDGET_BREAKER_PROBE_HOURS` (the pause length when no reset
-  time is known, default 2) and `BUDGET_BREAKER_MIN_HOLD_MIN`. Keep the minimum hold at or
-  above the window: otherwise the markers that caused a pause can still be inside the window
-  when it lifts.
-- **Guard rails for editors.** The workflow is schedule-only on purpose: do not add
-  `workflow_dispatch` or any event trigger (a manual or event run can execute branch code,
-  and the job holds a credential that can pause every repository), and do not widen its
-  `permissions:` (`contents: read`, plus `issues: write` for the notice). Tests:
-  `tests/dev-lead/unit/test_budget_breaker_writer.bats`.
+  time is known, default 2), `BUDGET_BREAKER_MIN_HOLD_MIN` and
+  `BUDGET_BREAKER_MIN_INTERVAL_MIN` (the early exit's slot, default 2, `0` for off). Keep
+  the minimum hold at or above the window: otherwise the markers that caused a pause can
+  still be inside the window when it lifts.
+- **Guard rails for editors.** The workflow's triggers are `schedule` and `workflow_run`
+  and nothing else, on purpose: do not add `workflow_dispatch`, `pull_request`, `push` or
+  any other trigger (a manual or event run can execute branch code, and the job holds a
+  credential that can pause every repository). Do not make it read the run that triggered
+  it: no reference to the event context anywhere in the file, no `ref:` or `repository:`
+  on the checkout, no artifact download, no `actions/github-script` (see "When it runs").
+  Do not widen its `permissions:` (`contents: read`, plus `issues: write` for the notice).
+  Tests: `tests/dev-lead/unit/test_budget_breaker_writer.bats`.
 
 The telemetry adapter (`scripts/lib/usage-telemetry.sh`) and the dry-run poller described
 below still ship; the poller writes nothing and has no access to the breaker's secret.

@@ -34,6 +34,15 @@ set -euo pipefail
 #   Records are written via scripts/lib/token-metrics.sh (estimate-based).
 #   Unset → zero overhead, zero behaviour change.
 
+# Sidecar directory (#2271). The writer tier leaves one-value files here for the
+# dev-lead handlers that source this file to read back: the parsed rate-limit
+# reset, the failure-reason class and the timeout tier/budget/elapsed. Unset →
+# /tmp, where these files have always been. This is the only definition: every
+# writer and reader names "$DEV_LEAD_SIDECAR_DIR/<file>", so the two sides cannot
+# resolve different paths. The test suites point it at a per-test directory so
+# concurrent runs do not read each other's values.
+DEV_LEAD_SIDECAR_DIR="${DEV_LEAD_SIDECAR_DIR:-/tmp}"
+
 # Configured engine chain (AI_ENGINES): which engines are enabled and in what
 # order. The primary is REVIEW_ENGINE when that is set AND enabled, otherwise
 # the first engine in AI_ENGINES — so a disabled engine is never used, even when
@@ -2107,10 +2116,10 @@ run_writer_with_fallback() {
   # The timeout-* sidecars (tier/budget/elapsed) are written only on a per-tier
   # timeout (#1018); clear any stale copies here so a later non-timeout failure
   # never surfaces a previous run's timeout context.
-  rm -f /tmp/dev-lead-failure-reason \
-        /tmp/dev-lead-timeout-tier \
-        /tmp/dev-lead-timeout-budget \
-        /tmp/dev-lead-timeout-elapsed
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason" \
+        "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-tier" \
+        "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-budget" \
+        "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-elapsed"
 
   # Engine chain: AI_ENGINES (org/repo variable; DEV_LEAD_ENGINES is the legacy
   # #1546 name) enables engines and orders the fallbacks, so an engine can be
@@ -2244,12 +2253,12 @@ run_writer_with_fallback() {
     # escalation comment surfaces, so the caller escalates to a human on the
     # FIRST occurrence instead of burning a same-budget model call.
     if [ "$rc" -eq 124 ]; then
-      printf 'timeout\n' > /tmp/dev-lead-failure-reason
-      printf 'action\n' > /tmp/dev-lead-timeout-tier
-      printf '%s\n' "${ACTION_TIMEOUT_SEC}" > /tmp/dev-lead-timeout-budget
-      printf '%s\n' "$(( _t_end - _t_start ))" > /tmp/dev-lead-timeout-elapsed
+      printf 'timeout\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
+      printf 'action\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-tier"
+      printf '%s\n' "${ACTION_TIMEOUT_SEC}" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-budget"
+      printf '%s\n' "$(( _t_end - _t_start ))" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-elapsed"
     else
-      printf 'engine-error\n' > /tmp/dev-lead-failure-reason
+      printf 'engine-error\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
     fi
     return "$rc"
   done
@@ -2260,24 +2269,24 @@ run_writer_with_fallback() {
   # configuration/environment problem.  Only return 2 when every failure was a
   # genuine quota/rate-limit so callers know a later retry may succeed.
   if [ "$any_missing" -eq 1 ]; then
-    printf 'missing-binary\n' > /tmp/dev-lead-failure-reason
+    printf 'missing-binary\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
     return 1
   fi
   # A genuine quota/rate-limit anywhere in the chain wins over a config-gap: a
   # later retry could succeed once the limit resets, so keep the retryable
   # rate-limited classification (exit 2).
   if [ "$any_rate_limited" -eq 1 ]; then
-    printf 'rate-limited\n' > /tmp/dev-lead-failure-reason
+    printf 'rate-limited\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
     return 2
   fi
   # Deterministic credential config-gap as the SOLE cause (#1591): a distinct
   # non-retryable `unconfigured` reason (exit 1). Downstream handlers escalate to
   # a human rather than posting a retryable marker — retrying cannot set a secret.
   if [ "$any_unconfigured" -eq 1 ]; then
-    printf 'unconfigured\n' > /tmp/dev-lead-failure-reason
+    printf 'unconfigured\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
     return 1
   fi
-  printf 'engine-error\n' > /tmp/dev-lead-failure-reason
+  printf 'engine-error\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
   return 1
 }
 
@@ -2526,7 +2535,7 @@ run_duck() {
 _emit_reset_iso() {
   local hhmm="$1"
   if [ -z "$hhmm" ]; then
-    printf '' > /tmp/dev-lead-rate-limit-reset
+    printf '' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
     return 0
   fi
   local today iso
@@ -2537,7 +2546,7 @@ _emit_reset_iso() {
     tomorrow=$(date -u -d "tomorrow" +%Y-%m-%d)
     iso=$(date -u -d "${tomorrow} ${hhmm} UTC" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
   fi
-  printf '%s' "${iso:-}" > /tmp/dev-lead-rate-limit-reset
+  printf '%s' "${iso:-}" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
 }
 
 # RATE_LIMIT_SAMPLE_MAX_BYTES — cap on one recorded unparsed rate-limit sample.
@@ -2588,7 +2597,7 @@ parse_reset_time() {
   local time_str
   time_str=$(printf '%s\n' "$text" | grep -oiE 'resets [0-9]{1,2}:[0-9]{2}(am|pm)' | head -1 || true)
   if [ -z "$time_str" ]; then
-    printf '' > /tmp/dev-lead-rate-limit-reset
+    printf '' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
     printf '%s\n' "$text" | _record_unparsed_rate_limit || true
     return 0
   fi
@@ -2610,13 +2619,13 @@ parse_reset_time_files() {
     [ -n "$f" ] && [ -f "$f" ] && files+=("$f")
   done
   if [ "${#files[@]}" -eq 0 ]; then
-    printf '' > /tmp/dev-lead-rate-limit-reset
+    printf '' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
     return 0
   fi
   local time_str
   time_str=$(grep -hoiE 'resets [0-9]{1,2}:[0-9]{2}(am|pm)' "${files[@]}" 2>/dev/null | head -1 || true)
   if [ -z "$time_str" ]; then
-    printf '' > /tmp/dev-lead-rate-limit-reset
+    printf '' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
     cat "${files[@]}" 2>/dev/null | _record_unparsed_rate_limit || true
     return 0
   fi

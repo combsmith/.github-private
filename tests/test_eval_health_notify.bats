@@ -150,8 +150,8 @@ mklist_infra() { jq -nc --arg t "$TITLE_INFRA" --argjson n "$1" '[{number:$n,tit
   # and instead open its own infra tracker.
   run_notify OUTCOME="error" "GH_LIST_JSON=$(mklist 99)"
   [ "$status" -eq 0 ]
-  ! grep -q "ARGS: issue edit 99" "$GH_LOG"
-  ! grep -q "ARGS: issue close 99" "$GH_LOG"
+  ! grep -q "ARGS: issue edit 99" "$GH_LOG" || false
+  ! grep -q "ARGS: issue close 99" "$GH_LOG" || false
   grep -q "ARGS: issue create" "$GH_LOG"
 }
 
@@ -174,8 +174,8 @@ mklist_infra() { jq -nc --arg t "$TITLE_INFRA" --argjson n "$1" '[{number:$n,tit
 @test "pass with no existing issue makes zero noise (no create/comment/close)" {
   run_notify OUTCOME="pass"
   [ "$status" -eq 0 ]
-  ! grep -q "ARGS: issue create" "$GH_LOG"
-  ! grep -q "ARGS: issue comment" "$GH_LOG"
+  ! grep -q "ARGS: issue create" "$GH_LOG" || false
+  ! grep -q "ARGS: issue comment" "$GH_LOG" || false
   ! grep -q "ARGS: issue close" "$GH_LOG"
 }
 
@@ -202,6 +202,6 @@ mklist_infra() { jq -nc --arg t "$TITLE_INFRA" --argjson n "$1" '[{number:$n,tit
 @test "DRY_RUN never invokes gh mutations" {
   run_notify OUTCOME="regression" DRY_RUN=1
   [ "$status" -eq 0 ]
-  ! grep -q "ARGS: issue create" "$GH_LOG"
+  ! grep -q "ARGS: issue create" "$GH_LOG" || false
   ! grep -q "ARGS: issue edit" "$GH_LOG"
 }

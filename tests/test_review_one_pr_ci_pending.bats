@@ -27,7 +27,7 @@ setup() {
   export FIXED_SHA="8203876e5b0718dd3d672fed4eec8394e5d3729d"
   export PR_URL="https://github.com/petry-projects/.github-private/pull/892"
 
-  export TEST_DIR="$BATS_TMPDIR/review-one-ci-pending"
+  export TEST_DIR="$BATS_TEST_TMPDIR/review-one-ci-pending"
   mkdir -p "$TEST_DIR/bin"
   cd "$TEST_DIR"
 

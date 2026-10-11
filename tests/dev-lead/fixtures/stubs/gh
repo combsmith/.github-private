@@ -6,7 +6,7 @@
 ARGS="$*"
 case "$ARGS" in
   *dispatches*)
-    echo "true" > "${GH_STUB_DISPATCH_FILE:-/tmp/gh_stub_dispatch_called}"
+    echo "true" > "${GH_STUB_DISPATCH_FILE:-${BATS_TEST_TMPDIR:-/tmp}/gh_stub_dispatch_called}"
     echo "{}" ;;
   *"commits/"*"/pulls"*)
     echo "[{\"number\":${GH_STUB_PR_NUMBER:-0},\"state\":\"open\",\"head\":{\"repo\":{\"full_name\":\"${GH_STUB_PR_HEAD_REPO:-petry-projects/.github-private}\"}}}]" ;;

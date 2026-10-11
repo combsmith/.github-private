@@ -14,6 +14,8 @@ setup() {
   unset COPILOT_API_MODEL COPILOT_API_MODEL_DEFAULTED AI_ENGINES AI_DUCK_ENGINE AI_DUCK_MODEL GEMINI_AVAILABLE
   # shellcheck source=../../../scripts/lib/engine-models.sh
   source "$LIB"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 }
 
 # Sources engine.sh for <engine> in a subshell and prints the requested vars.
@@ -377,8 +379,8 @@ _engine() {
   grep -q -- '[ -z "$persona_fallback" ] || persona_model_args+=(--fallback-model "$persona_fallback")' "$wf"
   grep -q -- '"${persona_model_args\[@\]}"' "$wf"
   grep -q 'ai_models_problems' "$wf"
-  ! grep -q -- '--model claude-' "$wf"
-  ! grep -q -- '--fallback-model opus' "$wf"
+  ! grep -q -- '--model claude-' "$wf" || false
+  ! grep -q -- '--fallback-model opus' "$wf" || false
   export AI_MODELS_CLAUDE="deep=claude-opus-4-8,claude-sonnet-5"
   local live
   live="$(ai_models_chain claude deep)"; live="${live%%,*}"

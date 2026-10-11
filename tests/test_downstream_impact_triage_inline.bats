@@ -87,7 +87,7 @@ teardown() {
   echo "$output" | grep -q "DOWNSTREAM_IMPACT"
   echo "$output" | grep -q "(none)"
   # No consumer repos or impacted surfaces leaked into the "(none)" case.
-  ! echo "$output" | grep -q "petry-projects/"
+  ! echo "$output" | grep -q "petry-projects/" || false
   ! echo "$output" | grep -q "Impacted shared surfaces"
 }
 
@@ -127,6 +127,6 @@ teardown() {
 
   printf '%s' "(none)" > "$IMPACT_FILE"
   { printf '# triage\n'; downstream_impact_triage_section "$IMPACT_FILE"; } > "$prompt_none"
-  ! grep -q "petry-projects/" "$prompt_none"
+  ! grep -q "petry-projects/" "$prompt_none" || false
   grep -q "(none)" "$prompt_none"
 }

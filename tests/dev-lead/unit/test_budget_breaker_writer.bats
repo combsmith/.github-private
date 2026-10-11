@@ -21,6 +21,10 @@
 #   3a     the collector reads with the read credential, markers dropped as
 #          untrusted are counted and reported, and pr-review's marker can not
 #          be opted in.
+#   #2259  the triggers are exactly schedule and workflow_run, the triggering
+#          run is never read, every run reports what woke it and when the
+#          workflow last ran, and the early exit never applies to a paused
+#          fleet and fails open.
 
 REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
 SCRIPT="$REPO_ROOT/scripts/budget_breaker.sh"
@@ -44,7 +48,8 @@ setup() {
     BUDGET_BREAKER_MARKER_KINDS BUDGET_BREAKER_MIN_HOLD_MIN BUDGET_BREAKER_VISIBILITY_REF \
     BUDGET_BREAKER_ROTATE_DAYS BUDGET_BREAKER_ARMED PR_RATE_LIMITED_MARKER_PREFIX \
     BUDGET_BREAKER_VARS_PAUSED BUDGET_BREAKER_VARS_SOURCE BUDGET_BREAKER_VARS_UNTIL \
-    GITHUB_SERVER_URL GITHUB_RUN_ID GITHUB_REPOSITORY
+    GITHUB_SERVER_URL GITHUB_RUN_ID GITHUB_REPOSITORY \
+    GITHUB_EVENT_NAME GITHUB_WORKFLOW_REF BUDGET_BREAKER_MIN_INTERVAL_MIN
 
   # Obviously fake credentials, built at run time so no token-shaped literal is
   # ever committed. Three different values: a call made with the wrong one shows.
@@ -79,6 +84,8 @@ setup() {
   # Switches added with #2251 (all off unless a test sets them).
   unset MOCK_HUMAN_AFTER_WRITE MOCK_HUMAN_JQ MOCK_FAIL_DELETE MOCK_LIST_FAIL_FROM \
     MOCK_LIST_FAIL_FROM_STATUS MOCK_NOTICE_LOOKUP_FAIL
+  # Switches added with #2259 (all off unless a test sets them).
+  unset MOCK_RUNS_FAIL MOCK_COMMENTS_FAIL_REPO
 
   # The organisation as it is today: no pause switch yet, and a fleet variable
   # visible to all repositories for a created variable to copy.
@@ -149,6 +156,34 @@ own_pause() {
     "$(var AGENTS_PAUSE_UNTIL "$(ts "$1")" all "${2:--7200}")" \
     "$(var AGENTS_PAUSED true all "${2:--7200}")"
 }
+
+# wrun <id> <conclusion> <created_offset_sec> [<finished_offset_sec>] — one run
+# of the breaker's workflow as the Actions API lists it. An empty conclusion is
+# a run still under way.
+wrun() {
+  jq -cn --argjson id "$1" --arg c "$2" --arg cr "$(ts "$3")" --arg up "$(ts "${4:-$3}")" \
+    '{id: $id, name: "Budget Breaker", event: "workflow_run", head_branch: "main",
+      status: (if $c == "" then "in_progress" else "completed" end),
+      conclusion: (if $c == "" then null else $c end), created_at: $cr, updated_at: $up}'
+}
+
+# seed_runs <run>... — what the listing of the workflow's runs returns.
+seed_runs() { printf '%s\n' "$@" | jq -cs '.' > "$MOCK_DIR/runs.json"; }
+
+# woken_by <event> [<now_offset_sec>] — the run as the runner starts it: the
+# event's name, this workflow's file and this run's id. The clock moves to NOW
+# + offset; NOW is the start of a two-minute slot, so offset 90 is inside the
+# slot that starts at `ts 0`.
+OWN_RUN_ID=9000
+woken_by() {
+  export GITHUB_EVENT_NAME="$1"
+  export GITHUB_WORKFLOW_REF="acme/.github-private/.github/workflows/budget-breaker.yml@refs/heads/main"
+  export GITHUB_RUN_ID="$OWN_RUN_ID"
+  export BUDGET_BREAKER_NOW="$(( NOW + ${2:-90} ))"
+}
+
+# scanned — the organisation scan ran (it starts with the repository listing).
+scanned() { [ -n "$(calls_by read | grep -E $'^read\trepo list' || true)" ]; }
 
 writes() { cat "$MOCK_DIR/writes.log"; }
 no_writes() {
@@ -292,9 +327,16 @@ case "${rest[0]:-} ${rest[1]:-}" in
       "GET repos/"*"/issues/comments?"*)
         need read
         repo="${path#repos/}"; repo="${repo%%/issues/*}"
+        [ "${MOCK_COMMENTS_FAIL_REPO:-}" != "$repo" ] || fail 502 "Bad Gateway"
         f="$D/comments/${repo//\//__}.json"
         [ -f "$f" ] || { echo -n; exit 0; }
         jq -c "$jqf" "$f" ;;
+      "GET repos/"*"/actions/workflows/"*"/runs?per_page="*)
+        # The runs of ONE workflow (#2259): what the test seeded with seed_runs.
+        need read
+        [ -z "${MOCK_RUNS_FAIL:-}" ] || fail "$MOCK_RUNS_FAIL" "Server Error"
+        [ -f "$D/runs.json" ] || fail 404 "Not Found"
+        jq -c "{total_count: length, workflow_runs: .} | ${jqf}" "$D/runs.json" ;;
       "GET repos/"*"/actions/secrets/"*)
         need read
         [ -f "$D/secret.json" ] || fail 404 "Not Found"
@@ -770,7 +812,7 @@ DELETE AGENTS_PAUSE_SOURCE" ]
   [ "$status" -eq 1 ]
   [[ "$output" == *"credential *** was rejected"* ]]
   [[ "$output" != *"$WRITE_CRED"* ]]
-  ! grep -qF -- "$WRITE_CRED" "$GITHUB_STEP_SUMMARY"
+  ! grep -qF -- "$WRITE_CRED" "$GITHUB_STEP_SUMMARY" || false
 
   # The same for the read path (state listing) ...
   unset MOCK_FAIL_ON
@@ -1164,13 +1206,23 @@ FAILED DELETE AGENTS_PAUSE_SOURCE" ]
   [ "$status" -eq 1 ]
 }
 
-@test "static: the workflow is schedule-only with minimal permissions, a pinned checkout and no credential left behind" {
-  # `on:` has exactly one trigger, schedule.
+@test "static: the workflow's triggers are exactly schedule and workflow_run, with minimal permissions, a pinned checkout and no credential left behind" {
+  # `on:` is a block with exactly two triggers, schedule and workflow_run
+  # (#2259). Both run the default branch's workflow file and code only; any
+  # other trigger could run branch code with the write credential.
   local triggers
+  [ "$(grep -cE '^on:' "$WORKFLOW")" = "1" ]
+  grep -qE '^on:[[:space:]]*$' "$WORKFLOW"
   triggers="$(awk '/^on:/ {f=1; next} f && /^[A-Za-z]/ {f=0} f && /^  [A-Za-z_]+:/ {sub(/^  /, ""); sub(/:.*/, ""); print}' "$WORKFLOW")"
-  [ "$triggers" = "schedule" ]
-  run grep -nE '^[[:space:]]*(workflow_dispatch|pull_request|pull_request_target|push|workflow_call|workflow_run|repository_dispatch|issue_comment):' "$WORKFLOW"
+  [ "$triggers" = "schedule
+workflow_run" ]
+  run grep -nE '^[[:space:]]*(workflow_dispatch|pull_request|pull_request_target|push|workflow_call|repository_dispatch|issue_comment):' "$WORKFLOW"
   [ "$status" -eq 1 ]
+  # workflow_run fires on completion only, and filters on nothing but the
+  # workflows' names.
+  [ "$(on_block_keys workflow_run)" = "workflows
+types" ]
+  grep -qE '^    types: \[completed\]$' "$WORKFLOW"
   # Off the top of the hour.
   run grep -nE "cron:[[:space:]]*['\"]0[[:space:]]" "$WORKFLOW"
   [ "$status" -eq 1 ]
@@ -1195,6 +1247,111 @@ issues: write" ]
   [ "$status" -eq 1 ]
   grep -qE '^[[:space:]]+timeout-minutes: [0-9]+$' "$WORKFLOW"
   grep -qE '^  group: budget-breaker$' "$WORKFLOW"
+}
+
+# on_block_keys <trigger> — the keys directly under one trigger of `on:`.
+on_block_keys() {
+  awk -v t="$1" '
+    /^on:/ {on = 1; next}
+    on && /^[A-Za-z]/ {on = 0}
+    on && /^  [A-Za-z_]+:/ {cur = $1; sub(/:.*/, "", cur); next}
+    on && cur == t && /^    [A-Za-z_-]+:/ {k = $1; sub(/:.*/, "", k); print k}' "$WORKFLOW"
+}
+
+# listed_workflows — the names under `workflow_run.workflows`, one per line,
+# unquoted.
+listed_workflows() {
+  awk '
+    /^  workflow_run:/ {wr = 1; next}
+    wr && /^  [A-Za-z_]+:/ {wr = 0}
+    wr && /^    workflows:[[:space:]]*$/ {list = 1; next}
+    wr && list && /^      - / {sub(/^      - /, ""); gsub(/^"|"$/, ""); print; next}
+    wr && list && /^    [A-Za-z_-]+:/ {list = 0}' "$WORKFLOW"
+}
+
+@test "static: every workflow the workflow_run trigger names exists here under exactly that name" {
+  # `workflows:` is matched against each workflow's `name:`. A rename would
+  # unhook the trigger without any error, so every listed name must be the
+  # `name:` of a workflow file in this repository.
+  local name f found names=()
+  while IFS= read -r name; do
+    names+=("$name")
+  done < <(listed_workflows)
+  [ "${#names[@]}" -eq 3 ]
+  [ "${names[0]}" = "Dev-Lead Agent" ]
+  [ "${names[1]}" = "GitHub Agentic Workflows — Cross-Org Dispatcher" ]
+  [ "${names[2]}" = "Dev-Lead Retry (rate-limited)" ]
+  for name in "${names[@]}"; do
+    found=""
+    for f in "$REPO_ROOT"/.github/workflows/*.yml "$REPO_ROOT"/.github/workflows/*.yaml; do
+      [ -f "$f" ] || continue
+      if [ "$(sed -nE 's/^name:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/p' "$f" | head -n 1)" = "$name" ]; then
+        found="$f"
+      fi
+    done
+    [ -n "$found" ] || { echo "no workflow file here is named: $name"; false; }
+  done
+  # The two that can post a dev-lead quota marker are the ones that run the
+  # scripts that post it; pr-review, whose marker is not quota evidence, is
+  # not a wake-up.
+  grep -qE 'dev-lead-fix-(ci|reviews|issue)\.sh' "$REPO_ROOT/.github/workflows/gh-aw-cross-org.yml"
+  grep -qE 'dev-lead-reusable\.yml@' "$REPO_ROOT/.github/workflows/dev-lead.yml"
+  run grep -ciE 'pr[- ]review' <(listed_workflows)
+  [ "$output" = "0" ]
+}
+
+@test "static: the checkout takes the default branch and nothing in the workflow reads the run that triggered it" {
+  # A workflow_run run holds this workflow's secrets whoever started the run
+  # that triggered it, so nothing of that run may be used (#2259).
+  # The checkout: one step, no ref, no other repository, no path tricks.
+  local with
+  [ "$(grep -cE '^[[:space:]]+uses:' "$WORKFLOW")" = "1" ]
+  with="$(awk '/^        with:/ {f=1; next} f && /^          [A-Za-z_-]+:/ {k=$1; sub(/:.*/, "", k); print k; next} f && !/^          / {f=0}' "$WORKFLOW")"
+  [ "$with" = "persist-credentials" ]
+  run grep -nE '^[[:space:]]+(ref|repository):' "$WORKFLOW"
+  [ "$status" -eq 1 ]
+  # No reference to the event context at all, comments included: not the
+  # triggering run's SHA, branch, repository or pull requests, and not its
+  # conclusion either (see the header for why there is no job-level filter).
+  run grep -nE 'github\.event([^_A-Za-z]|$)|github\[' "$WORKFLOW"
+  [ "$status" -eq 1 ]
+  run grep -niE 'head_(sha|branch|ref|repository|commit)|pull_requests|workflow_run\.|toJSON[[:space:]]*\([[:space:]]*github[[:space:]]*\)' "$WORKFLOW"
+  [ "$status" -eq 1 ]
+  # The only contexts an expression may read are vars, secrets and three fixed
+  # properties of the github context.
+  run grep -oE '\$\{\{[^}]*\}\}' "$WORKFLOW"
+  [ "$status" -eq 0 ]
+  while IFS= read -r with; do
+    with="${with//vars./}"
+    with="${with//secrets./}"
+    with="${with//github.token/}"
+    with="${with//github.repository_owner/}"
+    [[ "$with" != *"github"* && "$with" != *"env."* && "$with" != *"steps."* && "$with" != *"inputs."* ]] \
+      || { echo "an expression reads something else: $with"; false; }
+  done <<< "$output"
+  # Nothing is fetched from the triggering run, and no action evaluates event
+  # data: the checkout is the only action (asserted above). The header names
+  # these in its rules, so comment lines are left out of this one check.
+  run grep -niE 'download-artifact|github-script|gh run download|actions/artifacts' <(grep -vE '^[[:space:]]*#' "$WORKFLOW")
+  [ "$status" -eq 1 ]
+  # No job or step condition, and a constant concurrency group, so every
+  # wake-up shares the one group whatever triggered it.
+  run grep -nE '^[[:space:]]+if:' "$WORKFLOW"
+  [ "$status" -eq 1 ]
+  grep -qE '^  group: budget-breaker$' "$WORKFLOW"
+  grep -qE '^  cancel-in-progress: false$' "$WORKFLOW"
+}
+
+@test "static: the script and its libraries read the event's name and nothing else of the event" {
+  # The payload file and the triggering run's ref, SHA and branch are never read.
+  local f
+  for f in "$SCRIPT" "$WRITER_LIB" "$DECISION_LIB" "$MARKERS_LIB"; do
+    run grep -nE 'GITHUB_EVENT_PATH|GITHUB_(HEAD_REF|BASE_REF|REF|REF_NAME|SHA)([^_A-Za-z]|$)|workflow_run\.|head_(sha|branch)' "$f"
+    [ "$status" -eq 1 ] || { echo "$f reads the event or a ref: $output"; false; }
+  done
+  # The name is read in one place and an unexpected value is never echoed.
+  [ "$(grep -cE 'GITHUB_EVENT_NAME' <(grep -vE '^[[:space:]]*#' "$SCRIPT"))" = "2" ]
+  grep -qE '^  schedule\|workflow_run\) EVENT="\$GITHUB_EVENT_NAME" ;;$' "$SCRIPT"
 }
 
 @test "static: the dry-run poller still has no write path and does not see the breaker's secret" {
@@ -2082,4 +2239,371 @@ FAILED DELETE AGENTS_PAUSE_UNTIL" ]
   # Unreadable state plans nothing.
   [ "$(bbw_leftover_plan 'not json')" = '[]' ]
   [ "$(bbw_leftover_plan '')" = '[]' ]
+}
+
+# ── #2259: what woke the run, the previous run, and the early exit ───────────
+
+@test "#2259: every run says what woke it and how long ago the workflow last ran, in the log and the summary" {
+  woken_by schedule 90
+  # This run itself, two runs that never reached the script, and two that did.
+  seed_runs "$(wrun "$OWN_RUN_ID" "" 80)" "$(wrun 8003 skipped -30 -29)" "$(wrun 8002 cancelled -200 -100)" \
+    "$(wrun 8001 success -22500 -22380)" "$(wrun 8000 failure -30000 -29990)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"budget-breaker: triggered by: schedule"* ]]
+  [[ "$output" == *"budget-breaker: previous run: finished $(ts -22380) (success), 374 min before this one"* ]]
+  grep -qF "| Triggered by | schedule |" "$GITHUB_STEP_SUMMARY"
+  grep -qF "| Previous run | finished $(ts -22380) (success), 374 min before this one |" "$GITHUB_STEP_SUMMARY"
+  # One listing, of this workflow's own file, with the read credential.
+  [ "$(grep -c 'actions/workflows' "$MOCK_DIR/calls.log")" = "1" ]
+  [ "$(calls_by read | grep -c 'repos/acme/.github-private/actions/workflows/budget-breaker.yml/runs?per_page=100')" = "1" ]
+
+  # A run that failed is a previous run too; one still under way is not.
+  seed_runs "$(wrun 8005 "" -20)" "$(wrun 8004 failure -700 -690)" "$(wrun 8001 success -22500 -22380)"
+  woken_by workflow_run 90
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"budget-breaker: triggered by: workflow_run"* ]]
+  [[ "$output" == *"previous run: finished $(ts -690) (failure), 13 min before this one"* ]]
+  grep -qF "| Triggered by | workflow_run |" "$GITHUB_STEP_SUMMARY"
+
+  # No earlier run that reached the script.
+  seed_runs "$(wrun "$OWN_RUN_ID" success 80)" "$(wrun 8003 skipped -30 -29)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"previous run: none among the last 100 runs of this workflow"* ]]
+}
+
+@test "#2259: the event's name is reported from a fixed list; any other value is not echoed" {
+  woken_by workflow_run 90
+  seed_runs "$(wrun 8001 success -600 -590)"
+  export GITHUB_EVENT_NAME='pull_request_target::error::forged'
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"budget-breaker: triggered by: other"* ]]
+  [[ "$output" != *"forged"* ]]
+  [[ "$output" != *"pull_request_target"* ]]
+  run grep -c 'forged' "$GITHUB_STEP_SUMMARY"
+  [ "$output" = "0" ]
+
+  unset GITHUB_EVENT_NAME
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"budget-breaker: triggered by: unknown"* ]]
+}
+
+@test "#2259 early exit: a workflow_run wake-up in a slot an earlier run covered skips the organisation scan" {
+  local mode
+  seed_quota
+  for mode in disarmed armed; do
+    : > "$MOCK_DIR/calls.log"
+    : > "$GITHUB_STEP_SUMMARY"
+    if [ "$mode" = "armed" ]; then
+      armed
+    fi
+    woken_by workflow_run 90
+    # Created ten seconds into the two-minute slot this run is in.
+    seed_runs "$(wrun 8001 success 10 25)"
+    run bash "$SCRIPT"
+    [ "$status" -eq 0 ] || { echo "$mode: status=$status $output"; false; }
+    [[ "$output" == *"budget-breaker: early exit: an earlier run was created in this 2 min slot (since $(ts 0)) and acme/.github-private shows no quota marker since; no scan, no decision"* ]] \
+      || { echo "$mode: $output"; false; }
+    [[ "$output" != *"decision:"* ]]
+    [[ "$output" != *"quota markers read"* ]]
+    # No organisation scan: one listing, of this repository's comments only.
+    run scanned
+    [ "$status" -ne 0 ]
+    [ "$(calls_by read | grep -c 'issues/comments')" = "1" ]
+    [ "$(calls_by read | grep -c 'repos/acme/.github-private/issues/comments')" = "1" ]
+    no_writes
+    no_notice
+    grep -qF "| Quota markers | not collected (early exit) |" "$GITHUB_STEP_SUMMARY"
+    grep -qF "| Decision | not taken this run (early exit) |" "$GITHUB_STEP_SUMMARY"
+    grep -qF "| Result | no scan: an earlier run covered this 2 min slot (since $(ts 0))" "$GITHUB_STEP_SUMMARY"
+  done
+  [ "$(org_var AGENTS_PAUSED)" = "<absent>" ]
+}
+
+@test "#2259 early exit: a scheduled run always decides" {
+  seed_quota
+  woken_by schedule 90
+  seed_runs "$(wrun 8001 success 10 25)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+  run scanned
+  [ "$status" -eq 0 ]
+
+  # So does a run whose event is not known.
+  unset GITHUB_EVENT_NAME
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+}
+
+@test "#2259 early exit: never while the fleet is paused, so a resume is not delayed" {
+  armed
+  woken_by workflow_run 90
+  seed_runs "$(wrun 8001 success 10 25)"
+
+  # The breaker's own pause has ended: it is lifted by this very run.
+  own_pause -60
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: resume"* ]]
+  [ "$(writes)" = "PATCH AGENTS_PAUSED=false
+DELETE AGENTS_PAUSE_SOURCE
+DELETE AGENTS_PAUSE_UNTIL" ]
+  [ "$(org_var AGENTS_PAUSED)" = "false" ]
+
+  # An own pause that still holds is decided too (hold), not skipped.
+  : > "$MOCK_DIR/writes.log"
+  own_pause 600
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: hold"* ]]
+  no_writes
+
+  # A pause set by hand, in any letter case.
+  set_vars "$(var AI_ENGINES claude all)" "$(var AGENTS_PAUSED TRUE)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: none"* ]]
+  no_writes
+
+  # A run that is not armed takes the pause from the vars context.
+  unset BUDGET_BREAKER_ARMED
+  export BUDGET_BREAKER_VARS_PAUSED="True" BUDGET_BREAKER_VARS_SOURCE="rate-limit-observed"
+  BUDGET_BREAKER_VARS_UNTIL="$(ts -60)"
+  export BUDGET_BREAKER_VARS_UNTIL
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: resume"* ]]
+  [[ "$output" == *"Would have written: AGENTS_PAUSED=false"* ]]
+}
+
+@test "#2259 early exit fails open: when the earlier runs cannot be listed, the run decides" {
+  seed_quota
+  woken_by workflow_run 90
+  seed_runs "$(wrun 8001 success 10 25)"
+
+  # The listing fails.
+  export MOCK_RUNS_FAIL=500
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"budget-breaker: previous run: not available (HTTP 500;"* ]]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+  grep -qF "| Previous run | not available (HTTP 500) |" "$GITHUB_STEP_SUMMARY"
+  run scanned
+  [ "$status" -eq 0 ]
+  unset MOCK_RUNS_FAIL
+
+  # The workflow has no runs the credential can see.
+  rm -f "$MOCK_DIR/runs.json"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"previous run: not available (HTTP 404;"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+  seed_runs "$(wrun 8001 success 10 25)"
+
+  # The runner did not say which workflow this is: no call is made at all.
+  : > "$MOCK_DIR/calls.log"
+  unset GITHUB_WORKFLOW_REF
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"previous run: not available (HTTP none; the repository or the workflow file is not known)"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+  [ "$(grep -c 'actions/workflows' "$MOCK_DIR/calls.log")" = "0" ]
+
+  # A file name that is not a workflow file is not put in a request path.
+  export GITHUB_WORKFLOW_REF="acme/.github-private/.github/workflows/../../x?y=1@refs/heads/main"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+  [ "$(grep -c 'actions/workflows' "$MOCK_DIR/calls.log")" = "0" ]
+}
+
+@test "#2259 early exit fails open: a failed listing leaks no credential" {
+  woken_by workflow_run 90
+  export MOCK_LEAK=1 MOCK_RUNS_FAIL=403
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"previous run: not available (HTTP 403;"* ]]
+  [[ "$output" == *"credential *** was rejected"* ]]
+  assert_no_credential_anywhere
+}
+
+@test "#2259 early exit: a quota marker in this repository in the current slot means the run decides" {
+  seed_quota
+  woken_by workflow_run 90
+  seed_runs "$(wrun 8001 success 10 25)"
+
+  # Posted thirty seconds into the slot, after the earlier run was created.
+  seed_comments acme/.github-private "$(comment reviews 41 MEMBER 30)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no early exit: 1 quota marker(s) appeared in acme/.github-private since $(ts 0), so this run decides"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+  run scanned
+  [ "$status" -eq 0 ]
+
+  # Posted before the slot began: the first run of the slot has read it.
+  seed_comments acme/.github-private "$(comment reviews 41 MEMBER -30)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"budget-breaker: early exit:"* ]]
+
+  # A marker from an author who is not trusted is not news.
+  seed_comments acme/.github-private "$(comment reviews 41 NONE 30)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"budget-breaker: early exit:"* ]]
+
+  # This repository's comments cannot be read: the run decides.
+  export MOCK_COMMENTS_FAIL_REPO="acme/.github-private"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no early exit: the quota markers of acme/.github-private since $(ts 0) could not be read, so this run decides"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+}
+
+@test "#2259 early exit cannot starve the decision: only a run CREATED in the current slot counts" {
+  seed_quota
+  woken_by workflow_run 90
+
+  # Created one second before the slot, finished inside it.
+  seed_runs "$(wrun 8001 success -1 20)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+
+  # In the slot, but none of them reached the script: under way, cancelled
+  # while waiting, and this run itself.
+  seed_runs "$(wrun 8004 "" 40)" "$(wrun 8003 cancelled 30 31)" "$(wrun 8002 skipped 20 21)" \
+    "$(wrun "$OWN_RUN_ID" success 80 85)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+
+  # A run that FAILED in the slot covers nothing: it may have ended before its
+  # scan, so the next wake-up decides instead of exiting early.
+  seed_runs "$(wrun 8001 failure 10 25)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+
+  # A run with a creation time that is not a time is not an earlier run.
+  jq -c '.[0].created_at = "soon"' <<< "[$(wrun 8001 success 10 25)]" > "$MOCK_DIR/runs.json"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+}
+
+@test "#2259 early exit: the slot length is tunable, 0 switches it off, and a bad value is the default with a warning" {
+  seed_quota
+  woken_by workflow_run 90
+  seed_runs "$(wrun 8001 success 10 25)"
+
+  export BUDGET_BREAKER_MIN_INTERVAL_MIN=0
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+
+  # One-minute slots: the earlier run was created in the slot before this one.
+  export BUDGET_BREAKER_MIN_INTERVAL_MIN=1
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+
+  export BUDGET_BREAKER_MIN_INTERVAL_MIN=10
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"early exit: an earlier run was created in this 10 min slot (since $(ts 0))"* ]]
+
+  export BUDGET_BREAKER_MIN_INTERVAL_MIN="2m"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::warning::budget-breaker: BUDGET_BREAKER_MIN_INTERVAL_MIN is not a whole number of minutes; using 2"* ]]
+  [[ "$output" == *"early exit: an earlier run was created in this 2 min slot"* ]]
+}
+
+@test "#2259: the slot, the earlier runs and the fresh markers are judged fail open (pure helpers)" {
+  # shellcheck source=../../../scripts/lib/budget-breaker.sh
+  source "$DECISION_LIB"
+  # shellcheck source=../../../scripts/lib/budget-breaker-writer.sh
+  source "$WRITER_LIB"
+  local runs obs
+
+  # Slots are counted from the epoch.
+  [ "$(bbw_slot_start "$(( NOW + 90 ))" 2)" = "$(ts 0)" ]
+  [ "$(bbw_slot_start "$(( NOW + 119 ))" 2)" = "$(ts 0)" ]
+  [ "$(bbw_slot_start "$(( NOW + 120 ))" 2)" = "$(ts 120)" ]
+  [ "$(bbw_slot_start "$(( NOW - 1 ))" 2)" = "$(ts -120)" ]
+  [ "$(bbw_slot_start "$(( NOW + 90 ))" 1)" = "$(ts 60)" ]
+  # No slot without a readable time and a positive length.
+  run bbw_slot_start "$NOW" 0
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+  run bbw_slot_start "now" 2
+  [ "$status" -ne 0 ]
+  run bbw_slot_start "$NOW" ""
+  [ "$status" -ne 0 ]
+  run bbw_slot_start "$NOW" "-2"
+  [ "$status" -ne 0 ]
+
+  # Earlier runs: counted by creation time, successes only; unreadable input is
+  # no earlier run.
+  runs="[$(wrun 1 success 0 5),$(wrun 2 failure -1 30),$(wrun 3 success 119 130)]"
+  [ "$(bbw_runs_since "$runs" "$(ts 0)")" = "2" ]
+  [ "$(bbw_runs_since "$runs" "$(ts 120)")" = "0" ]
+  # The slot's edges: created exactly on the slot start is in the slot, one
+  # second before it is not, and the last second of the slot is in it.
+  [ "$(bbw_runs_since "[$(wrun 1 success 0 5)]" "$(ts 0)")" = "1" ]
+  [ "$(bbw_runs_since "[$(wrun 1 success -1 5)]" "$(ts 0)")" = "0" ]
+  [ "$(bbw_runs_since "[$(wrun 1 success 119 125)]" "$(ts 0)")" = "1" ]
+  # A clock a second apart on either side of a boundary: a run the API stamped
+  # in the previous slot is not an earlier run of this one, so this run decides.
+  [ "$(bbw_runs_since "[$(wrun 1 success 119 125)]" "$(bbw_slot_start "$(( NOW + 120 ))" 2)")" = "0" ]
+  # A failed run in the slot is not counted; a successful one beside it is.
+  [ "$(bbw_runs_since "[$(wrun 1 failure 10 20)]" "$(ts 0)")" = "0" ]
+  [ "$(bbw_runs_since "[$(wrun 1 failure 10 20),$(wrun 2 success 30 40)]" "$(ts 0)")" = "1" ]
+  [ "$(bbw_runs_since '[]' "$(ts 0)")" = "0" ]
+  [ "$(bbw_runs_since 'not json' "$(ts 0)")" = "0" ]
+  [ "$(bbw_runs_since "$runs" 'not a time')" = "0" ]
+  [ "$(bbw_runs_since "$runs" '')" = "0" ]
+
+  # Fresh markers: one with no readable creation time counts; an unreadable
+  # array or time is "cannot tell", never "none".
+  obs="$(jq -cn --arg a "$(ts 10)" --arg b "$(ts -10)" '[{created: $a}, {created: $b}, {created: null}, {}]')"
+  [ "$(bbw_markers_since "$obs" "$(ts 0)")" = "3" ]
+  [ "$(bbw_markers_since '[]' "$(ts 0)")" = "0" ]
+  run bbw_markers_since 'not json' "$(ts 0)"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+  run bbw_markers_since '{}' "$(ts 0)"
+  [ "$status" -ne 0 ]
+  run bbw_markers_since "$obs" 'not a time'
+  [ "$status" -ne 0 ]
+  run bbw_markers_since '' "$(ts 0)"
+  [ "$status" -ne 0 ]
+
+  # The text of the previous run.
+  [ "$(bbw_previous_run_text "$runs" "$(( NOW + 190 ))")" = "finished $(ts 130) (success), 1 min before this one" ]
+  [ "$(bbw_previous_run_text '[]' "$NOW")" = "none among the last 100 runs of this workflow" ]
+  [ "$(bbw_previous_run_text 'not json' "$NOW")" = "not readable" ]
+  # A run that finished after this run's clock reads as 0 min, not a negative time.
+  [ "$(bbw_previous_run_text "$runs" "$NOW")" = "finished $(ts 130) (success), 0 min before this one" ]
 }

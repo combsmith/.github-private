@@ -406,7 +406,7 @@ _1977_FIXING='diff --git a/scripts/template_stub_drift.sh b/scripts/template_stu
   _tokens "$_1977_FINDING"
   [ "$status" -eq 0 ]
   grep -qxF -- '--emit-workflow-only' <<< "$output"
-  ! grep -qxF -- 'scripts/template_stub_drift.sh' <<< "$output"  # path-like spans are generic (#2004 rule 3a)
+  ! grep -qxF -- 'scripts/template_stub_drift.sh' <<< "$output" || false  # path-like spans are generic (#2004 rule 3a)
   grep -qxF -- '--emit-workflow' <<< "$output"
 }
 
