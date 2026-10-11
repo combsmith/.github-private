@@ -91,7 +91,7 @@ _PR_BUDGET_JQ_DEFS='
     | ($login == null) or ($login == "")
       or ($login | endswith("[bot]"))
       or (($bots | index($login)) != null);
-  def agent_marked($re): (. // "" | tostring | test($re));
+  def agent_marked($re): (. // "" | tostring | gsub("`[^`]*`"; "") | test($re));
 '
 
 # compute_pr_automation_cycles <events_json>
