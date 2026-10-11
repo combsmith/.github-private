@@ -6158,11 +6158,10 @@ _setup_2013() {
   T2013_DIR="$BATS_TEST_TMPDIR/workdir"
   T2013_MUT="$BATS_TEST_TMPDIR/mutations"
   T2013_PATCH="$BATS_TEST_TMPDIR/patches"
-  T2013_LABELS="$BATS_TEST_TMPDIR/labels"
   T2013_PUSH="$BATS_TEST_TMPDIR/pushes"
   # Extra review comments (a JSON array) appended to the PR's listing (#2032).
   T2013_EXTRA="$BATS_TEST_TMPDIR/extra-comments.json"
-  : > "$T2013_MUT"; : > "$T2013_PATCH"; : > "$T2013_PUSH"; : > "$T2013_LABELS"
+  : > "$T2013_MUT"; : > "$T2013_PATCH"; : > "$T2013_PUSH"
   [ -s "$T2013_EXTRA" ] || echo '[]' > "$T2013_EXTRA"
   mkdir -p "$T2013_DIR/tests"
   rm -f /tmp/dev-lead-session-output.txt
@@ -6196,10 +6195,6 @@ sha="${claim_sha}"
 [ "\$sha" = "HEAD" ] && sha="\$(git rev-parse HEAD)"
 reply="Fixed in fix.txt: added the fix. <!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\\\\\"v\\\\\":1,\\\\\"sha\\\\\":\\\\\"\${sha}\\\\\",\\\\\"files\\\\\":[\\\\\"fix.txt\\\\\"]} -->"
 case "\$ARGS" in
-  *"POST"*"issues/"*"/labels"*)
-    echo "\$*" >> "$T2013_LABELS"
-    echo '[]'
-    ;;
   *"PATCH"*"pulls/comments/"*)
     echo "\$*" >> "$T2013_PATCH"
     echo '{}'
@@ -6499,7 +6494,7 @@ SH
   [ ! -s "$T2013_PUSH" ]
   [[ "$output" == *"Test-regression guard"* ]]
   [[ "$output" == *"existing behaviour"* ]]
-  grep -q 'labels\[\]=needs-human-review' "$T2013_LABELS"
+  grep -qF 'labels[]=needs-human-review' "$BATS_TEST_TMPDIR/label_posts"
   [ ! -s "$T2013_MUT" ]
   grep -q "pulls/comments/777" "$T2013_PATCH"
 }
@@ -6558,6 +6553,8 @@ _setup_2143() {
   cat > "$STUB_BIN_DIR/git" << GITEOF
 #!/usr/bin/env bash
 if [ "\$1" = "push" ]; then echo "push \$(/usr/bin/git rev-parse HEAD)" >> "$T2013_PUSH"; exit "\${T2013_PUSH_RC:-0}"; fi
+# The pass's detached worktree has no upstream; T2143_UPSTREAM gives it one.
+if [ -n "\${T2143_UPSTREAM:-}" ] && [ "\$*" = "rev-parse --abbrev-ref --symbolic-full-name @{u}" ]; then echo "\$T2143_UPSTREAM"; exit 0; fi
 exec /usr/bin/git "\$@"
 GITEOF
   chmod +x "$STUB_BIN_DIR/git"
@@ -6637,6 +6634,28 @@ _test_job() {
   [ ! -s "$T2013_PATCH" ]
 }
 
+@test "#2143: the remote head moved during the test job — the push job pushes nothing and retracts the claim" {
+  _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
+  _run_2143 work fix-reviews
+  [ "$status" -eq 0 ]
+  _test_job
+  [[ "$(jq -r .verdict <<<"$T2143_VERDICT")" == "green" ]]
+
+  # Someone pushes to the PR branch while the suite runs: the remote head is no
+  # longer the pre-pass head the verdict was based on.
+  export T2143_UPSTREAM=origin/main
+  git clone -q -b main "file://$BATS_TEST_TMPDIR/origin.git" "$BATS_TEST_TMPDIR/mover"
+  git -C "$BATS_TEST_TMPDIR/mover" -c user.email=t@t -c user.name=T commit -q --allow-empty -m "concurrent"
+  git -C "$BATS_TEST_TMPDIR/mover" push -q origin HEAD:main
+
+  _run_2143 push fix-reviews
+  [ "$status" -ne 0 ]
+  [ ! -s "$T2013_PUSH" ]
+  [[ "$output" == *"the tested tree would be rebased"* ]]
+  grep -q "pulls/comments/777" "$T2013_PATCH"
+  [ ! -s "$T2013_MUT" ]
+}
+
 @test "#2143: the 15a919e shape across the job boundary — the push job refuses, flags and retracts" {
   _setup_2143 "printf 'changed\n' > file.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
   _run_2143 work fix-reviews
@@ -6648,7 +6667,7 @@ _test_job() {
   [ ! -s "$T2013_PUSH" ]
   [[ "$output" == *"Test-regression guard"* ]]
   [[ "$output" == *"existing behaviour"* ]]
-  grep -q 'labels\[\]=needs-human-review' "$T2013_LABELS"
+  grep -qF 'labels[]=needs-human-review' "$BATS_TEST_TMPDIR/label_posts"
   [ ! -s "$T2013_MUT" ]
   grep -q "pulls/comments/777" "$T2013_PATCH"
 }
@@ -6657,13 +6676,13 @@ _test_job() {
   local r
   for r in failure cancelled skipped ""; do
     _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
-    : > "$T2013_PUSH"; : > "$T2013_PATCH"; : > "$T2013_LABELS"
+    : > "$T2013_PUSH"; : > "$T2013_PATCH"
     _run_2143 work fix-reviews
     # a verdict that says green must not count when the job itself did not succeed
     T2143_VERDICT='{"verdict":"green","cmd":"./suite.sh","tests":[]}' T2143_JOB="$r" _run_2143 push fix-reviews
     [ ! -s "$T2013_PUSH" ]
     [[ "$output" == *"NO VERDICT"* ]]
-    grep -q 'labels\[\]=needs-human-review' "$T2013_LABELS"
+    grep -qF 'labels[]=needs-human-review' "$BATS_TEST_TMPDIR/label_posts"
     grep -q "pulls/comments/777" "$T2013_PATCH"
   done
 }
