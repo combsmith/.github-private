@@ -310,7 +310,7 @@ drift_dev_lead_block() {
   run_monitor petry-projects/legacy
   [ "$status" -eq 0 ]
   [ "$(role_counts Dev-lead)" = "$(counts_line 0 1 0)" ]
-  grep -F '`petry-projects/legacy`' "${WORK}/fleet_monitor_report.md" | grep -qF "legacy per-role stub"
+  sed -n '/^### Legacy per-role stubs/,$p' "${WORK}/fleet_monitor_report.md" | grep -qF '`petry-projects/legacy`'
   [ "$(jq -c . "${WORK}/fleet_stub_drift.json")" = "[]" ]
 }
 

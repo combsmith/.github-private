@@ -233,14 +233,16 @@ generate_stub_drift_report() {
     return 0
   fi
 
-  printf 'These enrolled repos have drifted from the canonical stub — re-sync them:\n\n'
-  printf '| Repo | Status | Stub SHA | Canonical SHA |\n'
-  printf '|---|---|---|---|\n'
-  awk -F'\t' '$2 == "DRIFTED" && $5 != "legacy" {
-    printf "| `%s` | 🔴 %s | `%s` | `%s` |\n", $1, $2, substr($3,1,7), substr($4,1,7)
-  }' "$f"
+  if awk -F'\t' '$2 == "DRIFTED" && $5 != "legacy" { found = 1; exit } END { exit !found }' "$f"; then
+    printf 'These enrolled repos have drifted from the canonical stub — re-sync them:\n\n'
+    printf '| Repo | Status | Stub SHA | Canonical SHA |\n'
+    printf '|---|---|---|---|\n'
+    awk -F'\t' '$2 == "DRIFTED" && $5 != "legacy" {
+      printf "| `%s` | 🔴 %s | `%s` | `%s` |\n", $1, $2, substr($3,1,7), substr($4,1,7)
+    }' "$f"
+  fi
 
-  if awk -F'\t' '$2 == "DRIFTED" && $5 == "legacy" { found = 1 } END { exit !found }' "$f"; then
+  if awk -F'\t' '$2 == "DRIFTED" && $5 == "legacy" { found = 1; exit } END { exit !found }' "$f"; then
     printf '\n### Legacy per-role stubs (repos without agent-ingress.yml)\n\n'
     printf 'These repos use per-role stubs and are not enrolled in agent-ingress.yml. They are not alerted or remediated in the above; the compliance audit stub-surface checks cover them.\n\n'
     printf '| Repo | Status | Stub SHA | Canonical SHA |\n'

@@ -321,10 +321,22 @@ INGRESS_NO_DEVLEAD="${BATS_TEST_DIRNAME}/fixtures/agent-ingress/collapsed-no-dev
   rm -f "$tsv"
   [ "$status" -eq 0 ]
   [[ "$output" == *"🔴 DRIFTED: 2"* ]]
-  local legacy_line markets_line
-  legacy_line="$(printf '%s\n' "$output" | grep -F '`petry-projects/legacy`')"
-  markets_line="$(printf '%s\n' "$output" | grep -F '`petry-projects/markets`')"
-  [[ "$legacy_line" == *"legacy per-role stub"* ]]
-  [[ "$markets_line" != *"legacy"* ]]
+  local legacy_section before_legacy
+  legacy_section="$(printf '%s\n' "$output" | sed -n '/^### Legacy per-role stubs/,$p')"
+  before_legacy="$(printf '%s\n' "$output" | sed '/^### Legacy per-role stubs/,$d')"
+  [[ "$legacy_section" == *'`petry-projects/legacy`'* ]]
+  [[ "$legacy_section" != *'`petry-projects/markets`'* ]]
+  [[ "$before_legacy" == *'`petry-projects/markets`'* ]]
+  [[ "$before_legacy" != *'`petry-projects/legacy`'* ]]
   [[ "$output" == *"not alerted"* ]]
+}
+
+@test "generate_stub_drift_report: legacy-only drift omits the re-sync remediation table (#2289)" {
+  tsv="$(mktemp)"
+  stub_drift_row_role "petry-projects/legacy" "no" "" "" "$CANON" "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" > "$tsv"
+  run generate_stub_drift_report "$tsv" "$CANON" "Dev-lead"
+  rm -f "$tsv"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"re-sync them"* ]]
+  [[ "$output" == *"### Legacy per-role stubs"* ]]
 }
