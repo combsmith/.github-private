@@ -789,10 +789,20 @@ is to keep degrading from moving the outage onto an unmetered provider.
 
 - **Caps are data.** `scripts/lib/gemini-quota-caps.tsv` (next to `model-pricing.tsv`)
   holds one row per key index × model: `tier`, `rpm`, `tpm`, `rpd`. It also holds the
-  `daily_reset_time` / `daily_reset_tz` and `default_cooldown_sec` settings. It
-  **ships with every limit `unknown`**. A maintainer fills in the real values;
-  nobody measures them by calling the Gemini API. Never hard-code a Gemini limit
-  in a script.
+  `daily_reset_time` / `daily_reset_tz` and `default_cooldown_sec` settings.
+  Never hard-code a Gemini limit in a script.
+- **The shipped caps are self-imposed (#2146).** They are not Google's limits for
+  these keys. They equal Google's Free Tier limits and are the same for key indexes
+  1 to 4:
+  - `gemini-3.8-flash`: 5 requests/minute, 250000 tokens/minute, 20 requests/day;
+  - `gemini-3.1-pro-preview`: 0 on every window, so Pro is never called. A tier whose
+    first choice is Pro (deep, audit, single) runs on its Flash fallback.
+
+  Each key holds $1 of prepaid credit, paid once. Google's real Tier 1 limits are far
+  higher, so metering against them would make the keys look healthy until the money
+  is gone. The numbers are a maintainer decision and change only by a reviewed PR;
+  nobody measures them by calling the Gemini API. A row set back to `unknown` is
+  treated as constrained again.
 - **Keys are named by index only:** `1` is the primary slot
   (`GEMINI_API_KEY` / `GOOGLE_API_KEY`; a `GOOGLE_API_KEY` holding a different
   credential is `1b`) and `N` is `GOOGLE_API_KEY_N`. A key value
@@ -808,6 +818,9 @@ is to keep degrading from moving the outage onto an unmetered provider.
   `1` (skip) means every key is metered and at or above the threshold.
   `2` (**constrained**) means the limits are unknown, a key has no caps row, or the
   ledger is unreadable or corrupt.
+  A caps row with a cap of 0 excludes that model on the key (#2041), so the gate leaves
+  the row out of the key's percent (#2146): with Pro at 0, a key is judged on Flash
+  alone. A key whose every row has a cap of 0 has nothing left to run and reads 100%.
   `2` is deliberately **not** fail-open, unlike Claude's probe. It logs a
   `::warning::` naming `limits unknown` or `ledger unreadable` and never prints
   the `ok` line. The engine still runs on `2`, because refusing to degrade onto a

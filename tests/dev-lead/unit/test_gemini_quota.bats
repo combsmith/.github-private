@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Unit tests for Gemini quota metering (#2030):
-#   - scripts/lib/gemini-quota-caps.tsv  — per-key / per-model caps (data, shipped unfilled)
+#   - scripts/lib/gemini-quota-caps.tsv  — per-key / per-model caps (data; filled with the
+#                                          self-imposed Free Tier caps by #2146)
 #   - scripts/lib/gemini-quota.sh        — ledger-based metering + per-key cooldown memory
 #   - engine.sh check_provider_headroom gemini branch and the cooldown-aware rotation
 #
@@ -77,6 +78,16 @@ _caps() {
   } > "$GEMINI_QUOTA_CAPS"
 }
 
+# _shipped_caps_unknown [key_index [model]] — the test's caps file becomes a copy of the
+# SHIPPED one with cap rows edited back to `unknown`: every row, one key's rows, or one
+# row. The shipped file is filled (#2146), so the limits-unknown path needs this fixture.
+_shipped_caps_unknown() {
+  awk -F'\t' -v OFS='\t' -v k="${1:-}" -v m="${2:-}" '
+    /^[[:space:]]*#/ || NF < 6 || $1 == "setting" { print; next }
+    (k == "" || $1 == k) && (m == "" || $2 == m) { $3 = $4 = $5 = $6 = "unknown" }
+    { print }' "$SHIPPED_CAPS" > "$GEMINI_QUOTA_CAPS"
+}
+
 # _ledger_call <key_index> <model> <age_sec> [tokens]
 # Appends one gemini token_usage record <age_sec> seconds before NOW.
 _ledger_call() {
@@ -90,16 +101,15 @@ _ledger_call() {
 
 # ── the shipped caps file ─────────────────────────────────────────────────────
 
-@test "caps file: ships next to model-pricing.tsv with every limit unknown" {
+@test "caps file: ships next to model-pricing.tsv with rows for key indexes 1-4" {
   [ -f "$SHIPPED_CAPS" ]
+  [ -f "$(dirname "$SHIPPED_CAPS")/model-pricing.tsv" ]
   # Rows for key indexes 1-4.
   for idx in 1 2 3 4; do
     awk -F'\t' -v k="$idx" '$1 == k { f = 1 } END { exit !f }' "$SHIPPED_CAPS"
   done
-  # No data row carries a numeric tier/rpm/tpm/rpd: nothing is trusted until filled.
-  run awk -F'\t' '/^[[:space:]]*#/ || NF < 6 || $1 == "setting" { next }
-    { for (i = 3; i <= 6; i++) if ($i != "unknown") print }' "$SHIPPED_CAPS"
-  [ -z "$output" ]
+  # The values themselves are pinned by "#2146 AC1" below. Until #2146 this test
+  # asserted every limit was `unknown` (the file shipped unfilled).
 }
 
 @test "caps file: has a row for every model the default gemini chains use" {
@@ -113,8 +123,8 @@ _ledger_call() {
   done
 }
 
-@test "AC4: shipped (all-unknown) caps → conservative result 2, log names 'limits unknown', never ok" {
-  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+@test "AC4: all-unknown caps (the shipped file as #2030 shipped it) → conservative result 2, log names 'limits unknown', never ok" {
+  _shipped_caps_unknown
   export GOOGLE_API_KEY="fake-secret-a" GOOGLE_API_KEY_2="fake-secret-b"
   _ledger_call 1 gemini-3.8-flash 5
   _source_engine gemini
@@ -281,7 +291,7 @@ _ledger_call() {
 }
 
 @test "headroom: run_writer_with_fallback still proceeds on the constrained result (no actuation)" {
-  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  _shipped_caps_unknown
   export GOOGLE_API_KEY="fake-secret-a"
   export DEV_LEAD_ENGINES="gemini"
   export STUB_ENGINE_EXIT=0
@@ -523,4 +533,322 @@ _ledger_call() {
   run check_provider_headroom gemini
   [ "$status" -eq 0 ]
   [[ "$output" == *"usage 25% — ok"* ]]
+}
+
+# ── #2146: the shipped caps are the self-imposed Free Tier caps ───────────────
+# These tests read the SHIPPED file, so a changed number fails here first.
+
+# _all_four_keys — configure the four key slots the shipped caps file has rows for.
+_all_four_keys() {
+  export GOOGLE_API_KEY="fake-secret-a" GOOGLE_API_KEY_2="fake-secret-b"
+  export GOOGLE_API_KEY_3="fake-secret-c" GOOGLE_API_KEY_4="fake-secret-d"
+}
+
+@test "#2146 AC1: the shipped caps are exactly the self-imposed Free Tier caps for key indexes 1-4, no unknown left" {
+  local expected="" k
+  for k in 1 2 3 4; do
+    expected+="$(printf '%s\tgemini-3.8-flash\tpaid\t5\t250000\t20' "$k")"$'\n'
+    expected+="$(printf '%s\tgemini-3.1-pro-preview\tpaid\t0\t0\t0' "$k")"$'\n'
+  done
+  # Every data row, byte for byte: both models for each key index, nothing else.
+  run awk -F'\t' '/^[[:space:]]*#/ || !NF || $1 == "setting" { next } { print }' "$SHIPPED_CAPS"
+  [ "$output" = "${expected%$'\n'}" ]
+  # No `unknown` outside the comments: not in a cap row, not in a setting.
+  run grep -vE '^[[:space:]]*#' "$SHIPPED_CAPS"
+  [[ "$output" != *unknown* ]]
+  # The settings rows are the ones #2030 / #2041 shipped.
+  run awk -F'\t' '$1 == "setting" { print $2 "=" $3 }' "$SHIPPED_CAPS"
+  [ "$output" = "daily_reset_time=00:00"$'\n'"daily_reset_tz=America/Los_Angeles"$'\n'"default_cooldown_sec=60"$'\n'"history_days=7" ]
+}
+
+@test "#2146 AC1: the library reads the shipped caps as Flash 5/250000/20 and Pro excluded on every key" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  _source_engine gemini
+  local k
+  for k in 1 2 3 4; do
+    [ "$(gq_caps_for "$k" gemini-3.8-flash)" = "paid"$'\t'"5"$'\t'"250000"$'\t'"20" ]
+    [ "$(gq_caps_for "$k" gemini-3.1-pro-preview)" = "paid"$'\t'"0"$'\t'"0"$'\t'"0" ]
+    run gq_remaining "$k" gemini-3.8-flash
+    [ "$(jq -r .state <<< "$output")" = "available" ]
+    [ "$(jq -r .remaining_calls <<< "$output")" = "20" ]
+    run gq_remaining "$k" gemini-3.1-pro-preview
+    [ "$(jq -r .state <<< "$output")" = "unavailable" ]
+    [ "$(jq -r .remaining_calls <<< "$output")" = "0" ]
+  done
+  # The expected effect: 20 Flash requests per key per day, 80 across the four keys.
+  run gq_tier_view triage 1 2 3 4
+  [ "$(jq -r .status <<< "$output")" = "available" ]
+  [ "$(jq -r .remaining_calls <<< "$output")" = "80" ]
+}
+
+# _flash_calls_today <n> <key_index> — n Flash calls earlier today (Pacific), all
+# outside the rolling minute, so only the requests/day window is in play.
+_flash_calls_today() {
+  local i
+  for (( i = 0; i < $1; i++ )); do _ledger_call "$2" gemini-3.8-flash $(( 3600 + i )); done
+}
+
+@test "#2146 AC2: shipped caps and an empty ledger → ok (an excluded Pro row is not a full key)" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  _all_four_keys
+  _source_engine gemini
+
+  run check_provider_headroom gemini
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[headroom] gemini usage 0% — ok"* ]]
+  [[ "$output" != *"fake-secret"* ]]
+  [ ! -e "$CURL_RECORD" ]
+}
+
+@test "#2146 AC2: shipped caps, 15 Flash calls today on every key → skip (15 of 20 is the 75% threshold)" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  # 2026-10-09T19:00:00Z = 12:00 PDT: the Pacific day started 12 hours ago.
+  NOW=1791572400; export GEMINI_QUOTA_NOW="$NOW"
+  _all_four_keys
+  local k
+  for k in 1 2 3 4; do _flash_calls_today 15 "$k"; done
+  _source_engine gemini
+
+  run check_provider_headroom gemini
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"[headroom] gemini usage 75% >= threshold 75% — skipping"* ]]
+
+  # One key at 14 of 20 (70%) keeps the engine available.
+  : > "$TOKEN_LOG_FILE"
+  for k in 1 2 3; do _flash_calls_today 15 "$k"; done
+  _flash_calls_today 14 4
+  run check_provider_headroom gemini
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[headroom] gemini usage 70% — ok"* ]]
+
+  # Calls made before the Pacific midnight reset do not count toward today.
+  : > "$TOKEN_LOG_FILE"
+  for k in 1 2 3 4; do
+    local i; for (( i = 0; i < 15; i++ )); do _ledger_call "$k" gemini-3.8-flash $(( 13 * 3600 + i )); done
+  done
+  run check_provider_headroom gemini
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"usage 0% — ok"* ]]
+}
+
+@test "#2146: a cap-0 row is left out of the engine verdict; a key with only cap-0 rows reads 100%" {
+  export GOOGLE_API_KEY="fake-secret-a" GOOGLE_API_KEY_2="fake-secret-b"
+  _source_engine gemini
+
+  # Key 1 has headroom on Flash; its Pro row is excluded, not counted as 100%.
+  _caps "1 gemini-3.8-flash paid 10 none none" "1 gemini-3.1-pro-preview paid 0 0 0" \
+        "2 gemini-3.1-pro-preview paid 0 0 0"
+  [ "$(gq_key_pct 1)" = "0" ]
+  [ "$(gq_key_pct 2)" = "100" ]
+  # The per-model percent rotation uses is unchanged: cap 0 is still 100 there.
+  [ "$(gq_key_pct 1 gemini-3.1-pro-preview)" = "100" ]
+  run check_provider_headroom gemini
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"usage 0% — ok"* ]]
+
+  # Every key excluded on every model: nothing can run, so the gate skips.
+  _caps "1 gemini-3.1-pro-preview paid 0 0 0" "2 * paid 5 none 0"
+  run check_provider_headroom gemini
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"usage 100% >= threshold 75%"* ]]
+
+  # An excluded row does not hide an unfilled one: still the conservative 2.
+  _caps "1 gemini-3.8-flash unknown unknown unknown unknown" "1 gemini-3.1-pro-preview paid 0 0 0" \
+        "2 gemini-3.8-flash unknown unknown unknown unknown" "2 gemini-3.1-pro-preview paid 0 0 0"
+  run check_provider_headroom gemini
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"limits unknown for key index 1,2"* ]]
+}
+
+@test "#2146 AC3: Pro is never called on any key; deep, audit and single move to the Flash fallback" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  _all_four_keys
+  local model_log="$BATS_TEST_TMPDIR/model_record" tier chain k
+  export STUB_ENGINE_EXIT=0 STUB_ENGINE_RECORD_MODELS="$model_log"
+  _source_engine gemini
+
+  for tier in deep audit single; do
+    chain="$(ai_models_gemini_chain "$tier")"
+    [ "${chain%%,*}" = "gemini-3.1-pro-preview" ]   # Pro is still the tier's first choice
+    : > "$model_log"; : > "$KEY_RECORD"
+    run _gemini_chain_invoke "$chain" "$TEST_PROMPT" 30
+    [ "$status" -eq 0 ]
+    [ "$(cat "$model_log")" = "gemini-3.8-flash" ]     # one call, and it is Flash
+    for k in 1 2 3 4; do [[ "$output" == *"key index $k"*"unavailable"* ]]; done
+    [[ "$output" != *"fake-secret"* ]]
+    # The tier view says the same thing before any work runs.
+    run gq_tier_view "$tier" 1 2 3 4
+    [ "$(jq -r .status <<< "$output")" = "degraded" ]
+    [ "$(jq -r .degraded_to <<< "$output")" = "gemini-3.8-flash" ]
+  done
+
+  # Asked for Pro alone: no key is called at all.
+  : > "$model_log"; : > "$KEY_RECORD"
+  run _gemini_chain_invoke "gemini-3.1-pro-preview" "$TEST_PROMPT" 30
+  [ "$status" -eq 2 ]
+  [ ! -s "$KEY_RECORD" ]
+  [ ! -s "$model_log" ]
+}
+
+@test "#2146 AC3: with Flash throttled on every key, Pro is still not called (no tier falls back to it)" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  _all_four_keys
+  local model_log="$BATS_TEST_TMPDIR/model_record" tier
+  export STUB_ENGINE_RECORD_MODELS="$model_log"
+  export STUB_ENGINE_EXIT_BY_MODEL="gemini-3.8-flash=1|gemini-3.1-pro-preview=0"
+  export STUB_ENGINE_RESPONSE_BY_MODEL="gemini-3.8-flash=429 too many requests|gemini-3.1-pro-preview=ok"
+  _source_engine gemini
+
+  for tier in triage action deep audit single; do
+    : > "$model_log"; : > "$KEY_RECORD"; : > "$TOKEN_LOG_FILE"   # drop the previous tier's cooldowns
+    run _gemini_chain_invoke "$(ai_models_gemini_chain "$tier")" "$TEST_PROMPT" 30
+    [ "$status" -eq 2 ]
+    [ -s "$model_log" ]                                # Flash was tried …
+    ! grep -q "pro" "$model_log" || false              # … Pro never was, on any key
+  done
+}
+
+@test "#2146 AC4: a shipped row edited back to unknown takes the conservative limits-unknown path" {
+  _shipped_caps_unknown 1 gemini-3.8-flash
+  # The fixture is the shipped file with exactly that one row changed.
+  [ "$(grep -c "unknown"$'\t'"unknown"$'\t'"unknown"$'\t'"unknown" "$GEMINI_QUOTA_CAPS")" = "1" ]
+  [ "$(diff "$SHIPPED_CAPS" "$GEMINI_QUOTA_CAPS" | grep -c '^>')" = "1" ]
+  export GOOGLE_API_KEY="fake-secret-a"
+  export STUB_ENGINE_EXIT=0
+  _source_engine gemini
+
+  run check_provider_headroom gemini
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"limits unknown for key index 1"* ]]
+  [[ "$output" != *"— ok"* ]]
+  [[ "$output" != *"fake-secret"* ]]
+
+  run gq_remaining 1 gemini-3.8-flash
+  [ "$(jq -r .state <<< "$output")" = "unknown" ]
+  [ "$(jq -r .remaining_calls <<< "$output")" = "null" ]
+
+  # Not a hard block: the unknown key is still tried.
+  run _gemini_chain_invoke "gemini-3.8-flash" "$TEST_PROMPT" 30
+  [ "$status" -eq 0 ]
+  [ "$(cat "$KEY_RECORD")" = "fake-secret-a" ]
+}
+
+# ── #2146 follow-ups: glob overlap, the minute window, the PST reset ──────────
+
+@test "#2146: no shipped cap-0 row's glob matches the model of another row for the same key index" {
+  # gq_key_pct leaves a cap-0 row out only for the engine-level verdict. If its glob
+  # also matched a model with a live row on the same key (`*` at 0 next to Flash), the
+  # per-model percent would read that model as 100% while the engine reads headroom.
+  # Checked two ways: against the other rows' model column (stricter than needed: it
+  # also flags two overlapping cap-0 rows), and against every model the default chains
+  # use, which also catches a cap-0 glob overlapping a live glob.
+  source "$SCRIPT_DIR/scripts/lib/engine-models.sh"
+  local chain_models="" tier m
+  for tier in triage action deep audit single; do
+    for m in $(ai_models_default gemini "$tier" | tr ',' ' '); do chain_models="$chain_models$m "; done
+  done
+  run awk -F'\t' -v models="$chain_models" '
+    function glob2re(g,   re) {
+      re = g
+      gsub(/[.[\]()^$+{}|\\]/, "\\\\&", re)
+      gsub(/\*/, ".*", re)
+      gsub(/\?/, ".", re)
+      return "^" re "$"
+    }
+    /^[[:space:]]*#/ || NF < 6 || $1 == "setting" { next }
+    { n++; key[n] = $1; glob[n] = $2
+      zero[n] = ($4 ~ /^0+$/ || $5 ~ /^0+$/ || $6 ~ /^0+$/); if (zero[n]) zeros++ }
+    END {
+      for (i = 1; i <= n; i++) {
+        if (!zero[i]) continue
+        for (j = 1; j <= n; j++)
+          if (i != j && key[i] == key[j] && glob[j] ~ glob2re(glob[i]))
+            printf "overlap: key %s cap-0 row %s matches the row for %s\n", key[i], glob[i], glob[j]
+      }
+      # Per model: the row that governs it on a key is the most specific match (as in
+      # gq_caps_row_for). If that row is live, no cap-0 row of the key may match too.
+      nm = split(models, mm, " ")
+      for (x = 1; x <= nm; x++) for (i = 1; i <= n; i++) {
+        if (zero[i] || mm[x] !~ glob2re(glob[i])) continue
+        lit = glob[i]; gsub(/[*?]/, "", lit); governs = 1
+        for (j = 1; j <= n; j++) if (j != i && key[j] == key[i] && mm[x] ~ glob2re(glob[j])) {
+          l2 = glob[j]; gsub(/[*?]/, "", l2)
+          if (length(l2) > length(lit) || (length(l2) == length(lit) && j < i)) governs = 0
+        }
+        if (!governs) continue
+        for (j = 1; j <= n; j++)
+          if (zero[j] && key[j] == key[i] && mm[x] ~ glob2re(glob[j]))
+            printf "overlap: key %s model %s is governed by live row %s but also matches cap-0 row %s\n", key[i], mm[x], glob[i], glob[j]
+      }
+      printf "checked %d cap-0 row(s)\n", zeros
+    }' "$SHIPPED_CAPS"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"overlap:"* ]]
+  # Not vacuous: the shipped file does have cap-0 rows (Pro, one per key index).
+  [[ "$output" == *"checked 4 cap-0 row(s)"* ]]
+}
+
+@test "#2146: shipped caps, five Flash calls in the last minute on key 1 → rotation moves to key 2" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  export GOOGLE_API_KEY="fake-secret-a" GOOGLE_API_KEY_2="fake-secret-b"
+  export STUB_ENGINE_EXIT=0
+  local age
+  for age in 50 40 30 20 10; do _ledger_call 1 gemini-3.8-flash "$age"; done   # 5 of 5 requests/minute
+  _source_engine gemini
+
+  run gq_remaining 1 gemini-3.8-flash
+  [ "$(jq -r .state <<< "$output")" = "cooling" ]
+  [ "$(jq -r .remaining.rpm <<< "$output")" = "0" ]
+  [ "$(jq -r .until <<< "$output")" = "$(( NOW - 50 + 60 ))" ]   # the oldest call leaves the minute
+
+  run gq_rotation_plan gemini-3.8-flash 75 GOOGLE_API_KEY GOOGLE_API_KEY_2
+  [[ "$output" == *$'skip\tGOOGLE_API_KEY\t1\t'*"cooling"* ]]
+  [[ "$output" != *$'use\tGOOGLE_API_KEY\t'* ]]
+  [[ "$output" == *$'use\tGOOGLE_API_KEY_2\t2'* ]]
+
+  run _gemini_chain_invoke "gemini-3.8-flash" "$TEST_PROMPT" 30
+  [ "$status" -eq 0 ]
+  [ "$(cat "$KEY_RECORD")" = "fake-secret-b" ]      # key 1 was not called
+  [[ "$output" == *"key index 1"*"cooling"* ]]
+  [[ "$output" != *"fake-secret"* ]]
+
+  # One minute later the five calls have left the window: key 1 is back at the front.
+  : > "$KEY_RECORD"
+  export GEMINI_QUOTA_NOW=$(( NOW + 61 ))
+  run _gemini_chain_invoke "gemini-3.8-flash" "$TEST_PROMPT" 30
+  [ "$status" -eq 0 ]
+  [ "$(head -1 "$KEY_RECORD")" = "fake-secret-a" ]
+}
+
+@test "#2146: shipped caps in PST (after the 2026-11-01 DST change) → calls before Pacific midnight do not count toward today" {
+  export GEMINI_QUOTA_CAPS="$SHIPPED_CAPS"
+  # 2026-11-10T20:00:00Z = 12:00 PST. Pacific midnight is 08:00Z in PST (07:00Z in PDT).
+  NOW=1794340800; export GEMINI_QUOTA_NOW="$NOW"
+  local midnight=1794297600 k i
+  _all_four_keys
+  _source_engine gemini
+  run gq_day_window
+  [ "$output" = "$midnight"$'\t'"$(( midnight + 86400 ))"$'\t'"0" ]
+
+  # 15 calls per key at 07:30Z = 23:30 PST yesterday. A reset still computed at the
+  # PDT offset (07:00Z) would count them as today and skip at 75%.
+  for k in 1 2 3 4; do
+    for (( i = 0; i < 15; i++ )); do _ledger_call "$k" gemini-3.8-flash $(( NOW - (midnight - 1800) + i )); done
+  done
+  run check_provider_headroom gemini
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[headroom] gemini usage 0% — ok"* ]]
+  run gq_remaining 1 gemini-3.8-flash
+  [ "$(jq -r .used.rpd <<< "$output")" = "0" ]
+  [ "$(jq -r .remaining_calls <<< "$output")" = "20" ]
+
+  # The same 15 per key at 08:30Z = 00:30 PST today do count: 15 of 20 is the skip.
+  for k in 1 2 3 4; do
+    for (( i = 0; i < 15; i++ )); do _ledger_call "$k" gemini-3.8-flash $(( NOW - (midnight + 1800) - i )); done
+  done
+  run check_provider_headroom gemini
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"[headroom] gemini usage 75% >= threshold 75% — skipping"* ]]
+  run gq_remaining 1 gemini-3.8-flash
+  [ "$(jq -r .used.rpd <<< "$output")" = "15" ]
 }

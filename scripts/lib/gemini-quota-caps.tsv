@@ -5,11 +5,20 @@
 # scripts/token_report.sh for the per-key "Gemini quota" section. Limits are DATA, not
 # code: every change is a reviewed PR, and no script hard-codes a Gemini limit.
 #
-# SHIPPED UNFILLED. Every limit is `unknown`, and a key whose limits are unknown is
-# treated as CONSTRAINED (headroom result 2, rotated after keys with measured headroom),
-# so nothing is trusted until a maintainer fills the real numbers. The values are a
-# maintainer-supplied input (tier, rpm, tpm, rpd, daily reset) — never measured by
-# calling the Gemini API, never guessed.
+# SELF-IMPOSED CAPS (#2146). The rows below are NOT the limits Google enforces on these
+# keys. They are caps the fleet imposes on itself, set equal to Google's Free Tier limits,
+# and they are the same for all four key indexes:
+#   gemini-3.8-flash         5 requests/minute, 250000 tokens/minute, 20 requests/day
+#   gemini-3.1-pro-preview   0 on every window: Pro is excluded. A $1 balance buys only
+#                            about 18 Pro calls.
+# Why: each key holds $1 of prepaid credit, paid once (as of 2026-10-09), so its tier is
+# `paid`. Google's real Tier 1 limits for a paid key are far higher. Metering against
+# those would make every key look healthy until the money is gone.
+# These numbers are a maintainer decision. Change them only by a reviewed PR. They are
+# never measured by calling the Gemini API and never guessed.
+#
+# A row edited back to `unknown` is treated as CONSTRAINED again (headroom result 2,
+# rotated after keys with measured headroom): nothing is trusted until it is filled.
 #
 # Columns (TAB-separated):
 #   1 key_index   1 = primary slot (GEMINI_API_KEY / GOOGLE_API_KEY), N = GOOGLE_API_KEY_N.
@@ -37,16 +46,20 @@
 # A cap of 0 makes that key `unavailable` for the model: rotation never calls it there
 # (#2041). A key whose requests today reach rpd is `exhausted` until the reset and is
 # not called either; keys with `unknown` limits are still tried.
+# The glob of a cap-0 row must not also match a model that has a live row on the same
+# key (for example `*` at 0 next to a Flash row): the engine-level headroom leaves the
+# cap-0 row out, but the per-model percent counts every matching row, so that model
+# would read 100% on the key while the engine reads the key as having headroom.
 #
 # key_index	model_glob	tier	rpm	tpm	rpd
-1	gemini-3.8-flash	unknown	unknown	unknown	unknown
-1	gemini-3.1-pro-preview	unknown	unknown	unknown	unknown
-2	gemini-3.8-flash	unknown	unknown	unknown	unknown
-2	gemini-3.1-pro-preview	unknown	unknown	unknown	unknown
-3	gemini-3.8-flash	unknown	unknown	unknown	unknown
-3	gemini-3.1-pro-preview	unknown	unknown	unknown	unknown
-4	gemini-3.8-flash	unknown	unknown	unknown	unknown
-4	gemini-3.1-pro-preview	unknown	unknown	unknown	unknown
+1	gemini-3.8-flash	paid	5	250000	20
+1	gemini-3.1-pro-preview	paid	0	0	0
+2	gemini-3.8-flash	paid	5	250000	20
+2	gemini-3.1-pro-preview	paid	0	0	0
+3	gemini-3.8-flash	paid	5	250000	20
+3	gemini-3.1-pro-preview	paid	0	0	0
+4	gemini-3.8-flash	paid	5	250000	20
+4	gemini-3.1-pro-preview	paid	0	0	0
 setting	daily_reset_time	00:00
 setting	daily_reset_tz	America/Los_Angeles
 setting	default_cooldown_sec	60

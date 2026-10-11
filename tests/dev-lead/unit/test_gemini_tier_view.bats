@@ -413,7 +413,10 @@ _attempt_at() {
 }
 
 @test "rotation: an unknown key is still tried (no new hard block)" {
-  export GEMINI_QUOTA_CAPS="$SCRIPT_DIR/scripts/lib/gemini-quota-caps.tsv"
+  # The shipped caps are filled (#2146), so edit every row of a copy back to `unknown`.
+  awk -F'\t' -v OFS='\t' '!/^[[:space:]]*#/ && NF >= 6 && $1 != "setting" { $3 = $4 = $5 = $6 = "unknown" }
+    { print }' "$SCRIPT_DIR/scripts/lib/gemini-quota-caps.tsv" > "$GEMINI_QUOTA_CAPS"
+  grep -q "unknown" "$GEMINI_QUOTA_CAPS"
   export GOOGLE_API_KEY="fake-secret-a"
   export STUB_ENGINE_EXIT=0
   _source_engine gemini
