@@ -1753,6 +1753,7 @@ if [ "$DUCK_VALID" = "true" ]; then
     [ -n "$SYNTH_STDERR" ] && echo "    stderr: $SYNTH_STDERR"
     OUTPUT_FILE="/tmp/cascade/deep.json"
     DUCK_VALID=false
+    DUCK_SKIP_REASON="${DUCK_SKIP_REASON:-the rubber duck verdict was discarded because synthesis failed}"
     COMBINED_ESCALATE=$(jq -r '.escalate_to_opus' "$OUTPUT_FILE")
   fi
 else
