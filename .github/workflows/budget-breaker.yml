@@ -16,33 +16,96 @@
 #     disarmed plus one `::error::`.
 #   • DO NOT ARM before the preconditions in AGENTS.md ("Arming preconditions",
 #     #2251) are met.
-#   • SCHEDULE ONLY. Do NOT add workflow_dispatch, pull_request, push or any other
-#     trigger: a manual or event run can execute branch code, and this job holds
-#     a credential that can pause every repository. `schedule` only ever runs the
-#     default branch's workflow and code.
+#   • TWO TRIGGERS AND NO OTHERS: `schedule` and `workflow_run` (#2259). Do NOT add
+#     workflow_dispatch, pull_request, pull_request_target, push, workflow_call,
+#     repository_dispatch, issue_comment or any other trigger: a manual or event
+#     run can execute branch code, and this job holds a credential that can pause
+#     every repository. Both permitted triggers only ever run the default
+#     branch's workflow file and check out the default branch's code. For
+#     `workflow_run` that is GitHub's documented behaviour ("Events that trigger
+#     workflows", read 2026-10-11): "This event will only trigger a workflow run
+#     if the workflow file exists on the default branch."; GITHUB_SHA is the
+#     "Last commit on default branch" and GITHUB_REF the "Default branch".
+#   • THE TRIGGERING RUN IS UNTRUSTED AND IS NEVER READ. The same page: "The
+#     workflow started by the `workflow_run` event is able to access secrets and
+#     write tokens, even if the previous workflow was not." Anyone who can make
+#     a listed workflow's run complete here (a comment, a fork pull request, a
+#     pull request that adds a workflow carrying a listed name) chooses WHEN this
+#     workflow runs and what the event payload says. So the payload is not an
+#     input. This file must not reference the event context at all (not in an
+#     `if:`, `env:`, `with:`, `run:` or `concurrency:`), must not give the
+#     checkout a `ref:` or a `repository:`, must not download an artifact, and
+#     must not add actions/github-script. A completed run is a wake-up, nothing
+#     more; the script reads the event's NAME from the runner for its log.
+#     tests/dev-lead/unit/test_budget_breaker_writer.bats asserts all of this.
+#   • NO JOB-LEVEL `if:` ON THE TRIGGERING RUN'S CONCLUSION, although about half of
+#     the wake-ups come from runs cancelled in their lane. It would need the
+#     event context, and it is not known to be safe: the concurrency group below
+#     keeps ONE pending run and the newest arrival replaces it, and GitHub does
+#     not document whether a run whose only job is skipped still takes that
+#     place. If it does, a wake-up that does nothing replaces a waiting one that
+#     carries news. The early exit in the script is the cost control instead.
+#   • `workflow_run` SEES THIS REPOSITORY ONLY. Agent runs in the other
+#     repositories of the organisation do not wake this workflow; their quota
+#     markers are read by the next run, whatever woke it. With no agent run
+#     completing here, the schedule is the only wake-up, and GitHub delivers few
+#     of its ticks (two in the first 13 hours after this workflow merged). Worst
+#     cases and measurements: AGENTS.md, "Budget breaker".
 #   • Do NOT widen `permissions:`. `issues: write` is for the one trip / clear
-#     notice on the tracking issue; nothing else here writes with the workflow token.
+#     notice on the tracking issue; nothing else here writes with the workflow
+#     token. The script lists this workflow's earlier runs with the READ
+#     credential (this repository is public), so `actions: read` is not needed.
 #   • Logic lives in scripts/budget_breaker.sh + scripts/lib/budget-breaker-writer.sh
-#     (decision: scripts/lib/budget-breaker.sh, #2221). This file is only the
-#     schedule, the checkout and the wiring of three separate credentials.
+#     (decision: scripts/lib/budget-breaker.sh, #2221). This file is only the two
+#     triggers, the checkout and the wiring of three separate credentials.
 # ─────────────────────────────────────────────────────────────────────────────
 name: Budget Breaker
 # readme-report: Budget breaker — pauses the agent fleet when the fleet reports quota refusals and lifts its own pause at the reported reset; default off, logs the write it would make until armed (#2153).
 
 on:
   schedule:
-    # Every 10 minutes, off the top of the hour (schedule standard). The decision
-    # looks at the last 30 minutes of quota markers and GitHub delivers well under
-    # half of the scheduled ticks in this repo (#2160), so the slots are dense on
-    # purpose. A run is one repository listing plus one comment listing per
-    # repository, and it is idempotent: an extra or a missed tick changes nothing.
+    # timer_role: backstop (docs/agentic-interaction-model.md §6.1).
+    # Every 10 minutes, off the top of the hour (schedule standard).
+    # The decision looks at the last 30 minutes of quota markers and GitHub
+    # delivers few of the scheduled ticks in this repo (#2160, #2259), so the
+    # slots are dense on purpose and nothing may depend on one arriving. A run is
+    # one repository listing plus one comment listing per repository, and it is
+    # idempotent: an extra or a missed tick changes nothing.
     - cron: '6,16,26,36,46,56 * * * *'
-  # No workflow_dispatch: see the header.
+  workflow_run:
+    # The wake-up (#2259): a run of one of these workflows completed IN THIS
+    # REPOSITORY, with any conclusion. The list is matched against each
+    # workflow's `name:`, so a rename silently unhooks it: a static test requires
+    # every entry to be the `name:` of a workflow file here.
+    #   - the two workflows that can post a dev-lead quota marker (they run
+    #     dev-lead-fix-ci.sh, dev-lead-fix-reviews.sh or dev-lead-fix-issue.sh);
+    #     a run that posted one ends after posting it, so this wake-up sees it.
+    #     A paused dev-lead run ends `skipped` within seconds, and GitHub
+    #     documents that "A workflow run is triggered regardless of the
+    #     conclusion of the previous workflow.": that is what wakes the breaker
+    #     to lift its own pause (seen here for `cancelled` runs; the `skipped`
+    #     case is a live check before arming, AGENTS.md);
+    #   - the retry sweep, which posts no quota marker. It is listed as one more
+    #     wake-up that does not depend on agent traffic: its own cron completes a
+    #     run, paused or not, every few hours.
+    # pr-review's workflows are deliberately absent: its rate-limited marker is
+    # not quota evidence (scripts/lib/budget-breaker.sh).
+    workflows:
+      - "Dev-Lead Agent"
+      - "GitHub Agentic Workflows — Cross-Org Dispatcher"
+      - "Dev-Lead Retry (rate-limited)"
+    types: [completed]
+  # No workflow_dispatch, and no other trigger: see the header.
 
 permissions:
   contents: read
   issues: write  # the trip / clear notice on the tracking issue
 
+# One run at a time, and at most one waiting: GitHub keeps a single pending run
+# per group and a newer arrival replaces it. The replaced run loses nothing: the
+# one that took its place starts later and reads the same state and markers, and
+# the decision is idempotent. The group is a constant on purpose (no event
+# field), so every wake-up shares it.
 concurrency:
   group: budget-breaker
   cancel-in-progress: false
@@ -53,8 +116,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        # The default branch (a scheduled run has no other ref), read-only, and
-        # no credential left behind in the checkout.
+        # The default branch: for both triggers GITHUB_SHA is its last commit,
+        # and with no `ref:` that is what is checked out. Never the triggering
+        # run's ref or SHA (see the header). Read-only, and no credential left
+        # behind in the checkout.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -97,4 +162,5 @@ jobs:
           BUDGET_BREAKER_WINDOW_MIN: ${{ vars.BUDGET_BREAKER_WINDOW_MIN }}
           BUDGET_BREAKER_PROBE_HOURS: ${{ vars.BUDGET_BREAKER_PROBE_HOURS }}
           BUDGET_BREAKER_MIN_HOLD_MIN: ${{ vars.BUDGET_BREAKER_MIN_HOLD_MIN }}
+          BUDGET_BREAKER_MIN_INTERVAL_MIN: ${{ vars.BUDGET_BREAKER_MIN_INTERVAL_MIN }}
         run: bash scripts/budget_breaker.sh
