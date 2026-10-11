@@ -305,30 +305,32 @@ template_drift_annotate() {
     case "$status" in
       DRIFTED)
         drifted=1
+        # No `file=` anchor (#2220): GitHub would pin it to the PR's own
+        # same-named file; the drift is in TEMPLATE_REPO.
         if [ "$matched" = "ahead-unchecked" ]; then
           # shellcheck disable=SC2016
-          printf '::error file=%s::Template stub %s has DRIFTED from the published baseline `%s` (committed blob %s != expected %s), but it could NOT be compared against standards HEAD, so it may be AHEAD of the channel rather than drifted. Do not re-seed yet: re-run with STANDARDS_REF=<standards main commit>. If that reports ALIGNED, promote standards (scripts/cut-standards-release.sh in the standards repo) instead of re-seeding, which would regress the template (#1926).\n' \
-            "$file" "$file" "$n_ref" "${committed:0:12}" "${expected:0:12}"
+          printf '::error::Template stub %s in %s has DRIFTED from the published baseline `%s` (committed blob %s != expected %s), but it could NOT be compared against standards HEAD, so it may be AHEAD of the channel rather than drifted. Do not re-seed yet: re-run with STANDARDS_REF=<standards main commit>. If that reports ALIGNED, promote standards (scripts/cut-standards-release.sh in the standards repo) instead of re-seeding, which would regress the template (#1926).\n' \
+            "$file" "$TEMPLATE_REPO" "$n_ref" "${committed:0:12}" "${expected:0:12}"
         elif [ -n "$head_sha" ]; then
           # HEAD is newer than the channel and the file matches neither, so it may
           # have been synced from a standards commit between them (#2237 AC #2).
           # shellcheck disable=SC2016
-          printf '::error file=%s::Template stub %s has DRIFTED: its committed blob %s matches neither the published baseline `%s` (expected %s) nor standards HEAD%s. It may have been synced from a standards commit between `%s` and HEAD. Before re-seeding, check: re-run with STANDARDS_REF=<commit> for the standards commits in that range that touched this file'"'"'s source. If one reports ALIGNED, re-seed with STANDARDS_REF=<standards HEAD commit> and promote standards (scripts/cut-standards-release.sh in the standards repo); do not re-seed from the channel, which would regress the template. If none does, re-seed via scripts/seed-repo-template.sh — do not hand-edit the template; edit standards/ instead.\n' \
-            "$file" "$file" "${committed:0:12}" "$n_ref" "${expected:0:12}" "$head_note" "$n_ref"
+          printf '::error::Template stub %s in %s has DRIFTED: its committed blob %s matches neither the published baseline `%s` (expected %s) nor standards HEAD%s. It may have been synced from a standards commit between `%s` and HEAD. Before re-seeding, check: re-run with STANDARDS_REF=<commit> for the standards commits in that range that touched this file'"'"'s source. If one reports ALIGNED, re-seed with STANDARDS_REF=<standards HEAD commit> and promote standards (scripts/cut-standards-release.sh in the standards repo); do not re-seed from the channel, which would regress the template. If none does, re-seed via scripts/seed-repo-template.sh — do not hand-edit the template; edit standards/ instead.\n' \
+            "$file" "$TEMPLATE_REPO" "${committed:0:12}" "$n_ref" "${expected:0:12}" "$head_note" "$n_ref"
         else
-          printf '::error file=%s::Template stub %s has DRIFTED from the standards-derived baseline (committed blob %s != expected %s). Re-seed it via scripts/seed-repo-template.sh — do not hand-edit the template; edit standards/ instead.\n' \
-            "$file" "$file" "${committed:0:12}" "${expected:0:12}"
+          printf '::error::Template stub %s in %s has DRIFTED from the standards-derived baseline (committed blob %s != expected %s). This is not a file in this pull request: never edit this repository'"'"'s own %s (or its channel pin) to clear it. Re-seed %s via scripts/seed-repo-template.sh — do not hand-edit the template; edit standards/ instead.\n' \
+            "$file" "$TEMPLATE_REPO" "${committed:0:12}" "${expected:0:12}" "$file" "$TEMPLATE_REPO"
         fi
         ;;
       AHEAD)
         # shellcheck disable=SC2016
-        printf '::warning file=%s::Template stub %s is ahead of `%s`: its committed blob %s matches the seed emission at standards HEAD%s, not the channel baseline %s. Promote standards (scripts/cut-standards-release.sh in the standards repo) instead of re-seeding — a re-seed from the channel would regress the template. This is a propagation lag, not template corruption, so it does not fail the check (#1926).\n' \
-          "$file" "$file" "$n_ref" "${committed:0:12}" "$head_note" "${expected:0:12}"
+        printf '::warning::Template stub %s in %s is ahead of `%s`: its committed blob %s matches the seed emission at standards HEAD%s, not the channel baseline %s. Promote standards (scripts/cut-standards-release.sh in the standards repo) instead of re-seeding — a re-seed from the channel would regress the template. This is a propagation lag, not template corruption, so it does not fail the check (#1926).\n' \
+          "$file" "$TEMPLATE_REPO" "$n_ref" "${committed:0:12}" "$head_note" "${expected:0:12}"
         ;;
       ALIGNED)
         if [ "$matched" = "N-1" ]; then
-          printf '::notice file=%s::Template stub %s matches the immediately-preceding published standards version (N-1), not the current one (N) — propagation pending, accepted as ALIGNED (#1448 AC #8).\n' \
-            "$file" "$file"
+          printf '::notice::Template stub %s in %s matches the immediately-preceding published standards version (N-1), not the current one (N) — propagation pending, accepted as ALIGNED (#1448 AC #8).\n' \
+            "$file" "$TEMPLATE_REPO"
         fi
         ;;
       MISSING)
@@ -337,11 +339,11 @@ template_drift_annotate() {
           # NOT seeded yet (#1729 AC #12). Emit a non-actionable notice — never
           # the generic re-seed remedy, which can never clear here and would push
           # a live executing ingress into every new repo ahead of the pilot.
-          printf '::notice file=%s::Template reference %s is expected but intentionally NOT seeded into %s yet (ADR-0007 / #1729) — seed-repo-template.sh deliberately never emits it until the pilot repo collapse lands. This is NOT actionable: do not hand-seed it to silence this. It will be seeded in the same change that retires the per-role stubs it replaces. See AGENTS.md -> Template drift guard.\n' \
-            "$file" "$file" "$TEMPLATE_REPO"
+          printf '::notice::Template reference %s is expected but intentionally NOT seeded into %s yet (ADR-0007 / #1729) — seed-repo-template.sh deliberately never emits it until the pilot repo collapse lands. This is NOT actionable: do not hand-seed it to silence this. It will be seeded in the same change that retires the per-role stubs it replaces. See AGENTS.md -> Template drift guard.\n' \
+            "$file" "$TEMPLATE_REPO"
         else
-          printf '::warning file=%s::Template stub %s is MISSING from %s (expected blob %s) — re-seed via scripts/seed-repo-template.sh.\n' \
-            "$file" "$file" "$TEMPLATE_REPO" "${expected:0:12}"
+          printf '::warning::Template stub %s is MISSING from %s (expected blob %s) — re-seed via scripts/seed-repo-template.sh.\n' \
+            "$file" "$TEMPLATE_REPO" "${expected:0:12}"
         fi
         ;;
     esac

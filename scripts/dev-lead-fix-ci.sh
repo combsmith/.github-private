@@ -7,17 +7,19 @@ set -euo pipefail
 # Optional: PROMPTS_DIR (defaults to prompts/dev-lead relative to CWD)
 # Optional: MAX_FAIL_ATTEMPTS — consecutive engine failures before exhaustion (default: 2)
 
-source "$(dirname "$0")/engine.sh"
-source "$(dirname "$0")/lib/git-identity.sh"
-source "$(dirname "$0")/lib/pr-worktree.sh"
-source "$(dirname "$0")/lib/auto-merge.sh"
-source "$(dirname "$0")/lib/pr-automation-budget.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/engine.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/git-identity.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/pr-worktree.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/auto-merge.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/pr-automation-budget.sh"
 # Structured PR-body backfill (#1805): heal an existing PR whose body is still
 # missing 3+ required description sections, once, marker-keyed.
 source "$(dirname "$0")/lib/dev-lead-pr-body.sh"
 # Sync-stub guard (#2185/#2212): a fix on a standards-sync PR must not change the
 # org-standard stub the PR exists to sync.
 source "$(dirname "$0")/lib/sync-stub-guard.sh"
+# Channel-pin guard (#2220): a pass may never change a caller stub's channel pin.
+source "$(dirname "${BASH_SOURCE[0]}")/lib/channel-pin-guard.sh"
 
 PR_NUMBER="${PR_NUMBER:-}"
 HEAD_SHA="${HEAD_SHA:-}"
@@ -34,6 +36,22 @@ export PROMPTS_DIR="${PROMPTS_DIR:-prompts/dev-lead}"
 # relative PROMPTS_DIR would resolve against the PR branch (issue #448).
 PROMPTS_DIR="$(resolve_abs "$PROMPTS_DIR")"
 export PROMPTS_DIR
+
+# Checks that never start a fix pass (#2220). `template-drift` compares
+# petry-projects/repo-template with the standards baseline: nothing in a PR here
+# can clear it, it is not required, and "fixing" it led a pass to repin this
+# repo's own dev-lead.yml to a stale channel. Keep in sync with the ci-relay
+# job's `if:` in .github/workflows/dev-lead-reusable.yml (asserted by
+# tests/dev-lead/unit/test_channel_pin_guard.bats).
+FIX_CI_IGNORED_CHECKS=("template-drift")
+
+# fix_ci_trigger_checks: CHECKS_JSON minus the ignored checks, as a JSON array.
+fix_ci_trigger_checks() {
+  local ignored
+  ignored=$(printf '%s\n' "${FIX_CI_IGNORED_CHECKS[@]}" | jq -R . | jq -sc .)
+  printf '%s' "${CHECKS_JSON:-[]}" | jq -c --argjson ignored "$ignored" \
+    '(if type == "array" then . else [] end) | map(select((.name // "") as $n | ($ignored | index($n)) | not))'
+}
 
 # check_idempotency: returns 0 (skip) if this exact SHA was already TERMINALLY
 # handled, OR if a PR-level exhaustion marker exists (blocks all future SHAs).
@@ -52,9 +70,9 @@ check_idempotency() {
   fi
 
   # SHA-level idempotency — skip only for terminal statuses (applied, failed,
-  # no-changes, declined). status=rate-limited is retriable: do not skip on it so
-  # the retry cron can re-run.
-  if echo "$comments" | grep -qE "${MARKER_PREFIX}${HEAD_SHA} status=(applied|failed|no-changes|declined)"; then
+  # no-changes, declined, refused by the channel-pin guard). status=rate-limited is
+  # retriable: do not skip on it so the retry cron can re-run.
+  if echo "$comments" | grep -qE "${MARKER_PREFIX}${HEAD_SHA} status=(applied|failed|no-changes|declined|refused)"; then
     echo "::notice::Already handled CI failure at SHA ${HEAD_SHA} with terminal status — skipping"
     return 0
   fi
@@ -219,10 +237,36 @@ $(ssg_declined_body "fix-ci" "$rows")${HOLD_LABEL_NOTE}" \
   return 0
 }
 
+# fix_ci_channel_pin_guard <pre_pass_sha> [base_rev] — refuse the push when the
+# pass changed a caller stub's first-party channel pin (#2220): escalate, record a
+# terminal `refused` marker for this SHA, and return 1. Returns 0 when clean.
+fix_ci_channel_pin_guard() {
+  local pre="$1" base="${2:-}" out rc=0
+  out=$(cpg_scan_pass "$pre" HEAD "$base") || rc=$?
+  [ "$rc" -eq 0 ] && return 0
+  echo "::error::Channel-pin guard: the fix-ci pass changed a caller stub's channel pin ($(printf '%s\n' "$out" | head -1)) — refusing to push (#2220)"
+  cpg_flag_refused "fix-ci" "$(printf '%s\n' "$out" | sed '1d')"
+  post_summary "refused" "The pass changed a caller stub's channel pin, so nothing was pushed. See the escalation comment (#2220)."
+  return 1
+}
+
 main() {
   if [ -z "$PR_NUMBER" ] || [ -z "$HEAD_SHA" ]; then
     echo "::error::PR_NUMBER and HEAD_SHA are required"
     exit 1
+  fi
+
+  # Ignored checks (#2220): drop them before anything else; a dispatch whose
+  # checks are all ignored starts no pass. Covers relayed failures and retry-cron
+  # re-dispatches alike. An empty or unparseable CHECKS_JSON is left as it was.
+  local trigger_checks
+  if trigger_checks=$(fix_ci_trigger_checks 2>/dev/null) \
+     && [ "$(jq 'length' <<<"$CHECKS_JSON" 2>/dev/null || echo 0)" -gt 0 ]; then
+    if [ "$(jq 'length' <<<"$trigger_checks")" -eq 0 ]; then
+      echo "::notice::fix-ci: $(jq -r '[.[]?.name // empty] | join(", ")' <<<"$CHECKS_JSON" 2>/dev/null) is not a fix-ci trigger — skipping (#2220)"
+      exit 0
+    fi
+    CHECKS_JSON="$trigger_checks"
   fi
 
   # A budget escalation that cannot apply its hold label fails the run (#2142);
@@ -266,9 +310,14 @@ main() {
   # Checkout the PR branch for modification, in an isolated worktree so the
   # branch switch never overwrites the agent's own prompts/scripts (issue #448).
   checkout_pr_in_worktree "$PR_NUMBER" "$REPO"
-  # The head this pass starts from: the sync-stub guard compares against it.
-  local pre_pass_sha
+  # The head this pass starts from: the sync-stub and channel-pin guards compare against it.
+  # base_rev is the PR's base, for the channel-pin guard (#2220).
+  local pre_pass_sha base_ref base_rev=""
   pre_pass_sha=$(git rev-parse HEAD 2>/dev/null || true)
+  base_ref=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.base.ref // empty' 2>/dev/null || true)
+  if [ -n "$base_ref" ] && git fetch -q origin "$base_ref" 2>/dev/null; then
+    base_rev="origin/${base_ref}"
+  fi
 
   # Backfill the five required description sections into a pre-existing PR whose
   # body still lacks them (#1805). Idempotent + marker-keyed, so open PRs heal on
@@ -357,6 +406,8 @@ main() {
       post_summary "declined" "The fix changed a synced org-standard stub on this standards-sync PR, so it was not pushed. See the declined comment (#2212)."
       exit 0
     fi
+    # Channel-pin guard (#2220): never push a pass that repins a caller stub.
+    fix_ci_channel_pin_guard "$pre_pass_sha" "$base_rev" || exit 1
     # push_with_merge_guard exits 0 cleanly if the PR was merged/closed mid-run
     # (its branch deleted); a genuine push failure still aborts with exit 1.
     push_with_merge_guard || exit 1
@@ -368,4 +419,7 @@ main() {
   rm -f "$prompt_file"
 }
 
-main "$@"
+# Source-guard: tests source this to exercise the helpers; CI executes it.
+if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+  main "$@"
+fi

@@ -141,6 +141,30 @@ setup() {
   rm -f "$tsv"
 }
 
+# #2220: a `file=` annotation lands on the PR's OWN same-named file, so a drifted
+# repo-template dev-lead.yml showed up as "this repo's dev-lead.yml drifted" and a
+# dev-lead pass repinned this repo's caller stub to clear it. The annotation must
+# name repo-template, carry no `file=`, and say this repo's stubs are not the fix.
+@test "annotate: a DRIFTED row names repo-template, has no file= anchor, and rules out editing this repo's stub (#2220)" {
+  tsv="$(mktemp)"
+  printf '%s\t%s\t%s\t%s\n' ".github/workflows/dev-lead.yml" "DRIFTED" "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" "$EXPECTED" >> "$tsv"
+  run template_drift_annotate "$tsv"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"::error::"* ]]
+  [[ "$output" != *"file="* ]]
+  [[ "$output" == *"petry-projects/repo-template"* ]]
+  [[ "$output" == *"not a file in this pull request"* ]]
+  rm -f "$tsv"
+}
+
+@test "annotate: a MISSING row has no file= anchor either (#2220)" {
+  tsv="$(mktemp)"
+  printf '%s\t%s\t%s\t%s\n' "CLAUDE.md" "MISSING" "" "$EXPECTED" >> "$tsv"
+  run template_drift_annotate "$tsv"
+  [[ "$output" != *"file="* ]]
+  rm -f "$tsv"
+}
+
 @test "annotate: an all-ALIGNED set passes (exit 0, no error annotation)" {
   tsv="$(mktemp)"
   printf '%s\t%s\t%s\t%s\n' ".github/workflows/dev-lead.yml" "ALIGNED" "$EXPECTED" "$EXPECTED" >> "$tsv"

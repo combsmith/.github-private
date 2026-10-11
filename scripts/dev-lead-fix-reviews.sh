@@ -24,6 +24,8 @@ source "$(dirname "$0")/lib/claim-landing.sh"
 source "$(dirname "$0")/lib/test-tamper-guard.sh"
 # Sync-stub guard (#2185): a bot pass may not edit a synced org-standard stub.
 source "$(dirname "$0")/lib/sync-stub-guard.sh"
+# Channel-pin guard (#2220): no pass may change a caller stub's channel pin.
+source "$(dirname "$0")/lib/channel-pin-guard.sh"
 # Test-regression guard (#2013): a pass may not push with the suite newly red.
 source "$(dirname "$0")/lib/test-regression-guard.sh"
 # PR issue-comment disposition verifier (#1813): the issue-comment sibling of
@@ -3103,6 +3105,24 @@ commit_and_push() {
         fi
         ;;
     esac
+    # Channel-pin guard (#2220): no pass may change a caller stub's first-party
+    # channel pin (`uses:` ref or `agent_ref`); the #2157/#1796 passes repinned
+    # dev-lead.yml to a stale channel to "fix" template-drift. Unlike the sync-stub
+    # guard this covers every pushing intent — a maintainer who wants a repin makes
+    # it in a reviewed PR. Ending on the base branch's pin (a rebase, or restoring
+    # main's pin) is allowed.
+    case "$intent" in
+      enable-auto-merge) ;;  # never pushes; nothing to guard
+      *)
+        local cpg_out cpg_rc=0
+        cpg_out=$(cpg_scan_pass "${RESOLUTION_BASE_SHA:-${HEAD_SHA:-}}" HEAD "origin/${BASE_REF:-main}") || cpg_rc=$?
+        if [ "$cpg_rc" -ne 0 ]; then
+          echo "::error::Channel-pin guard: the ${intent} pass changed a caller stub's channel pin ($(printf '%s\n' "$cpg_out" | head -1)) — refusing to push (#2220)"
+          cpg_flag_refused "$intent" "$(printf '%s\n' "$cpg_out" | sed '1d')"
+          return 4
+        fi
+        ;;
+    esac
     # Test-tamper guard (#2013): a bot-driven fix pass must not silently rewrite an
     # existing test to make its own change pass (the petry-projects/.github#1220
     # `13927fc` shape). Refuse the push and escalate, like the no-op guard (rc 3).
@@ -3163,7 +3183,7 @@ commit_and_push() {
     # A rejected push — or one the remote head does not reflect (#2013) — must not
     # leave this pass's "Fixed" replies standing: retract them before failing.
     # (commit_and_push returns 3 for the no-op guard and 4 for the sync-stub,
-    # test-tamper and test-regression guards.)
+    # channel-pin, test-tamper and test-regression guards.)
     push_no_clobber || {
       echo "::error::git push failed — check remote access and branch permissions" >&2
       retract_unlanded_claims "$intent" failed || true
@@ -3767,7 +3787,7 @@ case "$INTENT_TYPE" in
         # marker and do not re-enable auto-merge or resolve threads.
         echo "::warning::fix-reviews produced a net-zero diff — flagged for human, not pushed (#1340)"
       elif [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::fix-reviews was refused by a push guard (test tamper/regression or sync-stub) — flagged for human, not pushed (#2013/#2185)"
+        echo "::warning::fix-reviews was refused by a push guard (test tamper/regression, sync-stub or channel-pin) — flagged for human, not pushed (#2013/#2185/#2220)"
       else
         notify_coderabbit_resolve
         if has_hard_blockers; then
@@ -3951,6 +3971,12 @@ case "$INTENT_TYPE" in
         # Net-zero abort: flag_noop_pr already flagged for human and disabled
         # auto-merge. Do not re-enable it or claim changes were applied (#1786).
         echo "::notice::on-mention: no-op guard aborted the push for PR #${PR_NUMBER} — flagged for human, not merged (#1786)"
+        exit "$rc"
+      fi
+      if [ "$cp_rc" -eq 4 ]; then
+        # A push guard refused the pass and flagged the PR; never report it or
+        # re-enable auto-merge (#2220).
+        echo "::warning::on-mention was refused by a push guard — flagged for human, not pushed (#2220)"
         exit "$rc"
       fi
       if [ "$cp_rc" -eq 0 ]; then
@@ -4185,6 +4211,10 @@ case "$INTENT_TYPE" in
         # commit_and_push committed a script-side change that nets to zero and
         # already flagged it. Stop — never report a self-cancelling rebase applied.
         echo "::notice::rebase: no-op guard aborted the push for PR #${PR_NUMBER} — flagged for human, not merged (#1786)"
+        exit "$rc"
+      fi
+      if [ "$cp_rc" -eq 4 ]; then
+        echo "::warning::rebase was refused by a push guard — flagged for human, not pushed (#2220)"
         exit "$rc"
       fi
       # Post-resolution integrity gate (#1890 AC #7): a corrupted resolution

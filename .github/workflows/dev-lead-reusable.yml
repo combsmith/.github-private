@@ -637,13 +637,18 @@ jobs:
   # ── ci-relay ──────────────────────────────────────────────────────────────────
   # Handles check_run completed failure events. No LLM — resolves PR number and
   # fires repository_dispatch dev-lead-ci-failure back to the calling repo.
+  # `template-drift` is never relayed (#2220): it checks petry-projects/repo-template,
+  # is not required, and nothing in a PR can clear it — "fixing" it led passes to
+  # repin their own dev-lead.yml. Keep in sync with FIX_CI_IGNORED_CHECKS in
+  # scripts/dev-lead-fix-ci.sh.
   ci-relay:
     if: >-
       vars.AGENTS_PAUSED != 'true' &&
       github.event_name == 'check_run' &&
       github.event.action == 'completed' &&
       github.event.check_run.conclusion == 'failure' &&
-      !startsWith(github.event.check_run.name, 'dev-lead / ')
+      !startsWith(github.event.check_run.name, 'dev-lead / ') &&
+      github.event.check_run.name != 'template-drift'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

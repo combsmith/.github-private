@@ -521,6 +521,16 @@ PR-triggered check on the existing Lint workflow — **no new cron/scheduled wor
       commits-list call per DRIFTED file and one emission per commit in the range. That adds network
       cost to every PR's lint run. The message removes the wrong advice without that cost.
 
+- **A red `template-drift` is never fixed from a PR here (#2220).** The check reads `repo-template`, never
+  this repo's own stubs, so nothing in a PR here can clear it. It is not a fix-ci trigger: the reusable's
+  `ci-relay` job does not relay it, and `dev-lead-fix-ci.sh` drops it (`FIX_CI_IGNORED_CHECKS`). Its
+  annotations carry no `file=` anchor. Before #2220 they did, so GitHub pinned them to the PR's own
+  same-named file, and two passes (#2157, #1796) "fixed" the drift by repinning this repo's `dev-lead.yml`
+  from `dev-lead/v139-ring0` to the stale `dev-lead/v1-stable`. As a backstop, `scripts/lib/channel-pin-guard.sh`
+  refuses any dev-lead pass (fix-ci and every fix-reviews intent) that changes a first-party channel pin
+  (`uses: petry-projects/…@<channel>` or `agent_ref`) on a workflow file, and escalates the PR. Ending on the
+  base branch's pin (a rebase, or restoring `main`'s pin) is allowed.
+
 - **Reference rows — `agent-ingress.yml` (#1729, AC #12):** `.github/workflows/agent-ingress.yml` is
   enrolled in the drift manifest for **post-collapse byte-identity coverage**, but
   `seed-repo-template.sh` deliberately never seeds it (it lives in the `--emit-workflow`-only
