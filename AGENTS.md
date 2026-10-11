@@ -529,16 +529,20 @@ PR-triggered check on the existing Lint workflow — **no new cron/scheduled wor
 - **Seeding is an operator procedure with recorded provenance (#1925).** No workflow runs
   `seed-repo-template.sh`. An operator follows
   [`docs/release/seeding-repo-template.md`](./docs/release/seeding-repo-template.md): dry run first, leave
-  `STANDARDS_REF` unset so the published channel is used.
+  `STANDARDS_REF` unset so the published channel is used. If the channel cannot be resolved the script
+  falls back to standards HEAD and reports `source head-fallback`; the operator stops there.
   - **Provenance.** Every seed PR body states the resolved standards ref, how it was chosen (channel,
-    explicit, HEAD fallback or local) and the commit. A reused PR's body is rewritten on each run.
+    explicit, HEAD fallback or local) and the commit. Files are fetched at that commit, not through the
+    ref name. A local `STANDARDS_DIR` has no commit, so the body records `unknown`. A reused PR's body is
+    rewritten on each run.
   - **One seed PR.** An open `seed-scaffold/*` PR is updated in place (#2233). If several are open, the
     newest is kept and each older one is closed with a comment linking it. A PR that cannot be closed
-    fails the run.
+    fails the run. If the open PRs cannot be listed, the run stops before it writes anything.
   - **No downgrades.** A file that differs from the run's emission but matches the emission at standards
     HEAD is **refused**, with "standards channel is behind the template — promote standards". This is the
     seed-side twin of the drift guard's AHEAD status and reuses its HEAD and ancestry reads. If every
-    differing file is refused, no PR is opened.
+    differing file is refused, no PR is opened. A local `STANDARDS_DIR` has no ref, so this check does
+    not run there; do not use it for a real seed.
   - **Cannot check means stop.** If the HEAD commit, its relation to the resolved ref, or the HEAD emission
     cannot be read, the seed aborts instead of overwriting the file.
 

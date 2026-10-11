@@ -30,6 +30,15 @@ carries newer standards content than the channel. Promote standards instead
 Leave `STANDARDS_REF` unset. The script then resolves the published channel
 `standards/v1-stable` and pins every read to that commit.
 
+If the channel cannot be resolved, the script falls back to the standards
+default-branch HEAD and says so: the `standards ref:` line shows
+`source head-fallback`. Stop there. A fallback seed is not a channel seed, so do
+not go on to step 3 until the channel resolves.
+
+Do not set `STANDARDS_DIR` for a real seed. It reads a local checkout, which has
+no ref and no commit: the PR body then records the commit as `unknown`, and the
+no-downgrade check below cannot run. It exists for tests.
+
 Set `STANDARDS_REF` only to reproduce or investigate a specific seed. Never set it
 to seed the template ahead of the channel: the next channel-based seed would then
 be a downgrade, which the script refuses.
@@ -43,7 +52,7 @@ be a downgrade, which the script refuses.
    ```
 
 2. **Read the plan.** Check the `standards ref:` line names the ref and commit you
-   expect, then check each file's decision:
+   expect and shows `source channel`, then check each file's decision:
 
    | Decision | Meaning |
    |---|---|
@@ -71,7 +80,11 @@ be a downgrade, which the script refuses.
   fails and names it.
 - **The PR body states the provenance:** the resolved standards ref, how it was
   chosen (channel, explicit `STANDARDS_REF`, HEAD fallback, or a local
-  `STANDARDS_DIR`), and the commit. A reused PR's body is rewritten on each run.
+  `STANDARDS_DIR`), and the commit (`unknown` for a local `STANDARDS_DIR`). Every
+  file is fetched at that commit, not through the ref name, so the content and the
+  recorded commit cannot come apart. A reused PR's body is rewritten on each run.
+- **An unreadable PR list stops the run.** If the open pull requests cannot be
+  listed, the script does not seed, because it could not rule out an open seed PR.
 - **No PR for nothing.** If no file needs writing, no PR is opened.
 
 ## `REFUSE`: the standards channel is behind the template

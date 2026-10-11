@@ -1402,7 +1402,205 @@ GHSTUB
   [[ "$output" == *"reuse=0"* ]]
 }
 
-@test "#1925: the open-PR listing is not capped below the number of open PRs a repo can have" {
-  run grep -cE 'gh pr list --repo "\$repo" --state open --limit 1000 ' "$SEED"
-  [ "$output" = "1" ]
+# ── #1925 review follow-ups ────────────────────────────────────────────────────
+
+@test "#1925: an unreadable open-PR list stops the run before anything is written" {
+  source "$SEED"
+  cat > "$STUB_BIN/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in
+  *"--method PUT"*|*"--method POST"*|"pr create "*) echo "$args" >> "$CALLS"; echo '{}' ;;
+  *"pr list"*"headRefName"*) echo '{"message":"API rate limit exceeded"}'; exit 1 ;;
+  *"git/ref/heads/"*) echo basesha ;;
+  *"repos/petry-projects/repo-template --jq"*) echo main ;;
+  *) echo '{}' ;;
+esac
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+  _seed_all_files() { echo "seeded"; _SEED_WRITES=1; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo petry-projects/repo-template
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot list open pull requests on petry-projects/repo-template"* ]]
+  [[ "$output" != *"seeded"* ]]
+  # No branch, no file, no PR.
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925: a seed PR beyond the first 100 open PRs is still found and reused" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  # 150 open PRs; the seed PR is the last one. The stub applies --limit the way gh
+  # does (before the jq filter), so a limit of 100 would cut the seed PR off.
+  cat > "$STUB_BIN/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in
+  "pr edit "*) echo "$args" >> "$CALLS"; exit 0 ;;
+  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/petry-projects/repo-template/pull/999"; exit 0 ;;
+  *"--method PUT"*|*"--method POST"*) echo "$args" >> "$CALLS"; echo '{}' ;;
+  *"pr list"*"--head seed-scaffold/2026-10-01"*) echo 150 ;;
+  *"pr list"*"headRefName"*)
+    limit="${args##*--limit }"; limit="${limit%% *}"
+    { for i in $(seq 1 149); do printf '%s\tfeature/%s\n' "$i" "$i"; done; printf '150\tseed-scaffold/2026-10-01\n'; } \
+      | head -n "$limit" | awk -F'\t' '$2 ~ /^seed-scaffold\//' ;;
+  *"pr list"*) ;;
+  *"git/ref/heads/"*) echo basesha ;;
+  *"repos/petry-projects/repo-template --jq"*) echo main ;;
+  *) echo '{}' ;;
+esac
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"seed PR #150 is already open"* ]]
+  run grep -F "pr create" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#1925: a seed run fetches standards at the recorded commit, not through the moving ref" {
+  source "$SEED"
+  cat > "$STUB_BIN/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+echo "$*" >> "$CALLS"
+echo "content"
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+  unset STANDARDS_DIR
+  _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
+  # Before the seed pins it, a read goes through the ref name…
+  run _fetch_standard "standards/gitleaks.toml"
+  grep -qF "ref=standards/v1-stable" "$CALLS"
+  # …and once _seed_repo has recorded the commit, through that commit.
+  : > "$CALLS"
+  _STD_PIN="$_STD_SHA"
+  run _fetch_standard "standards/gitleaks.toml"
+  grep -qF "ref=1111111111111111111111111111111111111111" "$CALLS"
+  run grep -F "ref=standards/v1-stable" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#1925: _seed_repo pins the fetch to the resolved commit before it emits any file" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  _seed_all_files() { echo "pin=${_STD_PIN:-none}"; _SEED_WRITES=1; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pin=1111111111111111111111111111111111111111"* ]]
+}
+
+@test "#1925: a leftover dated branch with nothing written and nothing ahead of base opens no PR" {
+  source "$SEED"
+  cat > "$STUB_BIN/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in
+  *"git/refs --method POST"*) exit 1 ;;
+  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/petry-projects/repo-template/pull/88" ;;
+  *"/compare/main...seed-scaffold/"*) echo "${AHEAD_BY:-0}" ;;
+  *"pr list"*) ;;
+  *"git/ref/heads/"*) echo basesha ;;
+  *"repos/petry-projects/repo-template --jq"*) echo main ;;
+  *) echo '{}' ;;
+esac
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+  _seed_all_files() { :; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no PR opened on petry-projects/repo-template: branch seed-scaffold/"*"has nothing main lacks"* ]]
+  [ ! -f "$CALLS" ]
+  # The same leftover branch, but still carrying a commit the base lacks → a PR is opened.
+  export AHEAD_BY=2
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  grep -qF "pr create" "$CALLS"
+}
+
+@test "#1925: a failed provenance update on the kept seed PR fails the run and closes nothing" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  export SEED_OPEN_PRS="$(printf '9\tseed-scaffold/2026-09-07\n17\tseed-scaffold/2026-10-01')"
+  _stub_gh_seed_prs
+  # Make `pr edit` fail.
+  sed -i.bak 's|  "pr edit "\*) echo "$args" >> "$CALLS"; exit 0 ;;|  "pr edit "*) echo "$args" >> "$CALLS"; exit 1 ;;|' "$STUB_BIN/gh"
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot update the standards provenance on PR #17"* ]]
+  run grep -F "pr close" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#1925: a new PR whose number cannot be read back closes nothing" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  export SEED_NEW_PR="not-a-number"
+  _seed_all_files() { _SEED_WRITES=1; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  grep -qF "pr create" "$CALLS"
+  run grep -F "pr close" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+# The no-downgrade check, end to end, with ONLY gh replaced: the real
+# _template_drift_head_sha, the real _template_drift_compare and the real
+# _seed_emit_at (a child run of this script pinned to the HEAD commit) decide.
+# standards/gitleaks.toml reads "new" at the HEAD commit and "old" anywhere else;
+# the template already holds "new".
+_stub_gh_real_ahead() { # <relation the compare API reports>
+  export REAL_HEAD="2222222222222222222222222222222222222222" REAL_RELATION="$1"
+  local b64; b64="$(printf 'new' | base64)"
+  cat > "$STUB_BIN/gh" <<GHSTUB
+#!/usr/bin/env bash
+args="\$*"
+case "\$args" in
+  *"--method PUT"*|*"--method POST"*) echo "\$args" >> "$CALLS"; echo '{}' ;;
+  *"application/vnd.github.sha"*"/commits/HEAD"*) printf '%s' "\$REAL_HEAD" ;;
+  *"/compare/"*) echo "\$REAL_RELATION" ;;
+  *"contents/standards/gitleaks.toml"*"ref=\$REAL_HEAD"*) printf 'new' ;;
+  *"contents/standards/gitleaks.toml"*) printf 'old' ;;
+  *"repo-template/contents/.gitleaks.toml"*) echo '{"sha":"feedface","content":"$b64"}' ;;
+  *) echo '{}' ;;
+esac
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+}
+
+@test "#1925 AC3 (real compare + emit): a file matching the HEAD emission is refused" {
+  source "$SEED"
+  unset STANDARDS_DIR
+  _stub_gh_real_ahead ahead
+  _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
+  run _seed_file petry-projects/repo-template ".gitleaks.toml" "old" seed-branch main 0 --emit-baseline ".gitleaks.toml"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"REFUSED .gitleaks.toml"* ]]
+  [[ "$output" == *"standards HEAD 222222222222"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC3 (real compare + emit): when HEAD is not newer than the ref, the file is written" {
+  source "$SEED"
+  unset STANDARDS_DIR
+  _stub_gh_real_ahead diverged
+  _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
+  run _seed_file petry-projects/repo-template ".gitleaks.toml" "old" seed-branch main 0 --emit-baseline ".gitleaks.toml"
+  [ "$status" -eq 0 ]
+  grep -qF "contents/.gitleaks.toml --method PUT" "$CALLS"
+}
+
+@test "#1925 AC3 (real compare + emit): an unreadable ancestry aborts instead of writing" {
+  source "$SEED"
+  unset STANDARDS_DIR
+  _stub_gh_real_ahead '{"message":"Not Found"}'
+  _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
+  run _seed_file petry-projects/repo-template ".gitleaks.toml" "old" seed-branch main 0 --emit-baseline ".gitleaks.toml"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot tell whether"* ]]
+  [ ! -f "$CALLS" ]
 }

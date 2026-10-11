@@ -248,6 +248,10 @@ _fetch_standard() {
   fi
   _require gh || return 1
   ref="$(_resolve_standards_ref)"
+  # A seed run pins every read to the commit it recorded in the PR body (#1925).
+  # Reading through the ref name would follow a channel that moved mid-run, and the
+  # PR would then name a commit its content did not come from.
+  [ -z "${_STD_PIN:-}" ] || ref="$_STD_PIN"
   local -a ref_q=()
   case "$ref" in
     ""|STANDARDS_DIR) : ;;                 # no explicit ref (local seam / default)
@@ -948,6 +952,12 @@ _seed_repo() {
   # Resolve in the current shell (not $()) so the memoized _STD_* globals persist.
   _resolve_standards_ref > /dev/null
   _resolved_standards_sha > /dev/null
+  # From here on, fetch standards at the resolved COMMIT, not through the ref name,
+  # so the content and the provenance the PR records cannot come apart. A local
+  # STANDARDS_DIR has no commit, and reads the checkout as before.
+  if [[ "${_STD_SHA:-}" =~ ^[0-9a-f]{40}$ ]]; then
+    _STD_PIN="$_STD_SHA"
+  fi
   echo "[seed] target repo: ${repo} (stack: ${DEPENDABOT_STACK})"
   echo "[seed] standards ref: ${_STD_REF} (commit ${_STD_SHA:-unknown}, source ${_STD_SRC:-?}) on ${STANDARDS_REPO}"
   if [ "${_STD_SRC:-}" = "head-fallback" ]; then
@@ -990,10 +1000,15 @@ _seed_repo() {
   # The limit is applied before the jq filter, so it must cover every open PR on
   # the repo, not just the seed ones: a seed PR cut off by it would be missed and
   # a second one opened.
+  # A failed listing must not read as "no seed PR is open": that would open a second
+  # seed PR and leave the older ones open, which is the pile-up this prevents.
   local open_seeds open_seed open_pr="" open_branch="" reuse=0 branch_created=0
-  open_seeds="$(gh pr list --repo "$repo" --state open --limit 1000 --json number,headRefName \
-    --jq '[.[] | select(.headRefName | startswith("seed-scaffold/"))] | sort_by(.number) | .[] | "\(.number)\t\(.headRefName)"' \
-    2>/dev/null || true)"
+  if ! open_seeds="$(gh pr list --repo "$repo" --state open --limit 1000 --json number,headRefName \
+      --jq '[.[] | select(.headRefName | startswith("seed-scaffold/"))] | sort_by(.number) | .[] | "\(.number)\t\(.headRefName)"' \
+      2>/dev/null)"; then
+    echo "::error::cannot list open pull requests on ${repo} — not seeding, because an open seed PR could not be ruled out" >&2
+    return 1
+  fi
   open_seed="$(printf '%s\n' "$open_seeds" | tail -n 1)"
   IFS=$'\t' read -r open_pr open_branch <<< "$open_seed" || true
   if [ -n "$open_pr" ] && [ "${open_branch#seed-scaffold/}" != "$open_branch" ]; then
@@ -1038,6 +1053,19 @@ _seed_repo() {
     echo "::warning::could not list open PRs for ${branch} on ${repo} — not opening a PR to avoid a duplicate" >&2
     return 1
   fi
+  # A dated branch left by an earlier run, with no open PR, and nothing written by
+  # this run: open a PR only if the branch still has something the base lacks. If
+  # that cannot be read, go on to `gh pr create`, which fails loudly on an empty PR.
+  if [ -z "$existing_pr" ] && [ "$branch_created" != 1 ] && [ "$_SEED_WRITES" -eq 0 ]; then
+    local ahead_by
+    ahead_by="$(gh api "repos/${repo}/compare/${default_branch}...${branch}" --jq '.ahead_by' 2>/dev/null || true)"
+    if [ "$ahead_by" = "0" ]; then
+      echo "[seed] no PR opened on ${repo}: branch ${branch} has nothing ${default_branch} lacks"
+      echo "[seed] PASS — ${repo}"
+      return 0
+    fi
+  fi
+
   if [ -n "$existing_pr" ]; then
     echo "[seed] PR #$existing_pr already open for branch $branch on $repo"
     keep_pr="$existing_pr"
