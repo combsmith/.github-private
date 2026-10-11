@@ -215,7 +215,7 @@ write_approve_verdict() {
   grep -q 'Reviewer summary' "$PATCH_OUT"
   grep -q 'needs a human' "$PATCH_OUT"
   grep -q '3/3' "$PATCH_OUT"
-  ! grep -q 'old escalation note' "$PATCH_OUT"
+  ! grep -q 'old escalation note' "$PATCH_OUT" || false
   # And NO brand-new comment was appended.
   [ ! -s "$COMMENT_OUT" ]
 }

@@ -110,9 +110,9 @@ setup() {
   run mh_build_case "$MISS"
   [ "$status" -eq 0 ]
   # No raw URL, @mention, or ghp_ token survives into the committed case.
-  ! grep -q "https://" <<<"$output"
-  ! grep -q "@don-petry" <<<"$output"
-  ! grep -q "ghp_" <<<"$output"
+  ! grep -q "https://" <<<"$output" || false
+  ! grep -q "@don-petry" <<<"$output" || false
+  ! grep -q "ghp_" <<<"$output" || false
   # Still valid JSON with the expected shape.
   run jq -e '.id and .input and .expected' <<<"$output"
   [ "$status" -eq 0 ]

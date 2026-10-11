@@ -70,7 +70,7 @@ setup() {
   export AI_ENGINES="claude,gemini"
   ai_engine_available claude
   export GEMINI_AVAILABLE=false
-  ! ai_engine_available gemini
+  ! ai_engine_available gemini || false
   export COPILOT_AVAILABLE=true
   ! ai_engine_available copilot
 }
@@ -419,7 +419,7 @@ _batch() {
   export AI_ENGINES="claude,gemini" REVIEW_ENGINE=copilot
   run _batch
   [ "$status" -eq 0 ]
-  ! grep -q '^copilot$' "$BDIR/engine_calls.txt"
+  ! grep -q '^copilot$' "$BDIR/engine_calls.txt" || false
   [[ "$output" == *"REVIEW_ENGINE=copilot is not enabled in AI_ENGINES"* ]]
   rm -rf "$BDIR"
 }

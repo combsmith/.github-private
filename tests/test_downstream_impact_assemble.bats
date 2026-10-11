@@ -91,7 +91,7 @@ STUBEOF
   grep -q "petry-projects/bravo" "$OUT_FILE"
   grep -q ".github/workflows/caller.yml" "$OUT_FILE"
   # The block is not the literal "(none)" when something is impacted.
-  ! grep -qx "(none)" "$OUT_FILE"
+  ! grep -qx "(none)" "$OUT_FILE" || false
   # Fetches actually happened.
   [ -s "$GH_CALL_LOG" ]
 }

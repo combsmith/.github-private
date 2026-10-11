@@ -1099,7 +1099,7 @@ GITEOF
   [ "$status" -ne 0 ]
   # The "applied" status must NOT have been posted since commit failed
   if [ -f "$comment_file" ]; then
-    ! grep -q "status=applied" "$comment_file"
+    ! grep -q "status=applied" "$comment_file" || false
   fi
   rm -f "$comment_file"
 }
@@ -5286,7 +5286,7 @@ GITEOF
 
   [ "$status" -eq 0 ]
   # A commit exists but it is not substantive: must NOT report applied.
-  ! grep -q "status=applied" "$comment_file"
+  ! grep -q "status=applied" "$comment_file" || false
   grep -q "status=not-applied" "$comment_file"
 }
 
@@ -5308,7 +5308,7 @@ GITEOF
   " 2>&1
 
   [ "$status" -eq 0 ]
-  ! grep -q "status=applied" "$comment_file"
+  ! grep -q "status=applied" "$comment_file" || false
   grep -q "status=not-applied" "$comment_file"
   # The terminal comment enumerates the unaddressed requested item.
   grep -q "doc.md:5" "$comment_file"
@@ -5335,7 +5335,7 @@ GITEOF
   [ "$status" -eq 0 ]
   [ ! -s "$push_file" ]
   grep -q "status=no-changes" "$comment_file"
-  ! grep -q "status=applied" "$comment_file"
+  ! grep -q "status=applied" "$comment_file" || false
   ! grep -q "status=not-applied" "$comment_file"
 }
 
@@ -5612,7 +5612,7 @@ _orig_comment() {
   # The two earlier replies are superseded → OUTDATED; the latest (R3) is NOT.
   grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
   grep -Eq 'classifier:OUTDATED.*id=R2' "$MINLOG"
-  ! grep -Eq 'id=R3' "$MINLOG"
+  ! grep -Eq 'id=R3' "$MINLOG" || false
   [[ "$output" == *"selecting latest R3"* ]]
 }
 
@@ -5654,7 +5654,7 @@ _orig_comment() {
   run bash "$FIX_REVIEWS_SCRIPT" 2>&1
 
   [ "$status" -eq 1 ]
-  ! grep -q 'minimizeComment' "$MINLOG"
+  ! grep -q 'minimizeComment' "$MINLOG" || false
   [[ "$output" == *"not certified on a failed pass"* ]]
 }
 
@@ -5703,7 +5703,7 @@ _resolved_bot_comment() {
 
   [ "$status" -eq 1 ]
   grep -Eq 'unminimizeComment.*id=IC_ORIG' "$MINLOG"
-  ! grep -q 'classifier:RESOLVED' "$MINLOG"
+  ! grep -q 'classifier:RESOLVED' "$MINLOG" || false
   [[ "$output" == *"edited after its latest disposition"* ]]
 }
 
@@ -5732,7 +5732,7 @@ _resolved_bot_comment() {
 
   [ "$status" -eq 1 ]
   grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
-  ! grep -q 'unminimizeComment' "$MINLOG"
+  ! grep -q 'unminimizeComment' "$MINLOG" || false
   ! grep -Eq 'id=R2' "$MINLOG"
 }
 
@@ -6269,7 +6269,7 @@ _run_2013() {
   [ -n "$engine" ]
   [ "$swept" -lt "$engine" ]
   # This pass's own (landed) claim is untouched and its thread still resolves.
-  ! grep -q "pulls/comments/777" "$T2013_PATCH"
+  ! grep -q "pulls/comments/777" "$T2013_PATCH" || false
   grep -q "PRRT_2013" "$T2013_MUT"
 }
 
@@ -6429,7 +6429,7 @@ _succeed_fix_bot_comment() {
   # The loop did not stop at the failure: IC_B, after IC_ORIG, was re-opened.
   grep -Eq 'unminimizeComment.*id=IC_B' "$MINLOG"
   # No success terminal marker, so the comment is retried; a partial one instead.
-  ! grep -Eq 'status=(no-changes|applied)' "$COMMENTLOG"
+  ! grep -Eq 'status=(no-changes|applied)' "$COMMENTLOG" || false
   grep -q 'intent=fix-bot-comment status=partial' "$COMMENTLOG"
 }
 
@@ -6496,7 +6496,7 @@ _succeed_fix_bot_comment() {
 # reviewThreads(first:50) read never saw it, so the pass "addressed 0 threads".
 
 @test "#2056: both OPEN_THREADS_JSON call sites use the shared paginated helper" {
-  ! grep -q 'reviewThreads(first:50)' "$FIX_REVIEWS_SCRIPT"
+  ! grep -q 'reviewThreads(first:50)' "$FIX_REVIEWS_SCRIPT" || false
   grep -q 'source "$(dirname "$0")/lib/open-review-threads.sh"' "$FIX_REVIEWS_SCRIPT"
   [ "$(grep -c 'OPEN_THREADS_JSON=$(ort_fetch_open_threads' "$FIX_REVIEWS_SCRIPT")" -eq 2 ]
 }
@@ -6741,7 +6741,7 @@ _run_2004() {
   _run_2004
 
   [ "$status" -eq 0 ]
-  ! grep -q 'IC_FIND' "$MINLOG"
+  ! grep -q 'IC_FIND' "$MINLOG" || false
   [[ "$output" == *"::warning::comment IC_FIND: \`fixed\` disposition citing ${SHA_A} did not verify (fixed-unverified:content-adds-token)"* ]]
   # No commit on the branch removes the token yet, so nothing is re-answered.
   ! grep -q 'comment-disposition' "$POSTLOG"
@@ -6753,7 +6753,7 @@ _run_2004() {
   _run_2004
 
   [ "$status" -eq 0 ]
-  ! grep -q 'IC_FIND' "$MINLOG"
+  ! grep -q 'IC_FIND' "$MINLOG" || false
   [[ "$output" == *"fixed-unverified:content-no-token-removed"* ]]
 }
 
@@ -6801,8 +6801,8 @@ _run_2004() {
   _run_2004
   [ "$status" -eq 0 ]
   [[ "$output" == *"fixed-unverified:content-adds-token"* ]]
-  ! grep -q 'IC_FIND' "$MINLOG"
-  ! grep -q 'comment-disposition' "$POSTLOG"
+  ! grep -q 'IC_FIND' "$MINLOG" || false
+  ! grep -q 'comment-disposition' "$POSTLOG" || false
 
   # The fix lands; the same unverified disposition is still the only reply.
   _2004_land_fix
@@ -6824,7 +6824,7 @@ _run_2004() {
   _run_2004
 
   [ "$status" -eq 0 ]
-  ! grep -q 'IC_FIND' "$MINLOG"
+  ! grep -q 'IC_FIND' "$MINLOG" || false
   [[ "$output" == *"tokenless-not-this-pass"* ]]
 }
 
@@ -6836,9 +6836,9 @@ _run_2004() {
   _run_2004
 
   [ "$status" -eq 0 ]
-  ! grep -Eq 'classifier:RESOLVED' "$MINLOG"
+  ! grep -Eq 'classifier:RESOLVED' "$MINLOG" || false
   grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
-  ! grep -Eq 'id=R2' "$MINLOG"
+  ! grep -Eq 'id=R2' "$MINLOG" || false
   ! grep -q 'comment-disposition' "$POSTLOG"
 }
 
@@ -6903,7 +6903,7 @@ _fbc_reply() {  # $1=disposition-tail $2=createdAt
       || grep -q "never the one that introduced it" "$SCRIPT_DIR/prompts/dev-lead/$p.md"
   done
   # The old "this pass produced the sha" rule for issue-comment `fixed` is gone.
-  ! grep -q "the harness rejects a \`fixed\` sha from an earlier pass" "$SCRIPT_DIR/prompts/dev-lead/fix-reviews.md"
+  ! grep -q "the harness rejects a \`fixed\` sha from an earlier pass" "$SCRIPT_DIR/prompts/dev-lead/fix-reviews.md" || false
   ! grep -q "only verifies a \`fixed\` sha from the pass that cites it" "$SCRIPT_DIR/prompts/dev-lead/fix-bot-comment.md"
 }
 

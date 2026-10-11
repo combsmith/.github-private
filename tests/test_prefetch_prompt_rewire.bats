@@ -135,6 +135,6 @@ _section() {
   # so it needs no pre-fed-context rewire — documented explicitly per AC #4.
   grep -Eiq 'does not fetch|no.*fetch|out of scope|synthes' "$ACTION"
   # Verify implementation: cascade-action must contain no live fetch commands.
-  ! grep -q 'gh pr view' "$ACTION"
+  ! grep -q 'gh pr view' "$ACTION" || false
   ! grep -q 'gh pr diff' "$ACTION"
 }

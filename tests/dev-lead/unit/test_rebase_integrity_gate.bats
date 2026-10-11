@@ -98,7 +98,7 @@ _fake_gate() {
 @test "the gate's own ::error:: lines are indented detail, not new annotations" {
   _fake_gate 1 "::error::Duplicate declarations found"
   run rig_duplicate_decl_gate "$FAKE_GATE" "$WORK"
-  ! grep -qE '^::error::' <<<"$output"
+  ! grep -qE '^::error::' <<<"$output" || false
   [[ "$output" == *"integrity gate> ::error::Duplicate declarations found"* ]]
 }
 
@@ -145,7 +145,7 @@ _fake_gate() {
   local f="$REPO_ROOT/scripts/dev-lead-fix-reviews.sh"
   grep -qF 'lib/rebase-integrity-gate.sh' "$f"
   grep -qF 'rig_duplicate_decl_gate "${script_dir}/check-duplicate-decls.sh" "$work_root"' "$f"
-  ! grep -E 'check-duplicate-decls\.sh.*>/dev/null' "$f"
+  ! grep -E 'check-duplicate-decls\.sh.*>/dev/null' "$f" || false
   grep -qF '${RIG_DETAIL}' "$f"
   # The excerpt is fenced with pick_fence, so a tilde run in it cannot close the block.
   grep -qF '_rig_fence="$(pick_fence "$RIG_DETAIL")"' "$f"

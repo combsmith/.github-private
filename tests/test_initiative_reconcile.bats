@@ -86,9 +86,9 @@ write_one_finding() { # write_one_finding <dest> <title>
   # zero close_issue ops (an in-flight/completed story is never closed)
   [ "$(grep -c '"op":"close_issue"' "$LOG" || true)" -eq 0 ]
   # base stories are never recreated: their titles never appear in create_issue
-  ! grep '"op":"create_issue"' "$LOG" | jq -e 'select(.title|test("Held-out eval set"))' >/dev/null
-  ! grep '"op":"create_issue"' "$LOG" | jq -e 'select(.title|startswith("[Phase 2] Generalize"))' >/dev/null
-  ! grep '"op":"create_issue"' "$LOG" | jq -e 'select(.title|startswith("[Phase 3] Automate"))' >/dev/null
+  ! grep '"op":"create_issue"' "$LOG" | jq -e 'select(.title|test("Held-out eval set"))' >/dev/null || false
+  ! grep '"op":"create_issue"' "$LOG" | jq -e 'select(.title|startswith("[Phase 2] Generalize"))' >/dev/null || false
+  ! grep '"op":"create_issue"' "$LOG" | jq -e 'select(.title|startswith("[Phase 3] Automate"))' >/dev/null || false
   # only the 2 accepted findings are materialized
   [ "$(grep -c '"op":"create_issue"' "$LOG")" -eq 2 ]
 }

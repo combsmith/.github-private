@@ -21,7 +21,7 @@ setup() {
 # if the local-git path is ever reintroduced.
 @test "cut-release: no local git tag/push path — all tag ops go through gh api (#1076)" {
   local script; script="$(dirname "$BATS_TEST_FILENAME")/../scripts/cut-release.sh"
-  ! grep -Ev '^[[:space:]]*#' "$script" | grep -Eq '\bgit[[:space:]]+(tag|push)\b'
+  ! grep -Ev '^[[:space:]]*#' "$script" | grep -Eq '\bgit[[:space:]]+(tag|push)\b' || false
   grep -q 'agent_host_repo' "$script"
 }
 

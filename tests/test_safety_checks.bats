@@ -789,7 +789,7 @@ diff --git a/b/unrelated.txt b/b/unrelated.txt
   echo "$output" | grep -q "TRUSTED_STUB_SYNC: true"
   # description gate present but demoted to informational, not escalate
   echo "$output" | grep -q "\[info\] description-quality"
-  ! echo "$output" | grep -q "\[escalate\] description-quality"
+  ! echo "$output" | grep -q "\[escalate\] description-quality" || false
   echo "$output" | grep -q "\[info\] trusted-stub-sync"
 }
 

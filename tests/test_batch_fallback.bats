@@ -146,7 +146,7 @@ EOF
   [ "$status" -eq 0 ]
   # review-one-pr.sh must have been called, and never as gemini.
   [ -f engine_calls.txt ]
-  ! grep -q "^gemini$" engine_calls.txt
+  ! grep -q "^gemini$" engine_calls.txt || false
   grep -q "^copilot$" engine_calls.txt
   [[ "$output" == *"unavailable"* ]]
 }

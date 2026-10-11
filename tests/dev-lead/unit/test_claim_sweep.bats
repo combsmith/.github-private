@@ -164,7 +164,7 @@ _landed_fix() {
   [ -f "$PATCHES/201" ]
   grep -q "Retracted" "$PATCHES/201"
   grep -q "<!-- dev-lead:retracted reason=not-on-ref -->" "$PATCHES/201"
-  ! grep -q "dev-lead:addressed" "$PATCHES/201"
+  ! grep -q "dev-lead:addressed" "$PATCHES/201" || false
   # The original claim is kept (not as a claim) so a later pass can re-verify it.
   grep -q "dev-lead:retracted-claim .*${ghost}" "$PATCHES/201"
 }
@@ -269,8 +269,8 @@ _landed_fix() {
   run sweep_earlier_claims
   [ "$status" -eq 0 ]
   [ -f "$PATCHES/207" ]
-  ! grep -q "Retracted" "$PATCHES/207"
-  ! grep -q "dev-lead:retracted" "$PATCHES/207"
+  ! grep -q "Retracted" "$PATCHES/207" || false
+  ! grep -q "dev-lead:retracted" "$PATCHES/207" || false
   grep -q "Fixed in f: handled the empty case." "$PATCHES/207"
   grep -q "<!-- dev-lead:addressed -->" "$PATCHES/207"
   run acv_parse_claim "$(cat "$PATCHES/207")"
@@ -316,7 +316,7 @@ _landed_fix() {
   run retract_unlanded_claims fix-reviews ok
   [ "$status" -eq 0 ]
   [ -f "$PATCHES/210" ]
-  ! grep -q "Retracted" "$PATCHES/210"
+  ! grep -q "Retracted" "$PATCHES/210" || false
   grep -q "<!-- dev-lead:addressed -->" "$PATCHES/210"
   run acv_parse_claim "$(cat "$PATCHES/210")"
   [ "$status" -eq 0 ]

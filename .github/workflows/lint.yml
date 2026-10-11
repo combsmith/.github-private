@@ -75,6 +75,18 @@ jobs:
       - name: check retry payload fields against the intent parser at every channel of the pinned major
         run: bash scripts/check-retry-payload-fields.sh
 
+  # A `!`-negated command is exempt from errexit, so mid-test it can never fail a
+  # bats test: the assertion reads as a guard and checks nothing (#2263). Fail on
+  # any negation that is not the last command of its test and has no `|| false`.
+  bats-negation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: check bats files for negated commands that cannot fail their test
+        run: bash scripts/check-bats-negation.sh
+
   bats:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -121,6 +133,7 @@ jobs:
             tests/pr_review_sweep_metrics.bats \
             tests/model_pricing.bats \
             tests/test_check_model_pins.bats \
+            tests/test_check_bats_negation.bats \
             tests/test_retry_payload_fields.bats \
             tests/test_model_pin_token_log.bats \
             tests/dev-lead/unit/test_engine_chain_config.bats \
