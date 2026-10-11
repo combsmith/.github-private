@@ -119,6 +119,12 @@ fetch_raw_content() {
 # One GraphQL request reads the jobs (check runs, latest attempt only) of up to
 # FLEET_PAUSE_BATCH workflow runs, where the REST jobs API costs one call per run.
 FLEET_PAUSE_BATCH="${FLEET_PAUSE_BATCH:-100}"
+# A zero or non-numeric batch size would make the range generator fail or stall.
+case "$FLEET_PAUSE_BATCH" in
+  ''|*[!0-9]*|0)
+    echo "::warning::FLEET_PAUSE_BATCH='${FLEET_PAUSE_BATCH}' is not a positive integer — using 100" >&2
+    FLEET_PAUSE_BATCH=100 ;;
+esac
 # shellcheck disable=SC2016  # $ids is a GraphQL variable, not a shell expansion
 FLEET_PAUSE_RUNS_QUERY='query($ids:[ID!]!){nodes(ids:$ids){... on WorkflowRun{id checkSuite{checkRuns(first:100,filterBy:{checkType:LATEST}){nodes{name conclusion}}}}}}'
 
@@ -213,7 +219,7 @@ total_workflows=0
 # set. Kept out of the 12-field metrics TSV (like the schedule metrics above) and
 # reported in their own section.
 # TSV: repo <TAB> wf_file <TAB> paused
-paused_metrics_file=$(mktemp)
+paused_metrics_file=$(mktemp) || { echo "::error::Failed to create paused_metrics_file" >&2; exit 1; }
 # Workflow files whose runs can hold a `fleet-paused` notice job when called as
 # a reusable (the `job-gate` rows of scripts/lib/fleet-pause-registry.tsv).
 mapfile -t fleet_notice_workflows < <(fleet_pause_notice_workflows)

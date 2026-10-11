@@ -120,7 +120,7 @@ generate_fleet_paused_report() {
   printf '| Repo | Workflow | Paused runs |\n'
   printf '|---|---|---:|\n'
   local repo wf paused
-  sort -t$'\t' -k1,1 -k2,2 "$f" | while IFS=$'\t' read -r repo wf paused; do
+  sort -t$'\t' -k1,1 -k2,2 "$f" | while IFS=$'\t' read -r repo wf paused || [ -n "$repo" ]; do
     [ -n "$repo" ] || continue
     printf '| `%s` | `%s` | %s |\n' "$repo" "$wf" "$paused"
   done
