@@ -69,9 +69,11 @@ resolve() {
   fi
 
   # Prefer the pull_requests array embedded in the payload, filtered to
-  # non-fork, open PRs (head repo must equal base repo).
+  # non-fork PRs (head repo must equal base repo). The embedded entries are
+  # minimal objects with no `state` field, so openness is only checked on the
+  # API fallback below.
   pr_number="$(payload_field '[(.'"$key"'.pull_requests // [])[]
-                               | select(.state == "open" and .head.repo.id == .base.repo.id) | .number][0]')"
+                               | select(.head.repo.id == .base.repo.id) | .number][0]')"
   if [ -z "$pr_number" ]; then
     # Fallback: the commits-to-pulls API covers a second push that arrived
     # before this event, and a workflow_run whose payload omits the PR. Only
