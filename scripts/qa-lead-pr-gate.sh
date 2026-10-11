@@ -3,14 +3,13 @@ set -euo pipefail
 # qa-lead-pr-gate.sh — signal gathering + fire/skip decision for the qa-lead
 # pull_request advisory (issue #1905).
 #
-# This is the ONE implementation of the gathering the qa-lead PR advisory needs,
-# shared by BOTH callers so the suppressors are identical, not copied:
-#   * .github/workflows/qa-lead-pr-advisory.yml — the local, event-driven surface
-#     (its gate job sources this and calls qa_lead_pr_gather_and_decide), and
-#   * .github/workflows/persona-runner-reusable.yml — the router-served surface
-#     (its event pre-gate calls it via scripts/persona-pr-pregate.sh).
-# Before #1905 the gathering lived inline in the local workflow's YAML, so the
-# router-served pull_request path had NONE of it and posted on every trusted PR.
+# This is the ONE implementation of the gathering the qa-lead PR advisory needs.
+# Its caller is .github/workflows/persona-runner-reusable.yml — the router-served
+# pull_request surface — whose event pre-gate calls it via
+# scripts/persona-pr-pregate.sh. Before #1905 the gathering lived inline in a
+# local, self-contained workflow's YAML, so the router-served pull_request path
+# had NONE of it and posted on every trusted PR; #1905 moved it here so both
+# paths shared it, and #2243 retired the local workflow, leaving the router path.
 #
 # It gathers the PR's signals via `gh` and hands them to the pure, unit-tested
 # decision qa_lead_gate_decision (scripts/qa-lead-advisory-gate.sh). Sourcing this
@@ -22,7 +21,7 @@ _QA_LEAD_PR_GATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_QA_LEAD_PR_GATE_DIR}/qa-lead-advisory-gate.sh"
 
 # The recursion marker every qa-lead advisory begins with — the idempotency key
-# for the already-advised suppressor (kept identical to the local workflow).
+# for the already-advised suppressor (the runner's read/write split stamps it).
 : "${QA_LEAD_ADVISORY_MARKER:=<!-- persona:qa-lead -->}"
 
 # _qa_lead_pr_gate_fail_closed <repo> <pr> <what>
@@ -42,7 +41,7 @@ _qa_lead_pr_gate_fail_closed() {
 #   decision line on stdout: "run" or "skip:<reason>". Returns 0 for run, 1 for
 #   skip. Any unreadable signal fails closed (skip) via the helper above.
 #
-#   Signals gathered (identical to the local workflow's former gate job):
+#   Signals gathered:
 #     * changed files — with the completeness (3000-file cap) and control-character
 #       guards, so a truncated or LF-forged list never mislabels the PR;
 #     * label names — never degraded to [] on an API error (that would bypass the
