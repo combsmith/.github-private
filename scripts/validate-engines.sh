@@ -274,7 +274,7 @@ validate_engines() {
       echo "::warning::Copilot unavailable — COPILOT_GITHUB_TOKEN is not set. Provide a fine-grained PAT with the Copilot entitlement or remove copilot from AI_ENGINES."
     elif [[ "$_copilot_tok" == ghp_* ]]; then
       echo "::warning::Copilot unavailable — COPILOT_GITHUB_TOKEN is a classic PAT (ghp_), which Copilot rejects. Use a fine-grained PAT or remove copilot from AI_ENGINES."
-      else
+    else
       # A policy denial (no Copilot subscription/policy for the token's org) or any
       # other probe failure is reported once, never left as a silent false (#1960).
       # The CLI output is matched, not echoed: only the matched phrase is logged.
