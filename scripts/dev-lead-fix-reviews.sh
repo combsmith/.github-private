@@ -3886,7 +3886,7 @@ case "$INTENT_TYPE" in
         # re-enable auto-merge or resolve threads.
         echo "::warning::fix-bot-comment produced a net-zero diff — flagged for human, not pushed (#1340)"
       elif [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::fix-bot-comment was refused by a push guard (test tamper/regression or sync-stub) — flagged for human, not pushed (#2013/#2185)"
+        echo "::warning::fix-bot-comment was refused by a push guard (test tamper/regression, sync-stub or channel-pin) — flagged for human, not pushed (#2013/#2185/#2220)"
       else
         notify_coderabbit_resolve
         if has_hard_blockers; then
@@ -4031,7 +4031,7 @@ case "$INTENT_TYPE" in
       # Nothing landed, so a `fixed` disposition would cite a local-only commit; no
       # thread resolves and auto-merge stays off.
       if [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::review-changes was refused by a test guard (tamper/regression) — flagged for human, not pushed (#2013)"
+        echo "::warning::review-changes was refused by a push guard (test tamper/regression, sync-stub or channel-pin) — flagged for human, not pushed (#2013/#2185/#2220)"
         resolve_dispositioned_comments "review-changes" failed || _DISPOSITIONS_UNRESOLVED=1
         resolve_deferred_bot_threads "review-changes" || rc=1
         [ "${_DISPOSITIONS_UNRESOLVED:-0}" -eq 1 ] && rc=1
