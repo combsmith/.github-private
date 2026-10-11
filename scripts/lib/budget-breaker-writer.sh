@@ -66,8 +66,9 @@
 # moments ago. Time is cut into clock slots of BUDGET_BREAKER_MIN_INTERVAL_MIN
 # minutes (bbw_slot_start). A run woken by `workflow_run` on a fleet that is not
 # paused exits before the scan only when BOTH hold:
-#   - an earlier run of this workflow that ran to a conclusion was CREATED in
-#     the current slot (bbw_read_previous_runs, bbw_runs_since), and
+#   - an earlier run of this workflow that SUCCEEDED was CREATED in the current
+#     slot (bbw_read_previous_runs, bbw_runs_since; a failed run covers nothing,
+#     it may have ended before its scan), and
 #   - this repository shows no quota marker created in the current slot
 #     (bbw_collect_recent, bbw_markers_since: one listing instead of one per
 #     repository).
@@ -778,13 +779,15 @@ bbw_slot_start() {
 
 # ---------------------------------------------------------------------------
 # bbw_runs_since <runs_json> <iso_time> — PURE. How many of those runs were
-# CREATED at or after the time. Prints 0 when anything is unreadable: no
-# earlier run known means no early exit.
+# CREATED at or after the time AND succeeded. A run that failed may have ended
+# before its scan, so it does not cover a slot: counting it would let every
+# later wake-up in that slot exit early with no decision taken. Prints 0 when
+# anything is unreadable: no earlier run known means no early exit.
 # ---------------------------------------------------------------------------
 bbw_runs_since() {
   jq -r --arg since "${2:-}" '
     if ($since | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
-    then [.[] | select(.created_at >= $since)] | length else 0 end' <<< "${1:-}" 2>/dev/null \
+    then [.[] | select(.conclusion == "success" and .created_at >= $since)] | length else 0 end' <<< "${1:-}" 2>/dev/null \
     || printf '0'
 }
 

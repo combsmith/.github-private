@@ -1283,7 +1283,8 @@ listed_workflows() {
   [ "${names[2]}" = "Dev-Lead Retry (rate-limited)" ]
   for name in "${names[@]}"; do
     found=""
-    for f in "$REPO_ROOT"/.github/workflows/*.yml; do
+    for f in "$REPO_ROOT"/.github/workflows/*.yml "$REPO_ROOT"/.github/workflows/*.yaml; do
+      [ -f "$f" ] || continue
       if [ "$(sed -nE 's/^name:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/p' "$f" | head -n 1)" = "$name" ]; then
         found="$f"
       fi
@@ -2493,6 +2494,14 @@ DELETE AGENTS_PAUSE_UNTIL" ]
   [[ "$output" != *"early exit"* ]]
   [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
 
+  # A run that FAILED in the slot covers nothing: it may have ended before its
+  # scan, so the next wake-up decides instead of exiting early.
+  seed_runs "$(wrun 8001 failure 10 25)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+
   # A run with a creation time that is not a time is not an earlier run.
   jq -c '.[0].created_at = "soon"' <<< "[$(wrun 8001 success 10 25)]" > "$MOCK_DIR/runs.json"
   run bash "$SCRIPT"
@@ -2555,10 +2564,22 @@ DELETE AGENTS_PAUSE_UNTIL" ]
   run bbw_slot_start "$NOW" "-2"
   [ "$status" -ne 0 ]
 
-  # Earlier runs: counted by creation time; unreadable input is no earlier run.
+  # Earlier runs: counted by creation time, successes only; unreadable input is
+  # no earlier run.
   runs="[$(wrun 1 success 0 5),$(wrun 2 failure -1 30),$(wrun 3 success 119 130)]"
   [ "$(bbw_runs_since "$runs" "$(ts 0)")" = "2" ]
   [ "$(bbw_runs_since "$runs" "$(ts 120)")" = "0" ]
+  # The slot's edges: created exactly on the slot start is in the slot, one
+  # second before it is not, and the last second of the slot is in it.
+  [ "$(bbw_runs_since "[$(wrun 1 success 0 5)]" "$(ts 0)")" = "1" ]
+  [ "$(bbw_runs_since "[$(wrun 1 success -1 5)]" "$(ts 0)")" = "0" ]
+  [ "$(bbw_runs_since "[$(wrun 1 success 119 125)]" "$(ts 0)")" = "1" ]
+  # A clock a second apart on either side of a boundary: a run the API stamped
+  # in the previous slot is not an earlier run of this one, so this run decides.
+  [ "$(bbw_runs_since "[$(wrun 1 success 119 125)]" "$(bbw_slot_start "$(( NOW + 120 ))" 2)")" = "0" ]
+  # A failed run in the slot is not counted; a successful one beside it is.
+  [ "$(bbw_runs_since "[$(wrun 1 failure 10 20)]" "$(ts 0)")" = "0" ]
+  [ "$(bbw_runs_since "[$(wrun 1 failure 10 20),$(wrun 2 success 30 40)]" "$(ts 0)")" = "1" ]
   [ "$(bbw_runs_since '[]' "$(ts 0)")" = "0" ]
   [ "$(bbw_runs_since 'not json' "$(ts 0)")" = "0" ]
   [ "$(bbw_runs_since "$runs" 'not a time')" = "0" ]

@@ -68,8 +68,8 @@
 #
 # THE EARLY EXIT (#2259; rule and reasons in scripts/lib/budget-breaker-writer.sh).
 # A run woken by `workflow_run` on a fleet that is NOT paused exits 0 before the
-# organisation scan when an earlier run was created in the same clock slot of
-# BUDGET_BREAKER_MIN_INTERVAL_MIN minutes AND this repository shows no quota
+# organisation scan when an earlier run that succeeded was created in the same
+# clock slot of BUDGET_BREAKER_MIN_INTERVAL_MIN minutes AND this repository shows no quota
 # marker created in that slot. It never applies to a scheduled run, never while
 # the fleet is paused (by anyone: a resume is never delayed by it), and never
 # when anything it needs could not be read (then the run decides).

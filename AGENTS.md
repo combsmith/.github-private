@@ -1020,9 +1020,10 @@ as soon as the workflow is on `main`.
   an hour), each a job of 8 to 10 seconds.
 
   **The early exit.** A run woken by `workflow_run` on a fleet that is **not paused** exits
-  before the organisation scan when both hold: an earlier run of this workflow was created
-  in the same clock slot of `BUDGET_BREAKER_MIN_INTERVAL_MIN` minutes (default 2; `0`
-  switches the early exit off), and this repository shows no quota marker created in that
+  before the organisation scan when both hold: an earlier run of this workflow that
+  succeeded was created in the same clock slot of `BUDGET_BREAKER_MIN_INTERVAL_MIN` minutes
+  (default 2; `0` switches the early exit off; a failed run covers nothing, because it may
+  have ended before its scan), and this repository shows no quota marker created in that
   slot (one listing instead of one per repository). It is slots, not "the previous run
   finished less than two minutes ago", because a run that exits early is itself a previous
   run: under a steady stream of wake-ups that rule would exit early for ever, while the
