@@ -145,7 +145,7 @@ _config_with() {
   [ "$(ai_engine_chain)" = "claude gemini" ]
   export AI_ENGINES="copilot,claude"
   [ "$(ai_engine_chain)" = "claude" ]
-  ! ai_engine_enabled copilot
+  ! ai_engine_enabled copilot || false
   [ "$(ai_engine_primary copilot)" = "claude" ]
   [[ "$(ai_engine_chain_problem)" == *"copilot"*"disabled"* ]]
 }
