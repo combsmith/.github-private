@@ -651,7 +651,7 @@ STUB
   [ -z "$(jq -c 'select(.kind != "rate_limit_sample")' < "$log")" ]
 }
 
-@test "writer: run_writer persists session output to /tmp/dev-lead-session-output.txt" {
+@test "writer: run_writer persists session output to the session-output sidecar" {
   _source_engine "claude"
   export DEV_LEAD_DRY_RUN=false
   cat > "$STUB_BIN_DIR/claude" << 'STUB'
@@ -693,7 +693,7 @@ STUB
   rm -f "$summary" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }
 
-@test "writer: run_writer overwrites stale /tmp/dev-lead-session-output.txt from prior run" {
+@test "writer: run_writer overwrites a stale session-output sidecar from a prior run" {
   _source_engine "claude"
   export DEV_LEAD_DRY_RUN=false
   # Pre-populate with content from a hypothetical previous run
