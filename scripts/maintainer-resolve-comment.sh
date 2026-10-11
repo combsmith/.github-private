@@ -216,11 +216,13 @@ mrc_reason_ok() {
 #   plus the disposing maintainer and their reason for the audit trail. The marker
 #   also pins the ORIGINAL comment's node id (`id=<node>`) so the audit reply is
 #   tied to the exact comment it dispositions and a retry can detect an existing
-#   reply and not post a duplicate (idempotency, #1918 review). Pure.
+#   reply and not post a duplicate (idempotency, #1918 review). Both accounts are
+#   named in backticks, never @-mentioned: Codex answers every mention with a new
+#   comment, which would block the PR again (#2255). Pure.
 mrc_build_reply_body() {
   local bot="${1:-}" viewer="${2:-}" reason="${3:-}" node="${4:-}"
   printf '<!-- maintainer-resolve author=%s by=%s id=%s -->\n' "$bot" "$viewer" "$node"
-  printf 'Maintainer disposition of @%s'"'"'s status comment by @%s:\n\n%s\n' \
+  printf 'Maintainer disposition of `%s`'"'"'s status comment by `%s`:\n\n%s\n' \
     "$bot" "$viewer" "$reason"
 }
 

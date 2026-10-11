@@ -196,6 +196,19 @@ teardown() {
   echo "$output" | grep -q "quality gate passed"
 }
 
+# #2255: an @-mention in the reply pings the bot, and Codex answers every mention
+# with a fresh comment, which blocks the PR again. Neither account may be mentioned;
+# both are still named (in backticks) and the marker is unchanged.
+@test "#2255: reply body mentions neither the bot nor the maintainer" {
+  run bash -c "source '$MRC'; mrc_build_reply_body 'chatgpt-codex-connector' 'a-maintainer' 'usage notice' 'IC_node1'"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"@chatgpt-codex-connector"* ]]
+  [[ "$output" != *"@a-maintainer"* ]]
+  printf '%s' "$output" | grep -qF '`chatgpt-codex-connector`'
+  printf '%s' "$output" | grep -qF '`a-maintainer`'
+  printf '%s' "$output" | grep -qxF '<!-- maintainer-resolve author=chatgpt-codex-connector by=a-maintainer id=IC_node1 -->'
+}
+
 # Round-trip: the reply the bot path posts is IGNORED by the maintainer-comment
 # gate (it must not become a fresh undispositioned blocker).
 @test "AC3: the reply body the script posts is ignored by the gate → 0" {
