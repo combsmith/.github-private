@@ -723,7 +723,9 @@ fi
 # Produces fleet_stub_drift.json — the DRIFTED enrolled repos across every
 # processed stub, each row tagged with its `stub`/`stub_file` so the workflow's
 # "Track stub drift" step can group/route per stub kind. HAS_STUB_DRIFT wakes
-# dev-lead. A combined empty array is emitted when no stub drifted.
+# dev-lead. A combined empty array is emitted when no stub drifted. Role rows
+# classified from a legacy per-role file (repo has no agent-ingress.yml) are left
+# out by stub_drift_alert_json and appear only in the report, marked legacy (#2289).
 # ---------------------------------------------------------------------------
 STUB_DRIFT_JSON="fleet_stub_drift.json"
 if [ ${#stub_drift_files[@]} -gt 0 ]; then

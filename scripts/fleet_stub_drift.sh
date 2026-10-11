@@ -14,8 +14,10 @@
 # GitHub's contents API returns in `.sha` (git blob object IDs), so equal SHAs
 # mean byte-identical files. Network fetching lives in fleet_monitor.sh.
 #
-# Drift TSV format (4 fields, tab-separated):
-#   1:repo  2:status  3:repo_sha  4:canonical_sha
+# Drift TSV format (4 fields, tab-separated, plus an optional 5th):
+#   1:repo  2:status  3:repo_sha  4:canonical_sha  [5:source]
+# source is `legacy` on a collapsed-role row classified from the legacy per-role
+# file because the repo has no agent-ingress.yml (#2289); absent otherwise.
 # status ∈ { ALIGNED, DRIFTED, MISSING }
 #   ALIGNED — stub present and byte-identical to the canonical template
 #   DRIFTED — stub present but its blob SHA differs (the alertable set)
@@ -151,19 +153,21 @@ classify_role_drift() {
 # through the identical report/alert path as whole-file (#822/#886) rows. The
 # emitted repo_sha/canonical_sha are the pair the classification was actually made
 # on: the block SHAs when an agent-ingress.yml is present, else the legacy
-# whole-file SHAs — so the rendered table stays meaningful either way.
+# whole-file SHAs — so the rendered table stays meaningful either way. A
+# legacy-fallback row carries a 5th field `legacy` (#2289): it is not
+# agent-ingress.yml drift, so stub_drift_alert_json keeps it out of the alert /
+# remediation set while generate_stub_drift_report still lists it.
 stub_drift_row_role() {
   local repo="${1:-}" ingress_present="${2:-}" canon_block="${3:-}"
   local ingress_block="${4:-}" legacy_canon="${5:-}" legacy_repo="${6:-}"
-  local status repo_sha canonical
+  local status
   status="$(classify_role_drift "$ingress_present" "$canon_block" \
     "$ingress_block" "$legacy_canon" "$legacy_repo")"
   if [ "$ingress_present" = "yes" ]; then
-    repo_sha="$ingress_block"; canonical="$canon_block"
+    printf '%s\t%s\t%s\t%s\n' "$repo" "$status" "$ingress_block" "$canon_block"
   else
-    repo_sha="$legacy_repo"; canonical="$legacy_canon"
+    printf '%s\t%s\t%s\t%s\tlegacy\n' "$repo" "$status" "$legacy_repo" "$legacy_canon"
   fi
-  printf '%s\t%s\t%s\t%s\n' "$repo" "$status" "$repo_sha" "$canonical"
 }
 
 # count_stub_drift <tsv_file> <status>
@@ -182,6 +186,11 @@ count_stub_drift() {
 # <role> is given (a collapsed agent-ingress.yml job, #1726), each row is also
 # tagged with `role` so remediation patches the RIGHT job block — the stub_file
 # alone is ambiguous once several roles share one agent-ingress.yml.
+# Rows tagged `legacy` (classified from a legacy per-role file because the repo
+# has no agent-ingress.yml, #2289) are EXCLUDED: stamping them with the
+# agent-ingress.yml stub_file would tell dev-lead / remediation to write an
+# ingress into a repo that has none — the ADR-0007 double-dispatch trap. The
+# compliance audit's stub-surface checks govern legacy per-role stubs.
 stub_drift_alert_json() {
   local f="${1:-}" stub_label="${2:-}" stub_file="${3:-}" role="${4:-}"
   if [ -z "$f" ] || [ ! -s "$f" ]; then
@@ -192,7 +201,7 @@ stub_drift_alert_json() {
     [ inputs
       | select(length > 0)
       | split("\t")
-      | select(length >= 4 and .[1] == "DRIFTED")
+      | select(length >= 4 and .[1] == "DRIFTED" and .[4] != "legacy")
       | { repo: .[0], status: .[1], repo_sha: .[2], canonical_sha: .[3] }
       | if $stub != "" then . + { stub: $stub } else . end
       | if $stub_file != "" then . + { stub_file: $stub_file } else . end
@@ -228,6 +237,10 @@ generate_stub_drift_report() {
   printf '| Repo | Status | Stub SHA | Canonical SHA |\n'
   printf '|---|---|---|---|\n'
   awk -F'\t' '$2 == "DRIFTED" {
-    printf "| `%s` | 🔴 %s | `%s` | `%s` |\n", $1, $2, substr($3,1,7), substr($4,1,7)
+    note = ($5 == "legacy") ? " (legacy per-role stub — not alerted)" : ""
+    printf "| `%s` | 🔴 %s%s | `%s` | `%s` |\n", $1, $2, note, substr($3,1,7), substr($4,1,7)
   }' "$f"
+  if awk -F'\t' '$2 == "DRIFTED" && $5 == "legacy" { found = 1 } END { exit !found }' "$f"; then
+    printf '\n_Rows marked legacy are per-role stubs in repos with no agent-ingress.yml. They are not alerted or remediated here; the compliance audit stub-surface checks cover them._\n'
+  fi
 }
