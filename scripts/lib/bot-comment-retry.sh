@@ -17,8 +17,10 @@
 #
 # WHAT THIS LIBRARY DECIDES (bcr_retry_decisions, PURE — no gh/network)
 #   For each candidate comment — authored by a trusted registered reviewer bot,
-#   not agent-marked, not minimized RESOLVED, not cleared by its source's
-#   info_status_pattern (the same filters the gate applies) — whether to dispatch
+#   not agent-marked, not minimized RESOLVED (unless it was edited after its
+#   newest covering disposition, which the gate re-blocks: #2008, #2166), not
+#   cleared by its source's info_status_pattern (the same filters the gate
+#   applies) — whether to dispatch
 #   a fix-bot-comment retry now. A comment's VERSION is lastEditedAt // createdAt;
 #   all coverage checks are against the current version, so an edit re-opens it.
 #     dispositioned            a `dev-lead:comment-disposition id=<id>` reply exists
@@ -125,7 +127,8 @@ bcr_retry_decisions() {
     --argjson pending "$pending" \
     --argjson max_attempts "$max_attempts" \
     --argjson max_total "$max_total" \
-    --argjson skew "$skew" '
+    --argjson skew "$skew" \
+    --arg botuser "${BOT_USER:-donpetry-bot}" "$_MAINTAINER_GATE_DISP_JQ_DEFS"'
     def bare: if endswith("[bot]") then .[0:-5] else . end;
     def epoch: (sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601);
     # A marker-supplied timestamp: its epoch, or null when absent/unparseable.
@@ -135,6 +138,7 @@ bcr_retry_decisions() {
     def attr($k): [ scan("(?:^|\\s)" + $k + "=(\\S+)") | .[0] ] | first // null;
 
     if type != "array" then error("comments must be an array") else . end
+    | . as $all
     | ($trusted | split(",") | map(gsub("^\\s+|\\s+$"; "") | bare) | map(select(length > 0))) as $tb
     # Logins compare without a `[bot]` suffix: GraphQL omits it where REST keeps it.
     | ($automation | split(",") | map(gsub("^\\s+|\\s+$"; "") | bare) | map(select(length > 0))) as $auto
@@ -165,8 +169,15 @@ bcr_retry_decisions() {
         | select((.author?.__typename // "") == "Bot")
         | select(((.body // "") | test($markers)) | not)
         | select(($info[$l] // null) as $p | ($p == null) or (((.body // "") | test($p)) | not))
-        | select(((.isMinimized // false) == true
-                  and ((.minimizedReason // "") | ascii_downcase) == "resolved") | not)
+        # A RESOLVED comment is done, unless it was edited after its newest
+        # covering disposition (or has none): the gate re-blocks exactly that
+        # (#2008), so it needs a fresh pass like an undispositioned one (#2166).
+        | select((((.isMinimized // false) == true
+                   and ((.minimizedReason // "") | ascii_downcase) == "resolved") | not)
+                 or (edit_state as $e
+                     | ($e != "never" and $e != "unreadable")
+                       and (latest_cover($all; (.id // "" | tostring)) as $cov
+                            | $cov == null or $e > $cov.createdAt)))
         | .id as $id
         | (.lastEditedAt // .createdAt) as $ver
         | ($ver | epoch) as $vt

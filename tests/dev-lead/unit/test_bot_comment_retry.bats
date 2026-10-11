@@ -167,6 +167,35 @@ spoof' 2026-10-01T23:30:00Z NONE)")"
   [ "$(jq 'length' <<< "$out")" = "0" ]
 }
 
+# #2166: the gate re-blocks a RESOLVED bot comment edited after its newest
+# disposition, so pr-review's retry hook must dispatch for that stale case too —
+# not only for a comment with no disposition at all.
+@test "bcr(#2166): a RESOLVED comment edited AFTER its disposition is a candidate and dispatches" {
+  out="$(_decide \
+    "$(_bot IC_cr coderabbitai 'Review limit reached' 2026-10-01T23:05:43Z 2026-10-01T23:40:00Z RESOLVED)" \
+    "$(_ours '<!-- dev-lead:comment-disposition id=IC_cr disposition=informational -->
+ok' 2026-10-01T23:30:00Z)")"
+  [ "$(_dispatches "$out")" = "1" ]
+  [ "$(jq -r '.[0].id' <<< "$out")" = "IC_cr" ]
+  [ "$(jq -r '.[0].version' <<< "$out")" = "2026-10-01T23:40:00Z" ]
+}
+
+@test "bcr(#2166): a RESOLVED comment with a disposition newer than its edit is still not a candidate" {
+  out="$(_decide \
+    "$(_bot IC_cr coderabbitai 'Review limit reached' 2026-10-01T23:05:43Z 2026-10-01T23:20:00Z RESOLVED)" \
+    "$(_ours '<!-- dev-lead:comment-disposition id=IC_cr disposition=informational -->
+ok' 2026-10-01T23:30:00Z)")"
+  [ "$(jq 'length' <<< "$out")" = "0" ]
+}
+
+@test "bcr(#2166): a maintainer-resolve reply after the edit keeps a RESOLVED comment out (the gate clears it)" {
+  out="$(_decide \
+    "$(_bot IC_cr coderabbitai 'Review limit reached' 2026-10-01T23:05:43Z 2026-10-01T23:40:00Z RESOLVED)" \
+    "$(_ours '<!-- maintainer-resolve id=IC_cr -->
+Resolved by the maintainer.' 2026-10-01T23:50:00Z)")"
+  [ "$(jq 'length' <<< "$out")" = "0" ]
+}
+
 @test "bcr: unregistered bots and humans are not candidates" {
   human="$(jq -nc '{id:"IC_h", author:{login:"alice",__typename:"User"}, authorAssociation:"CONTRIBUTOR",
     body:"please fix", createdAt:"2026-10-01T23:05:43Z", lastEditedAt:null, isMinimized:false, minimizedReason:null}')"
