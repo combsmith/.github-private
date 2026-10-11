@@ -212,6 +212,22 @@ _body_matches_pattern() {
   [ "$status" -eq 1 ]
 }
 
+# #2255: Codex's "create an environment" notice (posted on PR #2084) carries no
+# finding either, so an existing one must be clearable. Same two-ended anchoring.
+@test "info-status: chatgpt-codex-connector matches its create-an-environment notice (#2255)" {
+  local pat
+  pat="$(_info_pattern_for chatgpt-codex-connector)"
+  [ -n "$pat" ]
+  run _body_matches_pattern "$pat" "To use Codex here, [create an environment for this repo](https://chatgpt.com/codex/cloud/settings/environments)."
+  [ "$status" -eq 0 ]
+  run _body_matches_pattern "$pat" "To use Codex here, create an environment for this repo."
+  [ "$status" -eq 0 ]
+  run _body_matches_pattern "$pat" "Earlier: To use Codex here, create an environment for this repo."
+  [ "$status" -eq 1 ]
+  run _body_matches_pattern "$pat" $'To use Codex here, [create an environment for this repo](https://chatgpt.com/codex/cloud/settings/environments).\n\n**P1** Possible null dereference in scripts/foo.sh:42.'
+  [ "$status" -eq 1 ]
+}
+
 # #2008: the prepaid-credits form below is the ONLY CodeRabbit notice the row
 # matches, and it is NOT the notice CodeRabbit posts live. The live notice is the
 # OSS "You've used all free OSS reviews…" block, embedded inside the full summary

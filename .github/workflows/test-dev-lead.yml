@@ -234,6 +234,10 @@ jobs:
         run: python3 -m pip install --quiet pyyaml
       - name: Validate AGENTS_PAUSED gates + engine-token preflight contract (#1525)
         run: python3 tests/dev-lead/integration/test_agents_paused_preflight.py
+      # Fleet-wide (#2249): every model-calling workflow honours AGENTS_PAUSED or is
+      # listed in scripts/lib/fleet-pause-registry.tsv. A new agent with neither fails here.
+      - name: Validate every model-calling workflow honours AGENTS_PAUSED (#2249)
+        run: python3 tests/dev-lead/integration/test_fleet_pause_coverage.py
 
   pr-review-preflight:
     runs-on: ubuntu-latest

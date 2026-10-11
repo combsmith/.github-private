@@ -21,6 +21,13 @@ permissions:
 
 jobs:
   analyze:
+    # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
+    # (neutral, not red).
+    # No `fleet-paused` notice job here: the canary promotion gate counts every
+    # run of this reusable that ends success or failure as a health sample, and a
+    # run whose only work was the notice would end success. With every job
+    # skipped the run ends skipped, which the gate does not count.
+    if: vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
