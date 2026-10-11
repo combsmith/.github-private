@@ -800,7 +800,8 @@ as soon as the workflow is on `main`.
   `scripts/lib/budget-breaker-writer.sh`, the only file that writes the variables:
   - **trip** (at least `BUDGET_BREAKER_MIN_ITEMS` distinct items, default 3, refused for
     quota in the last `BUDGET_BREAKER_WINDOW_MIN` minutes, default 30): sets
-    `AGENTS_PAUSE_SOURCE=rate-limit-observed`, then `AGENTS_PAUSE_UNTIL=<ISO time>`, then
+    `AGENTS_PAUSE_SOURCE=rate-limit-observed`, then `AGENTS_PAUSE_UNTIL=<ISO time>`, reads
+    the state once more (see "A human pause is never touched"), then sets
     `AGENTS_PAUSED=true`.
   - **resume** (its own pause, `AGENTS_PAUSE_UNTIL` passed): sets `AGENTS_PAUSED=false`,
     then deletes `AGENTS_PAUSE_SOURCE` and `AGENTS_PAUSE_UNTIL`.
@@ -815,10 +816,40 @@ as soon as the workflow is on `main`.
   `NOT WRITING (disarmed). Would have written: ...`, which is the dry-run evidence to review
   before arming. Armed without the secret, it logs
   `breaker armed but BUDGET_BREAKER_PAT is not configured` and exits green.
+- **Only lowercase `true` arms (#2251).** The script compares the variable with the exact
+  string `true`. `TRUE`, `True`, `true` with a space before or after it, `1`, `yes`, `on`
+  and `false` do **not** arm it. The only clean "off" is an absent or empty variable: any
+  other value that is not exactly `true` keeps the breaker disarmed **and** logs one
+  `::error::` line on every run (`BUDGET_BREAKER_ARMED is set to "...", which is not the
+  exact lowercase string true`), in a run that still exits green. The reason this is an
+  error and not a silent off: the workflow hands the write credential to the step with an
+  Actions expression, and an expression compares strings without regard to case, so `TRUE`
+  or `True` delivers the credential to a run that will not use it. That cannot be fixed in
+  the expression. The script drops the credential unused and says so in the error; fix the
+  variable (set it to `true`, or delete it) rather than leave the error standing.
 - **A human pause is never touched.** The breaker sets and lifts only a pause that carries
   `AGENTS_PAUSE_SOURCE=rate-limit-observed`. `AGENTS_PAUSED=true` with no source, or with any
   other source, is left exactly as it is, by trip and by resume. A writing run also re-reads
   the state immediately before its first write and writes nothing if it changed.
+- **A pause set by hand during a trip is not claimed (#2251).** A trip writes the source and
+  the until, then reads the state a **second** time before it sets `AGENTS_PAUSED`. If the
+  fleet is by then paused by anyone, or the state is in any other way not what the run left
+  (for example someone deleted the source), the run does **not** set the pause, posts no
+  notice, deletes the `AGENTS_PAUSE_SOURCE` and `AGENTS_PAUSE_UNTIL` it wrote (the source
+  first), sets nothing else, and raises a `::warning::` in a green run. This roll-back is the
+  only write a run makes outside its plan, and it removes only what the same run wrote and
+  that still holds the value it wrote. Two limits to know:
+  - The window is narrowed, not closed: a pause set by hand in the one API call between that
+    second read and the write of `AGENTS_PAUSED` is still claimed. To be sure a pause set by
+    hand stays, check afterwards that `AGENTS_PAUSE_SOURCE` is absent, and delete it if not.
+  - If the roll-back itself fails, the run is red with one `::error::` that says what is
+    left. A failed delete of the source leaves `AGENTS_PAUSE_SOURCE=rate-limit-observed`
+    **and** `AGENTS_PAUSE_UNTIL` in place on purpose (a pause carrying the breaker's source
+    with no end time would be lifted by the very next run; with its end time it stands at
+    least until then): delete `AGENTS_PAUSE_SOURCE` by hand to keep the pause. A failed
+    delete of the until leaves a human pause plus a leftover until, which has no effect. The
+    same error is raised, and nothing is removed, when the source was already there from an
+    earlier failed run: this run did not write it, so it does not remove it.
 - **The secret.** `BUDGET_BREAKER_PAT` is a **fine-grained personal access token** whose
   resource owner is the `petry-projects` organisation, with the **organisation permission
   "Variables: read and write"** and nothing else (no repository permissions). It is an
@@ -826,17 +857,42 @@ as soon as the workflow is on `main`.
   nowhere else (a static test enforces that), is handed to the step only when armed, and is
   used only for the organisation-variable calls. Never add it to another workflow, and never
   widen `GH_PAT_DON_PETRY` to do this job.
-- **Arming.** (1) Review a full weekly window of disarmed runs (#1565 criterion 9): the
-  `Would have written` lines and the job summaries. (2) Confirm the secret is set. (3) Set
-  the repository variable `BUDGET_BREAKER_ARMED=true`. The first trip creates the three
+- **Arming preconditions (#2251). Do not arm until every one of these holds.**
+  1. "Budget breaker: close the gaps found in review before it is armed" (#2251) is closed.
+  2. "AGENTS_PAUSED stops only dev-lead" (#2249) has landed: until then a pause set by the
+     breaker stops dev-lead's dispatch, relay and resume jobs and nothing else.
+  3. The five live checks below are recorded on "Auto-pause companion" (#1565), each with
+     the date and what was observed. They are mocked in the tests and must be confirmed
+     against the real API by the maintainer, with a **throwaway organisation variable**
+     (for example `BUDGET_BREAKER_PROBE`), **never** with `AGENTS_PAUSED`,
+     `AGENTS_PAUSE_SOURCE` or `AGENTS_PAUSE_UNTIL`:
+     - a value-only `PATCH` of an organisation variable keeps its visibility;
+     - a `PATCH` updates the variable's `updated_at` (the minimum hold is measured from it);
+     - the variable list paginates as the code expects: `gh api --paginate` on
+       `orgs/petry-projects/actions/variables?per_page=30` with a `--jq` filter returns every
+       variable when there are more than 30 (the filter runs once per page);
+     - the dedicated write credential can read, create, update and delete an organisation
+       variable, and nothing else;
+     - with the read credential the workflow uses, dev-lead's quota markers read as trusted:
+       the run log and summary report `quota markers read: N trusted, M dropped as
+       untrusted`; confirm a real marker is counted as trusted.
+  4. A full weekly window of disarmed runs has been reviewed (#1565 criterion 9): the
+     `Would have written` lines and the job summaries, with no `::error::` about the arming
+     value.
+  5. The secret `BUDGET_BREAKER_PAT` is set.
+- **Arming.** With the preconditions met, set the repository variable
+  `BUDGET_BREAKER_ARMED` to `true`, lowercase, with no space around it, and check that the
+  next run logs `mode: armed` and no `::error::`. The first trip creates the three
   organisation variables with the visibility of `AI_ENGINES`, read from the API (an existing
   `AGENTS_PAUSED` is the reference instead, and is updated in place without touching its
   visibility). The breaker supports the visibilities `all` and `private` only: it does not
   copy a repository selection. If the reference is visible to selected repositories only, or
   none exists, the run fails with one error before writing anything; create `AGENTS_PAUSED`
   (value `false`) by hand, visible to all repositories.
-- **Disarming.** Set `BUDGET_BREAKER_ARMED` to anything but `true`, or delete it. This stops
-  further writes; it does not lift a pause that is already set (see the next point).
+- **Disarming.** Delete the repository variable `BUDGET_BREAKER_ARMED` (or set it to the
+  empty string). Any other value that is not exactly `true` also disarms, but logs the
+  `::error::` described above on every run. This stops further writes; it does not lift a
+  pause that is already set (see the next point).
 - **Overriding a breaker pause by hand.** To **keep** the fleet paused past the breaker's
   time, delete `AGENTS_PAUSE_SOURCE` (leave `AGENTS_PAUSED=true`): the pause is then a human
   one and automation never lifts it. To **end** a breaker pause early, set
@@ -849,7 +905,14 @@ as soon as the workflow is on `main`.
   `::warning::` asking for it to be deleted (the breaker does not write on `none`).
 - **Anti-flap.** One decision and at most one state change per run; a variable that already
   holds the wanted value is not written again; a resume waits until the pause has stood for
-  `BUDGET_BREAKER_MIN_HOLD_MIN` minutes (default 30).
+  `BUDGET_BREAKER_MIN_HOLD_MIN` minutes (default 30). The hold is measured from the
+  `updated_at` the API reports for `AGENTS_PAUSED`. If an armed run cannot use that time
+  (missing, malformed, or later than now), it does not skip the hold: it raises a
+  `::warning::` and measures the hold from the pause's own end time (`AGENTS_PAUSE_UNTIL`)
+  instead, which is the latest moment the pause can have been set. A bad timestamp therefore
+  delays a resume by at most the minimum hold after the end time (three scheduled ticks at
+  the defaults) and can never block it; nothing is remembered between runs. If the end time
+  cannot be read either, the resume goes ahead.
 - **Fail open.** A collector that could not read, an unreadable state, or a decision that
   does not fit the state all mean no write. Missing data never pauses the fleet.
 - **Failure is loud once.** A refused credential (401, 403 or 404 on the state read) or any
@@ -862,6 +925,15 @@ as soon as the workflow is on `main`.
   tracking issue in this repository ("Budget breaker: automatic fleet pauses (tracking)",
   created on first use, labelled `budget-breaker` and `dev-lead:hands-off`). If the comment
   cannot be posted the run fails, so a pause is never silent.
+- **A pause notice that failed is posted late, once (#2251).** Every pause notice starts
+  with a hidden marker carrying the pause's end time. A run that **holds** the breaker's own
+  pause, while `AGENTS_PAUSED` was set less than 60 minutes ago (or when that time cannot be
+  read), looks for a comment with that marker on the tracking issue and, if there is none,
+  posts a "late notice" with the same marker. The next run finds it, so it is posted once.
+  This writes no variable. If the look-up or the late notice fails, that run is red with one
+  `::error::` too. After the first hour the breaker stops looking, so a pause whose notice
+  never got through in that hour is announced only by those red runs. A failed **resume**
+  notice is not posted late: the fleet is already running and the red run is the signal.
 - **Which credential reads.** The collector trusts a marker only when its author reads as
   OWNER, MEMBER or COLLABORATOR, and GitHub reports that relative to the token doing the
   read. The scan therefore uses the fleet's read credential
