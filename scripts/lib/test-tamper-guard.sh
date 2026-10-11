@@ -257,7 +257,7 @@ _ttg_moved_base_file() {
   # Conflicts leave markers in the expected file; they are PR-side lines, so only
   # base lines the resolution dropped count.
   git merge-file -p -q "$tmp/pre" "$tmp/mb" "$tmp/umb" > "$tmp/exp" 2>/dev/null || rc=$?
-  if (( rc > 127 )); then rm -rf "$tmp"; return 2; fi
+  if (( rc > 1 )); then rm -rf "$tmp"; return 2; fi
   rc=0
   pass_fd=$(git diff --no-index --no-renames --unified=0 -- "$tmp/exp" "$wt" 2>/dev/null) || rc=$?
   if (( rc > 1 )); then rm -rf "$tmp"; return 2; fi
