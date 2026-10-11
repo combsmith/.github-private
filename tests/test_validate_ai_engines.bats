@@ -121,3 +121,9 @@ _validate_with() {
 @test "lint.yml runs the gate" {
   grep -q 'python3 scripts/validate-ai-engines.py' "$REPO_ROOT/.github/workflows/lint.yml"
 }
+
+@test "family identity: a non-family primary in deep/action/triage fails" {
+  _validate_with '.tasks.deep.claude = ["claude-sonnet-5-5"]'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not a opus model"* ]]
+}
