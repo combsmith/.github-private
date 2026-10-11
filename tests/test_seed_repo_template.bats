@@ -1366,3 +1366,43 @@ _ahead_env() {
   run grep -F "pr create" "$CALLS"
   [ "$status" -eq 1 ]
 }
+
+@test "#1925: a dated branch left by an earlier run is brought in line, not trusted as fresh" {
+  source "$SEED"
+  # The branch cannot be created (it exists) but can be read.
+  cat > "$STUB_BIN/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in
+  *"git/refs --method POST"*) exit 1 ;;
+  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/petry-projects/repo-template/pull/88" ;;
+  *"pr list"*) ;;
+  *"git/ref/heads/"*) echo basesha ;;
+  *"repos/petry-projects/repo-template --jq"*) echo main ;;
+  *) echo '{}' ;;
+esac
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+  _seed_all_files() { echo "reuse=$4"; _SEED_WRITES=1; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already exists on petry-projects/repo-template"* ]]
+  # reuse=1 makes _seed_file restore skipped, preserved and refused files on the branch.
+  [[ "$output" == *"reuse=1"* ]]
+}
+
+@test "#1925: a freshly created branch is not treated as carrying older edits" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  _seed_all_files() { echo "reuse=$4"; _SEED_WRITES=1; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"reuse=0"* ]]
+}
+
+@test "#1925: the open-PR listing is not capped below the number of open PRs a repo can have" {
+  run grep -cE 'gh pr list --repo "\$repo" --state open --limit 1000 ' "$SEED"
+  [ "$output" = "1" ]
+}

@@ -987,8 +987,11 @@ _seed_repo() {
   # open, update its branch instead of cutting a new dated one, so seed PRs no
   # longer pile up. The newest one wins if several are open; the others are closed
   # as superseded once this run's PR is settled (#1925 AC #2).
+  # The limit is applied before the jq filter, so it must cover every open PR on
+  # the repo, not just the seed ones: a seed PR cut off by it would be missed and
+  # a second one opened.
   local open_seeds open_seed open_pr="" open_branch="" reuse=0 branch_created=0
-  open_seeds="$(gh pr list --repo "$repo" --state open --limit 100 --json number,headRefName \
+  open_seeds="$(gh pr list --repo "$repo" --state open --limit 1000 --json number,headRefName \
     --jq '[.[] | select(.headRefName | startswith("seed-scaffold/"))] | sort_by(.number) | .[] | "\(.number)\t\(.headRefName)"' \
     2>/dev/null || true)"
   open_seed="$(printf '%s\n' "$open_seeds" | tail -n 1)"
@@ -1002,6 +1005,12 @@ _seed_repo() {
   else
     gh api "repos/${repo}/git/ref/heads/${branch}" --silent 2>/dev/null \
       || { echo "::error::cannot create branch ${branch} on ${repo}" >&2; return 1; }
+    # Today's branch already exists, left by an earlier run. Like an open seed PR's
+    # branch it may carry that run's edits, so every file is made to match what
+    # THIS run wants. Otherwise a file this run skips, preserves or refuses would
+    # keep the earlier run's content, and a refused downgrade could still ship.
+    reuse=1
+    echo "[seed] branch ${branch} already exists on ${repo} — bringing it in line with this run"
   fi
 
   _seed_all_files "$repo" "$branch" "$default_branch" "$reuse" || return 1
@@ -1010,11 +1019,9 @@ _seed_repo() {
   # Nothing was written to a fresh branch: there is nothing to open a PR for. This
   # is the outcome when the template already matches the ref, or when every
   # differing file is ahead of it — a refused downgrade must not become a PR.
-  if [ "$reuse" != 1 ] && [ "$_SEED_WRITES" -eq 0 ]; then
-    if [ "$branch_created" = 1 ]; then
-      gh api "repos/${repo}/git/refs/heads/${branch}" --method DELETE --silent 2>/dev/null \
-        || echo "::warning::could not delete the empty branch ${branch} on ${repo}" >&2
-    fi
+  if [ "$branch_created" = 1 ] && [ "$_SEED_WRITES" -eq 0 ]; then
+    gh api "repos/${repo}/git/refs/heads/${branch}" --method DELETE --silent 2>/dev/null \
+      || echo "::warning::could not delete the empty branch ${branch} on ${repo}" >&2
     if [ "${#_SEED_AHEAD[@]}" -gt 0 ]; then
       echo "[seed] no PR opened on ${repo}: the only differing files are ahead of ${_STD_REF} (see the warning above)"
     else
