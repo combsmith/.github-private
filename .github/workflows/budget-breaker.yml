@@ -1,0 +1,90 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/budget-breaker.yml
+#
+# AGENTS — READ BEFORE EDITING:
+#   • Repo-specific budget breaker WRITER for issue #2153 (slice 3b of #1565);
+#     there is no org template — see AGENTS.md "Pausing the agent fleet".
+#   • This is the ONLY workflow that may set or clear the fleet pause variables
+#     (AGENTS_PAUSED, AGENTS_PAUSE_SOURCE, AGENTS_PAUSE_UNTIL), and the ONLY file
+#     that may name its write secret. tests/dev-lead/unit/test_budget_breaker_writer.bats
+#     asserts both statically. Do not reference that secret from any other
+#     workflow, and do not add it to budget-poller.yml (the poller stays read-only).
+#   • DEFAULT OFF, TWICE: nothing is written unless the repository variable
+#     BUDGET_BREAKER_ARMED is exactly `true` AND the secret is set. Disarmed, the
+#     run still decides and logs the write it would have made.
+#   • SCHEDULE ONLY. Do NOT add workflow_dispatch, pull_request, push or any other
+#     trigger: a manual or event run can execute branch code, and this job holds
+#     a credential that can pause every repository. `schedule` only ever runs the
+#     default branch's workflow and code.
+#   • Do NOT widen `permissions:`. `issues: write` is for the one trip / clear
+#     notice on the tracking issue; nothing else here writes with the workflow token.
+#   • Logic lives in scripts/budget_breaker.sh + scripts/lib/budget-breaker-writer.sh
+#     (decision: scripts/lib/budget-breaker.sh, #2221). This file is only the
+#     schedule, the checkout and the wiring of three separate credentials.
+# ─────────────────────────────────────────────────────────────────────────────
+name: Budget Breaker
+# readme-report: Budget breaker — pauses the agent fleet when the fleet reports quota refusals and lifts its own pause at the reported reset; default off, logs the write it would make until armed (#2153).
+
+on:
+  schedule:
+    # Every 10 minutes, off the top of the hour (schedule standard). The decision
+    # looks at the last 30 minutes of quota markers and GitHub delivers well under
+    # half of the scheduled ticks in this repo (#2160), so the slots are dense on
+    # purpose. A run is one repository listing plus one comment listing per
+    # repository, and it is idempotent: an extra or a missed tick changes nothing.
+    - cron: '6,16,26,36,46,56 * * * *'
+  # No workflow_dispatch: see the header.
+
+permissions:
+  contents: read
+  issues: write  # the trip / clear notice on the tracking issue
+
+concurrency:
+  group: budget-breaker
+  cancel-in-progress: false
+
+jobs:
+  breaker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        # The default branch (a scheduled run has no other ref), read-only, and
+        # no credential left behind in the checkout.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Decide and apply
+        env:
+          # Arm switch. The script requires the exact string `true`.
+          BUDGET_BREAKER_ARMED: ${{ vars.BUDGET_BREAKER_ARMED }}
+          # WRITE credential: organisation Variables read and write, nothing else.
+          # Handed to the step only when armed (an expression compares without
+          # regard to case, so the script's exact check is the one that counts),
+          # and the script uses it only for the variable calls.
+          BUDGET_BREAKER_TOKEN: ${{ vars.BUDGET_BREAKER_ARMED == 'true' && secrets.BUDGET_BREAKER_PAT || '' }}
+          # The secret's NAME, for messages and the age check (never its value).
+          BUDGET_BREAKER_SECRET_NAME: BUDGET_BREAKER_PAT
+          # READ credential for the organisation scan: the same one the retry cron
+          # and the fleet monitor scan with. It must belong to an organisation
+          # member, because a quota marker counts only when its author reads as
+          # owner, member or collaborator TO THE READER; this repository's own
+          # workflow token cannot be relied on for that. Never the write secret.
+          BUDGET_BREAKER_READ_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+          # NOTIFY credential: the workflow token, for the tracking-issue notice.
+          # Also withheld unless armed, so a disarmed run holds nothing it could
+          # write with.
+          BUDGET_BREAKER_NOTIFY_TOKEN: ${{ vars.BUDGET_BREAKER_ARMED == 'true' && github.token || '' }}
+          BUDGET_BREAKER_ORG: ${{ github.repository_owner }}
+          # The pause switch as this repository sees it, for the would-write log
+          # of a run that is not writing. A writing run reads the organisation.
+          BUDGET_BREAKER_VARS_PAUSED: ${{ vars.AGENTS_PAUSED }}
+          BUDGET_BREAKER_VARS_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
+          BUDGET_BREAKER_VARS_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
+          # Optional tuning (repository variables; unset means the default).
+          BUDGET_BREAKER_MIN_ITEMS: ${{ vars.BUDGET_BREAKER_MIN_ITEMS }}
+          BUDGET_BREAKER_WINDOW_MIN: ${{ vars.BUDGET_BREAKER_WINDOW_MIN }}
+          BUDGET_BREAKER_PROBE_HOURS: ${{ vars.BUDGET_BREAKER_PROBE_HOURS }}
+          BUDGET_BREAKER_MIN_HOLD_MIN: ${{ vars.BUDGET_BREAKER_MIN_HOLD_MIN }}
+        run: bash scripts/budget_breaker.sh
