@@ -123,7 +123,10 @@ cpg_scan_pass() {
     if git --literal-pathspecs cat-file -e "${head}:${path}" 2>/dev/null; then
       after=$(_cpg_pins_at "$head" "$path")
       if ! _cpg_has_channel_pin "$before"; then
-        if _cpg_has_channel_pin "$after"; then
+        # A file the base branch added, or newly pinned, arrives with the base's
+        # own pins when a pass merges or rebases onto it: that is not drift.
+        if _cpg_has_channel_pin "$after" \
+           && ! { [[ -n "$base" ]] && [[ "$after" == "$(_cpg_pins_at "$base" "$path")" ]]; }; then
           drift+="${path}"$'\t'"$(_cpg_summary "$before")"$'\t'"$(_cpg_summary "$after")"$'\n'
         fi
         continue

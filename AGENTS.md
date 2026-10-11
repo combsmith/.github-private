@@ -524,9 +524,9 @@ PR-triggered check on the existing Lint workflow — **no new cron/scheduled wor
 - **A red `template-drift` is never fixed from a PR here (#2220).** The check reads `repo-template`, never
   this repo's own stubs, so nothing in a PR here can clear it. It is not a fix-ci trigger: the reusable's
   `ci-relay` job does not relay it, and `dev-lead-fix-ci.sh` drops it (`FIX_CI_IGNORED_CHECKS`). Its
-  annotations carry no `file=` anchor. Before #2220 they did, so GitHub pinned them to the PR's own
-  same-named file, and two passes (#2157, #1796) "fixed" the drift by repinning this repo's `dev-lead.yml`
-  from `dev-lead/v139-ring0` to the stale `dev-lead/v1-stable`. As a backstop, `scripts/lib/channel-pin-guard.sh`
+  annotations still carry a `file=` anchor, so GitHub pins them to the PR's own same-named file (dropping
+  the anchor is tracked in #2215). That is how two passes (#2157, #1796) "fixed" the drift by repinning
+  this repo's `dev-lead.yml` from `dev-lead/v139-ring0` to the stale `dev-lead/v1-stable`. As a backstop, `scripts/lib/channel-pin-guard.sh`
   refuses any dev-lead pass (fix-ci and every fix-reviews intent) that changes a first-party channel pin
   (`uses: petry-projects/…@<channel>` or `agent_ref`) on a workflow file, and escalates the PR. Ending on the
   base branch's pin (a rebase, or restoring `main`'s pin) is allowed.

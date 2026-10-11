@@ -195,6 +195,28 @@ _mk_pr() {
   [[ "$status" -eq 0 ]]
 }
 
+@test "cpg_scan_pass: a channel-pinned workflow the base branch added arrives clean on a merge" {
+  _mk_pr
+  git checkout -q main
+  _stub_body "dev-lead/v139-ring0" > .github/workflows/new-agent.yml
+  git add .github/workflows/new-agent.yml
+  git commit -qm "feat: add a channel-pinned caller stub on main"
+  git checkout -q feat
+  git merge -q --no-edit main
+  run cpg_scan_pass "$PRE" HEAD main
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "clean" ]]
+  # Without the base rev the new pin is not provably the base's own.
+  run cpg_scan_pass "$PRE" HEAD
+  [[ "$status" -eq 1 ]]
+  # A pin that differs from the base's is still drift.
+  _stub_body "dev-lead/v1-stable" > .github/workflows/new-agent.yml
+  git commit -qam "fix(ci): repin the new stub"
+  run cpg_scan_pass "$PRE" HEAD main
+  [[ "$status" -eq 1 ]]
+  [[ "${lines[1]}" == ".github/workflows/new-agent.yml"$'\t'"<none>"$'\t'* ]]
+}
+
 @test "cpg_scan_pass: an unresolvable pre-pass head fails closed -> unknown rc2" {
   _mk_pr
   run cpg_scan_pass "" HEAD
