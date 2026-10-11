@@ -1068,3 +1068,301 @@ _stub_gh_open_seed_pr() { # [<path>@<ref> <file> ...]
   run bash -c 'printf "x\n" | bash "$0" --repin no-such-stub' "$SEED"
   [ "$status" -ne 0 ]
 }
+
+# ── #1925: seed PR provenance, supersede, and no downgrades ───────────────────
+
+# gh stub for the seed-PR tests. Logs every write — including `pr edit`,
+# `pr close` and a ref DELETE — to $CALLS. Open seed PRs come from $SEED_OPEN_PRS
+# ("<number>\t<branch>" lines, oldest first); `pr create` prints a PR URL ending
+# in $SEED_NEW_PR; `pr close <n>` fails when <n> is $SEED_CLOSE_FAILS.
+_stub_gh_seed_prs() {
+  export SEED_OPEN_PRS="${SEED_OPEN_PRS:-}" SEED_NEW_PR="${SEED_NEW_PR:-88}" SEED_CLOSE_FAILS="${SEED_CLOSE_FAILS:-}"
+  cat > "$STUB_BIN/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in
+  "pr close "*)
+    echo "$args" >> "$CALLS"
+    [ "$2 $3" != "close $SEED_CLOSE_FAILS" ] || exit 1
+    exit 0 ;;
+  "pr edit "*) echo "$args" >> "$CALLS"; exit 0 ;;
+  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/petry-projects/repo-template/pull/$SEED_NEW_PR"; exit 0 ;;
+  *"--method DELETE"*|*"--method PUT"*|*"--method POST"*) echo "$args" >> "$CALLS"; echo '{}' ;;
+  *"pr list"*"--head "*)
+    # The open PR for one branch: its number, or nothing.
+    head="${args##*--head }"; head="${head%% *}"
+    printf '%s\n' "$SEED_OPEN_PRS" | awk -F'\t' -v h="$head" '$2 == h { print $1 }' | tail -n 1 ;;
+  *"pr list"*"headRefName"*) [ -z "$SEED_OPEN_PRS" ] || printf '%s\n' "$SEED_OPEN_PRS" ;;
+  *"git/ref/heads/"*) echo basesha ;;
+  *"repos/petry-projects/repo-template --jq"*) echo main ;;
+  *) echo '{}' ;;
+esac
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+}
+
+@test "#1925 AC1: _seed_pr_body states the resolved ref, how it was chosen, and the commit" {
+  source "$SEED"
+  run _seed_pr_body "standards/v1-stable" "cafef00d00000000000000000000000000000000" "channel"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'**Resolved ref:** `standards/v1-stable`'* ]]
+  [[ "$output" == *'**Source:** channel — the published standards channel `standards/v1-stable`'* ]]
+  [[ "$output" == *'**Commit:** `cafef00d00000000000000000000000000000000`'* ]]
+  [[ "$output" == *'<!-- seed-repo-template standards_ref=standards/v1-stable standards_sha=cafef00d00000000000000000000000000000000 source=channel -->'* ]]
+  # No refused files → no "left alone" section.
+  [[ "$output" != *"Left alone"* ]]
+}
+
+@test "#1925 AC1: each ref source is named in words (explicit, HEAD fallback, local)" {
+  source "$SEED"
+  [[ "$(_seed_source_label explicit)" == *'`STANDARDS_REF` was set'* ]]
+  [[ "$(_seed_source_label head-fallback)" == *"HEAD fallback"*"not published"* ]]
+  [[ "$(_seed_source_label local)" == *'`STANDARDS_DIR` checkout'* ]]
+  run _seed_pr_body "STANDARDS_DIR" "" "local"
+  [[ "$output" == *'**Commit:** `unknown`'* ]]
+}
+
+@test "#1925 AC3: _seed_pr_body lists the files left alone because the template is ahead" {
+  source "$SEED"
+  run _seed_pr_body "standards/v1-stable" "cafef00d" "channel" ".github/workflows/agent-shield.yml" "CLAUDE.md"
+  [[ "$output" == *"## Left alone: the template is ahead of the channel"* ]]
+  [[ "$output" == *'- `.github/workflows/agent-shield.yml`'* ]]
+  [[ "$output" == *'- `CLAUDE.md`'* ]]
+  [[ "$output" == *"promote standards"* ]]
+}
+
+@test "#1925 AC1: a new seed PR is opened with the standards provenance in its body" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  _stub_gh_seed_prs
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"opened seed PR #88"* ]]
+  grep -qF "pr create --repo petry-projects/repo-template" "$CALLS"
+  grep -qF "Resolved ref:" "$CALLS"
+  grep -qF "seed-repo-template standards_ref=STANDARDS_DIR" "$CALLS"
+  grep -qF "source=local" "$CALLS"
+}
+
+@test "#1925 AC1: updating an open seed PR rewrites its body with this run's provenance" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  export SEED_OPEN_PRS="$(printf '17\tseed-scaffold/2026-10-01')"
+  _stub_gh_seed_prs
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  grep -qF "pr edit 17 --repo petry-projects/repo-template --body" "$CALLS"
+  grep -qF "Resolved ref:" "$CALLS"
+  run grep -F "pr create" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#1925 AC2: with several seed PRs open, the newest is kept and each older one is closed with a link" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  export SEED_OPEN_PRS="$(printf '9\tseed-scaffold/2026-09-07\n12\tseed-scaffold/2026-09-20\n17\tseed-scaffold/2026-10-01')"
+  _stub_gh_seed_prs
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"closed superseded seed PR #9"* ]]
+  [[ "$output" == *"closed superseded seed PR #12"* ]]
+  grep -F "pr close 9 --repo petry-projects/repo-template --comment" "$CALLS" | grep -qF "Superseded by #17"
+  grep -F "pr close 12 --repo petry-projects/repo-template --comment" "$CALLS" | grep -qF "Superseded by #17"
+  # The surviving PR is never closed, and no second PR is opened.
+  run grep -F "pr close 17" "$CALLS"
+  [ "$status" -eq 1 ]
+  run grep -F "pr create" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#1925 AC2: a PR on another branch is never closed as a superseded seed" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  run _seed_close_superseded petry-projects/repo-template 17 "$(printf '5\tfeature/login\n17\tseed-scaffold/2026-10-01\nnot-a-number\tseed-scaffold/x')"
+  [ "$status" -eq 0 ]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC2: an older seed PR that cannot be closed fails the run and is named" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  export SEED_CLOSE_FAILS=9 SEED_OPEN_PRS="$(printf '9\tseed-scaffold/2026-09-07\n17\tseed-scaffold/2026-10-01')"
+  _stub_gh_seed_prs
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not close superseded seed PR #9"* ]]
+  [[ "$output" == *"#17 carries the current seed"* ]]
+}
+
+@test "#1925 AC2: when this run's PR cannot be identified, no older seed PR is closed" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  run _seed_close_superseded petry-projects/repo-template "" "$(printf '9\tseed-scaffold/2026-09-07')"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"leaving older seed PR #9 open"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+# _ahead_env <newer-state> — source the seeder and replace the three reads the
+# no-downgrade check makes, so the decision can be tested without a network:
+#   the standards HEAD commit, its relation to the resolved ref, and the emission
+#   at HEAD (which is "<arg>@HEAD"). The resolved ref is a published channel.
+_ahead_env() {
+  declare -p WORKFLOW_MANIFEST > /dev/null 2>&1 || source "$SEED"
+  _SEED_NEWER_STATE=""; _SEED_NEWER_SHA=""; _SEED_WRITES=0; _SEED_AHEAD=()
+  _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
+  AHEAD_HEAD="2222222222222222222222222222222222222222"; AHEAD_RELATION="ahead"; AHEAD_EMIT_FAILS=0
+  AHEAD_LOOKUPS="$BATS_TEST_TMPDIR/lookups.log"; : > "$AHEAD_LOOKUPS"
+  _template_drift_head_sha() { echo head >> "$AHEAD_LOOKUPS"; printf '%s' "$AHEAD_HEAD"; }
+  _template_drift_compare() { printf '%s' "$AHEAD_RELATION"; }
+  _seed_emit_at() { [ "$AHEAD_EMIT_FAILS" = 0 ] || return 1; printf '%s@HEAD' "$3"; }
+}
+
+@test "#1925 AC3: a file that matches the emission at a newer standards commit is REFUSED, not overwritten" {
+  _ahead_env
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"REFUSED docs/x.txt"* ]]
+  [[ "$output" == *"the template is ahead of standards/v1-stable"* ]]
+  [[ "$output" == *"222222222222"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC3: the refused file is recorded and the channel-behind warning names it" {
+  _ahead_env
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "${#_SEED_AHEAD[@]}" -eq 1 ]
+  [ "${_SEED_AHEAD[0]}" = "docs/x.txt" ]
+  run _seed_report_ahead
+  [[ "$output" == "::warning::standards channel is behind the template — promote standards"* ]]
+  [[ "$output" == *"docs/x.txt"* ]]
+}
+
+@test "#1925 AC3: a file that matches neither the ref nor the newer commit is still written" {
+  _ahead_env
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'hand edited' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -eq 0 ]
+  grep -qF "contents/docs/x.txt" "$CALLS"
+}
+
+@test "#1925 AC3: DRY_RUN reports the refusal and writes nothing" {
+  _ahead_env
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  DRY_RUN=true run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would REFUSE docs/x.txt"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC3: an unchanged file never triggers the newer-commit lookup" {
+  _ahead_env
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@channel' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -eq 0 ]
+  [ ! -s "$AHEAD_LOOKUPS" ]
+}
+
+@test "#1925 AC3: when the standards HEAD cannot be read the seed aborts instead of overwriting" {
+  _ahead_env
+  AHEAD_HEAD=""
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot tell whether"*"newer than standards/v1-stable"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC3: when the ancestry cannot be read the seed aborts instead of overwriting" {
+  _ahead_env
+  AHEAD_RELATION=""
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -ne 0 ]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC3: when the HEAD emission cannot be computed the seed aborts instead of overwriting" {
+  _ahead_env
+  AHEAD_EMIT_FAILS=1
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot compute the standards HEAD"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC3: a ref that is not behind HEAD has nothing newer — a differing file is written" {
+  local relation
+  for relation in identical behind diverged; do
+    _ahead_env
+    AHEAD_RELATION="$relation"
+    rm -f "$CALLS"
+    local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+    _stub_gh_existing "docs/x.txt" "$existing"
+    run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+    [ "$status" -eq 0 ]
+    grep -qF "contents/docs/x.txt" "$CALLS"
+  done
+}
+
+@test "#1925 AC3: the STANDARDS_DIR local seam has no ref, so nothing is looked up" {
+  _ahead_env
+  _STD_SRC="local"
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -eq 0 ]
+  [ ! -s "$AHEAD_LOOKUPS" ]
+  grep -qF "contents/docs/x.txt" "$CALLS"
+}
+
+@test "#1925 AC3: on a reused seed branch, a refused file is restored to the base content" {
+  _ahead_env
+  local base="$BATS_TEST_TMPDIR/base" stale="$BATS_TEST_TMPDIR/stale"
+  printf 'docs/x.txt@HEAD' > "$base"       # the default branch is ahead of the channel
+  printf 'docs/x.txt@channel' > "$stale"   # an older run downgraded it on the PR branch
+  _stub_gh_open_seed_pr "docs/x.txt@main" "$base" "docs/x.txt@seed-scaffold/2026-10-01" "$stale"
+  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-scaffold/2026-10-01 main 1 --emit-baseline "docs/x.txt"
+  [ "$status" -eq 0 ]
+  grep -F "contents/docs/x.txt --method PUT" "$CALLS" | grep -qF "branch=seed-scaffold/2026-10-01"
+  # What was written is the base (ahead) content, not this run's channel emission.
+  grep -F "contents/docs/x.txt --method PUT" "$CALLS" | grep -qF "content=$(printf 'docs/x.txt@HEAD' | base64)"
+}
+
+@test "#1925 AC3: a run that writes nothing opens no PR and removes the branch it created" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  _seed_all_files() { _SEED_AHEAD+=(".github/workflows/agent-shield.yml"); }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"standards channel is behind the template — promote standards"* ]]
+  [[ "$output" == *"no PR opened on petry-projects/repo-template: the only differing files are ahead of standards/v1-stable"* ]]
+  run grep -F "pr create" "$CALLS"
+  [ "$status" -eq 1 ]
+  grep -qF "git/refs/heads/seed-scaffold/" "$CALLS"
+  grep -F "git/refs/heads/seed-scaffold/" "$CALLS" | grep -qF -- "--method DELETE"
+}
+
+@test "#1925: a run with nothing to write and nothing refused says the template already matches" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  _seed_all_files() { :; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"it already matches standards/v1-stable"* ]]
+  run grep -F "pr create" "$CALLS"
+  [ "$status" -eq 1 ]
+}
