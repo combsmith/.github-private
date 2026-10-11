@@ -2306,7 +2306,7 @@ FAILED DELETE AGENTS_PAUSE_UNTIL" ]
     seed_runs "$(wrun 8001 success 10 25)"
     run bash "$SCRIPT"
     [ "$status" -eq 0 ] || { echo "$mode: status=$status $output"; false; }
-    [[ "$output" == *"budget-breaker: early exit: an earlier run was created in this 2 min slot (since $(ts 0)) and acme/.github-private shows no quota marker since; no scan, no decision"* ]] \
+    [[ "$output" == *"budget-breaker: early exit: an earlier run was created in this 10 min slot (since $(ts 0)) and acme/.github-private shows no quota marker since; no scan, no decision"* ]] \
       || { echo "$mode: $output"; false; }
     [[ "$output" != *"decision:"* ]]
     [[ "$output" != *"quota markers read"* ]]
@@ -2319,7 +2319,7 @@ FAILED DELETE AGENTS_PAUSE_UNTIL" ]
     no_notice
     grep -qF "| Quota markers | not collected (early exit) |" "$GITHUB_STEP_SUMMARY"
     grep -qF "| Decision | not taken this run (early exit) |" "$GITHUB_STEP_SUMMARY"
-    grep -qF "| Result | no scan: an earlier run covered this 2 min slot (since $(ts 0))" "$GITHUB_STEP_SUMMARY"
+    grep -qF "| Result | no scan: an earlier run covered this 10 min slot (since $(ts 0))" "$GITHUB_STEP_SUMMARY"
   done
   [ "$(org_var AGENTS_PAUSED)" = "<absent>" ]
 }
@@ -2528,16 +2528,29 @@ DELETE AGENTS_PAUSE_UNTIL" ]
   [[ "$output" != *"early exit"* ]]
   [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
 
-  export BUDGET_BREAKER_MIN_INTERVAL_MIN=10
+  export BUDGET_BREAKER_MIN_INTERVAL_MIN=2
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"early exit: an earlier run was created in this 2 min slot (since $(ts 0))"* ]]
+
+  # Unset is the default, ten minutes: a run created early in the slot still
+  # covers a wake-up nine minutes later, and one created before the slot does not.
+  unset BUDGET_BREAKER_MIN_INTERVAL_MIN
+  woken_by workflow_run 590
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   [[ "$output" == *"early exit: an earlier run was created in this 10 min slot (since $(ts 0))"* ]]
+  woken_by workflow_run 610
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  woken_by workflow_run 90
 
   export BUDGET_BREAKER_MIN_INTERVAL_MIN="2m"
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"::warning::budget-breaker: BUDGET_BREAKER_MIN_INTERVAL_MIN is not a whole number of minutes; using 2"* ]]
-  [[ "$output" == *"early exit: an earlier run was created in this 2 min slot"* ]]
+  [[ "$output" == *"::warning::budget-breaker: BUDGET_BREAKER_MIN_INTERVAL_MIN is not a whole number of minutes; using 10"* ]]
+  [[ "$output" == *"early exit: an earlier run was created in this 10 min slot"* ]]
 }
 
 @test "#2259: the slot, the earlier runs and the fresh markers are judged fail open (pure helpers)" {
