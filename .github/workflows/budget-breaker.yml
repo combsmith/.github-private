@@ -73,8 +73,10 @@ jobs:
           # workflow token cannot be relied on for that. Never the write secret.
           BUDGET_BREAKER_READ_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
           # NOTIFY credential: the workflow token, for the tracking-issue notice.
-          # Also withheld unless armed, so a disarmed run holds nothing it could
-          # write with.
+          # Also withheld unless armed, so a disarmed run holds neither credential
+          # this workflow writes with. (The READ credential above is the fleet's
+          # shared scan token, which is not read-only by scope; the script uses it
+          # for GET requests only and it cannot write organisation variables.)
           BUDGET_BREAKER_NOTIFY_TOKEN: ${{ vars.BUDGET_BREAKER_ARMED == 'true' && github.token || '' }}
           BUDGET_BREAKER_ORG: ${{ github.repository_owner }}
           # The pause switch as this repository sees it, for the would-write log
