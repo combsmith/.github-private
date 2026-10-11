@@ -1468,7 +1468,9 @@ on it is the follow-up actuation work.
     extra call), or the run, looked up, confirms the head repository and was not started by
     Dependabot. These are the runs GitHub gives the repository's secrets to.
   - **not trusted:** a fork run, a Dependabot run, an artifact with no `workflow_run`, and a
-    run that cannot be looked up or does not match.
+    run that cannot be looked up or does not match. A look-up that *failed* (timeout, 403,
+    rate limit) is also counted as a failed read (`run_lookups_failed`), because that run
+    may have been a trusted one.
 
   Every collected record is stamped `provenance: {run_id, trusted, basis}`, replacing
   anything the artifact wrote under that name. Only trusted records are handed to the tier
@@ -1478,9 +1480,10 @@ on it is the follow-up actuation work.
 - **The snapshot is not yet a basis for a dispatch decision (#2147).** A forged record can
   only make a tier look less available. Usage that is missing, or records that are not real
   calls, are the other half, and the snapshot records both in `collection`:
-  - **Missing usage** makes a tier look *more* available: a repository listing or an
-    artifact that could not be read, or simply the time since the snapshot (it is written
-    once a day, at 06:27 UTC, shortly before the Pacific reset).
+  - **Missing usage** makes a tier look *more* available: a repository listing, an
+    artifact, a run look-up or a record file that could not be read (each is counted, and
+    any of them makes `collection.complete` false), or simply the time since the snapshot
+    (it is written once a day, at 06:27 UTC, shortly before the Pacific reset).
   - **Test fixtures are in the real ledger.** An agent session that runs this repository's
     engine tests passes them the job's `TOKEN_LOG_FILE`, so the tests append their fixture
     calls, rejections and cooldowns to the ledger the job then uploads. They arrive from a

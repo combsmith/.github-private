@@ -87,8 +87,9 @@ gtr_merge_store() {
 # gtr_collection_block [collection_report_file]
 # The snapshot's `collection` object (#2147), from token_report.sh's collection
 # report. `records` is "trusted-runs-only" only when the report says the filtered
-# hand-off was written; `complete` only when, in addition, every repository listing
-# and every listed artifact was read (a failed read is usage that is not counted)
+# hand-off was written; `complete` only when, in addition, every repository listing,
+# listed artifact, needed run look-up and record file was read (a failed read is
+# usage that is not counted)
 # and no handed-over record is for a key index and model the caps file does not
 # list (`gemini_records_unlisted`: a ledger that tests also wrote to).
 # No report, an unreadable one, or one with a field of the wrong type gives
@@ -102,10 +103,11 @@ gtr_collection_block() {
       if type != "object" then error("not an object") else . end
       | (.handed_over == true) as $h
       | (.repo_listings_failed | n) as $lf | (.artifacts_failed | n) as $af
+      | (.run_lookups_failed | n) as $rl | (.record_files_malformed | n) as $mf
       | (.gemini_records_unlisted | n) as $ul
       | (if ($h | not) then "the trusted records were not handed over"
-         elif $lf == null or $af == null then "the collection report does not say what could not be read"
-         elif $lf > 0 or $af > 0 then "\($lf) repository listing(s) and \($af) artifact(s) could not be read"
+         elif $lf == null or $af == null or $rl == null or $mf == null then "the collection report does not say what could not be read"
+         elif $lf > 0 or $af > 0 or $rl > 0 or $mf > 0 then "\($lf) repository listing(s), \($af) artifact(s), \($rl) run look-up(s) and \($mf) record file(s) could not be read"
          elif $ul == null then "the collection report does not say whether the ledger holds unlisted records"
          elif $ul > 0 then "\($ul) record(s) are for a key index and model the caps file does not list, so the ledger holds records that are not real calls"
          else "" end) as $why
@@ -116,13 +118,14 @@ gtr_collection_block() {
             | if type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
               then . else null end),
           repo_listings_failed: $lf, artifacts_failed: $af,
+          run_lookups_failed: $rl, record_files_malformed: $mf,
           gemini_records_trusted: (.gemini_records_trusted | n),
           gemini_records_ignored: (.gemini_records_ignored | n),
           artifacts_ignored: (.artifacts_ignored | n),
           gemini_records_unlisted: $ul }' "$f" 2>/dev/null | head -1)" || out=""
   fi
   if [ -z "$out" ]; then
-    out='{"complete":false,"records":"unverified","reason":"no collection report","collected_at":null,"repo_listings_failed":null,"artifacts_failed":null,"gemini_records_trusted":null,"gemini_records_ignored":null,"artifacts_ignored":null,"gemini_records_unlisted":null}'
+    out='{"complete":false,"records":"unverified","reason":"no collection report","collected_at":null,"repo_listings_failed":null,"artifacts_failed":null,"run_lookups_failed":null,"record_files_malformed":null,"gemini_records_trusted":null,"gemini_records_ignored":null,"artifacts_ignored":null,"gemini_records_unlisted":null}'
   fi
   printf '%s\n' "$out"
 }
@@ -236,10 +239,17 @@ main() {
   [ -f "$store" ] || : > "$store"
   gtr_merge_store "$store" "${GEMINI_RECORDS_IN:-}"
   export GEMINI_LEDGER_FILE="$store"
-  gq_tier_snapshot > "$snap.tmp"
+  # Built beside the snapshot and moved into place whole, so a failure leaves no
+  # half-written snapshot; the EXIT trap removes the two working files on every way
+  # out (the state directory is cached and uploaded even when this step fails).
+  _GTR_SNAP_TMP=("$snap.tmp" "$snap.tmp.raw")
+  trap 'rm -f "${_GTR_SNAP_TMP[@]}"' EXIT
+  rm -f "${_GTR_SNAP_TMP[@]}"
+  gq_tier_snapshot > "$snap.tmp.raw"
   jq -c --argjson c "$(gtr_collection_block "${GEMINI_COLLECTION_IN:-}")" '. + { collection: $c }' \
-    "$snap.tmp" > "$snap"
-  rm -f "$snap.tmp"
+    "$snap.tmp.raw" > "$snap.tmp"
+  mv "$snap.tmp" "$snap"
+  rm -f "${_GTR_SNAP_TMP[@]}"
   gq_tier_notices "$snap" "$store" >&2
   gq_day_history "$(gq_history_days)" > "$hist"
   gtr_render "$snap" "$hist" "$store"

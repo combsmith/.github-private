@@ -63,6 +63,19 @@ with zipfile.ZipFile(sys.argv[1], "w") as z:
 PY
 }
 
+# _zip_files <artifact_id> <name>=<content>... — an artifact holding those files.
+_zip_files() {
+  local id="$1" spec dir="$FIX/src-$1"; shift
+  mkdir -p "$dir"
+  for spec in "$@"; do printf '%s\n' "${spec#*=}" > "$dir/${spec%%=*}"; done
+  python3 - "$FIX/$id.zip" "$dir" <<'PY'
+import os, sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w") as z:
+    for name in sorted(os.listdir(sys.argv[2])):
+        z.write(os.path.join(sys.argv[2], name), name)
+PY
+}
+
 # _gemini <context> [extra json] — one Gemini token record, tagged so a test can
 # tell which artifact it came from.
 _gemini() {
@@ -143,12 +156,41 @@ _stamp() {
   [ "$(cat "$OUT"/*.jsonl | jq -r '.repo')" = "petry-projects/test-repo" ]
 }
 
-@test "trust: a branch run that cannot be looked up is not trusted" {
+@test "trust: a look-up that FAILS is not an answer: untrusted, and stamped run-lookup-failed" {
+  # 9004: gh exits non-zero (403, 404, rate limit, timeout). 9021: an error body
+  # with exit 0. 9022: not JSON. 9023: an empty body.
   _zip 104 "$(_gemini a104)"
-  _listing "$(_artifact 104 9004 1 1 feature/y)"
+  _zip 121 "$(_gemini a121)"
+  _zip 122 "$(_gemini a122)"
+  _zip 123 "$(_gemini a123)"
+  _listing "$(_artifact 104 9004 1 1 feature/y)" "$(_artifact 121 9021 1 1 feature/y)" \
+    "$(_artifact 122 9022 1 1 feature/y)" "$(_artifact 123 9023 1 1 feature/y)"
+  printf '%s\n' '{"message":"API rate limit exceeded","status":"403"}' > "$FIX/run-9021.json"
+  printf 'upstream connect error\n' > "$FIX/run-9022.json"
+  : > "$FIX/run-9023.json"
   _collect
-  [ "$(_stamp a104)" = "false run-not-verified 9004" ]
-  [ "$(cat "$FIX/lookups.log")" = "9004" ]
+  [ "$(_stamp a104)" = "false run-lookup-failed 9004" ]
+  [ "$(_stamp a121)" = "false run-lookup-failed 9021" ]
+  [ "$(_stamp a122)" = "false run-lookup-failed 9022" ]
+  [ "$(_stamp a123)" = "false run-lookup-failed 9023" ]
+  [ "$(sort "$FIX/lookups.log" | paste -sd, -)" = "9004,9021,9022,9023" ]
+}
+
+@test "trust: a run is looked up once, however many artifacts it uploaded" {
+  # A re-run attempt uploads another artifact under the same run id.
+  _zip 131 "$(_gemini a131)"
+  _zip 132 "$(_gemini a132)"
+  _zip 133 "$(_gemini a133)"
+  _zip 134 "$(_gemini a134)"
+  _listing "$(_artifact 131 9031 1 1 feature/x)" "$(_artifact 132 9031 1 1 feature/x)" \
+    "$(_artifact 133 9031 1 1 feature/x)" "$(_artifact 134 9032 1 1 feature/y)"
+  _run 9031 1 1 don-petry
+  _collect
+  [ "$(_stamp a131)" = "true same-repository-run 9031" ]
+  [ "$(_stamp a132)" = "true same-repository-run 9031" ]
+  [ "$(_stamp a133)" = "true same-repository-run 9031" ]
+  [ "$(_stamp a134)" = "false run-lookup-failed 9032" ]
+  [ "$(sort "$FIX/lookups.log" | paste -sd, -)" = "9031,9032" ]
 }
 
 @test "trust: a Dependabot run is not trusted (as actor or as triggering actor)" {
@@ -195,7 +237,7 @@ _stamp() {
   _run 9001 1 1 don-petry
   _collect
   [ "$(_stamp a101)" = "true same-repository-run 9001" ]
-  [ "$(_stamp a111)" = "false run-not-verified 9011" ]
+  [ "$(_stamp a111)" = "false run-lookup-failed 9011" ]
 }
 
 @test "trust: a caller that passes no origin (canary_report.sh) still collects, stamped untrusted" {
@@ -214,7 +256,8 @@ _stamp() {
 # ---------------------------------------------------------------------------
 
 # _mixed_fixture — one trusted default-branch artifact, one trusted branch run, one
-# fork artifact that forges 30 rejected attempts, one unverifiable branch run.
+# fork artifact that forges 30 rejected attempts, and one branch run whose look-up
+# ANSWERS and does not qualify (its head is another repository).
 _mixed_fixture() {
   local forged=() i
   for i in $(seq 1 30); do
@@ -229,6 +272,7 @@ _mixed_fixture() {
   _listing "$(_artifact 101 9001 1 1 main)" "$(_artifact 102 9002 1 1 feature/x)" \
     "$(_artifact 103 9003 1 2 main)" "$(_artifact 104 9004 1 1 feature/y)"
   _run 9002 1 1 don-petry
+  _run 9004 1 2 don-petry
 }
 
 @test "hand-off: only records from trusted runs reach the tier report; the rest are counted, not passed" {
@@ -246,6 +290,62 @@ _mixed_fixture() {
   # The cost report is not filtered: it still shows every collected call.
   [[ "$output" == *"4 agent runs"* ]]
   [ "$(jq -c '[.handed_over, .artifacts_listed, .repo_listings_failed, .artifacts_failed, .gemini_records_trusted, .gemini_records_ignored, .artifacts_ignored, .gemini_records_unlisted]' "$GEMINI_COLLECTION_OUT")" = "[true,4,0,0,2,31,2,0]" ]
+  # A look-up that answered "no" is ignored usage, not a failed read.
+  [ "$(jq -c '[.run_lookups_failed, .record_files_malformed]' "$GEMINI_COLLECTION_OUT")" = "[0,0]" ]
+  [[ "$output" != *"the collection is incomplete"* ]]
+  # The complete collection carries through to a snapshot a decision may use.
+  _snapshot_from "$GEMINI_COLLECTION_OUT"
+  [ "$(jq -c '[.collection.complete, .collection.records]' "$SNAP")" = '[true,"trusted-runs-only"]' ]
+}
+
+@test "hand-off: a run look-up that fails is a failed read: the collection is incomplete and the decision unknown" {
+  _mixed_fixture
+  rm -f "$FIX/run-9004.json"
+  export GEMINI_RECORDS_OUT="$BATS_TEST_TMPDIR/gemini-records.jsonl"
+  export GEMINI_COLLECTION_OUT="$BATS_TEST_TMPDIR/collection.json"
+  run bash "$TOKEN_REPORT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.handed_over, .repo_listings_failed, .artifacts_failed, .run_lookups_failed, .record_files_malformed]' "$GEMINI_COLLECTION_OUT")" = "[true,0,0,1,0]" ]
+  [[ "$output" == *"::warning::[gemini-ledger] the collection is incomplete: 0 repository listing(s), 0 artifact(s), 1 run look-up(s) and 0 record file(s) could not be read"* ]]
+  [[ "$output" == *"run 9004 could not be looked up"* ]]
+  # Its records are still not handed over.
+  [ "$(jq -r '.context' "$GEMINI_RECORDS_OUT" | sort | paste -sd, -)" = "a101,a102" ]
+  _snapshot_from "$GEMINI_COLLECTION_OUT"
+  [ "$(jq -c '[.collection.complete, .collection.records, .collection.run_lookups_failed]' "$SNAP")" = '[false,"trusted-runs-only",1]' ]
+  # shellcheck source=scripts/lib/gemini-quota.sh
+  source "$QUOTA_LIB"
+  GEMINI_QUOTA_NOW="$NOW" run gq_tier_decision "$SNAP" triage
+  [ "$status" -eq 2 ]
+  [[ "$output" == "unknown "*"1 run look-up(s)"* ]]
+}
+
+@test "hand-off: a record file that is not valid JSONL is a failed read; the artifact's other file is kept" {
+  _zip_files 101 "a.jsonl=$(_gemini a101)" 'b.jsonl={"engine":"gemini","key_index":1,'
+  _listing "$(_artifact 101 9001 1 1 main)"
+  export GEMINI_RECORDS_OUT="$BATS_TEST_TMPDIR/gemini-records.jsonl"
+  export GEMINI_COLLECTION_OUT="$BATS_TEST_TMPDIR/collection.json"
+  run bash "$TOKEN_REPORT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.context' "$GEMINI_RECORDS_OUT")" = "a101" ]
+  [ "$(jq -c '[.artifacts_failed, .run_lookups_failed, .record_files_malformed, .gemini_records_trusted]' "$GEMINI_COLLECTION_OUT")" = "[0,0,1,1]" ]
+  [[ "$output" == *"a record file is not valid JSONL"* ]]
+  [[ "$output" == *"1 record file(s) could not be read"* ]]
+  _snapshot_from "$GEMINI_COLLECTION_OUT"
+  [ "$(jq -c '[.collection.complete, .collection.record_files_malformed]' "$SNAP")" = '[false,1]' ]
+}
+
+@test "hand-off: nothing is left in the temporary directory, whether or not records were handed over" {
+  _mixed_fixture
+  mkdir -p "$BATS_TEST_TMPDIR/tmp"
+  export GEMINI_RECORDS_OUT="$BATS_TEST_TMPDIR/gemini-records.jsonl"
+  TMPDIR="$BATS_TEST_TMPDIR/tmp" run bash "$TOKEN_REPORT"
+  [ "$status" -eq 0 ]
+  [ -z "$(ls -A "$BATS_TEST_TMPDIR/tmp")" ]
+  # An early exit (the organisation cannot be listed) leaves nothing either.
+  rm -f "$FIX/repos.txt"
+  TMPDIR="$BATS_TEST_TMPDIR/tmp" run bash "$TOKEN_REPORT"
+  [ "$status" -ne 0 ]
+  [ -z "$(ls -A "$BATS_TEST_TMPDIR/tmp")" ]
 }
 
 @test "hand-off: test-fixture records in a trusted run's ledger are counted apart and reported" {
@@ -321,7 +421,14 @@ _tier_report() {
   SNAP="$BATS_TEST_TMPDIR/state/snapshot.json"
 }
 
-_complete='{"collected_at":"2026-10-10T11:59:00Z","collected_epoch":1791633540,"handed_over":true,"artifacts_listed":4,"repo_listings_failed":0,"artifacts_failed":0,"gemini_records_trusted":2,"gemini_records_ignored":31,"artifacts_ignored":2,"gemini_records_unlisted":0}'
+# _snapshot_from <collection report file> — the tier report's snapshot ($SNAP) for
+# that collection report, generated at NOW.
+_snapshot_from() {
+  _tier_report "$(cat "$1")"
+  [ "$status" -eq 0 ]
+}
+
+_complete='{"collected_at":"2026-10-10T11:59:00Z","collected_epoch":1791633540,"handed_over":true,"artifacts_listed":4,"repo_listings_failed":0,"artifacts_failed":0,"run_lookups_failed":0,"record_files_malformed":0,"gemini_records_trusted":2,"gemini_records_ignored":31,"artifacts_ignored":2,"gemini_records_unlisted":0}'
 
 @test "snapshot: a complete, trusted-only collection is recorded as such" {
   _tier_report "$_complete"
@@ -342,6 +449,15 @@ _complete='{"collected_at":"2026-10-10T11:59:00Z","collected_epoch":1791633540,"
   _tier_report "$(jq -c '.artifacts_failed = 1' <<< "$_complete")"
   [ "$(jq -c '[.collection.complete, .collection.records]' "$SNAP")" = '[false,"trusted-runs-only"]' ]
   _tier_report "$(jq -c '.repo_listings_failed = 2' <<< "$_complete")"
+  [ "$(jq -r '.collection.complete' "$SNAP")" = "false" ]
+  _tier_report "$(jq -c '.run_lookups_failed = 1' <<< "$_complete")"
+  [ "$(jq -c '[.collection.complete, .collection.records]' "$SNAP")" = '[false,"trusted-runs-only"]' ]
+  [[ "$output" == *"INCOMPLETE"*"1 run look-up(s)"* ]]
+  _tier_report "$(jq -c '.record_files_malformed = 1' <<< "$_complete")"
+  [ "$(jq -r '.collection.complete' "$SNAP")" = "false" ]
+  _tier_report "$(jq -c 'del(.run_lookups_failed)' <<< "$_complete")"
+  [ "$(jq -r '.collection.complete' "$SNAP")" = "false" ]
+  _tier_report "$(jq -c 'del(.record_files_malformed)' <<< "$_complete")"
   [ "$(jq -r '.collection.complete' "$SNAP")" = "false" ]
   _tier_report "$(jq -c '.handed_over = "true"' <<< "$_complete")"
   [ "$(jq -c '[.collection.complete, .collection.records]' "$SNAP")" = '[false,"unverified"]' ]
@@ -444,6 +560,118 @@ _decide() {
   [ "$status" -eq 2 ]
   _decide '.schema_version = 2'
   [ "$status" -eq 2 ]
+}
+
+@test "decision: a snapshot whose window, collection or tiers is not what it should be is unknown" {
+  local bad
+  for bad in '"a string"' '42' '[1,2]' 'null' 'true'; do
+    _decide ".window = $bad"
+    [ "$status" -eq 2 ] || { echo "window=$bad gave $status: $output"; false; }
+    [[ "$output" == "unknown "* ]]
+    _decide ".collection = $bad"
+    [ "$status" -eq 2 ] || { echo "collection=$bad gave $status: $output"; false; }
+    [[ "$output" == "unknown "* ]]
+    _decide ".tiers = $bad"
+    [ "$status" -eq 2 ] || { echo "tiers=$bad gave $status: $output"; false; }
+    [[ "$output" == "unknown "* ]]
+  done
+  _decide 'del(.window)'
+  [ "$status" -eq 2 ]
+  _decide 'del(.tiers)'
+  [ "$status" -eq 2 ]
+  _decide '.tiers = ["triage", 7]'
+  [ "$status" -eq 2 ]
+  _decide '.window.day_start = "soon"'
+  [ "$status" -eq 2 ]
+  _decide '.collection.complete = "true"'
+  [ "$status" -eq 2 ]
+  # The same holds for a caller that runs under pipefail.
+  _decide '.window = "a string"'
+  set -o pipefail
+  run gq_tier_decision "$BATS_TEST_TMPDIR/decide.json" triage
+  set +o pipefail
+  [ "$status" -eq 2 ]
+}
+
+# ---------------------------------------------------------------------------
+# The snapshot the tier report writes: schema contract and a clean failure
+# ---------------------------------------------------------------------------
+
+# The validator is Python `jsonschema`, as in
+# tests/dev-lead/unit/test_gemini_tier_view.bats. CI installs it (the bats job of
+# lint.yml, the unit job of test-dev-lead.yml), so there a missing validator FAILS
+# the test. On a machine without it the test is SKIPPED and says so: nothing about
+# the schema is checked locally in that case.
+_need_validator() {
+  python3 -c 'import jsonschema' 2>/dev/null && return 0
+  if [ -n "${CI:-}${GITHUB_ACTIONS:-}" ]; then
+    echo "python jsonschema is not installed in CI: the schema contract cannot be checked" >&2
+    return 1
+  fi
+  skip "python jsonschema is not installed: the snapshot schema contract is NOT checked here (CI checks it)"
+}
+
+# _validate <snapshot> — validate against the documented schema; prints "valid".
+_validate() {
+  python3 -c '
+import json, sys, jsonschema
+jsonschema.validate(json.load(open(sys.argv[1])), json.load(open(sys.argv[2])))
+print("valid")' "$1" "$ROOT/scripts/lib/gemini-tier-snapshot.schema.json"
+}
+
+@test "schema: the snapshot the tier report writes WITH a collection report validates" {
+  _need_validator
+  _tier_report "$_complete"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.collection | keys | length' "$SNAP")" = "12" ]
+  run _validate "$SNAP"
+  [ "$status" -eq 0 ]
+  [ "$output" = "valid" ]
+  _tier_report "$(jq -c '.run_lookups_failed = 3 | .record_files_malformed = 1 | .gemini_records_unlisted = 2' <<< "$_complete")"
+  run _validate "$SNAP"
+  [ "$status" -eq 0 ]
+  [ "$output" = "valid" ]
+}
+
+@test "schema: the snapshot the tier report writes WITHOUT a collection report validates" {
+  _need_validator
+  _tier_report ""
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.collection.records' "$SNAP")" = "unverified" ]
+  run _validate "$SNAP"
+  [ "$status" -eq 0 ]
+  [ "$output" = "valid" ]
+}
+
+@test "schema: a collection block with an unknown field, or without a required one, is rejected" {
+  _need_validator
+  _tier_report "$_complete"
+  jq -c '.collection.surprise = 1' "$SNAP" > "$BATS_TEST_TMPDIR/extra.json"
+  run _validate "$BATS_TEST_TMPDIR/extra.json"
+  [ "$status" -ne 0 ]
+  jq -c 'del(.collection.run_lookups_failed)' "$SNAP" > "$BATS_TEST_TMPDIR/short.json"
+  run _validate "$BATS_TEST_TMPDIR/short.json"
+  [ "$status" -ne 0 ]
+}
+
+@test "snapshot: a write that fails leaves no snapshot and no working file to be cached or uploaded" {
+  # jq fails exactly where the collection block is merged into the snapshot.
+  local real_jq; real_jq="$(command -v jq)"
+  mkdir -p "$BATS_TEST_TMPDIR/jqbin"
+  cat > "$BATS_TEST_TMPDIR/jqbin/jq" <<STUB
+#!/usr/bin/env bash
+case "\$*" in *'collection: \$c'*) exit 5 ;; esac
+exec "$real_jq" "\$@"
+STUB
+  chmod +x "$BATS_TEST_TMPDIR/jqbin/jq"
+  _tier_report "$_complete"
+  [ "$status" -eq 0 ]
+  [ -s "$SNAP" ]
+  [ -z "$(find "$BATS_TEST_TMPDIR/state" -name '*.tmp*')" ]
+  PATH="$BATS_TEST_TMPDIR/jqbin:$PATH" _tier_report "$_complete"
+  [ "$status" -ne 0 ]
+  [ ! -e "$SNAP" ]
+  [ -z "$(find "$BATS_TEST_TMPDIR/state" -name '*.tmp*')" ]
 }
 
 # ---------------------------------------------------------------------------
