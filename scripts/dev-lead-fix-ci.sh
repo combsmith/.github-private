@@ -15,6 +15,9 @@ source "$(dirname "$0")/lib/pr-automation-budget.sh"
 # Structured PR-body backfill (#1805): heal an existing PR whose body is still
 # missing 3+ required description sections, once, marker-keyed.
 source "$(dirname "$0")/lib/dev-lead-pr-body.sh"
+# Sync-stub guard (#2185/#2212): a fix on a standards-sync PR must not change the
+# org-standard stub the PR exists to sync.
+source "$(dirname "$0")/lib/sync-stub-guard.sh"
 
 PR_NUMBER="${PR_NUMBER:-}"
 HEAD_SHA="${HEAD_SHA:-}"
@@ -48,9 +51,10 @@ check_idempotency() {
     return 0
   fi
 
-  # SHA-level idempotency — skip only for terminal statuses (applied, failed, no-changes).
-  # status=rate-limited is retriable: do not skip on it so the retry cron can re-run.
-  if echo "$comments" | grep -qE "${MARKER_PREFIX}${HEAD_SHA} status=(applied|failed|no-changes)"; then
+  # SHA-level idempotency — skip only for terminal statuses (applied, failed,
+  # no-changes, declined). status=rate-limited is retriable: do not skip on it so
+  # the retry cron can re-run.
+  if echo "$comments" | grep -qE "${MARKER_PREFIX}${HEAD_SHA} status=(applied|failed|no-changes|declined)"; then
     echo "::notice::Already handled CI failure at SHA ${HEAD_SHA} with terminal status — skipping"
     return 0
   fi
@@ -192,6 +196,29 @@ To re-enable, delete this comment or push a new commit with a substantially diff
   fi
 }
 
+# flag_sync_stub_drift <rows> — the sync-stub guard refused the push (#2212).
+# Same escalation and declined comment as the review intents' flag_sync_stub_drift
+# in dev-lead-fix-reviews.sh: hold the PR, answer as declined with a pointer to
+# each template, disable auto-merge. <rows> are `path\ttemplate` lines (empty
+# when the scan was unknown).
+flag_sync_stub_drift() {
+  local rows="$1" marker="<!-- dev-lead-sync-stub-drift pr=${PR_NUMBER} intent=fix-ci -->"
+  _AM_NEEDS_RESTORE=0
+  # Label first so the flag comment can say when the PR could not be held (#2142).
+  apply_hold_label "$REPO" "$PR_NUMBER" || true
+  if gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" 2>/dev/null \
+       | jq -r '.[].body // ""' 2>/dev/null | grep -qF "$marker"; then
+    echo "::notice::PR #${PR_NUMBER} already flagged for synced-stub drift for intent=fix-ci — not reposting"
+    post_hold_failure_note "$REPO" "$PR_NUMBER"
+  else
+    gh pr comment "$PR_NUMBER" --repo "$REPO" --body "${marker}
+$(ssg_declined_body "fix-ci" "$rows")${HOLD_LABEL_NOTE}" \
+      || echo "::warning::could not post sync-stub flag comment on PR #${PR_NUMBER}"
+  fi
+  disable_auto_merge_for_hold "$REPO" "$PR_NUMBER" || true
+  return 0
+}
+
 main() {
   if [ -z "$PR_NUMBER" ] || [ -z "$HEAD_SHA" ]; then
     echo "::error::PR_NUMBER and HEAD_SHA are required"
@@ -239,6 +266,9 @@ main() {
   # Checkout the PR branch for modification, in an isolated worktree so the
   # branch switch never overwrites the agent's own prompts/scripts (issue #448).
   checkout_pr_in_worktree "$PR_NUMBER" "$REPO"
+  # The head this pass starts from: the sync-stub guard compares against it.
+  local pre_pass_sha
+  pre_pass_sha=$(git rev-parse HEAD 2>/dev/null || true)
 
   # Backfill the five required description sections into a pre-existing PR whose
   # body still lacks them (#1805). Idempotent + marker-keyed, so open PRs heal on
@@ -302,6 +332,30 @@ main() {
       setup_git_identity
       git add -A
       git commit -m "fix(ci): auto-fix for $(echo "$CHECKS_JSON" | jq -r '.[0].name // "CI failure"') [skip ci-relay]"
+    fi
+    # Sync-stub guard (#2185/#2212): on a `standards-sync` PR a CI fix must not
+    # change a stub copied verbatim from petry-projects/.github/standards/ (e.g.
+    # SHA-pinning a `uses:` line a linter flags). Same rule as the review intents:
+    # the PR is read only when the pass changed a file, and an unreadable PR fails
+    # closed only when a header stub was touched.
+    # Reconcile with the true remote head BEFORE evaluating, so the tree checked is
+    # the tree push_with_merge_guard pushes (its own reconcile is then a no-op). A
+    # failure here is left to push_with_merge_guard to handle.
+    incorporate_remote_head || true
+    local ssg_pr="" ssg_out ssg_rc=0
+    if ssg_pass_touches_stubs "$pre_pass_sha" HEAD; then
+      ssg_pr=$(ssg_read_pr "$REPO" "$PR_NUMBER")
+    fi
+    local ssg_head_ref=""
+    if [ -n "$ssg_pr" ]; then
+      ssg_head_ref=$(jq -r '.head?.ref // empty' <<<"$ssg_pr" 2>/dev/null) || ssg_head_ref=""
+    fi
+    ssg_out=$(ssg_evaluate "$pre_pass_sha" HEAD "$ssg_pr" "$ssg_head_ref") || ssg_rc=$?
+    if [ "$ssg_rc" -ne 0 ]; then
+      echo "::error::Sync-stub guard: the fix-ci pass changed a synced org-standard stub on a standards-sync PR ($(printf '%s\n' "$ssg_out" | head -1)) — refusing to push (#2212)"
+      flag_sync_stub_drift "$(printf '%s\n' "$ssg_out" | sed '1d')"
+      post_summary "declined" "The fix changed a synced org-standard stub on this standards-sync PR, so it was not pushed. See the declined comment (#2212)."
+      exit 0
     fi
     # push_with_merge_guard exits 0 cleanly if the PR was merged/closed mid-run
     # (its branch deleted); a genuine push failure still aborts with exit 1.

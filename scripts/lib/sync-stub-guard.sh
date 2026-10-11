@@ -29,8 +29,12 @@
 # PURITY / TESTABILITY (ADR-0004)
 #   ssg_template_path, ssg_has_sync_label and ssg_declined_body are PURE.
 #   ssg_pass_touches_stubs, ssg_scan_pass and ssg_evaluate are the impure
-#   gatherers (git only — the caller reads the PR from the API). Sourced under
+#   gatherers (git only); ssg_read_pr reads the PR from the API. Sourced under
 #   `set -euo pipefail`; helpers only `return`, never `exit`.
+#
+# WHO RUNS IT
+#   fix-bot-comment / fix-reviews (commit_and_push) and fix-ci
+#   (dev-lead-fix-ci.sh, #2212).
 
 set -euo pipefail
 
@@ -229,4 +233,22 @@ ssg_evaluate() {
     mb=$(ttg_resolve_merge_base "$base" "$pre" "$head_ref" 2>/dev/null) || mb=""
   fi
   ssg_scan_pass "$pre" "$head" "$mb"
+}
+
+# ssg_read_pr <repo> <pr_number>
+#   Echoes the GitHub pulls API object, retrying up to three times (sleeping
+#   SSG_RETRY_SLEEP between tries). Echoes nothing when it stays unreadable, so
+#   ssg_evaluate applies the unreadable-PR rule. Always returns 0. Impure.
+ssg_read_pr() {
+  local repo="${1:-}" pr="${2:-}" json="" try
+  [[ -n "$repo" && -n "$pr" ]] || return 0
+  for try in 1 2 3; do
+    json=$(gh api "repos/${repo}/pulls/${pr}" 2>/dev/null) || json=""
+    if jq -e 'type == "object"' <<<"$json" >/dev/null 2>&1; then
+      printf '%s\n' "$json"
+      return 0
+    fi
+    (( try < 3 )) && sleep "${SSG_RETRY_SLEEP:-2}"
+  done
+  return 0
 }
