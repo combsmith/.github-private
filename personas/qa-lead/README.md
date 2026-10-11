@@ -42,36 +42,34 @@ webhook, not to page anyone. See
 ## Served surface: pull_request advisory (event-driven)
 
 As of #1646 ([qa-lead S3]), qa-lead is served **without being summoned** on the
-PR surface. [`qa-lead-pr-advisory.yml`](../../.github/workflows/qa-lead-pr-advisory.yml)
-is a Class 1 (event-driven) caller that fires on
+PR surface. Since 2026-10-11 (#2243) that surface is served by the shared
+`persona-mention` router **alone**: this repo's
+[`persona-mention.yml`](../../.github/workflows/persona-mention.yml) stub
+subscribes `pull_request` (#2187, pinned to `persona-mention/v1-next`), and the
+router dispatches qa-lead only on its declared
 `pull_request: [opened, ready_for_review]` — `synchronize` is deliberately not
 wired, so a PR gets one advisory as it enters review, not one per push.
-
-That local workflow is self-contained (it `source`s a repo-local gate script and
-calls the local persona runtime), **not** a fleet-deployable thin caller stub,
-so it cannot ship to another repo by the standards sweep. [ADR-0009](../../docs/architecture/adr/0009-qa-lead-pull-request-surface-routes-through-the-shared-router.md)
+[ADR-0009](../../docs/architecture/adr/0009-qa-lead-pull-request-surface-routes-through-the-shared-router.md)
 records the decision (#1869) to route the `pull_request` event through the
-shared `persona-mention` router instead of publishing a second runtime, so the
-surface reaches beyond this repo. That router path is live on the
-`persona-mention/v1-next` channel, and this repo's
-[`persona-mention.yml`](../../.github/workflows/persona-mention.yml) stub
-subscribes `pull_request` (#2187).
+shared router instead of publishing a second runtime, so the surface reaches
+beyond this repo.
 
-So the `pull_request` surface is currently served by **both** paths: the local
-`qa-lead-pr-advisory.yml` and the router. Both call the shared runtime with
-`surface: pull_request`, so they share **one** per-(persona, repo, PR)
-concurrency group and the same already-advised marker check. A PR gets one
-advisory, not two. The local workflow is retired in a separate issue, only
-**after** the router path is verified on real PRs, including the #1745
-stop-marker semantics on a `pull_request`-sourced dispatch.
+Until #2243 a local, self-contained workflow (#1646) served the same
+surface alongside the router. It was retired once the router path was verified
+on real PRs, including the #1745 stop-marker semantics on a
+`pull_request`-sourced dispatch.
 
-The local workflow reuses the **one** persona runtime
-([`persona-runner-reusable.yml`](../../.github/workflows/persona-runner-reusable.yml)) —
-there is no qa-lead-specific runner. Before invoking it, a pure gate
-([`scripts/qa-lead-advisory-gate.sh`](../../scripts/qa-lead-advisory-gate.sh),
-unit-tested by `tests/test_qa_lead_advisory_gate.bats` +
-`tests/test_qa_lead_test_surface.bats`) decides whether qa-lead has anything to
-say. It stays silent unless the PR carries **real test surface** and no
+The router dispatches into the **one** persona runtime
+([`persona-runner-reusable.yml`](../../.github/workflows/persona-runner-reusable.yml))
+with `surface: pull_request` — there is no qa-lead-specific runner. Before
+running the engine, the runner's event pre-gate
+([`scripts/persona-pr-pregate.sh`](../../scripts/persona-pr-pregate.sh) →
+[`scripts/qa-lead-pr-gate.sh`](../../scripts/qa-lead-pr-gate.sh)) calls a pure
+gate ([`scripts/qa-lead-advisory-gate.sh`](../../scripts/qa-lead-advisory-gate.sh),
+unit-tested by `tests/test_persona_pr_pregate.bats`,
+`tests/test_qa_lead_advisory_gate.bats` +
+`tests/test_qa_lead_test_surface.bats`) that decides whether qa-lead has anything
+to say. It stays silent unless the PR carries **real test surface** and no
 suppressor applies:
 
 - **Test surface** (`scripts/lib/qa-lead-test-surface.sh`): a PR that touches
@@ -79,24 +77,30 @@ suppressor applies:
   verbatim stub-sync (workflow/config yaml) PR does not.
 - **Opt-out**: the `qa-lead:hands-off` label suppresses the advisory.
 - **One per PR**: the gate scans for an existing `<!-- persona:qa-lead -->`
-  marker and the caller concurrency lane serializes `opened` + `ready_for_review`
-  so the two events never stack a second comment.
+  marker and the runner's per-(persona, repo, PR) concurrency lane serializes
+  `opened` + `ready_for_review` so the two events never stack a second comment.
 - **Human / budget gates**: `needs-human-review` (the canonical
   `pr_has_escalation_label` check), `dev-lead:needs-human`, or an exhausted
   per-PR automation budget (#926) all suppress it.
 
 ### Soak window & noise metrics
 
-This surface is on a **two-week soak** from first deploy. It is advisory-only and
-detect-shaped — the recursion guard is the workflow's read/write split, not the
-prompt (the #860 lesson). Watch for and report:
+This surface is advisory-only and detect-shaped — the recursion guard is the
+workflow's read/write split, not the prompt (the #860 lesson). With the local
+workflow retired, the soak signal comes from two run logs:
 
-- **advisories posted vs. PRs seen** (the fire rate),
-- **skip-reason histogram** — the gate logs `skip:<reason>`
-  (`no-test-surface` / `opt-out` / `human-gated` / `budget-exhausted` /
-  `already-advised`),
-- **duplicate or self-triggered comments** — expected to be **0**; any non-zero
-  is a soak failure.
+- **`persona-mention` router runs** — each `pull_request` event logs either a
+  `skip …` line (why the router did not dispatch: stop marker, opt-out,
+  undeclared event, trust floor, …) or a `Routing to` line (the dispatch to the
+  runner). Routing lines over PRs seen is the dispatch rate.
+- **`persona-runner` runs** — the pre-gate line
+  `persona pre-gate for 'qa-lead' (surface=pull_request) on <repo>#<pr>: run|skip:<reason>`.
+  Counting `run` gives **advisories posted vs. PRs seen**; the `skip:<reason>`
+  values (`no-test-surface` / `opt-out` / `human-gated` / `budget-exhausted` /
+  `already-advised` / `signal-unavailable`) give the **skip-reason histogram**.
+
+Watch, too, for **duplicate or self-triggered comments** — expected to be **0**;
+any non-zero is a soak failure.
 
 ## How a mention becomes an advisory
 

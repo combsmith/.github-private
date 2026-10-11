@@ -3,9 +3,10 @@ set -euo pipefail
 # qa-lead-advisory-gate.sh — the pure fire/skip decision for the qa-lead PR
 # advisory (issue #1646 — [qa-lead S3]).
 #
-# The workflow (.github/workflows/qa-lead-pr-advisory.yml) gathers a PR's signals
-# — changed files, labels, whether a qa-lead advisory already exists, whether the
-# automation budget is exhausted — and calls qa_lead_gate_decision, which is pure
+# scripts/qa-lead-pr-gate.sh (called by the runner's pull_request pre-gate,
+# scripts/persona-pr-pregate.sh) gathers a PR's signals — changed files, labels,
+# whether a qa-lead advisory already exists, whether the automation budget is
+# exhausted — and calls qa_lead_gate_decision, which is pure
 # and unit-tested (tests/test_qa_lead_advisory_gate.bats) so every suppressor has
 # a regression test. Keeping the policy here (not inline in yaml) is what lets us
 # pin it.

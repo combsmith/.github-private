@@ -100,9 +100,9 @@ skills:
 # workflow actually serves it (persona-standards §1.1: the manifest is the
 # index-of-record). The truth is recorded in personas/qa-lead/interaction.yml and
 # enforced by validate-personas.py's surface-liveness invariant (#1647). Only two
-# surfaces are wired today: `mention` (the shared persona-mention.yml router) and
-# `pull_request` (both qa-lead-pr-advisory.yml, #1646, and the shared router, #2187,
-# until the local workflow is retired). The rest are KEPT as
+# surfaces are wired today: `mention` and `pull_request`, both served by the shared
+# persona-mention.yml router alone (#2187; the local self-contained workflow that
+# also served `pull_request` was retired 2026-10-11, #2243). The rest are KEPT as
 # `enabled: false` with the design intent intact — deleting them would lose it,
 # leaving them `true` would be the lie the standard forbids.
 triggers:
@@ -113,13 +113,13 @@ triggers:
       events: [opened, ready_for_review]
       enabled: true
       mode: advisory
-      notes: "Risk assessment + test-coverage review comments on PRs with test surface. Served on [opened, ready_for_review] by BOTH the local, self-contained qa-lead-pr-advisory.yml (#1646) AND the shared persona-mention router, which this repo's stub subscribes to pull_request (ADR-0009, #1869, #2187). Both call persona-runner-reusable.yml with surface=pull_request, so they share one per-(persona, repo, PR) concurrency group and the same already-advised marker check — a PR gets ONE advisory. The local workflow is retired (a separate issue) only after the router path is verified on real PRs, including the #1745 stop markers on a pull_request-sourced dispatch. `synchronize` is deliberately EXCLUDED (one advisory as a PR enters review, not on every push) — so the declared events match what is deployed. NOTE: The router-served pull_request pre-gate runs with github.token scoped to .github-private; it cannot read private source repositories other than .github-private, so those dispatches fail with a retryable workflow error before advisory generation — such private source repositories are out of scope."
+      notes: "Risk assessment + test-coverage review comments on PRs with test surface. Served on [opened, ready_for_review] by the shared persona-mention router ALONE, which this repo's stub subscribes to pull_request (ADR-0009, #1869, #2187). The router dispatches persona-runner-reusable.yml with surface=pull_request, whose event pre-gate (scripts/persona-pr-pregate.sh -> scripts/qa-lead-pr-gate.sh) applies the test-surface, opt-out, human-hold, budget and already-advised suppressors — a PR gets ONE advisory. The local, self-contained workflow (#1646) was retired 2026-10-11 (#2243) after the router path was verified on real PRs, including the #1745 stop markers on a pull_request-sourced dispatch. `synchronize` is deliberately EXCLUDED (one advisory as a PR enters review, not on every push) — so the declared events match what is deployed. NOTE: The router-served pull_request pre-gate runs with github.token scoped to .github-private; it cannot read private source repositories other than .github-private, so those dispatches fail with a retryable workflow error before advisory generation — such private source repositories are out of scope."
 
     - surface: pull_request_review
       events: [submitted, created]
       enabled: false
       mode: advisory
-      notes: "Intended future surface (weigh in on review threads about test quality / flakiness). NOT served: no workflow fires on pull_request_review. To serve: add a pull_request_review-triggered advisory workflow (the shape qa-lead-pr-advisory.yml already gives pull_request) and record the event in interaction.yml."
+      notes: "Intended future surface (weigh in on review threads about test quality / flakiness). NOT served: no workflow fires on pull_request_review. To serve: route pull_request_review through the shared persona-mention router (the shape ADR-0009 gives pull_request) and record the event in interaction.yml."
 
     - surface: issues
       events: [labeled, commented]

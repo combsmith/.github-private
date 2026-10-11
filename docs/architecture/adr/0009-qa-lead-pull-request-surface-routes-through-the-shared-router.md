@@ -121,6 +121,23 @@ The hard precondition on retirement:
   it earlier re-opens #1869 by leaving the surface dead; leaving it forever is
   duplicate serving. This ADR is the record that retirement is a deliberate,
   gated follow-up, not an oversight.
+- **Retired 2026-10-11 (#2243).** The debt above is paid:
+  `qa-lead-pr-advisory.yml` is deleted and the `persona-mention` router serves
+  qa-lead's `pull_request` advisory alone, on `[opened, ready_for_review]`.
+  Every precondition was met first — the router serves the event
+  (petry-projects/.github#1167, live on `persona-mention/v1-next`); this repo's
+  stub subscribes it (#2188); the runner's pre-gate applies qa-lead's
+  suppressors on a router dispatch (#1909); a router run against a real PR
+  carrying `needs-human-review` logged `skip stop-marker needs-human-review`
+  (the #1745 stop-marker verification this ADR requires); the router path keeps
+  a finished advisory (#2198); and the two paths did not double-post (PR #2210:
+  the router-served run logged `skip:already-advised`). The gate scripts
+  (`scripts/qa-lead-pr-gate.sh`, `scripts/persona-pr-pregate.sh`,
+  `scripts/qa-lead-advisory-gate.sh`, `scripts/lib/qa-lead-test-surface.sh`) and
+  their tests stay — the runner uses them on every router-served dispatch. The
+  soak signal now comes from the `persona-mention` router runs (`skip …` /
+  `Routing to` lines) and the `persona-runner` pre-gate line
+  (`persona pre-gate for 'qa-lead' … : run|skip:<reason>`).
 - **The event model changes.** Today `qa-lead-pr-advisory.yml` subscribes to
   `pull_request: [opened, ready_for_review]` directly and gates in
   `scripts/qa-lead-advisory-gate.sh`. Under the router the `pull_request` event
