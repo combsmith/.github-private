@@ -307,7 +307,51 @@ cdv_diff_token_verdict() {
   return 1
 }
 
-# cdv_fixed_verdict <on_head> <in_base> <own_files> <commit_date> <finding_created> <content_verdict> [this_pass]
+_CDV_PATH_JQ=$(cat <<'JQ'
+$b
+| gsub("<!--.*?-->"; ""; "p")
+| gsub("```.*?```"; ""; "p")
+| gsub("\\]\\([^)]*\\)"; "] ")
+| gsub("https?://[^\\s)>\"]+"; " ")
+| [ scan("(?<![A-Za-z0-9_./-])((?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+|[A-Za-z0-9_-][A-Za-z0-9_.-]*[.](?:sh|md|yml|yaml|json|bats|py|js|ts|txt|toml|tsv))(?![A-Za-z0-9_/-])") | .[0] ]
+| map(sub("^([.]/)+"; "") | sub("[.]+$"; ""))
+| map(select(length >= 3 and length <= 300))
+| unique
+| .[]
+JQ
+)
+readonly _CDV_PATH_JQ
+
+# cdv_finding_paths <comment_body>
+#   Echo the repo files the finding names, one per line (sorted, unique): a span
+#   with a `/`, or a bare file name with a known extension. A trailing `:<line>`
+#   is not part of the path. HTML comments, fenced code, link targets and URLs are
+#   ignored, so the address a link points at never counts as a named file. Echoes
+#   nothing (rc 0) when the body names no file. Pure.
+cdv_finding_paths() {
+  local body="${1:-}"
+  [[ -z "$body" ]] && return 0
+  jq -rn --arg b "$body" "$_CDV_PATH_JQ" 2>/dev/null || true
+}
+
+# cdv_touches_named_file <own_files> <paths>
+#   rc 0 when one of the commit's own files (newline-separated, repo-relative) IS
+#   one of the files the finding names (newline-separated, cdv_finding_paths). The
+#   match is the whole path: a finding that names only `foo.sh` does not match
+#   `scripts/foo.sh`. rc 1 otherwise, and when either list is empty. Pure.
+cdv_touches_named_file() {
+  local own="${1:-}" paths="${2:-}" f
+  [[ -n "$own" && -n "$paths" ]] || return 1
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    if grep -qxF -- "$f" <<< "$paths"; then
+      return 0
+    fi
+  done <<< "$own"
+  return 1
+}
+
+# cdv_fixed_verdict <on_head> <in_base> <own_files> <commit_date> <finding_created> <content_verdict> [this_pass] [touches_named]
 #   The full `fixed` verdict. Arguments are facts the caller gathered:
 #     <on_head>          "true" when the sha is reachable from the PR's pushed head
 #     <in_base>          "true" / "false" (the sha is / is not on the base branch),
@@ -317,17 +361,28 @@ cdv_diff_token_verdict() {
 #     <finding_created>  the original comment's createdAt (ISO-8601 Z)
 #     <content_verdict>  cdv_diff_token_verdict's token
 #     <this_pass>        "true" when the sha is a commit produced by THIS pass (not
-#                        reachable from RESOLUTION_BASE_SHA); only a tokenless
-#                        finding consults it
+#                        reachable from RESOLUTION_BASE_SHA)
+#     <touches_named>    "true" when the sha's own diff changes a file the finding
+#                        names (cdv_touches_named_file)
+#   A commit whose diff removes a token the finding names verifies whatever pass
+#   made it. Two more cases verify only on a commit THIS pass produced:
+#     - a finding that names no token (tokenless-this-pass);
+#     - a finding that names a token the diff neither removes nor adds, when the
+#       diff changes a file the finding names (this-pass-touches-named-file,
+#       #2269). A fix that only adds lines (a missing assertion, a missing guard)
+#       removes nothing, so the removed-token rule alone could never verify it.
+#   A diff that ADDS a token the finding names never verifies, whatever pass made
+#   it: for a finding like "remove `eval` from x.sh" that is the defect again.
 #   Echoes the first failing reason, in this order: not-on-head | base-unknown |
 #   on-base-branch | empty-diff | content-adds-token | content-no-token-removed |
 #   content-unknown | undated | predates-finding | tokenless-not-this-pass (rc 1).
-#   On success echoes content-removes-token, or tokenless-this-pass when the finding
-#   had no token and the commit was produced by this pass (rc 0).
+#   On success echoes content-removes-token, tokenless-this-pass or
+#   this-pass-touches-named-file (rc 0).
 #   Fails closed on every unreadable input. Pure.
 cdv_fixed_verdict() {
   local on_head="${1:-}" in_base="${2:-}" own_files="${3:-0}" commit_date="${4:-}"
   local finding_created="${5:-}" content="${6:-}" this_pass="${7:-false}"
+  local touches_named="${8:-false}" additive="false"
   local iso='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
   if [[ "$on_head" != "true" ]]; then
     echo "not-on-head"; return 1
@@ -343,8 +398,16 @@ cdv_fixed_verdict() {
   fi
   case "$content" in
     content-removes-token|no-tokens) ;;
-    content-adds-token|content-no-token-removed)
+    content-adds-token)
       echo "$content"; return 1 ;;
+    content-no-token-removed)
+      # #2269: this pass's own commit in a file the finding names. The date
+      # checks below still apply.
+      if [[ "$this_pass" == "true" && "$touches_named" == "true" ]]; then
+        additive="true"
+      else
+        echo "$content"; return 1
+      fi ;;
     *)
       echo "content-unknown"; return 1 ;;
   esac
@@ -355,7 +418,9 @@ cdv_fixed_verdict() {
   if [[ ! "$finding_created" =~ $iso ]] || [[ "$commit_date" < "$finding_created" ]]; then
     echo "predates-finding"; return 1
   fi
-  if [[ "$content" == "no-tokens" ]]; then
+  if [[ "$additive" == "true" ]]; then
+    echo "this-pass-touches-named-file"
+  elif [[ "$content" == "no-tokens" ]]; then
     # No token to match against a diff: only a commit this pass produced counts.
     if [[ "$this_pass" != "true" ]]; then
       echo "tokenless-not-this-pass"; return 1

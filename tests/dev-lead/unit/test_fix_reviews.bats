@@ -6494,7 +6494,7 @@ SH
   [ ! -s "$T2013_PUSH" ]
   [[ "$output" == *"Test-regression guard"* ]]
   [[ "$output" == *"existing behaviour"* ]]
-  [[ "$output" == *"needs-human-review"* ]]
+  grep -qF 'labels[]=needs-human-review' "$BATS_TEST_TMPDIR/label_posts"
   [ ! -s "$T2013_MUT" ]
   grep -q "pulls/comments/777" "$T2013_PATCH"
 }
@@ -6532,6 +6532,231 @@ SH
 
   [ -s "$T2013_PUSH" ]
   [[ "$output" == *"Test suite: NOT RUN"* ]]
+}
+
+# ── #2143: the suite runs in a job with no secrets ─────────────────────────────
+# dev-lead-reusable.yml splits a guarded pass into three jobs. `dispatch`
+# (DEV_LEAD_PHASE=work) runs the model, commits, writes a handoff and stops: no suite,
+# no push. `test-suite` runs tjh_run_suite on the handoff. `push`
+# (DEV_LEAD_PHASE=push) restores the exact commits and pushes only on the test job's
+# verdict, then runs the retraction sweep, thread resolution and terminal marker.
+# These tests drive the three phases end to end on the #2013 fixtures.
+
+# _setup_2143 <engine_script> — the 15a919e fixture, a suite that leaves a marker
+# when it runs, and a git stub that records the SHA each push sends.
+_setup_2143() {
+  rm -rf "$BATS_TEST_TMPDIR/workdir" "$BATS_TEST_TMPDIR/handoff" "$BATS_TEST_TMPDIR/test-job" "$BATS_TEST_TMPDIR/suite-ran" "$BATS_TEST_TMPDIR/origin.git"
+  _setup_15a919e "$1"
+  T2143_SUITE_RAN="$BATS_TEST_TMPDIR/suite-ran"
+  export DEV_LEAD_TEST_CMD="./suite.sh; rc=\$?; : > '$T2143_SUITE_RAN'; exit \$rc"
+  T2143_HANDOFF="$BATS_TEST_TMPDIR/handoff"
+  cat > "$STUB_BIN_DIR/git" << GITEOF
+#!/usr/bin/env bash
+if [ "\$1" = "push" ]; then echo "push \$(/usr/bin/git rev-parse HEAD)" >> "$T2013_PUSH"; exit "\${T2013_PUSH_RC:-0}"; fi
+# The pass's detached worktree has no upstream; T2143_UPSTREAM gives it one.
+if [ -n "\${T2143_UPSTREAM:-}" ] && [ "\$*" = "rev-parse --abbrev-ref --symbolic-full-name @{u}" ]; then echo "\$T2143_UPSTREAM"; exit 0; fi
+exec /usr/bin/git "\$@"
+GITEOF
+  chmod +x "$STUB_BIN_DIR/git"
+}
+
+# _run_2143 <phase> <intent> — one job's run of the script. The push phase gets only
+# what the workflow's push step passes; HEAD_SHA, ACTOR, COMMENT_BODY etc. must come
+# back from the handoff's state.
+_run_2143() {
+  run bash -c "
+    cd '$T2013_DIR'
+    export INTENT_TYPE=\"\$2\" DEV_LEAD_DRY_RUN=false DEV_LEAD_PHASE=\"\$1\"
+    export PR_NUMBER=54 REPO='petry-projects/.github-private'
+    export REVIEW_ENGINE=claude PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
+    export BOT_USER='donpetry-bot'
+    export DEV_LEAD_HANDOFF_DIR='$T2143_HANDOFF'
+    if [ \"\$1\" = work ]; then
+      export HEAD_SHA='$T2013_BASE' BASE_REF=main ACTOR='coderabbitai[bot]' COMMENT_BODY='finding'
+    else
+      unset HEAD_SHA ACTOR COMMENT_BODY BASE_REF
+      export DEV_LEAD_HANDOFF_FILE=\"\${T2143_FILE:-$T2143_HANDOFF/handoff.tar}\"
+      export DEV_LEAD_HANDOFF_SHA256=\"\$(sed -n 's/^handoff_sha256=//p' '$T2143_HANDOFF/outputs' 2>/dev/null)\"
+      export DEV_LEAD_BASE_SHA=\"\$(sed -n 's/^base_sha=//p' '$T2143_HANDOFF/outputs' 2>/dev/null)\"
+      export DEV_LEAD_PASS_START_ISO=\"\$(sed -n 's/^pass_start_iso=//p' '$T2143_HANDOFF/outputs' 2>/dev/null)\"
+      export DEV_LEAD_TEST_JOB_RESULT=\"\${T2143_JOB-success}\" DEV_LEAD_TRG_RESULT=\"\${T2143_VERDICT:-}\"
+    fi
+    export T2013_PUSH_RC=\${T2013_PUSH_RC:-0}
+    export PATH='$STUB_BIN_DIR:$PATH'
+    bash '$FIX_REVIEWS_SCRIPT'
+  " _ "$1" "$2" 2>&1
+}
+
+# _test_job — what the test-suite job does with the handoff: tjh_run_suite in a shell
+# that has none of the work job's state. Sets T2143_VERDICT.
+_test_job() {
+  T2143_VERDICT=$(cd "$BATS_TEST_TMPDIR" && env -i PATH="$PATH" HOME="$BATS_TEST_TMPDIR" ${DEV_LEAD_TEST_CMD:+DEV_LEAD_TEST_CMD="$DEV_LEAD_TEST_CMD"} bash -c "
+    source '$SCRIPT_DIR/scripts/lib/test-regression-guard.sh'
+    source '$SCRIPT_DIR/scripts/lib/test-job-handoff.sh'
+    tjh_run_suite '$T2143_HANDOFF/handoff.tar' '$BATS_TEST_TMPDIR/test-job'
+  " 2>/dev/null)
+  export T2143_VERDICT
+}
+
+@test "#2143: work phase — commits and hands off; never runs the suite and never pushes" {
+  _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
+  _run_2143 work fix-reviews
+
+  [ "$status" -eq 0 ]
+  [ ! -s "$T2013_PUSH" ]
+  [ ! -e "$T2143_SUITE_RAN" ]
+  grep -qx 'handoff=true' "$T2143_HANDOFF/outputs"
+  grep -qx "base_sha=${T2013_BASE}" "$T2143_HANDOFF/outputs"
+  grep -qx 'intent=fix-reviews' "$T2143_HANDOFF/outputs"
+  grep -qE '^handoff_sha256=[0-9a-f]{64}$' "$T2143_HANDOFF/outputs"
+  [ -f "$T2143_HANDOFF/handoff.tar" ]
+  # The push job owns the claim: nothing retracted, no thread resolved, no terminal yet.
+  [ ! -s "$T2013_PATCH" ]
+  [ ! -s "$T2013_MUT" ]
+  [[ "$output" != *"status=applied"* ]]
+}
+
+@test "#2143: green across the job boundary — the push job pushes the work job's exact commit and resolves the thread" {
+  _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
+  _run_2143 work fix-reviews
+  [ "$status" -eq 0 ]
+  local result
+  result=$(tar -xOf "$T2143_HANDOFF/handoff.tar" ./state.json | jq -r .result_sha)
+  _test_job
+  [[ "$(jq -r .verdict <<<"$T2143_VERDICT")" == "green" ]]
+  [ -e "$T2143_SUITE_RAN" ]
+
+  _run_2143 push fix-reviews
+  [ "$status" -eq 0 ]
+  grep -qx "push ${result}" "$T2013_PUSH"
+  [[ "$output" == *"Test suite: PASSED"* ]]
+  grep -q "PRRT_2013" "$T2013_MUT"
+  [ ! -s "$T2013_PATCH" ]
+}
+
+@test "#2143: the remote head moved during the test job — the push job pushes nothing and retracts the claim" {
+  _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
+  _run_2143 work fix-reviews
+  [ "$status" -eq 0 ]
+  _test_job
+  [[ "$(jq -r .verdict <<<"$T2143_VERDICT")" == "green" ]]
+
+  # Someone pushes to the PR branch while the suite runs: the remote head is no
+  # longer the pre-pass head the verdict was based on.
+  export T2143_UPSTREAM=origin/main
+  git clone -q -b main "file://$BATS_TEST_TMPDIR/origin.git" "$BATS_TEST_TMPDIR/mover"
+  git -C "$BATS_TEST_TMPDIR/mover" -c user.email=t@t -c user.name=T commit -q --allow-empty -m "concurrent"
+  git -C "$BATS_TEST_TMPDIR/mover" push -q origin HEAD:main
+
+  _run_2143 push fix-reviews
+  [ "$status" -ne 0 ]
+  [ ! -s "$T2013_PUSH" ]
+  [[ "$output" == *"the tested tree would be rebased"* ]]
+  grep -q "pulls/comments/777" "$T2013_PATCH"
+  [ ! -s "$T2013_MUT" ]
+}
+
+@test "#2143: the 15a919e shape across the job boundary — the push job refuses, flags and retracts" {
+  _setup_2143 "printf 'changed\n' > file.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
+  _run_2143 work fix-reviews
+  [ ! -e "$T2143_SUITE_RAN" ]
+  _test_job
+  [[ "$(jq -r .verdict <<<"$T2143_VERDICT")" == "regression" ]]
+
+  _run_2143 push fix-reviews
+  [ ! -s "$T2013_PUSH" ]
+  [[ "$output" == *"Test-regression guard"* ]]
+  [[ "$output" == *"existing behaviour"* ]]
+  grep -qF 'labels[]=needs-human-review' "$BATS_TEST_TMPDIR/label_posts"
+  [ ! -s "$T2013_MUT" ]
+  grep -q "pulls/comments/777" "$T2013_PATCH"
+}
+
+@test "#2143: a failed, cancelled or skipped test job — the push job does not push and retracts the claim" {
+  local r
+  for r in failure cancelled skipped ""; do
+    _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
+    : > "$T2013_PUSH"; : > "$T2013_PATCH"; : > "$BATS_TEST_TMPDIR/label_posts"
+    _run_2143 work fix-reviews
+    # a verdict that says green must not count when the job itself did not succeed
+    T2143_VERDICT='{"verdict":"green","cmd":"./suite.sh","tests":[]}' T2143_JOB="$r" _run_2143 push fix-reviews
+    [ ! -s "$T2013_PUSH" ]
+    [[ "$output" == *"NO VERDICT"* ]]
+    grep -qF 'labels[]=needs-human-review' "$BATS_TEST_TMPDIR/label_posts"
+    grep -q "pulls/comments/777" "$T2013_PATCH"
+  done
+}
+
+@test "#2143: a test job that reports no verdict — no push" {
+  _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
+  _run_2143 work fix-reviews
+  T2143_VERDICT='' _run_2143 push fix-reviews
+  [ ! -s "$T2013_PUSH" ]
+  [[ "$output" == *"NO VERDICT"* ]]
+  grep -q "pulls/comments/777" "$T2013_PATCH"
+}
+
+@test "#2143: no test command stays a non-blocking verdict across the boundary" {
+  _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
+  _run_2143 work fix-reviews
+  # the test-suite job, run with no test command configured, produces the not-run verdict
+  # (a PATH without bats, so the guard's `bats --recursive tests` fallback is unavailable too)
+  local saved_cmd="$DEV_LEAD_TEST_CMD" saved_path="$PATH" tool nb="$BATS_TEST_TMPDIR/nobats"
+  mkdir -p "$nb"
+  for tool in bash env git jq tar sed awk grep cat sort head tail mktemp find xargs rm mkdir sha256sum cut tr date timeout paste dirname basename mv cp ls; do
+    ln -sf "$(command -v "$tool")" "$nb/$tool" 2>/dev/null || true
+  done
+  unset DEV_LEAD_TEST_CMD
+  PATH="$nb" _test_job
+  PATH="$saved_path"
+  export DEV_LEAD_TEST_CMD="$saved_cmd"
+  [[ "$(jq -r .verdict <<<"$T2143_VERDICT")" == "not-run" ]]
+  _run_2143 push fix-reviews
+  [ -s "$T2013_PUSH" ]
+  [[ "$output" == *"Test suite: NOT RUN"* ]]
+}
+
+@test "#2143: a missing or swapped handoff — the push job pushes nothing, still retracts, and fails" {
+  _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
+  _run_2143 work fix-reviews
+  T2143_VERDICT='{"verdict":"green","cmd":"./suite.sh","tests":[]}' T2143_FILE="$BATS_TEST_TMPDIR/absent.tar" _run_2143 push fix-reviews
+  [ "$status" -ne 0 ]
+  [ ! -s "$T2013_PUSH" ]
+  grep -q "pulls/comments/777" "$T2013_PATCH"
+
+  # a tarball that is not the one the dispatch job published is refused the same way
+  : > "$T2013_PATCH"
+  cp "$T2143_HANDOFF/handoff.tar" "$BATS_TEST_TMPDIR/swapped.tar"
+  printf 'x' >> "$BATS_TEST_TMPDIR/swapped.tar"
+  T2143_VERDICT='{"verdict":"green","cmd":"./suite.sh","tests":[]}' T2143_FILE="$BATS_TEST_TMPDIR/swapped.tar" _run_2143 push fix-reviews
+  [ "$status" -ne 0 ]
+  [ ! -s "$T2013_PUSH" ]
+  grep -q "pulls/comments/777" "$T2013_PATCH"
+}
+
+@test "#2143: fix-bot-comment and review-changes hand off too; on-mention keeps a single job" {
+  _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
+  _run_2143 work fix-bot-comment
+  [ ! -s "$T2013_PUSH" ]
+  grep -qx 'intent=fix-bot-comment' "$T2143_HANDOFF/outputs"
+  _test_job
+  _run_2143 push fix-bot-comment
+  [ -s "$T2013_PUSH" ]
+
+  _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
+  : > "$T2013_PUSH"
+  _run_2143 work review-changes
+  [ ! -s "$T2013_PUSH" ]
+  grep -qx 'intent=review-changes' "$T2143_HANDOFF/outputs"
+  _test_job
+  _run_2143 push review-changes
+  [ -s "$T2013_PUSH" ]
+
+  _setup_2143 "printf 'fixed\n' > fix.txt; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'x'"
+  : > "$T2013_PUSH"
+  _run_2143 work on-mention
+  [ -s "$T2013_PUSH" ]
+  [ ! -e "$T2143_HANDOFF/outputs" ]
 }
 
 # ── #2037: an unminimizeComment failure fails the resolver closed ─────────────
@@ -6998,6 +7223,156 @@ _run_2004() {
   grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
   ! grep -Eq 'id=R2' "$MINLOG" || false
   ! grep -q 'comment-disposition' "$POSTLOG"
+}
+
+# ── #2269: an additive fix to a finding that names a token ───────────────────
+# The PR #2205 shape: the fix adds one guard to the file the finding names and
+# removes nothing, so the removed-token rule alone could never verify it. Most
+# cases here use a finding of that comment's form that names a script. One runs
+# the real comment against its test file, which also takes the pass through the
+# test-tamper guard. The real diff is tested against the pure verdict in
+# test_comment_disposition_verify.bats.
+
+_2269_FINDING='## CodeAnt Nitpicks
+
+#### 1. This branch never checks that the no-ADR path says `escalate = no`, so changing that decision to yes goes unnoticed.
+
+Incomplete implementation · [`scripts/advisory_offline_mode.sh:14`](https://github.com/petry-projects/.github-private/pull/54/files#diff-0R14-R14)'
+
+# _2269_setup — _setup_2004, plus the file the finding names as a PR-branch commit
+# that predates the finding, and a `git push` that succeeds (the repo has no remote).
+_2269_setup() {
+  _setup_2004
+  _2004_commit "feat: offline-mode advisory" "2026-10-01T11:00:00Z" \
+    "printf '#!/usr/bin/env bash\necho advisory\n' > scripts/advisory_offline_mode.sh" >/dev/null
+  cat > "$STUB_BIN_DIR/git" <<'GITEOF'
+#!/usr/bin/env bash
+if [ "$1" = "push" ]; then exit 0; fi
+exec /usr/bin/git "$@"
+GITEOF
+  chmod +x "$STUB_BIN_DIR/git"
+}
+
+# _2269_engine_fixes <file> [line] — the engine appends <line> to <file>, commits
+# it, and answers the finding with a `fixed` disposition citing that commit, as
+# the fix-bot-comment prompt tells the model to. <line> defaults to a guard that
+# names none of the finding's tokens; it must not contain a single quote.
+_2269_engine_fixes() {
+  local line="${2:-[ -n \"\${ADR:-}\" ] || exit 3}"
+  cat > "$STUB_BIN_DIR/claude" <<CLAUDEEOF
+#!/usr/bin/env bash
+printf '%s\n' '${line}' >> '$1'
+git add -A
+git -c user.email=t@test -c user.name=T commit -q -m "fix(bot): add the missing guard"
+sha=\$(git rev-parse HEAD)
+jq -c --arg sha "\$sha" '. + [{id:"R1", author:{login:"donpetry-bot", __typename:"User"},
+  body:("Fixed in $1: added the missing guard.\n<!-- dev-lead:comment-disposition id=IC_FIND disposition=fixed sha=" + \$sha + " -->"),
+  isMinimized:false, minimizedReason:null, createdAt:"2026-10-01T16:00:00Z"}]' "\$NODES_FILE" > "\$NODES_FILE.new"
+mv "\$NODES_FILE.new" "\$NODES_FILE"
+echo "Addressed the finding."
+CLAUDEEOF
+  chmod +x "$STUB_BIN_DIR/claude"
+}
+
+@test "#2269 AC1: an additive fix this pass made in the file the finding names verifies and minimizes in that pass" {
+  _2269_setup
+  _2269_engine_fixes scripts/advisory_offline_mode.sh
+  _2004_nodes "$_2269_FINDING"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"\`fixed\` disposition verified against"*"(this-pass-touches-named-file)"* ]]
+  [[ "$output" != *"fixed-unverified"* ]]
+  grep -Eq 'classifier:RESOLVED.*id=IC_FIND' "$MINLOG"
+}
+
+@test "#2269 AC2: the same additive commit from an EARLIER pass stays unverified" {
+  _2269_setup
+  # The fix already sits on the branch when this pass starts; the engine changes nothing.
+  local earlier
+  earlier=$(_2004_commit "fix(bot): add the missing guard" "2026-10-01T14:00:00Z" \
+    "printf '%s\n' '# the no-ADR path must not escalate' >> scripts/advisory_offline_mode.sh")
+  _2004_nodes "$_2269_FINDING" <(_2004_fixed_reply R1 "2026-10-01T14:30:00Z" "$earlier")
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fixed-unverified:content-no-token-removed"* ]]
+  ! grep -q 'IC_FIND' "$MINLOG" || false
+}
+
+@test "#2269 AC2: this pass's commit in a file the finding does not name stays unverified" {
+  _2269_setup
+  _2269_engine_fixes other.txt
+  _2004_nodes "$_2269_FINDING"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fixed-unverified:content-no-token-removed"* ]]
+  ! grep -q 'IC_FIND' "$MINLOG" || false
+}
+
+@test "#2269: a commit that ADDS a token the finding names stays unverified, even from this pass in the named file" {
+  _2269_setup
+  # The finding names `escalate = no`. A line that adds it is not shown to be a fix.
+  _2269_engine_fixes scripts/advisory_offline_mode.sh 'echo "escalate = no"'
+  _2004_nodes "$_2269_FINDING"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fixed-unverified:content-adds-token"* ]]
+  ! grep -q 'IC_FIND' "$MINLOG" || false
+}
+
+@test "#2269: a comment-only line in the named file verifies too (accepted limit: where and when, not what)" {
+  # The rule checks which pass made the commit and which file it changes, not
+  # that the added lines address the finding. Pinned so that tightening it is a
+  # deliberate change.
+  _2269_setup
+  _2269_engine_fixes scripts/advisory_offline_mode.sh '# the no-ADR path must not escalate'
+  _2004_nodes "$_2269_FINDING"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"(this-pass-touches-named-file)"* ]]
+  grep -Eq 'classifier:RESOLVED.*id=IC_FIND' "$MINLOG"
+}
+
+@test "#2269: the real PR #2205 comment through the full script — a test added to the TEST file it names verifies" {
+  # A pass that edits a test file also runs the test-tamper guard, which asks the
+  # API for the PR's base branch and fetches it. Serve that lookup, give the repo
+  # an origin holding main, and leave the rest to the stub.
+  _2269_setup
+  /usr/bin/git init -q --bare "$BATS_TEST_TMPDIR/origin2269.git"
+  /usr/bin/git -C "$T2004_REPO" remote add origin "$BATS_TEST_TMPDIR/origin2269.git"
+  /usr/bin/git -C "$T2004_REPO" push -q origin refs/remotes/origin/main:refs/heads/main
+  _2004_commit "test: offline-mode guard" "2026-10-01T11:30:00Z" \
+    "mkdir -p tests && printf '@test \"no-ADR bullet\" {\n  true\n}\n' > tests/test_advisory_offline_mode.bats" >/dev/null
+  mv "$STUB_BIN_DIR/gh" "$STUB_BIN_DIR/gh-2004"
+  cat > "$STUB_BIN_DIR/gh" <<GHEOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"pulls/54"*".base.ref"*) echo main; exit 0 ;;
+esac
+exec "$STUB_BIN_DIR/gh-2004" "\$@"
+GHEOF
+  chmod +x "$STUB_BIN_DIR/gh"
+  # A new test appended to the file: an addition the guard lets through.
+  _2269_engine_fixes tests/test_advisory_offline_mode.bats '@test "no-ADR bullet does not escalate" { true; }'
+  _2004_nodes "$(cat "$SCRIPT_DIR/tests/fixtures/comment-disposition/pr2205-codeant-nitpick.md")"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Test-tamper guard"* ]]
+  [[ "$output" == *"(this-pass-touches-named-file)"* ]]
+  grep -Eq 'classifier:RESOLVED.*id=IC_FIND' "$MINLOG"
+}
+
+@test "#2269 AC4: both prompts and the gate doc state the additive-fix rule" {
+  local f
+  for f in prompts/dev-lead/fix-reviews.md prompts/dev-lead/fix-bot-comment.md docs/pr-review-agent/maintainer-comment-gate.md; do
+    grep -q "this-pass-touches-named-file" "$SCRIPT_DIR/$f" || { echo "missing in $f"; return 1; }
+    grep -q "#2269" "$SCRIPT_DIR/$f" || { echo "no #2269 in $f"; return 1; }
+  done
 }
 
 # The fix-bot-comment idempotency snippet, executed (#2004 / #1992). A re-fire may
