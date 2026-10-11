@@ -441,3 +441,16 @@ HOOK
   run grep -nE 'push_blocker|ssg_install' "$LIB"
   [[ "$status" -eq 1 ]]
 }
+
+@test "ssg_rebase_record: a header stub added on the base after the merge base is recorded when base_rev is given" {
+  _mk_pr
+  git checkout -q main
+  printf '# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/new.yml\nname: new\n' > .github/workflows/new.yml
+  git add -A; git commit -q -m "main adds stub"; git push -q origin main; git fetch -q origin
+  run ssg_rebase_record "$PRE" "$MB"
+  run grep -q 'new.yml' <<<"$output"
+  [[ "$status" -eq 1 ]]
+  run ssg_rebase_record "$PRE" "$MB" origin/main
+  [[ "$status" -eq 0 ]]
+  grep -qxF ".github/workflows/new.yml"$'\t-\t-\tstandards/workflows/new.yml' <<<"$output"
+}

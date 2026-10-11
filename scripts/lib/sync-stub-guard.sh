@@ -333,13 +333,15 @@ _ssg_blob() {
   git --literal-pathspecs rev-parse -q --verify "${1}:${2}" 2>/dev/null || echo "-"
 }
 
-# ssg_rebase_record <pre_pass_sha> <merge_base_sha>
+# ssg_rebase_record <pre_pass_sha> <merge_base_sha> [base_rev]
+#   Header stubs at [base_rev] (the base branch tip) are recorded too, so a stub
+#   added on the base after the merge base is checked after the rebase.
 #   Echoes `path\tpre_blob\tmb_blob\ttemplate` for every synced path: each
 #   header stub at <pre_pass_sha>, and each path the PR's own commits changed
 #   (<merge_base>..<pre_pass>). Returns 2, echoing nothing, when either revision
 #   does not resolve. Impure.
 ssg_rebase_record() {
-  local pre="${1:-}" mb="${2:-}" pr_paths candidates path tpl out=""
+  local pre="${1:-}" mb="${2:-}" base_rev="${3:-}" pr_paths candidates path tpl out="" base_paths=""
   if [[ -z "$pre" || -z "$mb" ]] || ! git cat-file -e "${pre}^{commit}" 2>/dev/null \
      || ! git cat-file -e "${mb}^{commit}" 2>/dev/null; then
     return 2
@@ -347,16 +349,24 @@ ssg_rebase_record() {
   # Every path the PR's own commits touched before the pass: synced content.
   pr_paths=$(git -c core.quotePath=false log --no-renames --name-only --format= "${mb}..${pre}" 2>/dev/null) \
     || return 2
+  if [[ -n "$base_rev" ]] && git cat-file -e "${base_rev}^{commit}" 2>/dev/null; then
+    base_paths=$(git -c core.quotePath=false grep -l -I -e 'SOURCE OF TRUTH:' "$base_rev" -- 2>/dev/null \
+      | sed "s#^${base_rev}:##" || true)
+  fi
   candidates=$(
     {
       git -c core.quotePath=false grep -l -I -e 'SOURCE OF TRUTH:' "$pre" -- 2>/dev/null \
         | sed "s#^${pre}:##" || true
       printf '%s\n' "$pr_paths"
+      printf '%s\n' "$base_paths"
     } | awk 'NF && !seen[$0]++'
   )
   while IFS= read -r path; do
     [[ -z "$path" ]] && continue
     tpl=$(_ssg_file_template "$pre" "$path") || tpl=""
+    if [[ -z "$tpl" && -n "$base_rev" ]]; then
+      tpl=$(_ssg_file_template "$base_rev" "$path") || tpl=""
+    fi
     if [[ -z "$tpl" ]] && ! grep -qxF -- "$path" <<<"$pr_paths"; then
       continue
     fi
