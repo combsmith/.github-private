@@ -763,23 +763,117 @@ deleting the variable or setting it to anything other than `true`. If the
 secret is genuinely missing while unpaused, the reusable's "Engine token
 preflight" step fails with a single actionable error naming the secret.
 
-**Planned automatic budget pause (companion, #1565; not yet armed. The telemetry adapter and a dry-run poller ship today, and the poller writes nothing; see below).** The same `AGENTS_PAUSED` switch can
-be flipped automatically from the Claude subscription usage budget. The transport
-half — `scripts/lib/usage-telemetry.sh` — reads the OAuth usage endpoint and emits
-the envelope the org token-budget breaker consumes; the scheduled poller that acts
-on it sets `AGENTS_PAUSED=true` **and** records `AGENTS_PAUSE_SOURCE` (e.g.
-`weekly-glide` / `five-hour`) so an automatic pause is legible rather than looking
-like a quiet fleet. **Auto-resume is scoped by that source:** after the window's
-`resets_at` passes the poller clears `AGENTS_PAUSED` **only** when
-`AGENTS_PAUSE_SOURCE` marks it automation-set — a pause a human set by hand (no
-`AGENTS_PAUSE_SOURCE`, per the manual path above) is never cleared by automation.
-- **Override / hard stop:** set `AGENTS_PAUSED=true` **without** `AGENTS_PAUSE_SOURCE`
-  (the manual path) to hold the fleet paused regardless of budget — the poller
-  leaves a human-set pause untouched. To force a resume, delete `AGENTS_PAUSED`
-  (and any `AGENTS_PAUSE_SOURCE`).
-- **Status:** the poller defaults to **dry-run** (logs the decision, writes no
-  variable) until the epic's human sign-off; on a telemetry error it fails **open**
-  (allow), so a budget-read outage never stops the fleet.
+`AGENTS_PAUSED` is read as `vars.AGENTS_PAUSED` in the **calling** repository's context, so
+only an **organisation** variable pauses every repository, and a repository variable of the
+same name overrides the organisation's for that repository. The jobs that gate on it today
+are dev-lead's dispatch, relay and resume jobs (`dev-lead-reusable.yml`).
+
+#### Budget breaker (`budget-breaker.yml`, #2153, slice 3b of #1565)
+
+The same switch is flipped automatically by `.github/workflows/budget-breaker.yml`, which
+**ships default off**. It is **reactive**: it pauses the fleet when the fleet itself reports
+that the model provider is refusing work for quota, and lifts that pause at the reset time
+those refusals report. It does not read the usage endpoint (the fleet's credential cannot,
+see #2029), so the dry-run poller below is a separate, read-only report and is not its input.
+It is not channel-pinned: it runs the default branch's code, so the disarmed schedule starts
+as soon as the workflow is on `main`.
+
+- **What a run does.** Every 10 minutes (schedule only), `scripts/budget_breaker.sh` reads
+  the pause state, collects the fleet's quota markers (`bb_collect`), decides (`bb_decide`,
+  both in `scripts/lib/budget-breaker.sh`, #2221) and applies the decision through
+  `scripts/lib/budget-breaker-writer.sh`, the only file that writes the variables:
+  - **trip** (at least `BUDGET_BREAKER_MIN_ITEMS` distinct items, default 3, refused for
+    quota in the last `BUDGET_BREAKER_WINDOW_MIN` minutes, default 30): sets
+    `AGENTS_PAUSE_SOURCE=rate-limit-observed`, then `AGENTS_PAUSE_UNTIL=<ISO time>`, then
+    `AGENTS_PAUSED=true`.
+  - **resume** (its own pause, `AGENTS_PAUSE_UNTIL` passed): sets `AGENTS_PAUSED=false`,
+    then deletes `AGENTS_PAUSE_SOURCE` and `AGENTS_PAUSE_UNTIL`.
+  - **hold** and **none**: writes nothing.
+
+  The order means a failure between two writes never leaves a pause without its source. Only
+  dev-lead's three quota markers count; pr-review's `rate-limited` marker (an advisory
+  reviewer bot out of quota) never does, and the workflow cannot opt it in.
+- **Default off, twice.** Nothing is written unless the repository variable
+  `BUDGET_BREAKER_ARMED` is **exactly** `true` (absent, `TRUE`, `1`, `yes` all mean off)
+  **and** the secret `BUDGET_BREAKER_PAT` is set. Disarmed, every run still decides and logs
+  `NOT WRITING (disarmed). Would have written: ...`, which is the dry-run evidence to review
+  before arming. Armed without the secret, it logs
+  `breaker armed but BUDGET_BREAKER_PAT is not configured` and exits green.
+- **A human pause is never touched.** The breaker sets and lifts only a pause that carries
+  `AGENTS_PAUSE_SOURCE=rate-limit-observed`. `AGENTS_PAUSED=true` with no source, or with any
+  other source, is left exactly as it is, by trip and by resume. A writing run also re-reads
+  the state immediately before its first write and writes nothing if it changed.
+- **The secret.** `BUDGET_BREAKER_PAT` is a **fine-grained personal access token** whose
+  resource owner is the `petry-projects` organisation, with the **organisation permission
+  "Variables: read and write"** and nothing else (no repository permissions). It is an
+  Actions secret of **this repository only**. It is referenced in `budget-breaker.yml` and
+  nowhere else (a static test enforces that), is handed to the step only when armed, and is
+  used only for the organisation-variable calls. Never add it to another workflow, and never
+  widen `GH_PAT_DON_PETRY` to do this job.
+- **Arming.** (1) Review a full weekly window of disarmed runs (#1565 criterion 9): the
+  `Would have written` lines and the job summaries. (2) Confirm the secret is set. (3) Set
+  the repository variable `BUDGET_BREAKER_ARMED=true`. The first trip creates the three
+  organisation variables with the visibility of `AI_ENGINES`, read from the API (an existing
+  `AGENTS_PAUSED` is the reference instead, and is updated in place without touching its
+  visibility). The breaker supports the visibilities `all` and `private` only: it does not
+  copy a repository selection. If the reference is visible to selected repositories only, or
+  none exists, the run fails with one error before writing anything; create `AGENTS_PAUSED`
+  (value `false`) by hand, visible to all repositories.
+- **Disarming.** Set `BUDGET_BREAKER_ARMED` to anything but `true`, or delete it. This stops
+  further writes; it does not lift a pause that is already set (see the next point).
+- **Overriding a breaker pause by hand.** To **keep** the fleet paused past the breaker's
+  time, delete `AGENTS_PAUSE_SOURCE` (leave `AGENTS_PAUSED=true`): the pause is then a human
+  one and automation never lifts it. To **end** a breaker pause early, set
+  `AGENTS_PAUSED=false` **and delete `AGENTS_PAUSE_SOURCE`**; if the provider is still
+  refusing work the next refusals trip it again, so disarm first if you want it to stay up.
+  To hold the fleet paused regardless of the breaker, set `AGENTS_PAUSED=true` **without**
+  `AGENTS_PAUSE_SOURCE` (the manual path). Ownership is the source and nothing else: a
+  `AGENTS_PAUSE_SOURCE=rate-limit-observed` left behind on an unpaused fleet makes the next
+  pause set by hand look like the breaker's, so every run that sees one raises a
+  `::warning::` asking for it to be deleted (the breaker does not write on `none`).
+- **Anti-flap.** One decision and at most one state change per run; a variable that already
+  holds the wanted value is not written again; a resume waits until the pause has stood for
+  `BUDGET_BREAKER_MIN_HOLD_MIN` minutes (default 30).
+- **Fail open.** A collector that could not read, an unreadable state, or a decision that
+  does not fit the state all mean no write. Missing data never pauses the fleet.
+- **Failure is loud once.** A refused credential (401, 403 or 404 on the state read) or any
+  failed write is **one** `::error::` naming the token and the permission, a red run, and no
+  retry. The message lists what was written before the failure. After such a run, check the
+  three variables: an `AGENTS_PAUSE_SOURCE=rate-limit-observed` left behind while the fleet
+  is not paused should be deleted, because a pause set by hand while it is there would look
+  like the breaker's own and be lifted.
+- **Notification.** One comment when the breaker trips and one when it clears, on a single
+  tracking issue in this repository ("Budget breaker: automatic fleet pauses (tracking)",
+  created on first use, labelled `budget-breaker` and `dev-lead:hands-off`). If the comment
+  cannot be posted the run fails, so a pause is never silent.
+- **Which credential reads.** The collector trusts a marker only when its author reads as
+  OWNER, MEMBER or COLLABORATOR, and GitHub reports that relative to the token doing the
+  read. The scan therefore uses the fleet's read credential
+  (`GH_PAT_DON_PETRY || GH_PAT_WORKFLOWS`, the same one the retry cron and the fleet monitor
+  scan with), never the write secret and never this repository's workflow token. Each run
+  logs `quota markers read: N trusted, M dropped as untrusted`; when every marker was
+  dropped it raises a `::warning::`, because with that credential the breaker can never trip.
+- **Token rotation.** The token has no expiry, so rotation is a manual policy: **every 90
+  days**, and at once if it may have leaked. Steps: (1) create a new fine-grained token with
+  the same resource owner and the same single permission; (2) update the `BUDGET_BREAKER_PAT`
+  secret of this repository; (3) verify a read: `GET /orgs/petry-projects/actions/variables`
+  answers 200 with the new token (an armed run does exactly this, and logs
+  `pause state from organisation API` with no `::error::`); (4) revoke the old token. Each
+  run logs the secret's age (`age of BUDGET_BREAKER_PAT: last updated N day(s) ago`) and
+  raises a `::warning::` once it is older than 90 days.
+- **Tuning** (repository variables, all optional): `BUDGET_BREAKER_MIN_ITEMS`,
+  `BUDGET_BREAKER_WINDOW_MIN`, `BUDGET_BREAKER_PROBE_HOURS` (the pause length when no reset
+  time is known, default 2) and `BUDGET_BREAKER_MIN_HOLD_MIN`. Keep the minimum hold at or
+  above the window: otherwise the markers that caused a pause can still be inside the window
+  when it lifts.
+- **Guard rails for editors.** The workflow is schedule-only on purpose: do not add
+  `workflow_dispatch` or any event trigger (a manual or event run can execute branch code,
+  and the job holds a credential that can pause every repository), and do not widen its
+  `permissions:` (`contents: read`, plus `issues: write` for the notice). Tests:
+  `tests/dev-lead/unit/test_budget_breaker_writer.bats`.
+
+The telemetry adapter (`scripts/lib/usage-telemetry.sh`) and the dry-run poller described
+below still ship; the poller writes nothing and has no access to the breaker's secret.
 
 ### Gemini quota metering & per-key cooldown (#2030)
 

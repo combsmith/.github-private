@@ -5,14 +5,15 @@
 # The router-served pull_request surface reaches persona-runner-reusable.yml with
 # client_payload.surface=pull_request. Before #1905 the runner ignored `surface`
 # and ran the engine + posted on EVERY trusted PR — losing the persona-specific
-# suppressors the local qa-lead-pr-advisory.yml gate enforces (no-test-surface,
-# budget-exhausted, already-advised) on top of the router's generic brakes.
+# suppressors qa-lead's gate enforces (no-test-surface, budget-exhausted,
+# already-advised) on top of the router's generic brakes. Since #2243 the router
+# is the ONLY path serving qa-lead's pull_request advisory.
 #
 # `persona_event_pregate` is what the runner now calls before the engine:
 #   * surface != pull_request (mention/absent) -> "run", no gate (mention path
 #     unchanged, AC #1).
 #   * surface == pull_request, persona qa-lead -> qa_lead_pr_gather_and_decide,
-#     the ONE gathering+decision shared with the local workflow (AC #2).
+#     the ONE gathering+decision (AC #2).
 #   * surface == pull_request, no registered gate -> skip + a logged notice (AC #3).
 #   * any unreadable signal -> fail closed (skip) with a ::error naming it (AC #3).
 #
@@ -226,7 +227,7 @@ prior advisory' \
 }
 
 # ---------------------------------------------------------------------------
-# qa_lead_pr_gather_and_decide is the ONE implementation both callers use.
+# qa_lead_pr_gather_and_decide is the ONE implementation the pre-gate uses.
 # ---------------------------------------------------------------------------
 
 @test "qa_lead_pr_gather_and_decide is defined and usable directly" {
