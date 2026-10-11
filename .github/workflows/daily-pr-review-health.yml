@@ -368,7 +368,8 @@ jobs:
         run: bash scripts/mcp_connectivity_check.sh
 
       # Fleet pause notice (#2249): one line saying which steps the pause skipped.
-      # `always()` so a scan failing above does not silence it. The job-level
+      # `always()` so a scan failing above does not silence it, which is also why
+      # it does not claim the scans ran: it only says they are not paused. The job-level
       # Claude credential is blanked: this step only prints a line.
       - name: Report the fleet pause
         if: always() && vars.AGENTS_PAUSED == 'true'
@@ -378,6 +379,7 @@ jobs:
           PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
         run: |
           echo "::notice title=Agent fleet paused::Daily PR Review Health Check: the agent fleet is paused (AGENTS_PAUSED=true)," \
-            "so the pr-review log analysis and the MCP connectivity probe were not run; the runaway, stall and merge-ready scans ran." \
+            "so the pr-review log analysis and the MCP connectivity probe were skipped." \
+            "The runaway, stall and merge-ready scans are not paused; see their own steps for whether they ran." \
             "Pause source: ${PAUSE_SOURCE:-not set (paused by hand)}." \
             "Paused until: ${PAUSE_UNTIL:-not set}."
