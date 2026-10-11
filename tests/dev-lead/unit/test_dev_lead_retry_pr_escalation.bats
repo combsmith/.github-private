@@ -82,12 +82,12 @@ teardown() {
 }
 
 @test "retry PR: exhausted automation budget (no label) → skips (no dispatch)" {
-  # No needs-human-review label, but 10 bot commits since the last human
+  # No needs-human-review label, but 50 bot commits since the last human
   # interaction → the per-PR automation budget is exhausted (#926). The
   # safety-net cron must consult the budget, not just the label, so it can
   # never re-ignite the #860 amplifier (#1407 AC #3).
   LABELS_JSON='["bug"]'
-  COMMITS_JSON="$(jq -nc '[range(10) | {commit:{author:{date:"2026-06-18T00:00:00Z"}}, author:{login:"donpetry-bot"}}]')"
+  COMMITS_JSON="$(jq -nc '[range(50) | {commit:{author:{date:"2026-06-18T00:00:00Z"}}, author:{login:"donpetry-bot"}}]')"
 
   run scan_pr_for_rate_limits "petry-projects/demo" 860
 

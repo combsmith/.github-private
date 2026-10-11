@@ -127,6 +127,8 @@ jobs:
               core.notice(`Updated canary issue #${issue.number}: ${issue.html_url}`);
             }
 
+      # Not on PAUSED (#2266): with the agent fleet paused the dispatched run only
+      # reported the pause, so the path was not checked and the script says so.
       - name: Annotate clean canary
-        if: steps.guard.outputs.configured == 'true' && env.CANARY_FAILED != 'true'
+        if: steps.guard.outputs.configured == 'true' && env.CANARY_FAILED != 'true' && env.CANARY_STATUS != 'PAUSED'
         run: echo "::notice::Initiative-planner canary passed — the idea:approved dispatch path is healthy."

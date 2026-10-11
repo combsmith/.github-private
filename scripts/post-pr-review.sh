@@ -130,6 +130,31 @@ BODY=$(jq -r '.body // ""' "$VERDICT_JSON")
 # body edit (AC3).
 METADATA_ONLY=$(jq -r '.metadata_only // false' "$VERDICT_JSON")
 
+# Derive the approval marker word from the verdict, not from model-written text
+# (issue #2169). The verdict vocabulary is `approve`, but every marker consumer
+# (the #1754 guard below, review-one-pr.sh, carry-forward, the miss-rate metric)
+# expects the past tense `decision=approved`. cascade-action.md substituted the
+# raw verdict word, so a valid approve verdict failed the guard on formatting
+# alone and nothing was posted. Normalize only the present-tense word inside the
+# head-SHA v1 marker; a missing or contradictory decision still fails closed.
+if [ "$DECISION" = "approve" ]; then
+  # -z treats the body as one record so a marker wrapped across lines still
+  # matches. Detect changes without command substitution stripping newlines: write
+  # to temp files and compare via cmp, so a trailing-newline-only difference
+  # doesn't falsely trigger a substitution when sed made no actual change (#2169).
+  BODY_FILE="$(mktemp)"
+  NORMALIZED_FILE="$(mktemp)"
+  printf '%s' "$BODY" > "$BODY_FILE"
+  sed -E -z \
+    "s/(<!-- pr-review-agent v1 sha=${PR_HEAD_SHA}[[:space:]][^>]*decision=)approve([[:space:]]|-->)/\1approved\2/" \
+    "$BODY_FILE" > "$NORMALIZED_FILE"
+  if ! cmp -s "$BODY_FILE" "$NORMALIZED_FILE"; then
+    echo "  approval marker said decision=approve — normalized to decision=approved from the verdict (#2169)"
+    BODY="$(cat "$NORMALIZED_FILE")"
+  fi
+  rm -f "$BODY_FILE" "$NORMALIZED_FILE"
+fi
+
 # Marker keying the single human-escalation artifact (issue #1754 AC2). An
 # escalation must leave a visible, updatable comment on the PR — not just a
 # label. The comment is upserted (created once, then patched in place) so a

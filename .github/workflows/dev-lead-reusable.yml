@@ -147,6 +147,13 @@ jobs:
       # variable — NOT a workflow_call input — so no channel-pin sequencing is
       # needed. Empty => the guard auto-discovers (npm/make/pytest/bats).
       DEV_LEAD_TEST_CMD: ${{ vars.DEV_LEAD_TEST_CMD }}
+      # The instant from which a maintainer's "no change needed" reply may resolve a
+      # bot review thread (nochange_epoch_cutoff in dev-lead-fix-reviews.sh, #2079 /
+      # #2161). Mapped from an Actions variable, NOT a workflow_call input, so no
+      # channel-pin sequencing is needed. Unset or unparseable => the no-change path
+      # stays disabled. Set it only after the stamping release is on every consumer's
+      # dev-lead channel (see #2161).
+      DEV_LEAD_NOCHANGE_EPOCH: ${{ vars.DEV_LEAD_NOCHANGE_EPOCH || '' }}
       # Empty by default so dev-lead-intent.sh derives the trusted set from the
       # reviewer-source registry (scripts/lib/reviewer-sources.tsv), the single
       # source of truth — no hardcoded list to drift from the gate/scorecard

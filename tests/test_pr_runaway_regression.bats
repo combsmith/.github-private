@@ -75,7 +75,7 @@ teardown() {
 fill_bot_acks() {  # fill_bot_acks <count>
   local n="$1" i=0 arr='[]' tmp
   while [ "$i" -lt "$n" ]; do
-    arr=$(echo "$arr" | jq --arg w "2026-06-24T01:00:$(printf '%02d' "$i")Z" \
+    arr=$(echo "$arr" | jq --arg w "2026-06-24T01:$(printf '%02d:%02d' $((i / 60)) $((i % 60)))Z" \
       '. + [{created_at:$w, user:{login:"donpetry-bot"}, body:"<!-- pr-review-agent mention-ack -->\n@donpetry-bot I'\''m on it"}]')
     i=$((i + 1))
   done
@@ -89,13 +89,13 @@ posted_count() { local n; n=$(grep -c '^----$' "$POSTED" 2>/dev/null) || n=0; ec
 # ---------------------------------------------------------------------------
 
 @test "scenario A: self-mention ack storm exhausts the budget" {
-  fill_bot_acks 12
+  fill_bot_acks $((MAX_PR_AUTOMATION_CYCLES + 2))
   run enforce_pr_budget 860 "$REPO"
   [ "$status" -eq 0 ]   # exhausted -> caller must stop
 }
 
 @test "scenario A: escalation fires exactly once (deduped on marker)" {
-  fill_bot_acks 12
+  fill_bot_acks $((MAX_PR_AUTOMATION_CYCLES + 2))
   enforce_pr_budget 860 "$REPO"
   enforce_pr_budget 860 "$REPO"
   enforce_pr_budget 860 "$REPO"
@@ -112,12 +112,14 @@ posted_count() { local n; n=$(grep -c '^----$' "$POSTED" 2>/dev/null) || n=0; ec
 # ---------------------------------------------------------------------------
 
 @test "scenario B: review<->fix ping-pong exhausts and escalates once" {
-  # 6 bot review comments + 6 bot fix commits = 12 agent events, no human.
-  local arr='[]' commits='[]' i=0
-  while [ "$i" -lt 6 ]; do
-    arr=$(echo "$arr" | jq --arg w "2026-06-24T0$i:00:00Z" \
+  # One bot review comment + one bot fix commit per round, no human: enough
+  # rounds to pass the cap (26 rounds = 52 agent events at the default of 50).
+  local arr='[]' commits='[]' i=0 rounds=$((MAX_PR_AUTOMATION_CYCLES / 2 + 1)) hh
+  while [ "$i" -lt "$rounds" ]; do
+    hh=$(printf '%02d:%02d' $((i / 60)) $((i % 60)))
+    arr=$(echo "$arr" | jq --arg w "2026-06-24T${hh}:00Z" \
       '. + [{created_at:$w, user:{login:"donpetry-bot"}, body:"review cycle"}]')
-    commits=$(echo "$commits" | jq --arg w "2026-06-24T0$i:30:00Z" \
+    commits=$(echo "$commits" | jq --arg w "2026-06-24T${hh}:30Z" \
       '. + [{commit:{author:{date:$w}}, author:{login:"donpetry-bot"}}]')
     i=$((i + 1))
   done
@@ -134,7 +136,7 @@ posted_count() { local n; n=$(grep -c '^----$' "$POSTED" 2>/dev/null) || n=0; ec
 # ---------------------------------------------------------------------------
 
 @test "a human comment after the storm resets the budget — no escalation" {
-  fill_bot_acks 20
+  fill_bot_acks $((MAX_PR_AUTOMATION_CYCLES + 10))
   tmp="$(mktemp)"
   jq '. + [{created_at:"2026-06-25T09:00:00Z", user:{login:"alice"}, body:"taking a look"}]' \
     "$FIX/comments.json" > "$tmp" && mv "$tmp" "$FIX/comments.json"

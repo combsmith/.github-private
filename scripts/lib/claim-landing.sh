@@ -142,11 +142,18 @@ cl_select_pass_claims() {
 #   account the maintainer uses, so "our login since the pass start" would also match a
 #   comment the human posts mid-pass. Instead a `gh` shim is installed in a fresh
 #   directory (echoed on stdout; the caller prepends it to the engine's PATH). The shim
-#   forwards every call to the real gh unchanged and, for an
-#   reply-creating call (the GraphQL reply mutation, any */replies* REST path,
-#   in_reply_to, or a query/payload read from --input / @file), appends the posted reply's node id to
-#   <record_file> (or the literal UNATTRIBUTED when the response carries no id, so the
-#   caller can fail closed). The record file is created empty. Returns 1 on failure.
+#   forwards every call to the real gh unchanged and, for a
+#   `gh api` call that can create a reply (a POST — explicit, or implied by fields —
+#   carrying the GraphQL reply mutation in a `query` field or payload, targeting a
+#   */replies path, or carrying an in_reply_to field or payload entry; text in a
+#   --jq/--template argument never counts), appends the posted reply's node id to <record_file> (or
+#   the literal UNATTRIBUTED when the response carries no id (an object, or a bare
+#   PRRC_ node id left by the caller's --jq), so the caller can
+#   fail closed). Only `gh api` can create a review-thread reply, so no other
+#   subcommand is inspected, and a raw -f value or a --body that merely starts with
+#   `@` (e.g. "@coderabbitai …") is plain text, not a file (#2161). A payload file
+#   that cannot be read still flags the call (fail closed). The record file is
+#   created empty. Returns 1 on failure.
 cl_install_reply_recorder() {
   local record="${1:-}" real="${2:-}"
   [[ -z "$record" ]] && return 1
@@ -159,38 +166,64 @@ cl_install_reply_recorder() {
     printf '#!/usr/bin/env bash\n'
     printf 'real=%q\nrec=%q\n' "$real" "$record"
     cat <<'SHIM'
-flag=0
-tmpin=""
-check() {
+[ "${1:-}" = "api" ] || exec "$real" "$@"
+reply=0; unreadable=0; hasfield=0; method=""; endpoint=""; tmpin=""
+pcheck() {
   case "$1" in
-    *addPullRequestReviewThreadReply*|*/replies*|*in_reply_to*) flag=1 ;;
+    *addPullRequestReviewThreadReply*|*in_reply_to*) reply=1 ;;
   esac
 }
-check "$*"
-prev=""
-for a in "$@"; do
-  f=""
-  [ "$prev" = "--input" ] && f=$a
-  case "$a" in
-    --input=*) f=${a#--input=} ;;
-    *=@*) f=${a#*=@} ;;
-    @*) f=${a#@} ;;
-  esac
-  if [ -n "$f" ]; then
-    if [ "$f" = "-" ]; then
-      if [ -z "$tmpin" ]; then
-        tmpin=$(mktemp)
-        cat > "$tmpin"
-      fi
-      check "$(cat "$tmpin")"
-    elif [ -r "$f" ]; then
-      check "$(cat "$f")"
-    else
-      flag=1
+payload() {
+  if [ "$1" = "-" ]; then
+    if [ -z "$tmpin" ]; then
+      tmpin=$(mktemp)
+      cat > "$tmpin"
     fi
+    pcheck "$(cat "$tmpin")"
+  elif [ -r "$1" ]; then
+    pcheck "$(cat "$1")"
+  else
+    unreadable=1
   fi
-  prev=$a
+}
+field() {
+  local kv=$1 typed=$2 key val
+  hasfield=1
+  key=${kv%%=*}; val=${kv#*=}
+  case "$key" in in_reply_to*) reply=1 ;; esac
+  if [ "$typed" = 1 ]; then
+    case "$val" in @*) payload "${val#@}"; return ;; esac
+  fi
+  [ "$key" = query ] && pcheck "$val"
+}
+handle() {
+  case "$1" in
+    -X|--method) method=$2 ;;
+    -f|--raw-field) field "$2" 0 ;;
+    -F|--field) field "$2" 1 ;;
+    --input) hasfield=1; payload "$2" ;;
+  esac
+}
+pending=""
+for a in "$@"; do
+  if [ -n "$pending" ]; then handle "$pending" "$a"; pending=""; continue; fi
+  case "$a" in
+    -X|--method|-q|--jq|-t|--template|-f|--raw-field|-F|--field|--input|-H|--header|--hostname|--cache|-p|--preview) pending=$a ;;
+    --method=*|--jq=*|--template=*|--raw-field=*|--field=*|--input=*|--header=*|--hostname=*|--cache=*|--preview=*) handle "${a%%=*}" "${a#*=}" ;;
+    -X?*) handle -X "${a#-X}" ;;
+    -f?*) handle -f "${a#-f}" ;;
+    -F?*) handle -F "${a#-F}" ;;
+    -*) ;;
+    *) [ "$a" = api ] || endpoint=$a ;;
+  esac
 done
+case "$endpoint" in */replies|*/replies/*|*/replies\?*) reply=1 ;; esac
+[ "$unreadable" -eq 1 ] && reply=1
+if [ -z "$method" ]; then
+  if [ "$endpoint" = graphql ] || [ "$hasfield" -eq 1 ]; then method=POST; else method=GET; fi
+fi
+flag=0
+case "$method" in [Pp][Oo][Ss][Tt]) [ "$reply" -eq 1 ] && flag=1 ;; esac
 run_real() {
   if [ -n "$tmpin" ]; then "$real" "$@" < "$tmpin"; else "$real" "$@"; fi
 }
@@ -200,6 +233,8 @@ if [ "$flag" -eq 1 ]; then
   printf '%s\n' "$out"
   if [ "$rc" -eq 0 ]; then
     id=$(jq -r '(.data.addPullRequestReviewThreadReply.comment.id // .node_id // empty) | tostring' <<<"$out" 2>/dev/null || true)
+    # A caller's --jq projection can leave a bare node id on the screen.
+    [ -n "$id" ] || id=$(grep -m1 -o 'PRRC_[A-Za-z0-9_-]*' <<<"$out" || true)
     printf '%s\n' "${id:-UNATTRIBUTED}" >> "$rec"
   fi
   [ -n "$tmpin" ] && rm -f "$tmpin"
@@ -219,16 +254,56 @@ SHIM
 }
 
 # cl_recorded_reply_ids <record_file>
-#   Emits the unique node ids the recorder captured, one per line. Returns 1 when the
-#   record is missing or holds an UNATTRIBUTED entry (a reply whose id is unknown, so
-#   nothing can be trusted: the no-change path must be disabled). Pure.
+#   Emits the unique node ids the recorder captured, one per line — including when
+#   the record also holds an UNATTRIBUTED entry, so the replies whose ids WERE
+#   captured are still stamped (#2161). Returns 1 when the record is missing or holds
+#   an UNATTRIBUTED entry (a reply whose id is unknown: the no-change path must be
+#   disabled). Pure.
 cl_recorded_reply_ids() {
   local record="${1:-}"
   [[ -n "$record" && -f "$record" ]] || return 1
-  if grep -qx 'UNATTRIBUTED' "$record"; then
-    return 1
-  fi
-  { grep -v '^[[:space:]]*$' "$record" || true; } | sort -u
+  { grep -v -x -e '[[:space:]]*' -e 'UNATTRIBUTED' "$record" || true; } | sort -u
+  ! cl_record_unattributed "$record"
+}
+
+# cl_record_unattributed <record_file>
+#   0 when the record holds an UNATTRIBUTED entry (a reply this pass posted whose id
+#   is unknown, so it can never be stamped), 1 otherwise. Pure.
+cl_record_unattributed() {
+  [[ -n "${1:-}" && -f "$1" ]] && grep -qx 'UNATTRIBUTED' "$1"
+}
+
+# The PR issue comment that carries the pass replies dev-lead could not stamp yet
+# (#2161). Each pass runs on a fresh runner, so the list lives on the PR, like
+# dev-lead's other state markers. `UNATTRIBUTED` in the list stands for a reply whose
+# id is unknown; only a human can clear it.
+readonly _CL_PENDING_MARKER_PREFIX='<!-- dev-lead:unstamped-replies ids='
+
+# cl_pending_marker_body <ids>
+#   The body of the pending-replies marker comment for the newline-separated <ids>
+#   (deduplicated, order kept; ids outside [A-Za-z0-9_=+/-] are dropped). Pure.
+cl_pending_marker_body() {
+  local ids
+  ids=$(printf '%s\n' "${1:-}" | awk '/^[A-Za-z0-9_=+\/-]+$/ && !seen[$0]++' | paste -sd, -)
+  printf '%s%s -->\n' "$_CL_PENDING_MARKER_PREFIX" "$ids"
+  printf '%s\n' \
+    '**dev-lead: review-thread replies not yet marked as dev-lead'"'"'s.**' \
+    '' \
+    'dev-lead posted review-thread replies on this PR that it could not mark as its own. Until they are marked, dev-lead will not resolve a bot review thread on a "no change needed" reply here, because one of these replies could be mistaken for a maintainer'"'"'s verdict (#2079, #2161).' \
+    '' \
+    'dev-lead retries listed reply ids on every pass and deletes this comment once none are left. `UNATTRIBUTED` means a reply whose id is unknown: check that every dev-lead reply on this PR carries a `<!-- dev-lead` marker, then delete this comment (or remove `UNATTRIBUTED` from the list above).'
+}
+
+# cl_pending_marker_ids <body>
+#   Emits the reply ids listed in a pending-replies marker body, one per line
+#   (malformed entries dropped). Returns 1 when <body> carries no marker. Pure.
+cl_pending_marker_ids() {
+  local body="${1:-}" line
+  line=$(grep -m1 -F -- "$_CL_PENDING_MARKER_PREFIX" <<<"$body") || return 1
+  line=${line#*"$_CL_PENDING_MARKER_PREFIX"}
+  line=${line%%-->*}
+  tr ',' '\n' <<<"$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+    | awk '/^[A-Za-z0-9_=+\/-]+$/ && !seen[$0]++'
   return 0
 }
 
