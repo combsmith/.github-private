@@ -105,7 +105,8 @@ recommendations that were later replaced, and nothing should be built from it.
   window as the Factory. Uncapped for now, with the budget gauge watched.
 - The Kernel's language. Research found no framework worth building on and recommends Python with
   the standard library only at run time (§7.5), and the proof of concept bears that out (§9.13).
-  The Maintainer has not yet ruled.
+  A TypeScript port reproduces every recorded decision, so the choice is reversible. The
+  Maintainer has not yet ruled.
 
 ## 2. Structure
 
@@ -1476,6 +1477,32 @@ frameworks, LangGraph among them, offer nothing to a deterministic function.
 dependency that never enters `apply`.** A laptop needs a current Python installed; the system one
 on macOS is too old for the test library. Pin the runner image by version, not `ubuntu-latest`,
 since the default will move.
+
+**The trial of both.** On 2026-10-11 the Kernel and the validator of the proof of concept (§9.13)
+were ported to TypeScript with no dependencies, and run directly by Node with no build step. Every
+decision the Python Kernel makes in the simulator and in its unit tests was recorded, 10,785 in
+all, and replayed through the port.
+
+| | Python | TypeScript |
+|---|---|---|
+| Same decisions | The reference | All 10,785 reproduced exactly |
+| Kernel size | 341 lines | 222 lines |
+| Validator size | 90 lines | 61 lines |
+| Time per decision | 13 microseconds | 4 microseconds |
+| Start-up | 0.05 seconds | 0.2 to 0.3 seconds |
+| A type error at run time | Runs anyway | Runs anyway |
+| A type checker | A development dependency | A development dependency |
+| Asserting that the Kernel does no I/O | From the syntax tree, with the standard library | No parser in the standard library: a text match, or a dependency |
+| Runs with no build on the runner's default | Yes | On Node 22, where it is still called a release candidate |
+| The simulator and the mutation check | Written | Not ported |
+
+Neither language is disqualified, and the differences in speed and start-up are far below anything
+that matters beside a call to GitHub. What the trial changes is the cost of the choice. The
+recorded decisions are a specification that either language can be held to, so the choice can be
+revisited later without a rewrite on trust. The recommendation stays Python, on two of the rows:
+the purity check, which is the boundary this whole design rests on, is real in Python and
+approximate in TypeScript without a dependency; and Python needs no qualification about the
+runner's default interpreter.
 
 Sources: the runner image's software list
 (<https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md>); Node's
