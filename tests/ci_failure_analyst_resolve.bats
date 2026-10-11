@@ -17,7 +17,7 @@ SCRIPT="$REPO_ROOT/scripts/ci-failure-analyst-resolve.sh"
 SHA="0123456789abcdef0123456789abcdef01234567"
 
 setup() {
-  TMP="$(mktemp -d)"
+  TMP="$(mktemp -d)" || { echo "Failed to create temp directory" >&2; exit 1; }
   STUB_BIN="$TMP/bin"
   GH_FIXTURES="$TMP/fixtures"
   GH_CALLS="$TMP/gh-calls.log"
@@ -61,7 +61,7 @@ GHEOF
 }
 
 teardown() {
-  rm -rf "$TMP"
+  [ -n "${TMP:-}" ] && rm -rf "$TMP"
 }
 
 # fixture <api-path> <json>

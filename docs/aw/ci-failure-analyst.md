@@ -113,7 +113,7 @@ A failure on the default branch is therefore not reported on the PR already merg
 payload that carries neither event, or a run with no open non-fork PR, ends in a "skipping" notice
 with exit 0.
 
-The reusable fetches the script from its own commit (`github.job_workflow_sha`), so a caller pinned
+The reusable fetches the script from its own commit (`job.workflow_sha`), so a caller pinned
 to a channel runs the script that matches the workflow it pinned.
 
 ### The `workflow_run` trigger and the watched-workflow list
