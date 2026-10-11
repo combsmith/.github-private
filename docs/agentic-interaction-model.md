@@ -190,10 +190,9 @@ keeps its own file) carries **no** job qualifier and remains exactly one row.
 | `.github/workflows/dismiss-stale-bot-reviews.yml` | 1 | — | `pull_request:[synchronize]`, `pull_request_review:[submitted]` — reacts to a push/re-review. |
 | `.github/workflows/issue-triage-runner.yml` | 1 | — | `issues:[opened, reopened]` — reacts to a new/reopened issue. |
 | `.github/workflows/pr-review-mention.yml` | 1 | — | Mention router: `issue_comment`, `pull_request_review_comment`, `pull_request:[review_requested]`; parses + dispatches, no clock. |
-| `.github/workflows/persona-mention.yml` | 1 | — | Mention router: `issue_comment`, `pull_request_review_comment`, `discussion_comment` — dispatches to the persona runner, no clock. |
+| `.github/workflows/persona-mention.yml` | 1 | — | Mention router: `issue_comment`, `pull_request_review_comment`, `discussion_comment`, `pull_request:[opened, ready_for_review, reopened]` — dispatches to the persona runner, no clock. Sole server of qa-lead's `pull_request` advisory (#2243). |
 | `.github/workflows/auto-rebase-retry.yml` | 1 | — | `workflow_run:[completed]` on `Auto-rebase non-Dependabot PRs` — event-driven retry handler; re-runs failed jobs bounded by attempt counter. No `timer_role`: event-driven retry handlers are Class 1 regardless of semantic role (see §6.1). |
 | `.github/workflows/dependency-advisory.yml` | 1 | — | `pull_request:[opened, synchronize, reopened]` (paths-filtered to manifest files) — reacts to dependency changes in a PR; posts an advisory comment. |
-| `.github/workflows/qa-lead-pr-advisory.yml` | 1 | — | `pull_request:[opened, ready_for_review]` — reacts to a PR entering review; a test-surface gate decides whether qa-lead posts one advisory. No `schedule`; `synchronize` deliberately not wired (#1646). |
 | `.github/workflows/spec-drift.yml` | 1 | — | `pull_request:[closed]` — reacts to a merged initiative PR; runs the drift detector once and posts at most one advisory comment on the closed story. |
 | `.github/workflows/release-notes.yml` | 1 | — | `push:[main]` — reacts to a merge to main; drafts a Keep-a-Changelog entry and opens a CHANGELOG PR. `workflow_dispatch` for ad-hoc runs. |
 | `.github/workflows/gh-aw-cross-org.yml` | 1 | — | `repository_dispatch:[gh-aw-issue-triage, gh-aw-ci-failure]` — PAT-backed cross-org dispatch receiver; no schedule. |
@@ -222,6 +221,7 @@ keeps its own file) carries **no** job qualifier and remains exactly one row.
 | `.github/workflows/auto-rebase-health.yml` | 3 | — | `schedule: '43 7 * * *'` daily auto-rebase health report; cadence is the origin. |
 | `.github/workflows/engine-token-liveness.yml` | 3 | — | `schedule: '23 7 * * *'` daily engine-token preflight liveness monitor (#1587); cadence is the origin. `workflow_dispatch` for ad-hoc runs. |
 | `.github/workflows/budget-poller.yml` | 3 | — | `schedule: '17 * * * *'` + `'47 * * * *'` twice-hourly dry-run Claude budget poller (#2029; second slot because ~60% of scheduled ticks are dropped here, #2160); reads usage and logs what the breaker would do, writes no variable; cadence is the origin. |
+| `.github/workflows/budget-breaker.yml` | 3 | — | `schedule: '6,16,26,36,46,56 * * * *'` every-10-minutes reactive budget breaker (#2153, decision #2221); reads the fleet's quota markers, and when armed sets or lifts the organisation pause variables it owns (default off; never touches a human pause); schedule-only by design (no `workflow_dispatch`: the job holds the variable-write credential); idempotent, so an extra or missed tick changes nothing; cadence is the origin. |
 
 > **Out-of-scope workflows (exclusion list).** The completeness check (§10) ignores the paths
 > below. A workflow absent from both this table and this list is a completeness failure.

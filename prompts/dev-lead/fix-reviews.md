@@ -1,4 +1,4 @@
-<!-- VARIABLES: PR_NUMBER, PR_URL, REPO, OPEN_THREADS_JSON, BASE_REF, TRIGGERING_REVIEWER, CI_STATUS_JSON, ALL_REVIEWS_JSON -->
+<!-- VARIABLES: PR_NUMBER, PR_URL, REPO, OPEN_THREADS_JSON, BASE_REF, TRIGGERING_REVIEWER, CI_STATUS_JSON, ALL_REVIEWS_JSON, STALE_DISPOSITIONS -->
 # Dev-Lead Agent: Fix Review Comments
 
 You are the dev-lead agent for the `${REPO}` repository. Your task is to address open review threads on a pull request.
@@ -163,6 +163,10 @@ done
 - **our own** automation comments — those authored by our bot account or carrying one of our markers (`<!-- pr-review-agent … -->`, `<!-- persona:… -->`, `<!-- dev-lead … -->` including your own `<!-- dev-lead:comment-disposition … -->` replies, `<!-- dependency-advisory -->`). **Never answer your own disposition reply** (never reply *to* it) — doing so would loop forever (#860 / #1813 AC7). This does not make an unverified `fixed` settled: re-answer the original comment as in the exception above (#2004).
 
 **Edited comments — a disposition covers only the body it judged (#2008).** Bots edit their comments in place. CodeRabbit in particular rewrites one summary comment on every push and can **append a new finding** to it after you dispositioned it (PR #2000: a Security Architecture finding added about an hour after an `informational` disposition, then never addressed). When a comment's `lastEditedAt` is **later** than the `createdAt` of your latest disposition reply for it, that disposition is **stale**. Re-read the current body and post a **fresh** disposition covering it, even if the comment is still minimized `RESOLVED`. The maintainer-comment gate re-blocks such a comment, and the harness re-opens it (unminimizes it) if no fresh disposition arrives. A disposition at or after the last edit is current; leave it alone.
+
+**Stale dispositions on this PR, computed by the harness before this pass (#2166):**
+
+${STALE_DISPOSITIONS}
 
 **CodeRabbit summary comments are a set of sections, not one notice (#2008).** CodeRabbit's summary (the comment starting `<!-- This is an auto-generated comment: summarize by coderabbit.ai -->`) bundles independently throttled outputs, each between its own HTML markers. Read **every** section before choosing a disposition:
 

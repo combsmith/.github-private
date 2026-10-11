@@ -144,6 +144,40 @@ CR_NODE='{"id":"IC_cr","author":{"login":"coderabbitai","__typename":"Bot"},"aut
   [ "$(_get_env INTENT_REASON)" = "bot-comment-already-resolved" ]
 }
 
+# #2166: a RESOLVED comment edited after its newest disposition is re-blocked by
+# the gate, so the retry must run a pass for it rather than skip it as resolved.
+# _resolved_comments <lastEditedAt> <disposition createdAt>
+_resolved_comments() {
+  jq -nc --arg e "$1" --arg d "$2" '
+    [{id:"IC_cr", author:{login:"coderabbitai", __typename:"Bot"}, authorAssociation:"NONE",
+      body:"Review limit reached", createdAt:"2026-10-01T23:05:43Z", lastEditedAt:$e,
+      isMinimized:true, minimizedReason:"RESOLVED"},
+     {id:"IC_d", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+      body:"<!-- dev-lead:comment-disposition id=IC_cr disposition=informational -->\nok",
+      createdAt:$d, lastEditedAt:null, isMinimized:false, minimizedReason:null}]'
+}
+
+@test "bot-comment retry(#2166): RESOLVED but edited after its disposition → routes to fix-bot-comment" {
+  _event IC_cr
+  _node coderabbitai "Review limit reached" RESOLVED 2009 don-petry OPEN 2026-10-01T23:40:00Z
+  export COMMENTS_JSON="$(_resolved_comments 2026-10-01T23:40:00Z 2026-10-01T23:30:00Z)"
+
+  run bash "$INTENT_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(_get_env INTENT_TYPE)" = "fix-bot-comment" ]
+  [ "$(_ctx comment_version)" = "2026-10-01T23:40:00Z" ]
+}
+
+@test "bot-comment retry(#2166): RESOLVED and edited BEFORE its newest disposition → skip as resolved" {
+  _event IC_cr
+  _node coderabbitai "Review limit reached" RESOLVED 2009 don-petry OPEN 2026-10-01T23:20:00Z
+  export COMMENTS_JSON="$(_resolved_comments 2026-10-01T23:20:00Z 2026-10-01T23:30:00Z)"
+
+  run bash "$INTENT_SCRIPT"
+  [ "$(_get_env INTENT_TYPE)" = "skip" ]
+  [ "$(_get_env INTENT_REASON)" = "bot-comment-already-resolved" ]
+}
+
 @test "bot-comment retry: comment already carries a current disposition → skip" {
   _event IC_cr
   _node coderabbitai "Walkthrough"

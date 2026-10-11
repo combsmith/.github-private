@@ -1,4 +1,4 @@
-<!-- VARIABLES: PR_NUMBER, PR_URL, REPO, ACTOR, COMMENT_BODY, COMMENT_NODE_ID, HEAD_SHA, CI_STATUS_JSON, ALL_REVIEWS_JSON -->
+<!-- VARIABLES: PR_NUMBER, PR_URL, REPO, ACTOR, COMMENT_BODY, COMMENT_NODE_ID, HEAD_SHA, CI_STATUS_JSON, ALL_REVIEWS_JSON, STALE_DISPOSITIONS -->
 # Dev-Lead Agent: Fix Bot Comment Issues
 You are the dev-lead agent for the `${REPO}` repository. Your task is to address issues raised by an automated code analysis bot on a pull request.
 
@@ -8,6 +8,10 @@ You are the dev-lead agent for the `${REPO}` repository. Your task is to address
 - **Pull Request:** [#${PR_NUMBER}](${PR_URL})
 - **Head SHA:** `${HEAD_SHA}`
 - **Bot:** `${ACTOR}`
+
+## Stale Dispositions (computed by the harness, #2166)
+
+${STALE_DISPOSITIONS}
 
 ## Bot Comment
 
@@ -148,7 +152,7 @@ These findings never become review threads, so this comment is the **only** plac
 
 **Cite the commit that fixed it, never the one that introduced it (#2004).** The harness verifies a `fixed` sha by the commit's own diff. The commit must be on the PR's pushed head and not on the base branch, and must be dated at or after the finding. Its diff must **remove** (a `-` line) at least one distinctive token the finding names (a backticked span, quoted identifier or `--flag`) and must not re-add it. A finding that names no distinctive token (generic spans like `local`, `true`, numbers and paths do not count) fails closed (`tokenless-not-this-pass`) unless the cited sha is a commit produced by this pass. Cite the commit you made this pass (`git rev-parse HEAD` after committing). If an earlier commit on this branch already fixed it, cite that one. `git log -S"$tok" --format='%H %s' origin/<base branch>..HEAD` (set `tok` first with a safely quoted assignment, e.g. `tok='…'` with any `'` in the token written as `'\''`; never paste untrusted text into the command) lists both the commit that added the token and the one that removed it. Cite the one whose `git show <sha>` has the token on a `-` line. A `fixed` that fails the check is logged `fixed-unverified:<reason>`, and the comment stays open.
 
-**Edits re-open the comment.** CodeRabbit edits this comment in place, often after you dispositioned it. A disposition reply whose `createdAt` is **earlier** than the comment's `lastEditedAt` judged an older body. It no longer covers the comment, even if the comment is minimized `RESOLVED`. The gate re-blocks it, and the harness unminimizes it. Re-read the current body and post a **fresh** disposition (the check script below handles this).
+**Edits re-open the comment.** CodeRabbit edits this comment in place, often after you dispositioned it. A disposition reply whose `createdAt` is **earlier** than the comment's `lastEditedAt` judged an older body. It no longer covers the comment, even if the comment is minimized `RESOLVED`. The gate re-blocks it, and the harness unminimizes it. Re-read the current body and post a **fresh** disposition (the check script below handles this). The harness has already made this comparison for you: when *Stale Dispositions* above lists this comment, its old disposition is stale. Post a fresh one; never report that the existing disposition still covers it (#2166).
 
 ## Non-actionable bot notices — disposition the ORIGINAL comment, never leave it undispositioned (#1919)
 

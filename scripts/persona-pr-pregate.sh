@@ -7,9 +7,11 @@ set -euo pipefail
 # repository_dispatch:persona-mention with client_payload.surface=pull_request
 # into .github/workflows/persona-runner-reusable.yml. The router binds the
 # GENERIC brakes (stop markers, opt-out label, write-gate, trust floor, recursion
-# axes, declared events); it does NOT carry the PERSONA-SPECIFIC suppressors the
-# local qa-lead-pr-advisory.yml gate enforces (no-test-surface, budget-exhausted,
-# already-advised). Without this pre-gate the runner posts on EVERY trusted PR.
+# axes, declared events); it does NOT carry the PERSONA-SPECIFIC suppressors
+# qa-lead's gate enforces (no-test-surface, budget-exhausted, already-advised).
+# Since #2243 the router is the ONLY path serving qa-lead's pull_request
+# advisory, so this pre-gate is where those suppressors bind. Without it the
+# runner posts on EVERY trusted PR.
 #
 # persona_event_pregate is what the runner calls after resolving the persona and
 # BEFORE the engine:
