@@ -91,7 +91,9 @@ reviewers are integrated through a contract, and comment bodies gate nothing. Th
 maintainer decided that no agent runs as the owner account, named the new repo
 `petry-projects/software-factory`, set the migration's limit and kill criterion, and chose which
 reviewers stay (§16.6), and chose one App per Role. The interaction and contract design that
-follows from these is in `software-factory-design.md`.
+follows from these is in `software-factory-design.md`. It replaces two recommendations made here:
+the git-backed store of §6.1 gives way to derived state, Actions run records and a rebuildable
+view, and the wake per event of §6.2 gives way to a poller.
 
 **It will be built in a new repo and cut over through the existing channel tags** (§18). Building in
 place would put every factory change through the POC's own line, which is the thing that is
@@ -2333,7 +2335,7 @@ how a second system fails.
   no weekly cap. The kill criterion is an intent family that has not reached parity when its four
   weeks end. Later the same day the maintainer replaced the parity rule with an outcome-based
   stopping rule and made the review intent on the factory's own repo the first component; ADR-0013,
-  decision 10, and `software-factory-design.md`, §8, are current. Nothing bounds the build before
+  decision 10, and `software-factory-design.md`, §9, are current. Nothing bounds the build before
   the factory first serves a repo, which is where §14.2 expects the migration to starve.
 - No intent is cut over until its disagreement list is within a bound declared beforehand and an
   eval set exists for it.

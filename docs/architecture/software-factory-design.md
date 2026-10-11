@@ -33,22 +33,26 @@ Made by the Maintainer on 2026-10-10, in addition to ADR-0013's twelve decisions
 | A Finding is decided by the Role that owns its domain | The authority table (§5.2) and the Finding lifecycle (§4.3) |
 | One GitHub App per Role | Each Role's permissions are a ceiling GitHub enforces (§5.1) |
 | The LLM credential is the existing subscription, stored as an environment secret in the Factory repo | The engine port (§2.2); no new capacity signal |
-| The review Intent is built first and reviews everything after it | The build order (§8) |
+| The review Intent is built first and reviews everything after it | The build order (§9) |
 | The comparison with the POC is a measure, not a gate | The comparator is a later, non-gating component |
-| The stopping rule is judged on outcomes | §8.2 |
+| The stopping rule is judged on outcomes | §9.2 |
 | Each Lens has a declared scope of paths | Role manifests (§5.3) |
 | A Consumer repo's setup and test commands are part of its onboarding contract | The Consumer entry (§3.12) |
 | Design by simulation first, with a formal model held in reserve | §4.5 |
+| State is derived from GitHub at every evaluation and never stored | §3.9, §7 |
+| The record of a Run is its Actions run record and its artifact | §3.10 |
+| Work is noticed by a poller; an event may only ask for a pass | §7.3 |
+| The control room is a public, rebuildable view with a dashboard, holding 90 days | §8 |
 
 ADR-0000 to ADR-0012 describe the POC and are not constraints here. Four mechanisms that ADR-0013
 takes from them are restated in §2.4 as this design's own rules.
 
 ### 1.2 Still open
 
-- Where the store lives and how work is noticed. §7 sets out the need, the requirements and the
-  options, with a recommendation.
-- The period after which the stopping rule is judged (§8.2).
+- The period after which the stopping rule is judged (§9.2).
 - The name prefix shared by the Factory's Apps (§5.1).
+- Whether any panel is kept off the public dashboard (§8.6).
+- Where held-out eval sets live. The control room is public, so it is not there.
 
 ## 2. Structure
 
@@ -61,7 +65,8 @@ flowchart LR
   subgraph GH[GitHub]
     C[Consumer repos]
     F[software-factory repo<br/>the hub]
-    S[(Store<br/>State records and Ledger)]
+    R[Actions run records<br/>and artifacts]
+    V[(Control room<br/>a rebuildable view)]
   end
   E[Engines<br/>vendor model CLIs]
   A[Advisory reviewers]
@@ -73,14 +78,18 @@ flowchart LR
   T -- checks, alerts --> C
   C -- facts --> F
   F -- Effects --> C
-  F <--> S
+  F -- every Run --> R
+  R -- folded by the poller --> V
+  V -- what only the Factory knows --> F
+  V -- dashboard --> M
   F -- Task --> E
   E -- Result --> F
-  F -- status on the item --> M
 ```
 
-Everything the Factory knows about a Work item it reads from GitHub as facts or from its own store.
-Everything it does to a Work item is an Effect applied by one job. Nothing else writes.
+Everything the Factory knows about a Work item it reads from GitHub: the item itself, and the
+Factory's own run records. Nothing authoritative lives anywhere else. The control room is a view of
+those, and can be deleted and rebuilt. Everything the Factory does to a Work item is an Effect
+applied by one job.
 
 ### 2.2 Components
 
@@ -90,18 +99,19 @@ flowchart TB
     shim[Entry shim<br/>frozen, no logic]
     guard[Brakes<br/>outside the Kernel]
     subgraph ctl[Controller]
-      decide[decide]
+      pass[poller pass]
     end
     subgraph kernel[Kernel - no I/O]
       life[lifecycle]
       adm[admission]
       conv[convergence and gate]
       cid[content identity]
-      proj[projection]
+      proj[projection and attention]
     end
     subgraph adapters[Adapters - all I/O]
       facts[facts port]
-      store[store port]
+      rec[records port]
+      view[view port]
       eff[effects port]
       eng[engine port]
       idp[identity port]
@@ -116,72 +126,72 @@ flowchart TB
     apply[apply job<br/>write credential, no model]
   end
 
-  shim --> guard --> decide
-  decide --> facts
-  decide --> store
-  decide --> kernel
-  decide --> task --> run
+  shim --> guard --> pass
+  pass --> facts
+  pass --> rec
+  pass --> view
+  pass --> kernel
+  pass --> task --> run
   run --> eng
   run --> pre
   run --> verify --> apply
   apply --> val
   apply --> idp
   apply --> eff
-  apply --> store
 ```
 
 | Component | Responsibility | May not |
 |---|---|---|
 | Entry shim | Run from the default branch and call the pinned Release | Contain a step or a `run:` block |
-| Brakes | Human Pause, Run ceiling, loop count, monthly spend cap | Import from `kernel/` or read the Ledger for the loop count |
-| Controller | Read facts and State, call the Kernel, record the decision, start the jobs | Decide anything itself |
-| Kernel | Every decision: Lifecycle, Admission, Convergence, the gate, content identity, what the item shows | Open a file, a socket, a process or the environment; read the clock except as an argument; take a comment body |
+| Brakes | Human Pause, Run ceiling, loop count, monthly spend cap | Import from `kernel/` or read the control room for the loop count |
+| Controller | One pass: read facts, run records and the view; call the Kernel; start Runs; write the view | Decide anything itself |
+| Kernel | Every decision: Lifecycle, Admission, Convergence, the gate, content identity, what the item shows and how urgently it needs a person | Open a file, a socket, a process or the environment; read the clock except as an argument; take a comment body |
 | Facts port | One snapshot of a Work item from GitHub | Return text to the Kernel |
-| Store port | Read and write State records and Ledger events | Be called by anything but the Controller and `apply` |
+| Records port | List the Factory's own run records and read their artifacts | Write anything |
+| View port | Read and write the control room's files | Be the only source of anything a decision needs |
 | Effects port | Apply one Effect and read it back | Run in a job that holds an LLM credential |
 | Engine port | Run one vendor CLI on one Task and return its output | Hold a GitHub write credential |
 | Identity port | Mint a token for the Role's App, narrowed to the Effects requested | Mint for a Role other than the one in the Result |
 | Harness | Build the Task, run the pre-flight bundle, validate the Result | Interpret prose |
 
-Three ports exist because three choices are open or provisional: the store port (git today, §7),
-the engine port (subscription CLI today, metered API later under FR-73), and the identity port (one
-App per Role, decided, but isolated so the mint rule lives in one place).
+Two ports isolate choices that may change: the engine port (the subscription CLI today, a metered
+API later under FR-73) and the identity port (one App per Role, with the mint rule in one place).
 
 ### 2.3 One Run, end to end
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant W as tick or nudge
-  participant D as decide
+  participant P as poller pass
   participant K as Kernel
-  participant S as Store
+  participant G as GitHub
+  participant Ac as Actions
   participant R as run
   participant V as verify
   participant A as apply
-  participant G as GitHub
+  participant CR as control room
 
-  W->>D: evaluate (item identity at most)
-  D->>G: read facts (one query)
-  D->>S: read State record
-  D->>K: decide(facts, state, capacity, now)
-  K-->>D: Decision: admit(role, intent)
-  D->>S: commit decision + lease
-  D->>R: Task
+  P->>G: read facts for every open item
+  P->>Ac: list recent run records
+  P->>CR: read the view
+  P->>K: decide(facts, runs, view, capacity, now)
+  K-->>P: Decision: admit(role, intent)
+  P->>Ac: start a Run, named for its item
   R->>R: Engine turns, pre-flight, bounded repair
-  R-->>V: Result + commit bundle
+  R-->>V: Result and commit bundle, as an artifact with a digest
   V->>V: run the same checks where the author controls nothing
-  V-->>A: verdict + digests
+  V-->>A: verdict and digests
   A->>A: validate Result, re-derive digests
-  A->>S: commit intent records
   A->>G: apply Effects as the Role's App
   A->>G: read each Effect back
-  A->>S: commit result, release lease
-  A->>G: update the status on the item if the decision changed
+  A->>Ac: upload what was applied
+  P->>Ac: next pass: read new run records and artifacts
+  P->>CR: write the view
+  P->>G: update the status on the item if the decision changed
 ```
 
-Steps 8 to 10 are skipped for an Intent that changes no code. Step 13 exists because GitHub writes
-carry no idempotency key (§3.6).
+Steps 8 to 10 are skipped for an Intent that changes no code. The Result artifact of step 8 exists
+before `apply` starts, so it is the record of what was intended (§3.6).
 
 ### 2.4 Four rules restated
 
@@ -215,8 +225,8 @@ A reader rejects a major version it does not know. Messages are JSON. Files a pe
 | Effect | Result | `apply` | One requested change to the outside world |
 | Finding | Any Lens | Kernel | One observation, with a non-text identity |
 | Disposition | Author and owner Roles | Kernel | A proposal and a decision on one Finding |
-| State record | Kernel, via the store port | Kernel | What the Factory owns about one Work item |
-| Ledger event | Controller and `apply` | Scorecard, replay | One fact about what the Factory did |
+| Run record | Actions, and the Run's own artifacts | Controller | That a Run happened, how it ended and what it produced |
+| Control-room view | Controller | Kernel, dashboards | What only the Factory knows, folded from run records; and every item's computed State |
 | Role manifest | Factory developer | Kernel, Harness | What a Role sees, raises, owns and may do |
 | Authority table | Maintainer | Kernel | Who decides each category of Finding |
 | Consumer entry | Repo owner | Kernel, `verify` | How one Consumer repo is served |
@@ -337,10 +347,10 @@ that it has already happened.
 | `enqueue_merge`, `dequeue_merge` | Queue membership | Yes |
 | `comment` | None | **No** |
 
-For `comment`, `apply` commits an intent record to the store before it posts, and records the
-comment's node id after. On recovery an intent with no node id is resolved by listing the actor's
-comments since the intent's time, never by matching body text. Prefer a check run to a comment
-wherever a person does not need to reply.
+For `comment`, the Result artifact is the intent record: it lists the Effect before `apply`
+starts. `apply` uploads the comment's node id after it posts. On recovery an intended comment with
+no node id is resolved by listing that App's comments since the Run began, never by matching body
+text. Prefer a check run to a comment wherever a person does not need to reply.
 
 There is no Effect that starts a Run. Only Admission does that.
 
@@ -388,50 +398,58 @@ A Disposition has two halves, written by two different Roles. The author propose
 `declined`, `deferred` or `not_applicable`. The owner of the Finding's category decides `accepted`
 or `rejected`. There is exactly one Disposition per Finding per content version.
 
-### 3.9 State record
+### 3.9 State: derived, with a small residue
 
-```json
-{
-  "schema": "state/1",
-  "item": { "repo": "petry-projects/software-factory", "type": "pull_request", "number": 42 },
-  "lifecycle": "pull_request/1",
-  "state": "adjudicating",
-  "reason": "blocking_findings_proposed",
-  "since": "2026-10-10T19:02:11Z",
-  "next_eval_at": "2026-10-10T19:30:00Z",
-  "hold": null,
-  "lease": { "run": "r_01JA7Q", "role": "qa-lead", "intent": "adjudicate-findings", "expires_at": "2026-10-10T19:32:11Z" },
-  "reviewed": { "content_id": "sha256:41aa", "verdict": "withheld" },
-  "attempts": { "fix-review-findings": 2, "adjudicate-findings": 1 },
-  "rounds": 2,
-  "spend": { "cost_usd": 3.1, "runs": 6 },
-  "findings": { "f_9c1e": "proposed", "f_22ab": "proposed" },
-  "projection_hash": "sha256:be07"
-}
+The State of a Work item is not stored. It is computed at every evaluation by one Kernel function
+from three inputs: the facts, the Factory's run records, and the residue below. A stored copy could
+only go stale, which is how the POC's markers came to outlive the objects they described.
+
+| Computed every time | From |
+|---|---|
+| The Lifecycle state and its reason | Facts |
+| Whether the item is held, and by whom | A label, and who applied it |
+| Whether a Run holds the item now | A run record in progress |
+| How many attempts an Intent has had | Run records |
+| The status of a Finding that lives in a thread or an alert | Facts |
+| Whether this content was already reviewed | The review on an earlier commit with the same `content_id` |
+
+The residue is what only the Factory knows and GitHub has no field for. It is written once, by the
+Run that produced it, into that Run's artifact:
+
+| Residue | Why it cannot be computed |
+|---|---|
+| What a Run cost | Tokens are known only to the Harness |
+| What a model judged: a Finding's category and severity, an owner's decision | Recomputing costs a model call and may give a different answer, so the gate would flap |
+| Which `content_id` a Lens examined and found clean | A Lens that finds nothing writes nothing on the item |
+
+One example shows why attempts must be counted and not assumed. A pull request has a red test, and
+nothing else has changed. Either nobody has tried to fix it, or three fix Runs each ran fifteen
+minutes, timed out and pushed nothing. The item looks the same in both cases. The run records tell
+them apart, and Actions writes a run record even when the job is killed.
+
+### 3.10 The record of a Run
+
+A Run is one workflow run. Its record has two parts, both kept by GitHub.
+
+**The run record.** Written by Actions, whatever happens to the job. The run's name carries what
+the hub's own head commit cannot:
+
+```text
+sf petry-projects/markets#521 fix-review-findings dev-lead c:5d0c r:01JA7Q
 ```
 
-It holds only what GitHub does not. Reviews, checks, labels, merges and thread state are read as
-facts at every evaluation and never trusted from the record.
+That is the repo and item, the Intent, the Role, the short `content_id` and the Run id. Status,
+conclusion, start and end times and the attempt number come from Actions.
 
-### 3.10 Ledger event
+**The artifacts.** `result.json` is the Result of §3.5, uploaded by `run` with its digest. The
+commit bundle travels beside it. `applied.json` is uploaded by `apply` and lists each Effect with
+what was read back. Nothing is handed from job to job through the log: the log is shared with
+whatever the model prints, and Actions rewrites it when it masks secrets.
 
-```json
-{
-  "schema": "event/1",
-  "id": "e_01JA7R",
-  "at": "2026-10-10T19:07:40Z",
-  "kind": "run_result",
-  "item": { "repo": "petry-projects/software-factory", "type": "pull_request", "number": 42 },
-  "role": "qa-lead", "intent": "adjudicate-findings", "run": "r_01JA7Q",
-  "status": "completed", "pass": "rework",
-  "usage": { "cost_usd": 0.42, "seconds": 310 }
-}
-```
+A Run that dies before it uploads anything still has a run record, and counts as an attempt. Its
+cost is not known exactly; its duration is the estimate.
 
-`kind` is one of `decision_changed`, `transition`, `human_transition`, `override`, `run_admitted`,
-`run_result`, `effect_intent`, `effect_applied`, `effect_failed`, `lease_released`,
-`finding_raised`, `finding_typed`, `disposition_recorded`, `capacity_reading`, `pause_changed`.
-A repeated identical decision is counted on the State record, not appended.
+Run records and artifacts are kept for 90 days, which is the Factory's history (PRD FR-40).
 
 ### 3.11 Role manifest
 
@@ -599,7 +617,7 @@ These are the properties the simulator asserts. Each is a sentence a test can fa
 
 | # | Invariant | PRD |
 |---|---|---|
-| I-1 | Every non-terminal, non-held item has a next evaluation time, and is evaluated within its state's limit once faults stop | FR-3, FR-5 |
+| I-1 | Every open item is evaluated on every pass, and within its state's limit once faults stop; a pass that has not run is itself reported | FR-3, FR-5, FR-43 |
 | I-2 | At most one Run that can produce Effects is active per item | FR-16 |
 | I-3 | Active Runs never exceed the org limit, and spend never exceeds the cap | FR-35, FR-73 |
 | I-4 | No Effect is applied twice | ADR-0013 §4 |
@@ -616,15 +634,17 @@ These are the properties the simulator asserts. Each is a sentence a test can fa
 | I-15 | Each Finding has exactly one owner and one Disposition per content version | FR-33 |
 | I-16 | A `security` Finding is never closed as declined without an Override record | Maintainer, 2026-10-10 |
 | I-17 | The status on an item changes only when the decision changes | ADR-0013 §2 |
-| I-18 | A lease with no Result is released, and its item re-evaluated | ADR-0013 §4 |
+| I-18 | A Run that ends with no Result counts as an attempt, and its item is re-evaluated | ADR-0013 §4 |
+| I-19 | A view rebuilt from GitHub equals the view updated pass by pass | §8 |
+| I-20 | A decision that finds the view missing or behind recomputes or defers; it never admits | C-1 |
 
 ### 4.5 The simulator
 
 The Kernel does no I/O and takes the clock as an argument. That makes it possible to run the real
 decision logic against a fake world, quickly, thousands of times.
 
-- **World.** An in-memory GitHub behind the facts and effects ports: repos, items, content versions,
-  actors, reviews, threads, checks, labels and a merge queue. It applies GitHub's own rules,
+- **World.** An in-memory GitHub behind the facts, records and effects ports: repos, items, content
+  versions, actors, reviews, threads, checks, labels, a merge queue, and run records with artifacts. It applies GitHub's own rules,
   including dismissing an approval when the merge base changes.
 - **Actors.** Scripted stand-ins for an author that sometimes fixes and sometimes breaks, Lenses
   that raise Findings, owners that accept or reject, and a Maintainer who labels, reviews and
@@ -632,10 +652,10 @@ decision logic against a fake world, quickly, thousands of times.
 - **Clock and scheduler.** Time advances only when the simulator says. It decides which tick or
   nudge is delivered next.
 - **Faults.** A tick dropped or delayed by hours. A nudge dropped or duplicated. A job killed at
-  every step boundary, including between two Effects and between the last Effect and the store
-  write. A store write rejected. A facts read that fails or is stale. A missing capacity reading.
+  every step boundary, including between two Effects and before any artifact is uploaded. The
+  view missing, or one pass behind. A facts read that fails or is stale. A missing capacity reading.
   A Result that fails validation. An Engine that times out. A human acting mid-Run.
-- **Properties.** I-2 to I-17 are checked after every step. I-1 and I-18 are checked once faults
+- **Properties.** I-2 to I-17 are checked after every step, as are I-19 and I-20. I-1 and I-18 are checked once faults
   stop and the world is left to settle.
 - **Reproduction.** Each run has a seed from the standard library's generator. A failure prints the
   seed and the trace, and the trace renders as a sequence diagram.
@@ -666,7 +686,7 @@ A token is still narrowed at mint time to the Effects one Result requests.
 | `sre-lead` | Owner | `reliability` | `reliability` | Comment, open and resolve threads |
 | `business-analyst` | Advisor | `requirements`, on issues | None | Comment |
 | `scrum-master` | Advisor | None on code | None | Comment |
-| Controller | Not a Role | None | None | Write the store, the status on the item, labels and the queue |
+| Controller | Not a Role | None | None | Write the control room, the status on the item, labels and the queue |
 
 - The approving review stays with the existing machine user, because a code owner must be a user.
 - The Apps share a name prefix, proposed as `petry-sf-`. The frozen Consumer file drops
@@ -740,62 +760,69 @@ None of these can be modelled. Each is one trial on a canary repo, with the resu
 | P-5 | Can one App resolve a review thread opened by another App or by a third-party reviewer? | Yes, with pull-request write |
 | P-6 | Does a job-level `if:` on the actor's prefix drop events authored by the Factory's Apps? | Dropped, with no step run |
 | P-7 | Does the machine user's approval satisfy code-owner review and the last-push rule when an App pushed last? | Yes |
-| P-8 | What does one pass over every open item in twelve repos cost in GraphQL points, and how often do scheduled ticks arrive in the new repo? | Within the budget of §7.2 |
+| P-8 | What does one pass over every open item in twelve repos cost in GraphQL points, and how often do scheduled ticks arrive in the new repo? | Within the budget of §7.3 |
 | P-9 | Can a pass start the next one with the default workflow token? | Yes |
 | P-10 | Does a nudge count against the content-creation limit, and can its credential be dispatch-only? | Does not count; can |
-| P-11 | Can the Controller's App write the store without starting a workflow? | Yes |
+| P-11 | Can the Controller's App write the control-room repo, and publish its page, without starting a workflow in the hub? | Yes |
 | P-12 | Does a check run's `external_id` round-trip, so it can serve as a recovery key? | Yes |
 | P-13 | Does the vendor CLI return validated structured output and usage in headless mode on the subscription credential, at a pinned version? | Yes |
 | P-14 | Can a job with no permissions and no cache action write the default-branch cache scope? | Cannot |
 | P-15 | Do the retained Advisory reviewers review a pull request authored by an App? | Each one does, or is dropped from the awaited set |
+| P-16 | How long are run records, logs and artifacts kept in a public repo? | 90 days |
+| P-17 | Is a run's name set when the run is created, and visible for a run whose job never started? Can recent runs of one workflow be listed and matched by name within the request budget? | Yes to both |
+| P-18 | Does a final step still run, and upload partial usage, when a job times out or is cancelled? | Yes, or duration is the only estimate |
+| P-19 | Can a static page in a separate public repo be published from files the Controller writes? | Yes |
 
-## 7. Open: the store, and how work is noticed
+## 7. State, records and noticing work
 
-ADR-0013 adopts a git-backed store and a wake per event provisionally (decision 11). This section
-sets out what each has to do, what the options are, and how the two choices depend on each other.
+ADR-0013 first adopted a git-backed store and a wake per event, both provisionally. The Maintainer
+replaced both on 2026-10-10. This section records what was decided, why, and what was set aside.
 
-### 7.1 Why a store is needed, and what it must do
+### 7.1 Why there is no store
 
-GitHub records reviews, checks, labels, threads and merges. It does not record the things the
-Factory decides for itself: where an item is in its Lifecycle and why, how many attempts and how
-much money have been spent on it, which Findings have which Dispositions, when it is next due, and
-which Run currently holds it. The POC keeps these in labels and about eighty kinds of hidden
-comment marker, each read by a different script. That is the first root cause in the review.
+The first design kept a State record per Work item and an append-only Ledger in a git store that
+only the Controller wrote. The question that undid it was simple: why can State not be determined
+from the issue and the pull request?
 
-The Factory also needs a history: the Ledger. The scorecard, cost per change, the per-Lens measure,
-promotion evidence and the stopping rule of §8.2 are all read from it.
+Mostly it can. The Lifecycle state, the Hold, the thread and alert Findings and the reviews are all
+on GitHub, and a stored copy of any of them is a copy that can go stale. What cannot be read from
+the item is a small residue (§3.9): that a Run was attempted, what it cost, and what a model
+judged. GitHub already keeps the first of these, because every Run is a workflow run, and Actions
+records a run even when its job is killed. The other two are in the Run's own artifact.
 
-| # | The store must | From |
+So nothing needs a second authoritative store. That also answers the adversarial review, which
+faulted the first design for keeping control state that could not be rebuilt, where every
+comparable system rebuilds its state from the platform.
+
+### 7.2 Where each thing lives
+
+| Need | Where it lives | Written by |
 |---|---|---|
-| S-1 | Record a state change and its events together, or neither | ADR-0013 §2 |
-| S-2 | Have one writing identity | ADR-0013 §2 |
-| S-3 | Let two deciders that race be told apart, so that an org-wide limit holds | FR-16, FR-35 |
-| S-4 | Keep an append-only history for 180 days, queryable by item, Role, repo, Release and time | FR-40, FR-41 |
-| S-5 | Be readable on a laptop, for replay | FR-58 |
-| S-6 | Need no always-on service and no paid plan | C-2, C-4 |
-| S-7 | Hold no secret; allow cost data and held-out eval sets to be kept from the Roles they score | FR-55, FR-62, OQ-8 |
-| S-8 | Stay within GitHub's guidance: about 6 pushes a minute to a repo and about 3,000 entries in a directory | Review §14.1 |
-| S-9 | Be read without spending API quota | NFR-14 |
-| S-10 | Survive a job dying between an Effect and its record | ADR-0013 §4 |
+| Everything about the Work item | The issue and the pull request | People, Lenses and `apply` |
+| That a Run happened, how it ended, how long it took | The Actions run record, named for its item | Actions |
+| What a Run produced: the Result, its cost, what a model judged | An artifact with a digest | `run` and `apply` |
+| The handoff from `run` to `verify` to `apply` | The same artifact, verified by digest | `run` |
+| A fast index of the last two, and every item's computed State | The control room (§8) | The Controller |
 
-| Option | How it works | Meets | Fails or strains |
-|---|---|---|---|
-| **A. A branch in the Factory repo** | One JSON file per item under `state/`, daily event files under `ledger/`, sharded by repo and date. A transition is one commit. A rejected push means another writer got there first: fetch and decide again | S-1 to S-6, S-9, S-10 | S-7: public, and readable by every Role. S-8 under many writers. The branch must be kept out of every workflow trigger and ruleset |
-| **B. A separate data repo** | The same layout and mechanics in a repo of its own, written by the Controller's App | Everything in A, and S-7 if the repo is private | One more repo. A private Ledger means scorecard links are readable only by the Maintainer |
-| **C. GitHub objects only** | No second store. State is rebuilt from facts at every evaluation, with a small typed record on the item (a check run's output, or one comment by the Controller). Leases are git refs, since creating a ref that exists fails. History is workflow artifacts | S-2, S-3, S-6, S-9 | S-1 and S-10 weakly. S-4: artifacts expire at 90 days and cannot be queried. A record in a comment is a marker again, though only one |
-| **D. Split hot and cold** | Light state as in C. Jobs upload events as artifacts, and one scheduled job commits them to git | S-2 to S-9 | S-1: the state change and its events are no longer one commit, which ADR-0013 §2 requires. Two paths to keep correct |
-| **E. A database** | A hosted store | S-1 to S-5, S-7 to S-10 | S-6. Excluded while "no always-on infrastructure" stands |
+GitHub is the source of truth for all of it. The control room is a materialized view: it holds
+nothing GitHub does not, for the 90 days GitHub keeps it.
 
-The strain on A and B is contention, and contention comes from how many writers there are, which
-is the next choice.
+What this costs:
 
-### 7.2 Why something must notice work, and what it must do
+- **A killed Run's cost is unknown.** The vendor CLI reports usage when an invocation ends.
+  Duration is the estimate, and a final step uploads whatever partial usage exists.
+- **History is 90 days.** The Maintainer accepted this in place of the PRD's 180.
+- **Decisions read a view.** Cost and model judgements reach the Kernel through the control room,
+  because downloading every artifact on every pass is too slow. I-19 and I-20 are the guard: the
+  view must equal a rebuild, and a missing view defers.
+- **An issue with no pull request has no Run on it yet,** so there is nothing to record until the
+  first Run, which is then a run record like any other.
 
-The Controller has to evaluate an item when something about it changes (a push, a review, a label,
-a finished check) and when time passes (a deadline, a retry time, a budget window). GitHub Actions
-offers two ways to start anything. An event starts a workflow in the repo where it happened, and is
-lost if its run is evicted. A schedule starts a workflow on a timer, late or not at all. The POC
-builds its work queue from the first and its retries from the second, and loses work to both.
+### 7.3 Noticing work
+
+The Controller has to evaluate an item when something about it changes and when time passes.
+GitHub Actions offers an event, which is lost if its run is evicted, and a schedule, which arrives
+late or not at all.
 
 | # | Noticing must | From |
 |---|---|---|
@@ -806,65 +833,174 @@ builds its work queue from the first and its retries from the second, and loses 
 | W-5 | Keep one writer per item and coalesce requests that arrive during a Run | FR-16 |
 | W-6 | Put at most one unchanging file, and no write credential, in a Consumer repo | FR-51 |
 | W-7 | Be unable to feed itself without bound | FR-18 |
-| W-8 | Fire a deferral when its time comes | FR-3 |
-| W-9 | Notice that CI has finished | Review §14.2 |
-| W-10 | Need no always-on service | C-4 |
+| W-8 | Notice that CI has finished | Review §14.2 |
+| W-9 | Need no always-on service | C-4 |
 
 | Option | How it works | Meets | Fails or strains |
 |---|---|---|---|
-| **1. A wake per event** | A file in each Consumer forwards every subscribed event to the hub. The entry shim resolves the ring and starts one Controller run for that item | W-2 at its best, W-5, W-10 | W-3: about three jobs per event, and at least 12,500 events a week from the busiest repo; 7% of slots on average and 33% at peak even with Factory-authored events dropped. W-1 and W-8 still need a sweep. W-7: the Factory's own writes are events. W-9: a `workflow_run` trigger must name each workflow. Many Controller runs write the store at once |
-| **2. A scheduled poller** | One job on a timer lists every open item in every repo in a few queries, evaluates them all in one process and writes once | W-1, W-3 to W-10. Nothing at all in any Consumer. It reads check state itself, so W-9 holds | W-2: a schedule cannot be finer than five minutes, about 60% of ticks are dropped here, and gaps of hours have been observed |
-| **3. A looping job** | One job ticks every 30 seconds for some hours, then starts its successor | W-1 to W-9 | W-10 in spirit: it is an always-on process on GitHub's runner. One of 20 slots, permanently. GitHub's terms bar using Actions as a serverless application and do not say whether this is one |
-| **4. A poller with nudges** | Option 2 is the base. An event does not carry work: it only asks the poller to run now. The poller holds one concurrency group, so any number of nudges during a pass collapse into exactly one more pass | W-1, W-3 to W-10. W-2 wherever a nudge file is installed | W-2 elsewhere. A Consumer that wants low latency still carries a file, with a credential that can only dispatch |
+| 1. A wake per event | A file in each Consumer forwards every subscribed event to the hub, which starts one Controller run for that item | W-2 at its best, W-5, W-9 | W-3: about three jobs per event, and at least 12,500 events a week from the busiest repo. W-1 still needs a sweep. W-7: the Factory's own writes are events. W-8: a `workflow_run` trigger must name each workflow |
+| 2. A scheduled poller | One job on a timer lists every open item in every repo in a few queries and evaluates them all in one process | W-1, W-3 to W-9. Nothing at all in any Consumer | W-2: a schedule cannot be finer than five minutes, about 60% of ticks are dropped here, and gaps of hours have been observed |
+| 3. A looping job | One job ticks every 30 seconds for some hours, then starts its successor | W-1 to W-8 | W-9 in spirit. One of 20 slots, permanently. GitHub's terms do not say whether this is allowed |
+| **4. A poller with nudges** | Option 2 is the base. An event carries no work: it only asks for a pass now. The poller holds one concurrency group, so any number of nudges during a pass collapse into exactly one more pass | W-1, W-3 to W-9. W-2 wherever a nudge file is installed | W-2 elsewhere. A Consumer that wants low latency carries a file, with a credential that can only dispatch |
 
-How a poller evaluates, and why its cost is bounded:
+**Decided: option 4, built as option 2 first.**
 
-- Each pass is one job. Passes cannot overlap, and at most one waits behind the one running. A
-  flood of events therefore costs at most back-to-back passes: one runner slot, or 5% of the pool.
+- Passes cannot overlap, and at most one waits behind the one running. A flood of events costs at
+  most back-to-back passes: one runner slot, 5% of the pool.
 - A pass ends by starting its successor if anything is due sooner than the next tick. Scheduled
   ticks then only restart a broken chain.
-- The Factory's own writes cannot run away. A nudge it causes only asks for a pass, and whether a
-  Run is admitted is still Admission's decision, under the brakes.
-- A Run is still its own workflow run, holding the item's lane from `run` to `apply`.
+- The Factory's own writes cannot run away. A nudge asks for a pass; whether a Run is admitted is
+  still Admission's decision, under the brakes.
+- One pass is the only decider, so an org-wide limit is a decision inside one process. No lease and
+  no race.
+- A Run is still its own workflow run, holding its item's lane from `run` to `apply`.
+- Option 3 is held until GitHub's terms are answered. Option 1 is held unless a requirement appears
+  for a response in seconds; none is in the PRD.
 
-### 7.3 How the two choices depend on each other
+### 7.4 What was set aside
 
-Under option 1 there are as many store writers as there are events in flight. That is where the
-review's estimate of 8 to 18 pushes a minute comes from, and why leases need compare-and-swap.
+| Option | Why not |
+|---|---|
+| A branch in the Factory repo holding State records and a Ledger | A second authoritative copy of what GitHub holds; contended under many writers |
+| The same in a private data repo | The same, and the source it would hide is already public |
+| A record on the item: a check run's output or one comment | Nothing an issue can carry; a comment record is a marker again |
+| Events batched as artifacts and committed by one job | Two paths to keep correct, for a log Actions already keeps |
+| A database | Needs an always-on service |
 
-Under options 2 and 4 the poller is the only decider. It writes one commit per pass, and `apply`
-writes one per Run. At the POC's volume that is a few hundred writes a week, not thousands. Org-wide
-limits become a decision inside one process, so S-3 is met without a race. Requirement S-8 stops
-being a concern, and the choice between store options A and B becomes a question of visibility
-alone.
+## 8. The control room
 
-### 7.4 Recommendation
+### 8.1 Purpose
 
-**Option 4, built as option 2 first, over store option B.**
+`petry-projects/software-factory-control-room` houses the Factory's view and presents it to the
+people who operate it, for understanding and for action. It is a public repo holding files the
+Controller writes and a static page that reads them.
 
-- Build the poller. It is the smallest thing that is correct, it needs nothing in any Consumer
-  repo, and it is what the review's comparison found every similar system does.
-- Measure W-2 on the Factory's own repo. Add the nudge file where latency is shown to matter.
-- Hold option 3 until GitHub's terms are answered, and option 1 unless a requirement appears for a
-  response in seconds. None is in the PRD.
-- Put the store in a data repo of its own, and start it private. A private store can be opened
-  later; a public one cannot be taken back. It is also the only option here that gives held-out
-  eval sets a place the Roles under test cannot read.
+It was shaped by a separate analysis of what a situation room for the fleet should be:
+`petry-projects/.github-private#2242 — Situation-room view for the agent fleet: build it from
+native Claude Code parts, not a command-center product`. That analysis surveyed fourteen products
+and found that each shows only the agents it launches, so none can show a fleet that runs as
+workflows. Its verdict was to build a view over GitHub. §8.3 says what is taken from it and what
+this design changes.
 
-This changes ADR-0013 in two places if accepted. Decision 3's ingress file becomes optional per
-Consumer, and decision 11's comparison of two wake paths becomes a measurement of one, with the
-other added on evidence.
+### 8.2 Objectives
 
-## 8. Build order and the stopping rule
+| # | The control room | Serves |
+|---|---|---|
+| CR-1 | Answers "what needs me?" first. Items are ordered by the human action they need, and each states the decision, the evidence and the choices | UJ-2, FR-27 |
+| CR-2 | Shows one definition of State. Every status is computed by the Kernel, the same function that decides. The page computes nothing | FR-2 |
+| CR-3 | Is never a source of truth. It is rebuilt from GitHub, says when it was last written, and says so plainly when it is stale | FR-43 |
+| CR-4 | Is read-only. A person acts in GitHub, through a declared human transition, and the page links there | FR-22 |
+| CR-5 | Covers every Consumer repo on one page | PRD §1 |
+| CR-6 | Shows cost and capacity: a budget gauge, cost per change, the share that was rework, cost by Role | UJ-8, UJ-9, FR-38 |
+| CR-7 | Shows whether the Factory is working: the scorecard, each Lens's contribution, and the stopping rule's three measures against the POC's baseline | FR-42, FR-69, §9.2 |
+| CR-8 | Links every number to the Runs behind it | UJ-9 |
+| CR-9 | Replaces recurring report issues with one page | FR-44 |
+| CR-10 | Is one feed with several lenses. The files are the contract; a page, an Artifact or a mod only renders them | §8.5 |
+| CR-11 | Costs no model tokens to refresh. The poller writes it as a by-product of deciding | C-3 |
 
-### 8.1 Order
+It is not a control plane. It starts no Run, steers no agent and stores no agent state in a project
+board. It is also not where a chat session's output is made terser; that is a session setting.
+
+### 8.3 What is taken from the situation-room analysis
+
+| The analysis says | Here |
+|---|---|
+| Build, do not adopt a command-center product | Adopted. The PRD's market research reached the same finding for the whole Factory |
+| Never store status; compute it and show the snapshot's age | Adopted, and taken further: it is computed once, by the Kernel, so the board cannot disagree with the Factory about why something waits |
+| Columns: Working, Needs you, In review, Ready to merge | Adopted as the attention classes of §8.4, with Stale added |
+| Order rows by the human action required | Adopted as CR-1 |
+| Feed the board from a GraphQL snapshot taken by a chat session | Replaced. The poller already reads every open item on every pass; the board reads its output. No session has to be open, no tokens are spent, and no interactive API quota is used |
+| Include a budget gauge fed by per-run accounting | Adopted as CR-6. The accounting is the residue of §3.9 |
+| Decisions as choices, answerable from a phone | Supported: a Hold that needs a decision carries enumerated choices, so any lens can render them as buttons |
+| Decisions still execute in GitHub | Adopted as CR-4 |
+| One org-level project as the pipeline view, with no custom agent-state fields | Compatible, and outside the Factory. The control room's pipeline panel shows the same thing from computed State |
+| A self-written mod as a heads-up display | A lens over the same files (§8.5). It reads the view and does not poll GitHub |
+| Keep it private; a public page on a public repo is world-readable | **Not adopted as written.** See §8.6 |
+
+### 8.4 The feed
+
+| File | Holds |
+|---|---|
+| `view/meta.json` | When the view was written, by which pass and Release, and how far back it reaches |
+| `view/items.json` | Every open Work item: computed State, reason, attention class, next actor, the decision required, age, attempts, cost, links |
+| `view/runs/<date>.jsonl` | One line per Run: the run record and the usage and outcome from its artifact |
+| `view/findings.json` | Open Findings with category, severity, owner and Disposition |
+| `view/scorecard.json` | The success metrics of PRD §9 and the stopping rule's measures |
+| `view/capacity.json` | Usage per window, the estimate of what is left, and the degradation stage |
+
+```json
+{
+  "schema": "view-item/1",
+  "item": { "repo": "petry-projects/software-factory", "type": "pull_request", "number": 42 },
+  "state": "held",
+  "reason": "max_rounds_reached",
+  "attention": "needs_you",
+  "next_actor": "maintainer",
+  "decision_required": {
+    "question": "rounds_exhausted",
+    "choices": ["grant_another_round", "accept_as_is", "close"],
+    "evidence": ["finding:f_22ab", "run:r_01JA7Q"]
+  },
+  "content_id": "sha256:5d0c",
+  "age_hours": 19.5,
+  "attempts": { "fix-review-findings": 3, "adjudicate-findings": 3 },
+  "cost_usd": 4.8,
+  "sources": ["run:r_01JA6Z", "run:r_01JA7Q"],
+  "url": "https://github.com/petry-projects/software-factory/pull/42"
+}
+```
+
+`question` and `choices` are enumerated codes. The sentence a person reads is rendered from them.
+
+Attention classes, in the order the page lists them:
+
+| Class | Meaning | From |
+|---|---|---|
+| `needs_you` | A decision, an approval or an answer is required of the Maintainer | A Hold that needs a decision; an open `human` Finding; a `security` Finding awaiting Override |
+| `failed` | Verification failed and no Run is addressing it | `addressing` with attempts exhausted, or a required check red |
+| `review` | Waiting on Lenses or owners | `verifying`, `adjudicating` |
+| `ready` | Converged and approved, or in the queue | `converged`, `queued` |
+| `working` | A Run holds the item | A run record in progress |
+| `stale` | Past its state's limit with no evaluation | I-1 breached |
+
+The class is computed by the Kernel beside the State, so the status on the item and the row on the
+page are always the same answer.
+
+### 8.5 Lenses
+
+| Lens | Reads | For |
+|---|---|---|
+| The status on the Work item | The Kernel's projection | One item, where the work is |
+| The dashboard page | The feed | The whole portfolio, on any device |
+| A private Artifact board in the Maintainer's Claude Code session | The feed | The decision queue, beside the session that acts on it |
+| A mod band in the desktop Code tab | The feed | A heads-up count of what needs a person |
+
+### 8.6 Public or private
+
+The Maintainer chose a public view with a public page. The situation-room analysis says to keep the
+board private. They are reconciled as follows.
+
+- **The view hides nothing by being private.** Its sources are the issues, pull requests, run
+  records and artifacts of public repos. The weekly cost report is already a public issue.
+- **A free plan publishes a page only from a public repo.**
+- **What a public page does add is aggregation.** One page that lists every held item and how much
+  budget is left makes the Factory's state easier to read for anyone, not only its operator.
+- **The private lens remains.** The Artifact board of §8.5 is private by construction and reads the
+  same files.
+
+Open: whether any panel, the budget gauge in particular, is left off the public page and shown only
+in the private lens.
+
+## 9. Build order and the stopping rule
+
+### 9.1 Order
 
 The review Intent comes first, so that the Factory reviews itself and everything built after it.
 
 | Slice | Delivers | Who approves Factory changes |
 |---|---|---|
 | 0. Foundations | The repo, its ruleset and `factory / verify`. Every schema of §3 with golden examples. The Lifecycle and authority data. The simulator with a skeleton Kernel. The Apps. The trials of §6 | The Maintainer |
-| 1. Review, end to end | The facts port, the Kernel's Lifecycle, Convergence and gate, the poller, the store, `run` and `apply` for the review Intent, Finding intake from threads, checks and alerts, the status on the item. Serving the Factory's own repo | The Maintainer, until the first `stable` Release; then the Factory's reviewer, with the Maintainer able to block |
+| 1. Review, end to end | The facts and records ports, the Kernel's Lifecycle, Convergence and gate, the poller, `run` and `apply` for the review Intent, Finding intake from threads, checks and alerts, the status on the item, and the control room's feed with a first page. Serving the Factory's own repo | The Maintainer, until the first `stable` Release; then the Factory's reviewer, with the Maintainer able to block |
 | 2. Domain owners | The adjudicating Intents of `qa-lead`, `security-lead`, `solution-architect` and `devops-lead`, each with its eval set | The Factory |
 | 3. Fix Intents | Fix CI and fix review findings under the run contract, with `verify` | The Factory |
 | 4. A Consumer repo | One low-risk Consumer on the `next` ring | The Factory |
@@ -878,7 +1014,7 @@ Using the POC's reviewer for the bootstrap was considered. Its comment gate can 
 by the POC's author Role and has no switch, so it would need a change to the POC first. It remains
 the fallback if slices 0 and 1 turn out to need more approvals than the Maintainer can give.
 
-### 8.2 The stopping rule
+### 9.2 The stopping rule
 
 Agreed in principle on 2026-10-10, replacing the parity rule recorded earlier that day.
 
@@ -894,17 +1030,20 @@ the migration stops unless the Factory beats the POC's baseline on all three of:
 Escaped defects (SM-C1) are reported beside them, so that the three are not bought by weaker
 review. The period is still to be set; the earlier limit was four weeks.
 
-## 9. What this design changes elsewhere
+## 10. What this design changes elsewhere
 
 Recorded in the same change as this document.
 
 | Document | Change |
 |---|---|
+| ADR-0013, decision 2 | State is derived and never stored. The record of a Run is its Actions run record and its artifact. The control room is a rebuildable view |
+| ADR-0013, decision 3 | The Controller is a poller. An event may only ask for a pass. The Consumer file is optional |
+| ADR-0013, decision 4 | The Result artifact is the intent record |
 | ADR-0013, decision 5 | One App per Role |
 | ADR-0013, decision 7 | An owning Role resolving a thread is a declared Role transition, beside the human one |
 | ADR-0013, decision 10 | The review Intent on the Factory's own repo is the first component. The comparison with the POC is a measure, not a gate. The stopping rule is outcome-based |
+| ADR-0013, decision 11 | No longer two provisional mechanisms. The poller's latency and cost are measured against the same thresholds |
 | ADR-0013, decision 12 | A listed intake Role may read a thread's prose to type a Finding; the gate reads only the typed record |
-| PRD, OQ-2, OQ-3, OQ-9 | Recorded as decided, with what remains open |
+| PRD, FR-40 and the glossary | History is 90 days. The State record is computed; the Ledger is the run records and artifacts, indexed in the control room |
+| PRD, OQ-2, OQ-3, OQ-8, OQ-9 | Recorded as decided, with what remains open |
 | PRD, NFR-11 | A new Role is one pull request plus one App registration |
-
-Pending the Maintainer's answer to §7: ADR-0013 decisions 3 and 11.

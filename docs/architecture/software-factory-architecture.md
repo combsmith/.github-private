@@ -59,10 +59,10 @@ The ones that shape structure:
 - Complexity level: high. Low data volume and no regulatory load, but very high integration
   complexity, untrusted public input, self-hosting, and three scarce shared resources.
 - Scale: 12 public repos, one Maintainer, about 30 to 36 merges a week in the busiest repo.
-- Estimated architectural components: 14. Kernel, facts port, effects port, store port, engine
-  port, identity port, Harness, pre-flight bundle, Controller, the brakes outside the Kernel,
-  release tooling, the workflow set, the simulator, and the scorecard. A comparator against the
-  POC is a later, non-gating component.
+- Estimated architectural components: 15. Kernel, facts port, records port, view port, effects
+  port, engine port, identity port, Harness, pre-flight bundle, Controller, the brakes outside the
+  Kernel, release tooling, the workflow set, the simulator, and the control room. A comparator
+  against the POC is a later, non-gating component.
 
 ### Technical Constraints & Dependencies
 
@@ -92,7 +92,13 @@ Decided on 2026-10-10 and carried into the design:
 - The design is modelled before it is built: schemas with golden examples, the Lifecycle as data,
   a list of invariants, and a simulator that injects faults (design document, §3 to §5).
 
-Open, and kept behind a port: where the store lives and how work is noticed (design document, §7).
+- State is derived from GitHub at every evaluation and never stored. The record of a Run is its
+  Actions run record and its artifact. History is 90 days (design document, §3.9, §3.10, §7).
+- Work is noticed by a poller. An event may only ask for a pass.
+- `petry-projects/software-factory-control-room` is a public, rebuildable view with a dashboard,
+  shaped by the situation-room analysis in `petry-projects/.github-private#2242 — Situation-room
+  view for the agent fleet: build it from native Claude Code parts, not a command-center product`
+  (design document, §8).
 
 ### Cross-Cutting Concerns Identified
 
@@ -100,6 +106,8 @@ Open, and kept behind a port: where the store lives and how work is noticed (des
   `verify` runs Work-item code, with no secret and no cache.
 - **Schema versioning.** Every message is versioned, and a reader rejects a version it does not
   know.
+- **One definition of State.** The Kernel computes it, and the status on the item and the row in
+  the control room are the same answer.
 - **One facts snapshot, three uses.** The Kernel's input is also the replay fixture and the
   contract-test fixture.
 - **Fail to a Hold.** An unreadable fact, a missing capacity reading or a failed validation never

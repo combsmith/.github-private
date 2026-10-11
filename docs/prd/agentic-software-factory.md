@@ -204,8 +204,9 @@ ceiling near eight, and the limit they name is their own attention (§3.1 to §3
   applies to each Work item.
 - **Lifecycle** — the declared set of States and Transitions for a type of Work item.
 - **State** — the single current position of a Work item in its Lifecycle.
-- **State record** — the machine-readable record of a Work item's State, the reason for it, and the
-  facts the Factory owns about the item (attempts, spend, dispositions, next evaluation).
+- **State record** — the machine-readable account of a Work item's State, the reason for it, and the
+  facts the Factory owns about the item (attempts, spend, dispositions). It is computed at each
+  evaluation and published in the control room; it is a view, not a store (ADR-0013, decision 2).
 - **Role** — a named agent responsibility (for example dev-lead, pr-review, qa-lead) defined by a
   Role manifest.
 - **Role manifest** — the data that defines a Role: the Intents it handles, its inputs, tools,
@@ -229,7 +230,8 @@ ceiling near eight, and the limit they name is their own attention (§3.1 to §3
 - **Override** — a logged human action that bypasses a Gate.
 - **Disposition** — the recorded outcome for one review finding or human comment: fixed, declined,
   deferred or not applicable, with evidence.
-- **Ledger** — the durable, append-only record of Admissions, Runs and Effects.
+- **Ledger** — the durable, append-only record of Admissions, Runs and Effects: the Factory's run
+  records and artifacts in GitHub Actions, indexed in the control room.
 - **Release** — one immutable version of everything that determines Factory behaviour.
 - **Channel** — a named pointer to a Release that consumers follow.
 - **Ring** — a set of Consumer repos that receive a Release at the same stage.
@@ -492,7 +494,8 @@ daily fleet failure report stopped three weeks ago and nothing noticed. 45% of a
 Hosting repo are machine-filed reports. Realizes UJ-2, UJ-9.
 
 - **FR-40. Ledger.** Every Admission, Run and Effect is appended to a durable Ledger retained for at
-  least 180 days and queryable by Work item, Role, repo, Release and time.
+  least 90 days and queryable by Work item, Role, repo, Release and time. The Maintainer set 90
+  days on 2026-10-10, in place of 180: it is how long GitHub keeps run records in a public repo.
 - **FR-41. Work-item timeline.** The full history of a Work item can be reconstructed from the
   Ledger alone.
 - **FR-42. Scorecard.** A weekly and on-demand scorecard reports the success metrics in §9 from the
@@ -816,6 +819,10 @@ From the competitive analysis ([market research](../research/market-agentic-soft
    structured surface the contract can read.
 7. **OQ-7. Are the `[ASSUMPTION]` targets in §7 the right ones?**
 8. **OQ-8. Where does the Ledger live and who may read it?** Everything in a public repo is public.
+   Decided by the Maintainer on 2026-10-10: the Ledger is the Factory's own run records and
+   artifacts, and `petry-projects/software-factory-control-room` is a public, rebuildable view of
+   them with a dashboard. Open: whether any panel is kept off the public page, and where held-out
+   eval sets live.
 9. **OQ-9. What is the budget for the migration itself**, in weeks and in LLM spend, given that the
    POC must keep delivering while it is replaced? The three conditions ADR-0013 required were set
    by the Maintainer on 2026-10-10 (ADR-0013, decision 10). POC defects are fixed as needed, with no

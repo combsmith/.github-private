@@ -123,40 +123,56 @@ The boundaries a check can assert:
   of decision 8, the agent identity of decision 5 as the author of agent changes, and
   environment-scoped secrets.
 
-### 2. A declared Lifecycle and one State record
+### 2. A declared Lifecycle, with State derived and never stored
 
-We will define one Lifecycle per work-item type as versioned data under `lifecycle/`, and
-keep one State record per work item together with an append-only Ledger in a store that only the
-Controller identity writes. The store starts as git; that choice is provisional (decision 11). The
-work item shows a projection of its State record. Labels are the human's input vocabulary.
+We will define one Lifecycle per work-item type as versioned data under `lifecycle/`, and compute
+each work item's State at every evaluation from what GitHub holds. We keep no second authoritative
+store. The work item shows a projection of its State. Labels are the human's input vocabulary.
 HTML-comment markers are not state.
 
-- **Every transition in the Ledger for a Release is declared in that Release's Lifecycle.** An
-  undeclared one fails a check and is reported.
-- **A state change and its ledger events are one commit.**
+The first draft kept a State record per work item and an append-only Ledger in a git store, as a
+provisional choice. The maintainer replaced it on 2026-10-10: most of what that store held is
+already on the work item, and a stored copy can only go stale. In this record "the Ledger" now
+means the factory's run records and artifacts in GitHub Actions, as indexed in the control room.
+
+- **State is computed, never stored.** One Kernel function derives it from facts, the factory's run
+  records and the residue below.
+- **Every transition the factory performs for a Release is declared in that Release's Lifecycle.**
+  An undeclared one fails a check and is reported.
 - **No module under `kernel/` takes a comment body as input.** Text written by third
   parties becomes typed records in adapters and Roles that are enumerated in one list. The entries
   in that list that read legacy markers may only shrink.
-- **The State record holds only what GitHub does not.** Reviews, checks, labels, merges and thread
-  resolution are read as facts at each evaluation and are never trusted from the record.
-- **Every non-terminal, non-held State carries a next evaluation time.**
+- **What only the factory knows is written once, where GitHub keeps it.** That a Run happened and
+  how it ended is its Actions run record, named for its work item. What the Run cost and what a
+  model judged are in the Run's artifact, which is immutable and has a digest. Nothing is handed
+  from job to job through a log.
+- **Reviews, checks, labels, merges and thread resolution are read as facts at each evaluation**
+  and are never trusted from a copy.
+- **The control room is a materialized view.** `petry-projects/software-factory-control-room` holds
+  an index of the run records and artifacts and every item's computed State. Only the Controller
+  writes it. It is public, reaches back 90 days, and can be deleted and rebuilt from GitHub. A view
+  rebuilt from GitHub equals the view updated pass by pass, and a check asserts it.
+- **A decision that finds the view missing or behind recomputes or defers.** It never admits.
 - **The projection on a work item is rewritten only when the decision changes,** and at most once
   per item per stated interval. It contains no value that changes when the decision does not.
 
 ### 3. Level-triggered Admission in one place
 
-We will admit every Run through one Controller that evaluates recorded state and current facts.
-Events are wake-ups. The sweep is sufficient without them: any decision reached on a wake is also
-reached by a sweep with no wake. Waking per event is a latency optimisation and is provisional
-(decision 11). The Controller runs in the factory repo, one lane per work item, held from decision
-to applied Effects.
+We will admit every Run through one Controller that evaluates current facts and the factory's own
+records. The Controller is a poller: one pass evaluates every open work item in every repo. An
+event carries no work. It may only ask for a pass now, and any number of such nudges during a pass
+collapse into one more pass. The Controller runs in the factory repo. A Run is its own workflow
+run, one lane per work item, held from `run` to applied Effects. The first draft woke the
+Controller once per event; the maintainer replaced that on 2026-10-10 (decision 11).
 
-- **A wake carries a schema version and a work item's identity, and nothing else.** The Kernel's
-  admission function takes no event payload.
+- **A nudge carries a schema version and at most a work item's identity.** The Kernel's admission
+  function takes no event payload.
 - **`factory-controller.yml` is the only workflow that invokes an Engine or references an LLM
   credential.**
 - **At most one Run that can produce Effects is active per work item,** by the lane. Org-wide
-  limits are leases taken by a ledger commit; a push that loses the race re-decides.
+  limits are decided inside the one pass, which is the only decider, so there is no race to lose.
+- **Passes do not overlap, and at most one waits.** A pass starts its successor when something is
+  due before the next scheduled tick.
 - **Hold, budget, duplication and concurrency are evaluated in the admission function and nowhere
   else.** A human Pause and an automatic pause are different stores, so automation cannot clear the
   human one.
@@ -171,10 +187,10 @@ Three brakes sit outside the Kernel, so that a defect in the Kernel cannot disab
 - **The count of automated actions since the last human decision is computed from GitHub's record
   of actors,** not from the Ledger.
 
-And the ingress bounds what a wake can cost:
+And a nudge is bounded in what it can cost:
 
-- **The ingress job drops events authored by a factory identity** in its job-level `if:`, and holds
-  a concurrency group per work item.
+- **A consumer repo may carry the nudge file, and needs none to be served.** Where it is installed,
+  its one job drops events authored by a factory identity in its job-level `if:`.
 
 ### 4. One run contract; a job is a credential boundary
 
@@ -200,10 +216,10 @@ with every side effect expressed as a requested Effect. Three jobs carry it: `ru
   define a consumer's setup and test commands,** unless the Role's manifest permits that Effect and
   a human transition is recorded.
 - **Every Effect type declares a recovery key that is not text in a body.** For an Effect with no
-  natural idempotency key, an intent record is committed before the Effect is applied. If that
-  commit fails, nothing is applied.
-- **A lease is released by a job that runs under `if: always()`,** and the Lifecycle declares the
-  transition for a lease that has no Result.
+  natural idempotency key, the Result artifact is the intent record: it exists before `apply`
+  starts. If it is missing or its digest does not match, nothing is applied.
+- **A Run that ends with no Result is still a run record.** It counts as an attempt, and the
+  Lifecycle declares what follows it.
 - **Feedback moves left; the verdict does not.** `run` executes the pre-flight checks and returns
   their Findings to the author for a bounded number of repair turns. `verify` executes the same
   checks, at the same pinned versions and configuration, and only its result counts toward a Gate.
@@ -250,7 +266,7 @@ file in the Release. The factory repo is always served by `stable`.
   static caller job per channel and selects between them with a job-level `if:` on the output of a
   pinned ring-resolution job and on the pause variable. Those two non-event predicates are the only
   additions to ADR-0007's filter rule.
-- **A consumer repo carries exactly one factory file,** byte-identical to the template in the
+- **A consumer repo carries at most one factory file,** byte-identical to the template in the
   Release it follows. It subscribes to no event that would run a copy of itself from a work-item
   branch.
 - **Rollback executes no file from the Release being rolled back.**
@@ -340,21 +356,21 @@ We will make the factory's own verification a required check from the first comm
   `require_extra_approval_for_unattributed_changes`; that the App can enable auto-merge and enter
   the merge queue; and whether sending a wake counts against GitHub's content-creation limit.
 
-### 11. Two choices are provisional
+### 11. The poller and the view are measured
 
-The git-backed store (decision 2) and waking per event (decision 3) are adopted provisionally. Every
+The first draft adopted a git-backed store and a wake per event provisionally, because every
 comparable orchestrator polls from one standing process and keeps control state it can rebuild
-(review §13), and one project abandoned files in git as its work ledger.
+(review §13). The maintainer settled both on 2026-10-10: state is derived (decision 2) and the
+Controller polls (decision 3). The thresholds written for the provisional choices are kept as
+measures of the settled ones.
 
-- **The first factory component runs the same Kernel two ways at once:** on the wake path, and
-  under a poller that evaluates every open work item in one process on a schedule.
-- **The provisional choices are confirmed only if, over two weeks of that run:** wake handling uses
-  at most 10% of the org's job-minutes; reads per evaluation times peak wakes per hour is at most
-  3,000 GraphQL points; at most 5% of pushes to the store need three or more attempts and the store
-  receives at most 6 pushes a minute at the 95th percentile; and the 95th-percentile delay from a
-  change that produces no event to a decision is at most 15 minutes.
-- **If a threshold fails, a follow-on ADR replaces that mechanism.** Decisions 1 and 4 to 10 stand
-  either way, because the Kernel does no I/O.
+- **Over two weeks of serving the factory repo:** handling passes and nudges uses at most 10% of
+  the org's job-minutes; a pass costs at most 3,000 GraphQL points an hour at peak; and the
+  95th-percentile delay from a change that produces no event to a decision is at most 15 minutes.
+- **If the delay threshold fails, the nudge file is installed where it fails.** If it still fails,
+  a follow-on ADR decides between a longer-lived polling job and a wake per event.
+- **If the view cannot be kept equal to a rebuild, a follow-on ADR replaces it.** Decisions 1 and
+  4 to 10 stand either way, because the Kernel does no I/O.
 
 ### 12. Lenses report through one contract; convergence is decided, not discussed
 
@@ -399,7 +415,7 @@ Numbers are assigned when each is written. Each lands with the migration step th
 | Follow-on | Must decide | Effect on the log |
 |---|---|---|
 | **Agent identity** | Each Role's App and its permissions; the shared name prefix; how tokens are narrowed per Role; the dispatch-only credential a consumer uses to send a wake; the reviewer credential's confinement; what interaction model §12.2 says afterwards. | Supersedes ADR-0008. |
-| **State record and Ledger** | The store's location and visibility (PRD OQ-8); schemas; retention; how legacy markers are read during migration. | New. No ADR governs this today. |
+| **Records and the control room** | Run naming; the artifact and view schemas; what the public page omits; where held-out eval sets live; how legacy markers are read during migration. | New. No ADR governs this today. |
 | **Admission** | The wake schema; the one-job ingress; the sweep; Pause and Hold stores; the LLM capacity signal and its credential (PRD OQ-3); priority order. | Extends ADR-0007, including a `pull_request_target` subscription that ADR-0007 excludes and that is safe only because the ingress checks out nothing and forwards a wake that carries identifiers only. Admission treats the wake as untrusted: an Outside contributor's pull request produces no Run that holds secrets or writes without a Maintainer decision (PRD FR-63). ADR-0010's job-level concurrency key stays in use for the per-item group. Supersedes ADR-0009 when the router it names is retired. |
 | **Run contract** | Task, Result and Effect schemas; the sandbox; resume; whether an adopted runtime fills the inner half. | Extends ADR-0005. Supersedes ADR-0011, which should be accepted now as the interim rule. |
 | **Release unit and promotion** | The eval gate and its cost budget; ring membership; rollback; retirement of per-agent names. | Supersedes ADR-0002 and ADR-0006, restating what survives of each. |
@@ -499,9 +515,10 @@ extension remains a separate decision.
   path. It does not protect a consumer's own secrets from a model-authored change, which is why
   `apply` refuses workflow changes without a human transition.
 
-- **Every wake costs runners the POC did not spend.** A comment that needs no work costs one job
-  today and three under this design, from a pool of twenty shared with all CI. Decision 11 exists
-  because that cost is unmeasured.
+- **A poller is slower than an event.** A scheduled tick cannot be finer than five minutes and is
+  often dropped here, so a change with no nudge waits for the next pass. In exchange a flood of
+  events costs at most back-to-back passes, one runner slot of twenty. Decision 11 measures the
+  delay.
 
 - **The App's private key is a high-value secret,** and the reviewer remains a user account with a
   long-lived token. The second is a standing exception to least privilege, confined to one job.
@@ -509,8 +526,18 @@ extension remains a separate decision.
 - **Re-issuing an approval for unchanged content approves a commit no reviewer read.** A defect in
   the content identity is an unreviewed merge. It fails closed on any doubt, and it must be watched.
 
-- **A git-backed Ledger is not a database.** It is contended under bursts, slow to query at volume,
-  and public unless placed in a private repo.
+- **The factory's history is 90 days.** That is how long GitHub keeps run records and artifacts in
+  a public repo. Nothing older can be replayed or audited.
+
+- **Decisions read a view.** Cost and model judgements reach the Kernel through the control room,
+  because reading every artifact on every pass is too slow. A view that drifted would mislead a
+  decision; the rebuild check is what stands against that.
+
+- **A killed Run's cost is not known exactly.** The model CLI reports usage when an invocation
+  ends, so a Run that dies mid-turn has only its duration.
+
+- **The control room is public.** It aggregates on one page what is already public item by item,
+  including what awaits the maintainer and how much capacity is left.
 
 - **The `run` job has no network containment.** A model that is successfully injected can still
   read the LLM credential. An adopted runtime with a firewall would close this; building our own
@@ -548,8 +575,8 @@ extension remains a separate decision.
 
 - `docs/prd/agentic-software-factory.md` — the requirements this decision is measured against.
 - `docs/architecture/software-factory-design.md` — the interaction and contract design: structure,
-  contracts with examples, the Lifecycle and its invariants, Role authority, and the options for
-  the store and for noticing work.
+  contracts with examples, the Lifecycle and its invariants, Role authority, why State is derived
+  and not stored, how work is noticed, and the control room.
 - `docs/architecture/factory-mvp-architecture-review.md` — evidence (§§2–3), root causes (§4),
   options and sub-decisions (§§5–6), target and trade-offs (§7), migration shape (§8), relationship
   to earlier ADRs (§9), requirements the analysis changed (§10), platform facts and assumptions
