@@ -1754,7 +1754,7 @@ With no period set, the decision needs a moment at which it is made. Two events 
 
 | Decision point | The Maintainer records | Shown beforehand |
 |---|---|---|
-| The first Release on `next` that serves the Factory's repo | Continue or stop | How many Factory pull requests the Maintainer has approved, against a starting figure of 40 |
+| The first Release on `next` that serves the Factory's repo | Continue or stop | How many Factory pull requests the Maintainer has had to read and merge, against a starting figure of 40 |
 | The first Consumer repo served | Continue or stop | The adoption and use measures above |
 
 The control room also shows what share of Factory pull requests needed the Maintainer only because
@@ -1947,6 +1947,20 @@ Until slice 2 the Factory has no author of its own. Its code is written in the M
 interactive sessions: Claude Code in the desktop app, the strongest available model, and the BMAD
 workflows vendored in `.github-private`. The POC's author agent does not serve the new repo, since
 that would bring the owner account's token and the POC's rules into a repo meant to start clean.
+
+**Whose name the work carries.** In those sessions three identities are set separately, and all
+three must be the Maintainer's: the account that opens the pull request, the account that pushes,
+and the commit author. A session inherits the first two from the machine's GitHub login. It does
+not inherit the third, which comes from git's own configuration and has to be set in each clone.
+The machine user never authors, pushes or opens a pull request there.
+
+**No one can approve their own pull request.** While the Maintainer is the author of every pull
+request, GitHub will not accept the Maintainer as its approver. So through slices 0 and 1 the
+ruleset requires the verification check and the merge queue and no approving review: the Maintainer
+reads and merges. Required review, with the machine user as code owner, is switched on when the
+Factory's reviewer serves the repo. The rule that the Maintainer alone owns the Factory's rule
+files (§5.1) takes effect when an App, and not the Maintainer, authors the changes. Wherever this
+document says the Maintainer approves during the bootstrap, read "reads and merges".
 
 What makes that way of working produce good code:
 
