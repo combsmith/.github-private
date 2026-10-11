@@ -272,7 +272,7 @@ account, as a person. "The App" in the boundaries below means the App of the Rol
 - **The machine user approves and does nothing else.** It never pushes and never opens a pull
   request, because GitHub does not count an approval from an author or a last pusher.
 - **The Maintainer is the only code owner for the factory's own rules** in the factory repo: the
-  Lifecycle, the authority table, the gate function, the brakes and `.github/`. The factory cannot
+  Lifecycle, the authority table, the gate function, the brakes, the invariants and `.github/`. The factory cannot
   approve a change to what governs it, whichever Release is serving.
 - **Reading is shared; writing is not.** Every `run` job reads GitHub through one reader App that
   can write nothing. A Role is given its own App when it first needs to write, so a Role in shadow
@@ -450,6 +450,11 @@ the Kernel.
 - **Convergence is a Kernel function:** every Lens required for the item's class and stage has
   reported on the current content version, and no blocking Finding is open. An item that has not
   converged within its declared bound is placed on Hold.
+- **Convergence also needs evidence, not only the absence of objection.** Where a work item has an
+  acceptance contract, every criterion in it must have passing evidence on the current content.
+  The contract is written before the work by a Role other than the one that implements it, is
+  approved by the maintainer, and cannot be changed by the implementing Role. It takes effect with
+  the fix and implement intents (design document, §3.13 and §4.8).
 - **The required Lenses are declared per class of work item and stage, as data.** The starting set
   is the deterministic checks, the in-house reviewer and humans. A Finding from a Lens outside the
   required set gates only when a required Lens adopts it as its own. Model Lenses are admitted only
@@ -558,8 +563,8 @@ extension remains a separate decision.
   changes the maintainer can audit and merge by hand, and beyond that by how often a change is
   right the first time. A control plane makes approvals issue reliably. It does not make them
   correct. The PRD's autonomy and defect targets cannot both be met on current first-pass
-  correctness (review §14.4). An acceptance signal the author cannot edit, and review depth, are
-  the next ceiling and are not decided here.
+  correctness (review §14.4). An acceptance contract (decision 12) is the first answer to that. Review
+  depth is the ceiling after it and is not decided here.
 
 - **The largest failure class is mostly policy, not structure.** Approvals fail to issue chiefly
   because every comment from nine third-party reviewers must be dispositioned. Decision 7 narrows

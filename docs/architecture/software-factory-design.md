@@ -252,6 +252,7 @@ A reader rejects a major version it does not know. Messages are JSON. Files a pe
 | Role manifest | Factory developer | Kernel, Harness | What a Role sees, raises, owns and may do |
 | Authority table | Maintainer | Kernel | Who decides each category of Finding |
 | Consumer entry | Repo owner | Kernel, `verify` | How one Consumer repo is served |
+| Acceptance contract | `qa-lead`, approved by the Maintainer | Kernel, `verify`, the author Role | What a change must show to be correct |
 | Lifecycle | Factory developer | Kernel | States, Transitions, Gates and actors |
 
 ### 3.2 Nudge
@@ -600,6 +601,46 @@ The entry lives in the Factory repo and rides the Release. The scripts it points
 Consumer repo and are the Consumer's own. `apply` refuses a change to a protected path unless a
 human transition is recorded, so an author cannot weaken the tests it is judged by.
 
+### 3.13 Acceptance contract
+
+```yaml
+schema: acceptance/1
+item: { repo: petry-projects/markets, type: issue, number: 512 }
+criteria:
+  - id: AC-1
+    statement: A stall with no bookings is listed as available.
+    priority: P0
+    check: { kind: test, ref: "tests/acceptance/test_availability.py::test_unbooked_stall_is_available" }
+  - id: AC-2
+    statement: Booking one stall twice for the same day is refused.
+    priority: P0
+    check: { kind: test, ref: "tests/acceptance/test_availability.py::test_double_booking_is_refused" }
+  - id: AC-3
+    statement: No new runtime dependency is added.
+    priority: P1
+    check: { kind: static, ref: dependency-diff }
+  - id: AC-4
+    statement: Errors follow the booking module's existing style.
+    priority: P2
+    check: { kind: role, ref: pr-review }
+protected_paths: ["acceptance/512.yml", "tests/acceptance/test_availability.py"]
+```
+
+Every criterion names how it will be checked. The kinds, strongest first:
+
+| Kind | What it is | Strength |
+|---|---|---|
+| `test` | An executable check that exists, and fails, before the work starts | The author cannot argue with it |
+| `scenario` | A held-out scenario the author cannot see | Cannot be written to |
+| `mutation` | Whether the change's own tests can fail at all | Guards against tests that assert nothing |
+| `static` | A deterministic tool's report | Exact, for what it covers |
+| `role` | A named Role judging the change against the statement | Only as good as that Role |
+| `human` | The Maintainer's confirmation | Costs attention |
+
+The file and the tests it names are protected paths, so `apply` refuses any change to them by the
+Role that implements the work. Who approved the contract is not stored: it is the approval on the
+pull request that added the file.
+
 ## 4. Behaviour
 
 ### 4.1 The pull-request Lifecycle
@@ -659,7 +700,9 @@ Convergence is one Kernel function of facts and run records:
    on the current `content_id`;
 2. no Finding of severity `blocking` or `major` raised by a required Lens is open or proposed;
 3. no `human` Finding is open. A `human` Finding is a review thread, or a review that requests
-   changes, from a person with write access.
+   changes, from a person with write access;
+4. where the item has an acceptance contract, every criterion has passing evidence on this
+   content (§4.8).
 
 A *blocking Finding*, here and in the diagram above, is one that gates: severity `blocking` or
 `major`, from a required Lens or a human.
@@ -759,6 +802,9 @@ These are the properties the simulator asserts. Each is a sentence a test can fa
 | I-26 | No approval is attempted where the approver is the author or the last pusher; the item is held instead | C-6 |
 | I-27 | No model Lens runs on content that has not passed the deterministic required Lenses | §4.2 |
 | I-28 | Attempts are reset only by a human action on the item | FR-17 |
+| I-29 | Once acceptance contracts are in force, no implementing Run is admitted for an item without an approved one | FR-59 |
+| I-30 | No change by an implementing Role touches an acceptance contract or a test it names | FR-59 |
+| I-31 | An item with an acceptance contract never converges with a criterion lacking passing evidence on that content | §4.2 |
 
 ### 4.5 The simulator
 
@@ -777,7 +823,7 @@ decision logic against a fake world, quickly, thousands of times.
   every step boundary, including between two Effects and before any artifact is uploaded. The
   control room unwritable, or holding nonsense. A facts read that fails or is stale. A missing capacity reading.
   A Result that fails validation. An Engine that times out. A human acting mid-Run.
-- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-28. I-1 and I-18 are checked once faults
+- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-31. I-1 and I-18 are checked once faults
   stop and the world is left to settle.
 - **Reproduction.** Each run has a seed from the standard library's generator. A failure prints the
   seed and the trace, and the trace renders as a sequence diagram.
@@ -849,6 +895,65 @@ the Controller assigns it to the Maintainer, or requests their review on a pull 
 GitHub's own notifications carry it to email and phone. A fault of the whole Factory goes to one
 tracking issue, never to one per item.
 
+### 4.8 Acceptance: what a change is judged against
+
+Conditions 1 to 3 of Convergence say that nobody required has an open objection. That is the
+absence of objection. It is not evidence that the change is right. The acceptance contract of §3.13
+supplies the other half: a statement, written before the work, of what the change must show.
+
+How correctness is covered:
+
+| Question | Answered by |
+|---|---|
+| Was the work actually done? | Claims generated by `apply`; an empty diff never converges |
+| Did it break what worked? | The repo's tests, its required checks, the merge queue |
+| Is it safe and well built? | Deterministic scanners; domain Roles once promoted |
+| Is the judge any good? | Eval sets, shadow comparison, escaped defects |
+| **Did it do what was asked?** | **The acceptance contract** |
+| **Does the new behaviour work?** | **Checks of kind `test`, `scenario` and `mutation` in that contract** |
+
+The flow keeps one author per change by making it two changes:
+
+1. An issue states the intent.
+2. `qa-lead` drafts the contract: the criteria, a check for each, and failing tests for those of
+   kind `test`. That is one pull request, and its author is `qa-lead`.
+3. The Maintainer approves it. This is what arming the work means: one approval, of a concrete
+   thing.
+4. The implementing Role makes its change in a second pull request. It cannot touch the contract
+   or the tests the contract names.
+5. `verify` and the Consumer's own checks run them. The Kernel reads one result per criterion.
+
+A criterion that cannot be met is waived only by the Maintainer, as a recorded human transition.
+
+**Who drafts it.** `qa-lead` wraps the vendored BMAD test-architecture agent, whose workflows are
+built for this sequence. Three are used and one is not:
+
+| Workflow | Used for |
+|---|---|
+| Test design | The priority of each criterion and the kind of check it deserves |
+| ATDD | Failing acceptance tests written before the implementation |
+| Trace, first phase | The map from each criterion to the tests that cover it |
+| Trace, second phase | **Not used.** It has a model issue a PASS or FAIL verdict. Here the Kernel decides, from one result per criterion |
+
+Three things have to be built for that to work. The workflows are interactive and produce
+documents for people, so the Intent needs a wrapper that runs them in one Run and returns the
+contract as data. `qa-lead` becomes a Role that writes code, so it needs an eval set and, when it
+first writes, its own App. And the agent starts from criteria it is given: it turns them into
+checks and says when one is untestable, but what the work is for comes from the issue.
+
+**How strict, and when.** The contract takes effect with the fix and implement Intents (§9.1,
+slice 4). At first the rule is only that every criterion names a check and has evidence, and a
+`role` check is allowed. It tightens as measurements arrive: `P0` criteria must have an executable
+check, then held-out scenarios where they prove their worth.
+
+For the Factory's own repo the contract exists already. The invariants of §4.4 and the simulator
+of §4.5 were written before the code, and they are among the paths only the Maintainer may approve
+(§5.1).
+
+What this does not fix: criteria that are themselves wrong; the Maintainer's attention, since each
+contract is one more approval; a `role` check, which is model judgement; and mutation testing,
+whose noise on agent-written changes nobody has measured and for which no shell tool exists.
+
 ## 5. Team interactions
 
 ### 5.1 Roles and identities
@@ -860,7 +965,7 @@ A token is still narrowed at mint time to the Effects one Result requests.
 |---|---|---|---|---|
 | `pr-review` | Reviewer, and owner of every model-judged category | `functional`, `security`, `architecture`, `delivery`, `reliability`, `requirements`, `uncategorised` | `requirements`, `uncategorised` | Its own App: comment, open and resolve threads. Its approval is submitted by the machine user |
 | `dev-lead` | Author, from the fix Intents onward | None | None | Its own App: push to work-item branches, open pull requests, comment |
-| `qa-lead` | Shadow | None | `functional` | Nothing until promoted; then its own App |
+| `qa-lead` | Shadow; from the fix and implement Intents, author of acceptance contracts | None | `functional` | Its own App when it first drafts a contract |
 | `security-lead` | Shadow | None | `security` | Nothing until promoted; then its own App |
 | `solution-architect` | Shadow | None | `architecture` | Nothing until promoted; then its own App |
 | `devops-lead` | Shadow | None | `delivery`, and Consumer entries | Nothing until promoted; then its own App |
@@ -883,7 +988,8 @@ state. The fourth column is the plan.
   It approves and does nothing else. It never pushes and never opens a pull request, because GitHub
   will not count an approval from an author or a last pusher.
 - **The Maintainer is the only code owner for the Factory's own rules** in the Factory repo:
-  `lifecycle/`, the authority table, the gate function, the brakes and `.github/`. GitHub then
+  `lifecycle/`, the authority table, the gate function, the brakes, the invariants and the
+  simulator's fixed seeds, and `.github/`. GitHub then
   enforces that the Factory cannot approve a change to what governs it, whichever Release is
   serving.
 - The Apps share the name prefix `combsmith-sf-`, so `qa-lead` acts as `combsmith-sf-qa-lead[bot]`. The frozen Consumer file drops
@@ -1241,7 +1347,7 @@ Anything not needed for that event is in a later slice.
 | 1. First approval | The facts and records ports. The Kernel's Lifecycle, Convergence and gate. The poller and the nudge file on the Factory's own repo. `run` and `apply` for the review Intent. Deterministic checks read as Findings. The status on the item. A feed of two files, `meta` and `items` | The Maintainer, until the first Release on `next` serves the Factory's repo; then the Factory's reviewer, with the Maintainer able to block |
 | 2. Control room and measurement | The rest of the feed and the dashboard page. Adoption counted per Advisory reviewer, so that each one's contribution is measured. Runs per merge on every item | The Factory |
 | 3. Domain Roles in shadow | The adjudicating Intents of `qa-lead`, `security-lead`, `solution-architect`, `devops-lead` and `sre-lead`, each with its eval set, running on the reader App, deciding on a sample and binding nothing. Promotion follows, one Role at a time, and brings that Role its own App | The Factory |
-| 4. Fix Intents | Fix CI and fix review findings under the run contract, with `verify` | The Factory |
+| 4. Fix Intents | Fix CI and fix review findings under the run contract, with `verify`. Acceptance contracts drafted by `qa-lead` and approved by the Maintainer take effect here (§4.8) | The Factory |
 | 5. A Consumer repo | The first `stable` Release, promoted on evidence from `next`. One low-risk Consumer, cut over by pause and repoint (§9.6) | The Factory |
 | 6. Onward | Implementation, the initiative driver, the remaining personas, as in the review's migration shape | The Factory |
 
@@ -1414,4 +1520,6 @@ Recorded in the same change as this document.
 | PRD, OQ-2, OQ-3, OQ-8, OQ-9 | Recorded as decided, with what remains open |
 | PRD, NFR-11 | A new Role is one pull request plus one App registration |
 | PRD, FR-39, FR-73, C-4 | The ceiling that gates is Runs per Work item, with the amount shown. The monthly cap applies on a metered credential. An optional external timer is permitted |
+| PRD, FR-59 and the non-goals | The acceptance contract; defining what a change is judged against is in scope |
+| ADR-0013, decision 12 and Consequences | Convergence requires evidence for each acceptance criterion |
 | PRD, FR-2, FR-32, FR-33, FR-50, FR-51 and the glossary | Brought into line: no next-evaluation time, required Lenses in place of awaited reviewers, Dispositions read from the surface, the Factory served by `next`, the Consumer file optional |

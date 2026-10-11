@@ -578,6 +578,13 @@ accepts any flags. The suite cannot run on the Maintainer's machine. Realizes UJ
 - **FR-59. Acceptance the author cannot edit.** Every code-writing Intent is checked against at
   least one acceptance signal that the authoring Role can neither read in advance nor change. The
   Consumer repo's own tests do not qualify, because the author can edit them.
+  - A Work item that leads to a code change carries an acceptance contract before the work is
+    admitted: criteria, each naming how it will be checked. It is drafted by a Role other than the
+    implementing one and fixed by the Maintainer's approval.
+  - Passing evidence for every criterion, on the content to be merged, is a condition of
+    Convergence.
+  - At first a Role's judgement is allowed as a check. Executable and held-out checks are required
+    of the highest-priority criteria as measurements allow.
 
 ### 6.10 Security
 
@@ -695,6 +702,7 @@ the org's job-minutes `[ASSUMPTION]`.
 - The Factory does not replace GitHub as the system of record for code, reviews and merges.
 - The Factory does not remove the Maintainer from the decisions in §6.4: approving ideas, arming
   epics, resolving escalations, overriding Gates.
+- Defining what a change is judged against is not review depth, and is in scope (FR-59).
 - The MVP does not improve review depth. Better bug-finding (symbol context, specialist routing,
   few-shot from merged pull requests) waits until the line is stable, because its benefit cannot be
   measured on a line that loses a third of its work. This non-goal sets the MVP's ceiling: once
