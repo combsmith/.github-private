@@ -95,7 +95,10 @@ workflow retired, the soak signal comes from two run logs:
   runner). Routing lines over PRs seen is the dispatch rate.
 - **`persona-runner` runs** — the pre-gate line
   `persona pre-gate for 'qa-lead' (surface=pull_request) on <repo>#<pr>: run|skip:<reason>`.
-  Counting `run` gives **advisories posted vs. PRs seen**; the `skip:<reason>`
+  `run` is only the pre-gate decision (the post step succeeds even when the
+  engine produced no advisory), so count the poster's
+  `Posted qa-lead advisory on <repo>#<pr>.` confirmations for **advisories
+  posted vs. PRs seen**; the `skip:<reason>`
   values (`no-test-surface` / `opt-out` / `human-gated` / `budget-exhausted` /
   `already-advised` / `signal-unavailable`) give the **skip-reason histogram**.
 
