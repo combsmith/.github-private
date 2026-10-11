@@ -211,15 +211,20 @@ with every side effect expressed as a requested Effect. Three jobs carry it: `ru
 
 ### 5. Agents have their own identity
 
-We will have every agent write through a factory GitHub App identity, with a token minted per Run
-and narrowed to the Role's permitted Effects, and have reviews submitted by the existing machine
-user. Code-owner review stays required. The owner account is the human's alone.
+We will have every agent write through a factory GitHub App of its own, one App per Role, with a
+token minted per Run and narrowed to the Effects that Run requests, and have approving reviews
+submitted by the existing machine user. Code-owner review stays required. The owner account is the
+human's alone.
 
-The maintainer decided on 2026-10-10 that no agent runs as the owner account. The Maintainer may
-still author changes to the factory repo under that account, as a person. Whether the factory has
-one App or one App per Role is open and belongs to the agent-identity follow-on; the review
-recommends one (§6.4, option c against option d). The boundaries below hold either way, and "the
-App" in them means whichever factory App acts.
+The maintainer decided on 2026-10-10 that no agent runs as the owner account, and that each Role
+has its own App, so that a Role's permissions are a ceiling the platform enforces and not only a
+rule in the factory's own token-minting code. The review had recommended one App (§6.4, option c);
+this is its option d. The Maintainer may still author changes to the factory repo under the owner
+account, as a person. "The App" in the boundaries below means the App of the Role that acts.
+
+- **The factory's Apps share a name prefix,** and the consumer file drops factory-authored events
+  by that prefix. Adding a Role changes no consumer file.
+- **Registering an App is a manual step.** A new Role is one pull request and one registration.
 
 - **No factory workflow references the owner account's token.**
 - **Every Effect in the Ledger has a factory App or the reviewer as its actor.**
@@ -271,6 +276,10 @@ of the pull request's own diff against its merge base), and decide approval in o
   review thread is a Finding from a human Lens and always gates. This replaces the POC's rule that
   every comment body needs a verified disposition.
 - **A human resolving a review thread in GitHub's interface is a declared human transition.**
+- **A Finding is decided by the Role that owns its category,** under an authority table held as
+  data. The author proposes a Disposition and the owner accepts or rejects it. An owner resolving
+  a thread it has accepted is a declared Role transition. No Role decides on its own work, and a
+  security Finding is never declined without an Override.
 
 ### 8. Verification binds
 
@@ -303,27 +312,28 @@ We will make the factory's own verification a required check from the first comm
   `.github-private` convention gives it.
 - **For any repo and intent family, exactly one line serves it,** the POC or the factory, as
   recorded in the ring file. A check derives this and fails on dual serving.
-- **The first factory component runs read-only, from the factory repo, on every repo:** it computes
-  State and writes the Ledger and the projection, and admits nothing. It needs read access only.
-  This is how a greenfield build meets real traffic from its first weeks.
-- **An intent family is cut over only when the factory's decisions for it have been compared with
-  the POC's on live traffic and the disagreements are within a bound declared beforehand.** That
-  comparison is the measure of parity. A greenfield build has no other.
+- **The first factory component is the review intent, running end to end on the factory repo
+  itself,** so that the factory reviews everything built after it. Until the first `stable` Release
+  exists, the Maintainer approves factory changes. This replaces the first draft's read-only
+  observer as the first component (maintainer, 2026-10-10).
+- **An intent family is cut over for a consumer only after it has run at `stable` on the factory
+  repo and its eval set exists** (decision 6). The comparison of the factory's decisions with the
+  POC's on live traffic is still made and reported. It is a measure, not a gate.
 - **From that point the POC takes defect fixes only.**
 - **A compensating workflow is retired in the change that makes it unnecessary, or keeps a recorded
   reason to remain.** The number of compensating workflows does not rise during the migration.
 - **The migration has a limit, a defect policy and a stopping rule.** This decision was not in
-  force until the maintainer wrote all three. They were set on 2026-10-10:
-  - **Limit.** For each intent family, the POC and the factory run side by side for at most four
-    weeks, counted from the day the factory's comparable intent is available on live traffic. That
-    day is recorded in the ring file.
+  force until the maintainer wrote all three. They were set on 2026-10-10, and the first and third
+  were revised the same day, when the maintainer chose to judge the factory on its own outcomes
+  and not on agreement with the POC:
+  - **Limit.** A period, set by the maintainer, in which the factory serves its own repo and one
+    consumer repo. The period is not yet set; the earlier limit was four weeks.
   - **Defect policy.** POC defects are fixed in the POC as needed. There is no weekly cap.
-  - **Kill criterion.** An intent family whose disagreements are not within its declared bound at
-    the end of its four weeks. If it is met, the identity change and the configuration fixes are
-    kept and unused factory code is deleted.
-- **The bound for an intent family is declared before its four weeks start, and is one that four
-  weeks of traffic can show.** At the hosting repo's volume that is a rate of about 5% for the
-  approving intent, not 2%, unless consumer repos are pooled (PRD OQ-9).
+  - **Stopping rule.** At the end of that period the migration stops unless the factory beats the
+    POC's baseline on all three of: the share of agent-authored merges with a standing independent
+    approval, the median time from issue to merge, and workflow runs per merged pull request.
+    Escaped defects are reported beside them. If it stops, the identity change and the
+    configuration fixes are kept and unused factory code is deleted.
 - **Escaped defects (PRD SM-C1) are baselined before any step that raises the autonomy rate.**
 - **Three assumptions are settled on a canary repo before any cutover:** that a pull request
   authored by the App needs no extra approval under the live ruleset, which sets
@@ -364,6 +374,9 @@ the Kernel.
   annotations, code-scanning alerts, or review threads. A comment body is presentation for people.
   Nothing parses one to decide, waits for one, or is gated by one. A reviewer with no structured
   surface gates nothing and is not awaited.
+- **Where a structured surface carries category and severity only as prose, one listed intake Role
+  reads it and types the Finding.** No code parses the prose, the gate reads only the typed record,
+  and the record says a Role typed it. This is the one such reader, under decision 2's list.
 - **What people read is rendered from the records** by the Harness. No Role writes prose that
   another component must interpret.
 - **Lenses do not address each other.** No Lens's output is another Lens's trigger. Each reports to
@@ -385,7 +398,7 @@ Numbers are assigned when each is written. Each lands with the migration step th
 
 | Follow-on | Must decide | Effect on the log |
 |---|---|---|
-| **Agent identity** | One App or one per Role; the App's permissions; how tokens are narrowed per Role; the dispatch-only credential a consumer uses to send a wake; the reviewer credential's confinement; what interaction model §12.2 says afterwards. | Supersedes ADR-0008. |
+| **Agent identity** | Each Role's App and its permissions; the shared name prefix; how tokens are narrowed per Role; the dispatch-only credential a consumer uses to send a wake; the reviewer credential's confinement; what interaction model §12.2 says afterwards. | Supersedes ADR-0008. |
 | **State record and Ledger** | The store's location and visibility (PRD OQ-8); schemas; retention; how legacy markers are read during migration. | New. No ADR governs this today. |
 | **Admission** | The wake schema; the one-job ingress; the sweep; Pause and Hold stores; the LLM capacity signal and its credential (PRD OQ-3); priority order. | Extends ADR-0007, including a `pull_request_target` subscription that ADR-0007 excludes and that is safe only because the ingress checks out nothing and forwards a wake that carries identifiers only. Admission treats the wake as untrusted: an Outside contributor's pull request produces no Run that holds secrets or writes without a Maintainer decision (PRD FR-63). ADR-0010's job-level concurrency key stays in use for the per-item group. Supersedes ADR-0009 when the router it names is retired. |
 | **Run contract** | Task, Result and Effect schemas; the sandbox; resume; whether an adopted runtime fills the inner half. | Extends ADR-0005. Supersedes ADR-0011, which should be accepted now as the interim rule. |
@@ -427,11 +440,19 @@ extension remains a separate decision.
 - **Three repos for a while.** The standards repo, this repo and the factory repo coexist until the
   last consumer is re-pinned. The split this review criticised gets wider before it gets narrower.
 
-- **Nothing limits the build before the first comparison.** The four-week limit starts when an
-  intent family is comparable, the POC has no cap on fixes, and the kill criterion is judged at the
-  end of a comparison. The review ranks a starved migration as the likeliest failure (§14.2), and
-  the period in which that would happen is the one these three leave open. The signal to watch is
-  the weekly share of merged pull requests that land in the factory repo.
+- **Nothing limits the build before the factory first serves a repo.** The stopping rule is judged
+  after a period of service, the POC has no cap on fixes, and until the first `stable` Release
+  every factory change needs the Maintainer's approval. The review ranks a starved migration as the
+  likeliest failure (§14.2), and the period in which that would happen is the one these leave open.
+  The signal to watch is the weekly share of merged pull requests that land in the factory repo.
+
+- **Domain owners are model Lenses that gate.** Each owning Role's decision to accept a Disposition
+  closes a Finding. The research is plain that a reviewer weaker than the author makes the result
+  worse (review §15). Each owner therefore needs an eval set before it gates and is measured like
+  any other Lens.
+
+- **One App per Role means about ten private keys,** each a high-value secret, and a manual
+  registration for every new Role.
 
 - **A greenfield build can fail to reach parity.** The POC's tests encode incident history that a
   new codebase does not have. The read-only comparison in decision 10 is the only measure of how
@@ -526,6 +547,9 @@ extension remains a separate decision.
 ## References
 
 - `docs/prd/agentic-software-factory.md` — the requirements this decision is measured against.
+- `docs/architecture/software-factory-design.md` — the interaction and contract design: structure,
+  contracts with examples, the Lifecycle and its invariants, Role authority, and the options for
+  the store and for noticing work.
 - `docs/architecture/factory-mvp-architecture-review.md` — evidence (§§2–3), root causes (§4),
   options and sub-decisions (§§5–6), target and trade-offs (§7), migration shape (§8), relationship
   to earlier ADRs (§9), requirements the analysis changed (§10), platform facts and assumptions

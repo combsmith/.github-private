@@ -658,7 +658,7 @@ and the review document.
 | NFR-8 | Release lag | Merge to stable ≤ 48 h at p90 with no manual promotion, with candidates batched because every eval case spends the capacity in C-3; rollback ≤ 15 min | Manual override promotions on four dates in ten days |
 | NFR-9 | Operator load | At most 30 minutes a week of Maintainer time on actions that are not decisions `[ASSUMPTION]` | Not measurable today; routine per the operating notes |
 | NFR-10 | Defect inflow | Factory-defect issues at most 5 a week and falling `[ASSUMPTION]` | 21–36 a week |
-| NFR-11 | Changeability | New advisory Role: one pull request. New trigger for an existing Role: one pull request, live within NFR-8 | New trigger took 32 days and at least six pull requests across two repos |
+| NFR-11 | Changeability | New advisory Role: one pull request and one App registration. New trigger for an existing Role: one pull request, live within NFR-8 | New trigger took 32 days and at least six pull requests across two repos |
 | NFR-12 | Maintainability | Kernel decision logic is free of I/O; a size and complexity budget per module is enforced in CI | 17 functions over 150 lines; one script with 1,025 top-level lines |
 | NFR-13 | Portability | The suite runs on macOS and Linux | Fails on stock macOS |
 | NFR-14 | Quota headroom | Factory GitHub API usage stays under 60% of its own limit at p95 `[ASSUMPTION]` | 115–140% of a shared limit |
@@ -793,15 +793,17 @@ From the competitive analysis ([market research](../research/market-agentic-soft
    to committing as donpetry-bot (review-only machine user) instead of don-petry` and recorded in
    the interaction model, §12.2. Decided by the Maintainer on 2026-10-10: yes. No agent runs as the
    owner account. The Maintainer may still author changes to the Factory's repo under that account,
-   as a person. Open: whether the Factory has one GitHub App or one per Role. The review document,
-   §6.4, recommends one, with the token narrowed per Role when it is minted.
+   as a person. Each Role has its own GitHub App, so that its permissions are a ceiling the platform
+   enforces. The review document, §6.4, had recommended one App.
 3. **OQ-3. What supplies the LLM capacity signal, and does the Factory get its own LLM credential?**
    FR-35 has no feed today. An estimate from the Factory's own usage is sound only if interactive
    sessions do not spend from the same window unobserved. The analyst's comment on the idea
    (`petry-projects/.github-private#2226 — Factory MVP: rebuild the agentic factory around a
    declared control plane, one run contract and a council of Lenses`) sets out four credential
-   options and suggests moving the eval lane to metered access first. It is still open, and it
-   should be closed before the Factory repo's first commit.
+   options and suggests moving the eval lane to metered access first. Decided by the Maintainer on
+   2026-10-10: the Factory starts on the existing subscription credential, stored as an environment
+   secret in the Factory's repo and restricted to its default branch. The capacity signal therefore
+   stays an estimate, shared with interactive use and with the POC while both run.
 4. **OQ-4. Should code-owner review stay required with one human in the org?** It is the reason the
    reviewer must be a machine user and not an App.
 5. **OQ-5. Should the Factory have its own repo?** Decided by the Maintainer on 2026-10-10: yes. It
@@ -816,15 +818,12 @@ From the competitive analysis ([market research](../research/market-agentic-soft
 8. **OQ-8. Where does the Ledger live and who may read it?** Everything in a public repo is public.
 9. **OQ-9. What is the budget for the migration itself**, in weeks and in LLM spend, given that the
    POC must keep delivering while it is replaced? The three conditions ADR-0013 required were set
-   by the Maintainer on 2026-10-10 (ADR-0013, decision 10). The limit is four weeks of side-by-side
-   running for each Intent family, counted from the day the Factory's comparable Intent is
-   available. POC defects are fixed as needed, with no weekly cap. The kill criterion is an Intent
-   family that has not reached parity when its four weeks end. Still open: the parity bound for
-   each family, the LLM spend, and any limit on the build before the first comparison. On the
-   bound: with no disagreements observed, 59 pull requests show a rate of at most 5% at 95%
-   confidence and about 120 show 2.5%. The Hosting repo merges about 30 a week, and the idea's
-   analysis proposes a 14-day window before a disagreement counts as settled. Four weeks can
-   therefore show about 5% for the approving Intent, and 2% only if Consumer repos are pooled.
+   by the Maintainer on 2026-10-10 (ADR-0013, decision 10). POC defects are fixed as needed, with no
+   weekly cap. The Factory is judged on its own outcomes and not on agreement with the POC: after a
+   period in which it serves its own repo and one Consumer repo, the migration stops unless it
+   beats the POC's baseline on standing approvals, lead time and runs per merge. Still open: the
+   length of that period (the earlier limit was four weeks), the LLM spend, and any limit on the
+   build before the Factory first serves a repo.
 10. **OQ-10. Should third-party reviewer comments keep gating approvals?** Decided by the Maintainer
     on 2026-10-10: reviewers are integrated through a contract, and structured Findings gate where
     comment bodies do not (FR-32, FR-33). The nine current reviewers' surfaces are established in the

@@ -90,7 +90,8 @@ replaced, and what the migration may cost. A fourth was decided on 2026-10-10: t
 reviewers are integrated through a contract, and comment bodies gate nothing. The same day the
 maintainer decided that no agent runs as the owner account, named the new repo
 `petry-projects/software-factory`, set the migration's limit and kill criterion, and chose which
-reviewers stay (§16.6). One App or one per Role is still open.
+reviewers stay (§16.6), and chose one App per Role. The interaction and contract design that
+follows from these is in `software-factory-design.md`.
 
 **It will be built in a new repo and cut over through the existing channel tags** (§18). Building in
 place would put every factory change through the POC's own line, which is the thing that is
@@ -2330,8 +2331,10 @@ how a second system fails.
   recommended here. The limit is four weeks of side-by-side running for each intent family, counted
   from the day the factory's comparable intent is available. POC defects are fixed as needed, with
   no weekly cap. The kill criterion is an intent family that has not reached parity when its four
-  weeks end. These bound each comparison. They do not bound the build before the first one, which
-  is where §14.2 expects the migration to starve.
+  weeks end. Later the same day the maintainer replaced the parity rule with an outcome-based
+  stopping rule and made the review intent on the factory's own repo the first component; ADR-0013,
+  decision 10, and `software-factory-design.md`, §8, are current. Nothing bounds the build before
+  the factory first serves a repo, which is where §14.2 expects the migration to starve.
 - No intent is cut over until its disagreement list is within a bound declared beforehand and an
   eval set exists for it.
 - This repo is not renamed while anything references it.
