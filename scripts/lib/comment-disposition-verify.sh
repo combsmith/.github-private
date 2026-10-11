@@ -367,11 +367,12 @@ cdv_touches_named_file() {
 #   A commit whose diff removes a token the finding names verifies whatever pass
 #   made it. Two more cases verify only on a commit THIS pass produced:
 #     - a finding that names no token (tokenless-this-pass);
-#     - a finding that names a token the diff does not remove, when the diff
-#       changes a file the finding names (this-pass-touches-named-file, #2269). A
-#       fix that only adds lines (a missing assertion, a missing guard) removes
-#       nothing, so the removed-token rule alone could never verify it. This is
-#       the rule a review-thread claim already passes (acv_claim_in_pass).
+#     - a finding that names a token the diff neither removes nor adds, when the
+#       diff changes a file the finding names (this-pass-touches-named-file,
+#       #2269). A fix that only adds lines (a missing assertion, a missing guard)
+#       removes nothing, so the removed-token rule alone could never verify it.
+#   A diff that ADDS a token the finding names never verifies, whatever pass made
+#   it: for a finding like "remove `eval` from x.sh" that is the defect again.
 #   Echoes the first failing reason, in this order: not-on-head | base-unknown |
 #   on-base-branch | empty-diff | content-adds-token | content-no-token-removed |
 #   content-unknown | undated | predates-finding | tokenless-not-this-pass (rc 1).
@@ -397,7 +398,9 @@ cdv_fixed_verdict() {
   fi
   case "$content" in
     content-removes-token|no-tokens) ;;
-    content-adds-token|content-no-token-removed)
+    content-adds-token)
+      echo "$content"; return 1 ;;
+    content-no-token-removed)
       # #2269: this pass's own commit in a file the finding names. The date
       # checks below still apply.
       if [[ "$this_pass" == "true" && "$touches_named" == "true" ]]; then

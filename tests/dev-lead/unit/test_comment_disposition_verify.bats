@@ -671,10 +671,41 @@ scripts/foo.sh"
   _fixed_verdict true false 1 "2026-10-02T12:00:00Z" "2026-10-02T10:00:00Z" content-no-token-removed true true
   [ "$status" -eq 0 ]
   [ "$output" = "this-pass-touches-named-file" ]
-  # A fix that adds the token the finding names (the missing assertion) too.
+}
+
+@test "fixed verdict(#2269): a diff that ADDS a token the finding names never verifies, even from this pass in a named file" {
+  # "Remove `eval` from scripts/x.sh": a commit that adds another `eval` there is
+  # the defect again, not a fix.
   _fixed_verdict true false 1 "2026-10-02T12:00:00Z" "2026-10-02T10:00:00Z" content-adds-token true true
+  [ "$status" -eq 1 ]
+  [ "$output" = "content-adds-token" ]
+}
+
+@test "finding paths(#2269): the forms reviewer bots write a location in" {
+  local row body want
+  while IFS='|' read -r body want; do
+    [ -n "$body" ] || continue
+    _paths "$body"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$want" ] || { echo "body <$body>: got <$output>, want <$want>"; return 1; }
+  done <<'ROWS'
+In `scripts/foo.sh` the guard is missing.|scripts/foo.sh
+See scripts/foo.sh:L12-L14 for the loop.|scripts/foo.sh
+See scripts/foo.sh#L12 for the loop.|scripts/foo.sh
+(scripts/foo.sh), then stop.|scripts/foo.sh
+**scripts/lib/a-b_c.sh**: wrong exit code.|scripts/lib/a-b_c.sh
+The file .github/workflows/lint.yml sets no timeout.|.github/workflows/lint.yml
+ROWS
+}
+
+@test "touches named file(#2269): a commit that renames or deletes the named file touches it" {
+  # The commit's own files list both sides of a rename (it is read without rename
+  # detection), and a deleted file by its old path.
+  _touches "scripts/old.sh
+scripts/new.sh" "scripts/old.sh"
   [ "$status" -eq 0 ]
-  [ "$output" = "this-pass-touches-named-file" ]
+  _touches "scripts/gone.sh" "scripts/gone.sh"
+  [ "$status" -eq 0 ]
 }
 
 @test "fixed verdict(#2269): an earlier pass's commit, or one outside the named files, keeps the removed-token rule" {

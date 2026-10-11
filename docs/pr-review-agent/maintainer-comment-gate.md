@@ -115,10 +115,12 @@ minimized with classifier `RESOLVED`. In practice:
   with no distinctive token (generic spans like `local` or `true` do not count) fails closed unless the cited commit was produced by this pass (`tokenless-not-this-pass`).
   A fix that only adds lines (a missing assertion, a missing guard) removes no
   token, so it has its own rule (#2269): the commit verifies when this pass
-  produced it and its diff changes a file the finding names by its full repo
-  path (`this-pass-touches-named-file`). This is the rule a review-thread claim
-  already passes. A commit from an earlier pass, or one outside the files the
-  finding names, still needs a removed token. A failure logs
+  produced it, its diff changes a file the finding names by its full repo
+  path, and it adds no token the finding names
+  (`this-pass-touches-named-file`). A commit from an earlier pass, or one
+  outside the files the finding names, still needs a removed token. A diff
+  that adds a named token never verifies (`content-adds-token`): for a
+  finding like "remove `eval` from `x.sh`" that is the defect again. A failure logs
   `::warning::… fixed-unverified:<reason>`. The harness then re-answers with the
   branch commit whose diff removes the token, when one exists. Otherwise the next
   pass re-answers the disposition, which is not settled.

@@ -1429,7 +1429,7 @@ rdc_fixed_verdict() {
   if cdv_touches_named_file "$own_list" "$(cdv_finding_paths "$body")"; then
     touches_named="true"
   fi
-  # A tokenless finding, and a fix that removes no token the finding names
+  # A tokenless finding, and a fix that touches no token the finding names
   # (#2269), verify only on a commit this pass produced: one not reachable from
   # the pre-pass head. No snapshot or an unreadable sha is "no".
   if [ -n "${RESOLUTION_BASE_SHA:-}" ] \
@@ -2100,8 +2100,9 @@ resolve_dispositioned_comments() {
         # it: on the PR's pushed head, not on the base branch, a non-empty diff that
         # REMOVES a token the finding names and does not ADD it, dated after the
         # finding. A finding with no token fails closed unless the cited sha was produced by this pass (tokenless-not-this-pass).
-        # A commit this pass produced that removes no token (an additive fix)
-        # verifies when it changes a file the finding names (#2269).
+        # A commit this pass produced that neither removes nor adds a token the
+        # finding names (an additive fix) verifies when it changes a file the
+        # finding names (#2269).
         # The old "produced by THIS pass" rule could never accept a fix that landed
         # in an earlier pass. Accepting any later commit would let an unrelated
         # commit resolve the comment.

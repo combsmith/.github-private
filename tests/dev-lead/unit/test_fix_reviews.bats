@@ -7028,13 +7028,15 @@ GITEOF
   chmod +x "$STUB_BIN_DIR/git"
 }
 
-# _2269_engine_fixes <file> — the engine appends one line to <file>, commits it,
-# and answers the finding with a `fixed` disposition citing that commit, as the
-# fix-bot-comment prompt tells the model to.
+# _2269_engine_fixes <file> [line] — the engine appends <line> to <file>, commits
+# it, and answers the finding with a `fixed` disposition citing that commit, as
+# the fix-bot-comment prompt tells the model to. <line> defaults to a guard that
+# names none of the finding's tokens; it must not contain a single quote.
 _2269_engine_fixes() {
+  local line="${2:-[ -n \"\${ADR:-}\" ] || exit 3}"
   cat > "$STUB_BIN_DIR/claude" <<CLAUDEEOF
 #!/usr/bin/env bash
-printf '%s\n' "# the no-ADR path must not escalate" >> '$1'
+printf '%s\n' '${line}' >> '$1'
 git add -A
 git -c user.email=t@test -c user.name=T commit -q -m "fix(bot): add the missing guard"
 sha=\$(git rev-parse HEAD)
@@ -7082,6 +7084,32 @@ CLAUDEEOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"fixed-unverified:content-no-token-removed"* ]]
   ! grep -q 'IC_FIND' "$MINLOG" || false
+}
+
+@test "#2269: a commit that ADDS a token the finding names stays unverified, even from this pass in the named file" {
+  _2269_setup
+  # The finding names `escalate = no`. A line that adds it is not shown to be a fix.
+  _2269_engine_fixes scripts/advisory_offline_mode.sh 'echo "escalate = no"'
+  _2004_nodes "$_2269_FINDING"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fixed-unverified:content-adds-token"* ]]
+  ! grep -q 'IC_FIND' "$MINLOG" || false
+}
+
+@test "#2269: a comment-only line in the named file verifies too (accepted limit: where and when, not what)" {
+  # The rule checks which pass made the commit and which file it changes, not
+  # that the added lines address the finding. Pinned so that tightening it is a
+  # deliberate change.
+  _2269_setup
+  _2269_engine_fixes scripts/advisory_offline_mode.sh '# the no-ADR path must not escalate'
+  _2004_nodes "$_2269_FINDING"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"(this-pass-touches-named-file)"* ]]
+  grep -Eq 'classifier:RESOLVED.*id=IC_FIND' "$MINLOG"
 }
 
 @test "#2269 AC4: both prompts and the gate doc state the additive-fix rule" {
