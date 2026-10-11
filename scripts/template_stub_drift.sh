@@ -266,7 +266,10 @@ template_drift_assert_major_scoped() {
 # STANDARDS_CHANNEL; <head_sha> names the standards HEAD commit when known):
 #   • DRIFTED → `::error::` naming the file and BOTH SHAs (AC #3); fails the job.
 #     Tagged `ahead-unchecked`, the message says the AHEAD comparison could not be
-#     made and how to make it, instead of the bare re-seed remedy (#1926).
+#     made and how to make it, instead of the bare re-seed remedy (#1926). When
+#     <head_sha> is given (HEAD is newer than the channel and was compared), the
+#     message says the file may be synced from a commit between the two and how to
+#     check that, again instead of the bare re-seed remedy (#2237 AC #2).
 #   • AHEAD → non-fatal `::warning::` pointing at a standards promotion and
 #     warning against a re-seed (#1926). Never fails the job.
 #   • ALIGNED with matched=N-1 → `::notice::` (propagation pending): the file
@@ -306,6 +309,12 @@ template_drift_annotate() {
           # shellcheck disable=SC2016
           printf '::error file=%s::Template stub %s has DRIFTED from the published baseline `%s` (committed blob %s != expected %s), but it could NOT be compared against standards HEAD, so it may be AHEAD of the channel rather than drifted. Do not re-seed yet: re-run with STANDARDS_REF=<standards main commit>. If that reports ALIGNED, promote standards (scripts/cut-standards-release.sh in the standards repo) instead of re-seeding, which would regress the template (#1926).\n' \
             "$file" "$file" "$n_ref" "${committed:0:12}" "${expected:0:12}"
+        elif [ -n "$head_sha" ]; then
+          # HEAD is newer than the channel and the file matches neither, so it may
+          # have been synced from a standards commit between them (#2237 AC #2).
+          # shellcheck disable=SC2016
+          printf '::error file=%s::Template stub %s has DRIFTED: its committed blob %s matches neither the published baseline `%s` (expected %s) nor standards HEAD%s. It may have been synced from a standards commit between `%s` and HEAD. Before re-seeding, check: re-run with STANDARDS_REF=<commit> for the standards commits in that range that touched this file'"'"'s source. If one reports ALIGNED, re-seed with STANDARDS_REF=<standards HEAD commit> and promote standards (scripts/cut-standards-release.sh in the standards repo); do not re-seed from the channel, which would regress the template. If none does, re-seed via scripts/seed-repo-template.sh — do not hand-edit the template; edit standards/ instead.\n' \
+            "$file" "$file" "${committed:0:12}" "$n_ref" "${expected:0:12}" "$head_note" "$n_ref"
         else
           printf '::error file=%s::Template stub %s has DRIFTED from the standards-derived baseline (committed blob %s != expected %s). Re-seed it via scripts/seed-repo-template.sh — do not hand-edit the template; edit standards/ instead.\n' \
             "$file" "$file" "${committed:0:12}" "${expected:0:12}"
@@ -351,7 +360,10 @@ template_drift_annotate() {
 #
 # A file that would be DRIFTED costs one more emission, at the standards
 # default-branch HEAD, to tell AHEAD from DRIFTED (#1926). That emission is only
-# computed for those files, and only when HEAD is past the resolved ref. When the
+# computed for those files, and only when HEAD is past the resolved ref: the
+# resolved commit must be an ancestor of HEAD, read once per run from the compare
+# API (#2237). A SHA that merely differs from HEAD is not proof HEAD is newer — an
+# explicit STANDARDS_REF can name a branch HEAD has never seen. When the
 # comparison cannot be made the file stays DRIFTED but is tagged `ahead-unchecked`
 # and a `::warning::` names what could not be resolved — "cannot check" is never
 # reported as "checked, and it is not ahead".
@@ -374,6 +386,21 @@ _template_drift_head_sha() {
     return 0
   fi
   printf '%s' "$sha"
+}
+
+# _template_drift_compare <base_sha> <head_sha> — how <head_sha> relates to
+# <base_sha> on the standards repo, from one compare API call: ahead (the base is an
+# ancestor of head), identical, behind, or diverged. Empty when either SHA is empty
+# or the status cannot be read: an error body is not one of the four statuses, so it
+# is rejected rather than read as an answer (#2237 AC #1).
+_template_drift_compare() {
+  local status
+  [ -n "${1:-}" ] && [ -n "${2:-}" ] || return 0
+  status="$(gh api "repos/${STANDARDS_REPO:-petry-projects/.github}/compare/${1}...${2}?per_page=1" \
+    --jq '.status' 2>/dev/null)" || true
+  case "$status" in
+    ahead|identical|behind|diverged) printf '%s' "$status" ;;
+  esac
 }
 
 # _template_drift_emit <emit_flag> <emit_arg> <standards_ref> — the standards-
@@ -433,18 +460,35 @@ main() {
   echo "Resolved standards ref source: ${n_src:-<unresolved>} (#1448 AC #7/#10)."
 
   # AHEAD detection (#1926): is the standards default branch past the resolved ref?
-  #   newer   — yes: a would-be DRIFTED file is also compared against HEAD.
-  #   none    — no (N already is HEAD), or the STANDARDS_DIR local seam, which reads
-  #             one checkout whatever the ref: there is nothing newer to compare.
-  #   unknown — HEAD could not be resolved: the comparison cannot be made.
-  local head_sha="" head_state="none"
+  #   newer   — yes, the resolved commit is an ancestor of HEAD (#2237): a would-be
+  #             DRIFTED file is also compared against HEAD.
+  #   none    — no: N already is HEAD, or N is ahead of or diverged from HEAD (an
+  #             explicit STANDARDS_REF off main), so HEAD is not newer and nothing
+  #             can be AHEAD; or the STANDARDS_DIR local seam, which reads one
+  #             checkout whatever the ref: there is nothing newer to compare.
+  #   unknown — HEAD, or how it relates to N, could not be read: the comparison
+  #             cannot be made.
+  local head_sha="" head_state="none" relation
   if [ "${n_src:-}" != "local" ]; then
     head_sha="$(_template_drift_head_sha)"
     if [ -z "$head_sha" ]; then
       head_state="unknown"
       echo "::warning::Could not resolve the standards default-branch HEAD commit — a DRIFTED file cannot be checked for being AHEAD of ${n_ref:-<unresolved>} (#1926)."
     elif [ "$head_sha" != "${n_sha:-}" ]; then
-      head_state="newer"
+      relation="$(_template_drift_compare "${n_sha:-}" "$head_sha")"
+      case "$relation" in
+        ahead) head_state="newer" ;;
+        identical) head_sha="" ;;
+        behind|diverged)
+          echo "::notice::Standards ref ${n_ref:-<unresolved>} (commit ${n_sha:0:12}) is not an ancestor of standards HEAD (commit ${head_sha:0:12}; HEAD is ${relation}) — HEAD is not newer, so no file is compared against it for AHEAD (#2237)."
+          head_sha=""
+          ;;
+        *)
+          head_state="unknown"
+          echo "::warning::Could not tell whether standards HEAD (commit ${head_sha:0:12}) is newer than ${n_ref:-<unresolved>} (commit ${n_sha:0:12}) — a DRIFTED file cannot be checked for being AHEAD (#2237)."
+          head_sha=""
+          ;;
+      esac
     else
       head_sha=""
     fi
