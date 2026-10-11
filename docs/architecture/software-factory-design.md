@@ -32,7 +32,7 @@ Made by the Maintainer on 2026-10-10, in addition to ADR-0013's twelve decisions
 | The repo is `petry-projects/software-factory` | Named throughout |
 | A Finding is decided by the Role that owns its domain | The authority table (§5.2) and the Finding lifecycle (§4.3) |
 | One GitHub App per Role | Each Role's permissions are a ceiling GitHub enforces (§5.1) |
-| The LLM credential is the existing subscription, stored as an environment secret in the Factory repo | The engine port (§2.2); the capacity signal is observed, not read (§3.10) |
+| The LLM credential is a subscription of the Factory's own, stored as an environment secret in the Factory repo | The engine port (§2.2); the capacity signal is observed, not read (§3.10) |
 | The review Intent is built first and reviews everything after it | The build order (§9) |
 | The comparison with the POC is a measure, not a gate | The comparator is a later, non-gating component |
 | Stopping is the Maintainer's decision, on adoption and use | §9.2 |
@@ -346,6 +346,9 @@ A Run is started with one input: a pointer to the Decision that admitted it, in 
 Harness builds the Task from that Decision. A Run started any other way finds no Decision and does
 nothing, so nothing that can merely start a workflow can choose what a Run does.
 
+A Task that contains text of class `outside` or `advisory` is given no shell and no network tool.
+A review needs neither, and text a stranger wrote is exactly what an injection arrives in.
+
 Trust classes are `maintainer`, `role`, `advisory` and `outside`. Text of any class is data: it
 cannot change the Task's permissions, limits or result schema.
 
@@ -402,6 +405,11 @@ Before any Effect, `apply` reads the item again. If it is held, paused, closed, 
 is no longer the one the Run was admitted for, `apply` writes nothing and the Run ends as
 `superseded`. A Run can wait minutes for a runner, and a hold label added in that time must still
 bind.
+
+Two bindings stop `apply` being steered. An approval is submitted for exactly the commit of the
+content the Decision admitted, never for a pull request by number alone. And the commit bundle is
+taken by the identifier and digest that the `run` job reported, never by name, because the code
+under test in `verify` can upload artifacts of its own.
 
 There is no Effect that starts a Run. Only Admission does that.
 
@@ -498,6 +506,13 @@ sf petry-projects/markets#521 fix-review-findings dev-lead c:5d0c r:01JA7Q
 
 That is the repo and item, the Intent, the Role, the short `content_id` and the Run id. Status,
 conclusion, start and end times and the attempt number come from Actions.
+
+**Which run records count.** A pass accepts a run record only if it is a run of the Factory's own
+workflow file, from the default branch, started by a schedule or a dispatch, in the Factory repo.
+The name is a label for people and is never what identifies a Run. A pull request from a fork runs
+its own workflow inside this repo and could give that run any name and any artifacts; it is a
+different workflow file and a different event, so it is ignored. Fork workflows also need approval
+before they run.
 
 **The artifacts.** `result.json` is the Result of §3.5, uploaded by `run` with its digest. The
 commit bundle travels beside it. `applied.json` is uploaded by `apply` and lists each Effect with
@@ -819,6 +834,10 @@ These are the properties the simulator asserts. Each is a sentence a test can fa
 | I-30 | No change by an implementing Role touches an acceptance contract or a test it names | FR-59 |
 | I-31 | An item with an acceptance contract never converges with a criterion lacking passing evidence on that content | §4.2 |
 | I-32 | While more items need the Maintainer than the declared number, no Run is admitted except one that unblocks a merge | C-10 |
+| I-33 | Every write on GitHub by a Factory identity matches an Effect that `apply` recorded; one that does not raises an alert | §4.9 |
+| I-34 | A run record counts only if it is the Factory's own workflow, on the default branch, started by a schedule or a dispatch | §3.10 |
+| I-35 | A Run whose Task holds `outside` or `advisory` text has no shell and no network tool | FR-12 |
+| I-36 | An `outside` item's admission holds only if it was given after the author's latest push | FR-63 |
 
 ### 4.5 The simulator
 
@@ -837,7 +856,7 @@ decision logic against a fake world, quickly, thousands of times.
   every step boundary, including between two Effects and before any artifact is uploaded. The
   control room unwritable, or holding nonsense. A facts read that fails or is stale. A missing capacity reading.
   A Result that fails validation. An Engine that times out. A human acting mid-Run.
-- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-32. I-1 and I-18 are checked once faults
+- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-36. I-1 and I-18 are checked once faults
   stop and the world is left to settle.
 - **Reproduction.** Each run has a seed from the standard library's generator. A failure prints the
   seed and the trace, and the trace renders as a sequence diagram.
@@ -867,7 +886,7 @@ A sweep on 2026-10-10 ran the Lifecycle against awkward inputs. Each case below 
 
 | Case | Rule |
 |---|---|
-| A pull request from a fork, or from someone who is not a collaborator | Its class is `outside`. It gets no Run, because a Run holds the model credential. It is held as "needs you" until the Maintainer admits it or closes it (I-25). Its status is written for a stranger: what is happening, and that a maintainer has to admit it |
+| A pull request from a fork, or from someone who is not a collaborator | Its class is `outside`. It gets no Run, because a Run holds the model credential. It is held as "needs you" until the Maintainer admits it or closes it (I-25). Its status is written for a stranger: what is happening, and that a maintainer has to admit it. Admission lapses when the author pushes again, so a harmless commit cannot be admitted and then replaced (I-36) |
 | A dependency update | Its class is `dependency`. Its required Lenses are deterministic ones. The POC's automerge serves it until that Intent is cut over |
 | The approver is the author or the last pusher | GitHub rejects or discards the approval. The Kernel reads `author` and `last_pusher`, attempts no approval, and holds the item with that reason (I-26). The machine user therefore never pushes (§5.1) |
 | A branch pushed every few minutes | Deterministic Lenses first; a model review starts only on content they have passed (I-27) |
@@ -895,7 +914,7 @@ Every human control is one ordinary GitHub action, the same for every Role and e
 | Hold | Add the label `factory:hold` | No Run is admitted on the item; an in-flight Run writes nothing (I-6, I-21) |
 | Release | Remove the label | The next pass resumes, with a fresh allowance of attempts (I-28) |
 | Hands-off | Add the label `factory:hands-off` | The Factory watches the item and never acts on it |
-| Admit an outside item | Add the label `factory:admit` | The item is served like any other (I-25) |
+| Admit an outside item | Add the label `factory:admit` | The item is served like any other, until its author pushes again (I-25, I-36) |
 | Steer | Write a plain comment | It reaches the next Run's Task and is acknowledged with a reaction |
 | Block | Open a review thread, or request changes | A `human` Finding, which gates until that person resolves it |
 | Approve | Approve the pull request | A human approval stands as an independent approval |
@@ -986,6 +1005,49 @@ of §4.5 were written before the code, and they are among the paths only the Mai
 What this does not fix: criteria that are themselves wrong; the Maintainer's attention, since each
 contract is one more approval; a `role` check, which is model judgement; and mutation testing,
 whose noise on agent-written changes nobody has measured and for which no shell tool exists.
+
+### 4.9 Threats, and the rules that answer them
+
+A security pass on 2026-10-10 read the design as an attacker with no write access, as a defender
+and as an auditor. Everything here is public: repos, run records, logs, artifacts and the control
+room. That shapes every row.
+
+| Attack | Rule |
+|---|---|
+| Inject text the model reads, and have it print the model credential, encoded, into a public log. No network access is needed | Three layers, none sufficient alone. No shell or network tool for a Run that reads untrusted text (I-35). The model CLI's sandbox, if a trial shows it can hide the parent's environment and limit connections (P-26). A credential that belongs to the Factory alone, so that theft is a rotation and not the loss of the Maintainer's own account |
+| From a fork, start a workflow run named like a Factory Run, with forged artifacts | Run records count by workflow, event and repo, never by name (I-34) |
+| Put instructions in a pull-request title, which reaches the feed, which a board in the Maintainer's own Claude session reads | The feed carries no free text from outside (§8.4) |
+| Get a harmless fork commit admitted, then push the real one | Admission lapses on the next push (I-36) |
+| Steal the external timer's credential | The timer holds none (§7.3) |
+| Forge a fault report from inside a Run, to pause the Factory | A pause needs agreeing faults from Runs on different items, and `apply` and the poller class the faults they see themselves. The worst case is delay, bounded by the probe Run |
+| Replace the commit bundle from inside `verify` | The bundle is taken by identifier and digest (§3.6) |
+| Craft a Result that has `apply` approve something else | An approval is for exactly the admitted commit (§3.6) |
+| Put markup in a title to script the dashboard | The page renders text as text and builds links only from identifiers |
+| Use an expression in a workflow to run text as a command | No workflow passes data into a `run:` block by expression; the workflow-security Lens checks it |
+
+**Reconciliation.** The most useful control is a detective one, and the design already records
+what it needs. Each pass compares what the machine user and each App actually did on GitHub with
+the Effects `apply` recorded. A write with no matching Effect means a credential is being used
+outside the Factory, and raises one alert (I-33). This matters most for the machine user's token:
+it is long-lived, it can approve, and it can merge.
+
+**Credentials.**
+
+| Credential | Can | Held by | Stored | Rotated |
+|---|---|---|---|---|
+| The Factory's model subscription | Spend the Factory's model capacity | The `run` job | Environment secret, default branch only | On any suspicion; it is the Factory's alone |
+| The machine user's token | Approve and merge, across the org | `apply`, for the review Intent only | Environment secret, default branch only | On a fixed period, and on any reconciliation alert |
+| Each Role's App key | Mint that Role's tokens | `apply` | Environment secret, default branch only | On a fixed period |
+| The Controller's App key | Start Runs; write the control room, statuses and labels | The poller | Environment secret, default branch only | On a fixed period |
+| The reader App's key | Read public repos | The `run` job | Environment secret, default branch only | On a fixed period |
+| The held-out sets' credential | Read the held-out repo | The eval job only | Environment secret, default branch only | On a fixed period |
+| The external timer | Nothing over the Factory repo | The timer service | None needed | Not applicable |
+
+Only the Controller can start or delete runs. The readiness check (§3.12) asserts the settings
+these rules rest on: fork workflows need approval, the default workflow token is read-only, secret
+scanning with push protection is on, and environments are restricted to the default branch. It
+also records what each third-party reviewer has been granted, since several can write to branches,
+and reports any change.
 
 ## 5. Team interactions
 
@@ -1124,7 +1186,9 @@ it observed as a recorded fixture, which is what the simulator's fake GitHub is 
 | P-17 | Is a run's name set when the run is created, and visible for a run whose job never started? Can recent runs of one workflow be listed and matched by name within the request budget? | Yes to both |
 | P-18 | Does a final step still run, and upload partial usage, when a job times out or is cancelled? | Yes, or duration is the only estimate |
 | P-19 | Can a static page in a separate public repo be published from files the Controller writes? | Yes |
-| P-20 | Can a credential held outside GitHub start the poller and do nothing else of consequence? | Yes: it can start and cancel workflow runs in one repo, and cannot write code, secrets or settings |
+| P-20 | Does an event that anyone may cause, such as starring a repo, still start a workflow, and how often may it? | Yes, often enough for a tick every minute or two |
+| P-26 | Can the model CLI's sandbox stop a tool reading the parent process's environment, and limit where it connects? | Yes to both, or the first and third layers of §4.9 carry the weight |
+| P-27 | Does a fork's pull-request workflow run wait for approval, and can it never be a schedule or dispatch run? | Yes to both |
 | P-21 | How often may the control room's page be rebuilt, and can a page read the feed files directly from a browser? | The page reads the feed directly and rebuilds only when its own code changes |
 | P-23 | How many threads may one App resolve in an hour before GitHub's secondary limits apply? | Enough for about 22 threads a pull request at the Factory's merge rate |
 | P-24 | With the Maintainer as the only code owner of a path, does the machine user's approval fail to satisfy code-owner review there? | It fails to satisfy it |
@@ -1219,12 +1283,14 @@ late or not at all.
 - A Run is still its own workflow run, holding its item's lane from `run` to `apply`.
 - Several staggered schedule lines on the poller restart a broken chain. A second scheduled
   workflow was considered as a watchdog and dropped: it is the same unreliable scheduler twice.
-- **An external timer may start a pass.** A hosted timer outside GitHub calls the poller on a fixed
-  interval. It holds one credential that can start the poller, keeps no state and decides nothing.
-  It is the only truly independent tick available, and it would also close most of the latency gap
-  in W-2. Correctness never depends on it: without it the Factory falls back to GitHub's schedule.
-  It is the one permitted exception to "no always-on service", and it is optional. Which service,
-  and where its credential is kept, are open.
+- **An external timer may start a pass, and holds no credential over the Factory.** A nudge carries
+  nothing and passes coalesce, so the thing that causes one can be something anyone may do: for
+  example, starring a designated repo. A hosted timer does that on a fixed interval. There is then
+  nothing on the timer service worth stealing; a credential able to start a workflow could also
+  cancel runs and delete run records. Anyone can cause a pass this way, and the cost of that is
+  already bounded at one runner slot. It is the only tick independent of GitHub's scheduler, and
+  it closes most of the latency gap in W-2. Correctness never depends on it. Which service, and
+  which public event, are settled by trial (P-20).
 - The Factory's own repo carries the nudge file from the first day.
 - Only the poller can be started from outside the Factory, and it takes no inputs. A Run starts
   from a recorded Decision (§3.5), so a credential that can start workflows cannot direct one.
@@ -1328,6 +1394,11 @@ board. It is also not where a chat session's output is made terser; that is a se
 ```
 
 The page reads these files directly and is rebuilt only when its own code changes.
+
+The feed carries no free text from outside. An item is a repo and a number, and reasons are codes.
+A title is a separate field marked untrusted. The page shows it as text. A lens that feeds a model,
+such as a board inside a Claude session, drops it: that session holds the Maintainer's own
+permissions, and a pull-request title is something a stranger writes.
 
 `question` and `choices` are enumerated codes. The sentence a person reads is rendered from them.
 

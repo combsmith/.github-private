@@ -175,19 +175,22 @@ Controller once per event; the maintainer replaced that on 2026-10-10 (decision 
   review,** so that GitHub's own notifications carry it. A fault of the whole factory goes to one
   tracking issue.
 - **A work item has a class:** agent, maintainer, dependency or outside. An outside item gets no
-  Run until the maintainer admits it (PRD FR-63).
+  Run until the maintainer admits it (PRD FR-63), and admission lapses when its author pushes
+  again.
 - **Attempts are counted since the last action on the work item by a person with write access.**
   That grants a fresh allowance. No agent's action does, and nor does a stranger's comment.
 - **When more items need the maintainer than a declared number, only Runs that unblock a merge are
   admitted.** The starting number is 10.
+- **A run record counts only if it is the factory's own workflow, on the default branch, started by
+  a schedule or a dispatch.** Its name identifies nothing. A fork's workflow run is ignored.
 - **A Run is started only from a decision a pass recorded.** Only the poller can be started from
   outside the factory, and it takes no inputs, so a credential that can start workflows cannot
   direct a Run.
 - **A fault in the environment is not an attempt.** A failed Run is classed as a fault of the item,
   of capacity or of the environment, or as superseded. Only the first counts against the item. Several environment
   faults in a row pause Admission, raise one alert, and clear when a probe Run succeeds.
-- **An external timer may also start a pass.** It holds one credential that can start the poller,
-  keeps no state and decides nothing. Correctness never depends on it. It is optional, and it is
+- **An external timer may also start a pass.** It holds no credential over the factory repo: it
+  causes a nudge through an event anyone may cause. It keeps no state and decides nothing. Correctness never depends on it. It is optional, and it is
   the one permitted exception to "no always-on component".
 - **One workflow, the one that carries a Run, is the only one that invokes an Engine or references
   an LLM credential.** The poller invokes none.
@@ -245,6 +248,10 @@ with every side effect expressed as a requested Effect. Three jobs carry it: `ru
   starts. If it is missing or its digest does not match, nothing is applied.
 - **A Run that ends with no Result is still a run record.** It counts as an attempt unless its fault is classed
   as capacity or environment, and the Lifecycle declares what follows it.
+- **A Run that reads text from an outsider or a third-party reviewer has no shell and no network
+  tool.**
+- **An approval is submitted for exactly the commit that was admitted,** and the commit bundle is
+  taken by the identifier and digest the `run` job reported.
 - **`apply` re-reads the work item before any Effect,** and writes nothing if the item is held,
   paused, closed or no longer the content the Run was admitted for.
 - **`verify` never replaces the consumer's own required checks.** Its result counts in place of the
@@ -270,6 +277,9 @@ account, as a person. "The App" in the boundaries below means the App of the Rol
 - **The factory's Apps share the name prefix `combsmith-sf-`,** and the consumer file drops
   factory-authored events by that prefix. Adding a Role changes no consumer file.
 - **Registering an App is a manual step.** A new Role is one pull request and one registration.
+- **Every write by a factory identity is reconciled with a recorded Effect.** A write with no match
+  raises an alert: a credential is in use outside the factory.
+- **The model credential is the factory's alone,** not the maintainer's own subscription.
 - **Apps are installed across the org, and each token is minted for one repo.**
 - **The machine user approves and does nothing else.** It never pushes and never opens a pull
   request, because GitHub does not count an approval from an author or a last pusher.
@@ -605,9 +615,11 @@ extension remains a separate decision.
 - **The control room is public.** It aggregates on one page what is already public item by item,
   including what awaits the maintainer and how much capacity is left.
 
-- **The `run` job has no network containment.** A model that is successfully injected can still
-  read the LLM credential. An adopted runtime with a firewall would close this; building our own
-  does not.
+- **An injected model can publish the model credential without any network access.** The `run` job
+  has no network containment, and in a public repo its log and artifacts are world-readable.
+  Three measures reduce this and none removes it: no shell or network tool for a Run that reads
+  untrusted text, the model CLI's own sandbox if a trial shows it holds, and a credential that is
+  the factory's alone. An adopted runtime with a firewall would close more of it.
 
 - **A council costs what it finds.** Every model Lens spends from the same scarce window, and the
   research is plain that adding one can lower quality: a weaker reviewer made a stronger author's

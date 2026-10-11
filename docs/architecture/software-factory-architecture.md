@@ -73,7 +73,8 @@ The ones that shape structure:
 - Reusable-workflow references are not redirected. Cutover is pause, then repoint.
 - A code owner must be a user, so the approving reviewer stays a machine user with a long-lived
   token (C-6).
-- LLM capacity is the existing subscription window, with no supported usage signal (C-3, C-11).
+- LLM capacity is a subscription window of the Factory's own, with no supported usage signal
+  (C-3, C-11).
   The credential is an environment secret in the Factory repo. The Harness calls the vendor's CLI.
 - Python 3, standard library only, in the Kernel.
 - Built in `petry-projects/software-factory`, which reads nothing from `.github-private` at run

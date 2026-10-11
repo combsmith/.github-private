@@ -367,6 +367,8 @@ feature gives every Role one contract. Realizes UJ-7.
 - **FR-12. Untrusted content is data.** Text written by an Outside contributor, an Advisory reviewer
   or any other Role cannot change a Run's Task, permissions or Result schema.
   - An injection test suite covers every Role and runs before a Release is promoted.
+  - A Run whose Task contains text from an Outside contributor or an Advisory reviewer has no shell
+    and no network tool.
 - **FR-13. Engine independence.** A Role manifest names a capability tier, not a vendor or model.
   - Changing the Engine behind a tier is a configuration change gated by that tier's evals.
   - A Run records the Engine and model that actually served it, including after a fallback.
@@ -604,7 +606,8 @@ and executes a script from another repo's default branch at run time. Realizes U
 - **FR-62. Public by default.** Every Effect is written as world-readable. Secret values never
   appear in logs, comments or the Ledger.
 - **FR-63. Outside contributions.** A pull request from an Outside contributor never receives a Run
-  that holds secrets or can produce write Effects without a Maintainer decision.
+  that holds secrets or can produce write Effects without a Maintainer decision. That decision
+  lapses when the contributor pushes again.
 
 ### 6.11 Convergence: the council of Lenses
 
@@ -834,8 +837,8 @@ From the competitive analysis ([market research](../research/market-agentic-soft
    (`petry-projects/.github-private#2226 — Factory MVP: rebuild the agentic factory around a
    declared control plane, one run contract and a council of Lenses`) sets out four credential
    options and suggests moving the eval lane to metered access first. Decided by the Maintainer on
-   2026-10-10: the Factory starts on the existing subscription credential, stored as an environment
-   secret in the Factory's repo and restricted to its default branch. The capacity signal therefore
+   2026-10-10: the Factory runs on a subscription credential of its own, not the Maintainer's, stored
+   as an environment secret in the Factory's repo and restricted to its default branch. The capacity signal therefore
    stays an estimate, shared with interactive use and with the POC while both run. One observed
    signal is added: a Run that ends because the window ran out says so, and Admission defers every
    model Run until the window is expected to reset.
