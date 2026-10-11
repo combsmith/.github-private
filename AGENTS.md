@@ -521,6 +521,11 @@ PR-triggered check on the existing Lint workflow — **no new cron/scheduled wor
       commits-list call per DRIFTED file and one emission per commit in the range. That adds network
       cost to every PR's lint run. The message removes the wrong advice without that cost.
 
+- **`seed-repo-template.sh` has one home: this repo (#1927).** `petry-projects/.github` once carried a
+  different, smaller script under the same name, and the two were mistaken for diverged copies. That
+  script only prints one standard file from a local checkout and is now `scripts/emit-standard-file.sh`
+  there; a CI guard in that repo fails if a `seed-repo-template.sh` reappears. Change the seeder here.
+
 - **Seeding is an operator procedure with recorded provenance (#1925).** No workflow runs
   `seed-repo-template.sh`. An operator follows
   [`docs/release/seeding-repo-template.md`](./docs/release/seeding-repo-template.md): dry run first, leave
