@@ -76,6 +76,7 @@ Made by the Maintainer on 2026-10-10, in addition to ADR-0013's twelve decisions
 | Every `run` job reads through one shared reader App; a Role gets its own App when it first writes | §5.1 |
 | A hosted relay turns webhooks and a timer into nudges; no Consumer repo carries a Factory file | §7.3 |
 | Each reviewing Intent declares a rubric, which is a floor and grows from what it missed | §3.14 |
+| The Kernel is written in Python, with the standard library only at run time | §7.5 |
 | The Factory's own author Role comes before the control room and the shadow Roles | §9.1 |
 | Each Lens has a declared scope of paths | Role manifests (§5.3) |
 | A Consumer repo's setup and test commands are part of its onboarding contract | The Consumer entry (§3.12) |
@@ -103,10 +104,6 @@ recommendations that were later replaced, and nothing should be built from it.
 
 - Whether the POC's agents are capped while the Factory is built. They draw on the same model
   window as the Factory. Uncapped for now, with the budget gauge watched.
-- The Kernel's language. Research found no framework worth building on and recommends Python with
-  the standard library only at run time (§7.5), and the proof of concept bears that out (§9.13).
-  A TypeScript port reproduces every recorded decision, so the choice is reversible. The
-  Maintainer has not yet ruled.
 
 ## 2. Structure
 
@@ -1499,7 +1496,8 @@ all, and replayed through the port.
 Neither language is disqualified, and the differences in speed and start-up are far below anything
 that matters beside a call to GitHub. What the trial changes is the cost of the choice. The
 recorded decisions are a specification that either language can be held to, so the choice can be
-revisited later without a rewrite on trust. The recommendation stays Python, on two of the rows:
+revisited later without a rewrite on trust. The Maintainer ruled for Python on 2026-10-11. The
+recommendation rested on two of the rows:
 the purity check, which is the boundary this whole design rests on, is real in Python and
 approximate in TypeScript without a dependency; and Python needs no qualification about the
 runner's default interpreter.
