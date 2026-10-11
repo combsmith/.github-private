@@ -162,7 +162,17 @@ jobs:
     #   pull_request_review — skip COMMENTED reviews; they don't change merge-readiness.
     #                         CHANGES_REQUESTED reviews are also skipped because the PR
     #                         is now blocked; review-one-pr.sh would skip it anyway.
+    #
+    # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
+    # (neutral, not red). A job condition, not the AGENTS_PAUSED branch of
+    # validate-engines.sh: with every engine marked unavailable review-batch.sh
+    # still continues on Claude.
+    # No `fleet-paused` notice job here: the canary promotion gate counts every
+    # run of this reusable that ends success or failure as a health sample, and a
+    # run whose only work was the notice would end success. With every job
+    # skipped the run ends skipped, which the gate does not count.
     if: >-
+      vars.AGENTS_PAUSED != 'true' &&
       (github.event_name != 'check_suite' ||
        (github.event.check_suite.conclusion == 'success' &&
         github.event.check_suite.pull_requests[0] != null))
