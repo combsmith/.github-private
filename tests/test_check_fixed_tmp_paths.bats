@@ -179,7 +179,7 @@ except() {
 
 # ── dev-lead sidecar directory ───────────────────────────────────────────────
 
-SIDECARS='dev-lead-(rate-limit-reset|failure-reason|timeout-tier|timeout-budget|timeout-elapsed)'
+SIDECARS='dev-lead-(rate-limit-reset|failure-reason|timeout-tier|timeout-budget|timeout-elapsed|session-output\.txt)'
 
 @test "sidecars: DEV_LEAD_SIDECAR_DIR is assigned in one place, engine.sh" {
   run grep -rnE '(^|[^A-Za-z0-9_])DEV_LEAD_SIDECAR_DIR=' "$REPO_ROOT/scripts"
@@ -199,13 +199,13 @@ SIDECARS='dev-lead-(rate-limit-reset|failure-reason|timeout-tier|timeout-budget|
 }
 
 # A writer and a reader that spell the directory differently resolve different
-# files as soon as the variable is set, so every reference must be the same
-# expression. Comment lines are prose and may keep the historical path.
-@test "sidecars: every script reference is \"\$DEV_LEAD_SIDECAR_DIR/<file>\"" {
+# files as soon as the variable is set, so every reference must go through it.
+# Comment lines are prose and may keep the historical path.
+@test "sidecars: every script reference is \$DEV_LEAD_SIDECAR_DIR/<file>" {
   local refs stray
   refs="$(grep -rnE "$SIDECARS" "$REPO_ROOT/scripts" --include='*.sh' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#')"
   [ -n "$refs" ]
-  stray="$(printf '%s\n' "$refs" | sed -E "s#\"\\\$DEV_LEAD_SIDECAR_DIR/${SIDECARS}\"##g" | grep -E "$SIDECARS" || true)"
+  stray="$(printf '%s\n' "$refs" | sed -E "s#\\\$DEV_LEAD_SIDECAR_DIR/${SIDECARS}##g" | grep -E "$SIDECARS" || true)"
   echo "$stray"
   [ -z "$stray" ]
 }

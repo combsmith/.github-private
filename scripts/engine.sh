@@ -34,10 +34,10 @@ set -euo pipefail
 #   Records are written via scripts/lib/token-metrics.sh (estimate-based).
 #   Unset → zero overhead, zero behaviour change.
 
-# Sidecar directory (#2271). The writer tier leaves one-value files here for the
+# Sidecar directory (#2271). The writer tier leaves small files here for the
 # dev-lead handlers that source this file to read back: the parsed rate-limit
-# reset, the failure-reason class and the timeout tier/budget/elapsed. Unset →
-# /tmp, where these files have always been. This is the only definition: every
+# reset, the failure-reason class, the timeout tier/budget/elapsed and the
+# redacted session output. Unset → /tmp, where these files have always been. This is the only definition: every
 # writer and reader names "$DEV_LEAD_SIDECAR_DIR/<file>", so the two sides cannot
 # resolve different paths. The test suites point it at a per-test directory so
 # concurrent runs do not read each other's values.
@@ -2004,7 +2004,7 @@ run_writer() {
     # regardless of exit code. The rate-limit check further down reads the raw
     # capture ($_tmp), which redaction leaves intact (separate file), so
     # persisting first is safe.
-    rm -f /tmp/dev-lead-session-output.txt
+    rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
     if ! sed -E \
       -e 's/(gh[opsu]|ghr)_[A-Za-z0-9_]{20,}/***REDACTED-GH-TOKEN***/g' \
       -e 's/github_pat_[A-Za-z0-9_]{20,}/***REDACTED-GH-PAT***/g' \
@@ -2015,9 +2015,9 @@ run_writer() {
       -e 's/[Bb]earer [A-Za-z0-9._-]{20,}/Bearer ***REDACTED***/g' \
       -e '/-----BEGIN [A-Z ]*PRIVATE KEY-----/,/-----END [A-Z ]*PRIVATE KEY-----/c\
 ***REDACTED-PRIVATE-KEY***' \
-      "$_tmp" > /tmp/dev-lead-session-output.txt; then
-      : > /tmp/dev-lead-session-output.txt 2>/dev/null || true
-      echo "::warning::Failed to redact/persist /tmp/dev-lead-session-output.txt" >&2
+      "$_tmp" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"; then
+      : > "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" 2>/dev/null || true
+      echo "::warning::Failed to redact/persist $DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" >&2
     fi
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
       # HTML-escape the redacted log so literal </details> or </summary> in
@@ -2028,7 +2028,7 @@ run_writer() {
         echo "<details><summary>Click to expand session logs</summary>"
         echo ""
         echo "<pre>"
-        sed 's|&|\&amp;|g; s|<|\&lt;|g; s|>|\&gt;|g' /tmp/dev-lead-session-output.txt
+        sed 's|&|\&amp;|g; s|<|\&lt;|g; s|>|\&gt;|g' "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
         echo "</pre>"
         echo ""
         echo "</details>"

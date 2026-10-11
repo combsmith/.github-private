@@ -661,13 +661,13 @@ echo "session output line two"
 STUB
   chmod +x "$STUB_BIN_DIR/claude"
 
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
-  [ -f /tmp/dev-lead-session-output.txt ]
-  grep -q "session output line" /tmp/dev-lead-session-output.txt
-  rm -f /tmp/dev-lead-session-output.txt
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" ]
+  grep -q "session output line" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }
 
 @test "writer: GITHUB_STEP_SUMMARY appends HTML-escaped session output" {
@@ -690,14 +690,14 @@ STUB
   # Literal </details> must be HTML-escaped → only the wrapping closer remains
   ! grep -F "danger zone </details>" "$summary" || false
   grep -F "danger zone &lt;/details&gt;" "$summary"
-  rm -f "$summary" /tmp/dev-lead-session-output.txt
+  rm -f "$summary" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }
 
 @test "writer: run_writer overwrites stale /tmp/dev-lead-session-output.txt from prior run" {
   _source_engine "claude"
   export DEV_LEAD_DRY_RUN=false
   # Pre-populate with content from a hypothetical previous run
-  echo "STALE_CONTENT_FROM_PRIOR_RUN" > /tmp/dev-lead-session-output.txt
+  echo "STALE_CONTENT_FROM_PRIOR_RUN" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   cat > "$STUB_BIN_DIR/claude" << 'STUB'
 #!/usr/bin/env bash
@@ -708,11 +708,11 @@ STUB
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
-  [ -f /tmp/dev-lead-session-output.txt ]
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" ]
   # Stale content from prior run must not leak into this run's session output
-  ! grep -q "STALE_CONTENT_FROM_PRIOR_RUN" /tmp/dev-lead-session-output.txt || false
-  grep -q "fresh session output" /tmp/dev-lead-session-output.txt
-  rm -f /tmp/dev-lead-session-output.txt
+  ! grep -q "STALE_CONTENT_FROM_PRIOR_RUN" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" || false
+  grep -q "fresh session output" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }
 
 @test "writer: persisted /tmp file has GitHub tokens redacted" {
@@ -725,16 +725,16 @@ echo "ok"
 STUB
   chmod +x "$STUB_BIN_DIR/claude"
 
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
   # Raw token must not survive to /tmp; only the redacted marker remains
   # The fake token is written as two adjacent strings so this line holds no literal
   # token pattern (gitleaks flags a changed line that does, #2263).
-  ! grep -F "ghp_abcdefgh""ijklmnopqrstuvwxyz1234567890ABCD" /tmp/dev-lead-session-output.txt || false
-  grep -F "***REDACTED-GH-TOKEN***" /tmp/dev-lead-session-output.txt
-  rm -f /tmp/dev-lead-session-output.txt
+  ! grep -F "ghp_abcdefgh""ijklmnopqrstuvwxyz1234567890ABCD" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" || false
+  grep -F "***REDACTED-GH-TOKEN***" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }
 
 @test "writer: GITHUB_STEP_SUMMARY has secrets redacted before HTML escape" {
@@ -754,7 +754,7 @@ STUB
   [ "$status" -eq 0 ]
   ! grep -F "sk-ant-secretkey1234567890abcdefghij" "$summary" || false
   grep -F "***REDACTED-API-KEY***" "$summary"
-  rm -f "$summary" /tmp/dev-lead-session-output.txt
+  rm -f "$summary" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }
 
 @test "writer: PEM private key block fully redacted in /tmp persistence" {
@@ -777,7 +777,7 @@ echo "after-key"
 STUB
   chmod +x "$STUB_BIN_DIR/claude"
 
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
@@ -786,11 +786,11 @@ STUB
   # delimiters still fails the assertion. Safe vs. gitleaks: the substring
   # alone does not satisfy the private-key rule's `-----BEGIN ... -----`
   # regex.
-  ! grep -F "BEGIN RSA PRIVATE KEY" /tmp/dev-lead-session-output.txt || false
-  ! grep -F "uVERYSENSITIVEKEYBODY" /tmp/dev-lead-session-output.txt || false
-  ! grep -F "END RSA PRIVATE KEY" /tmp/dev-lead-session-output.txt || false
-  grep -F "***REDACTED-PRIVATE-KEY***" /tmp/dev-lead-session-output.txt
+  ! grep -F "BEGIN RSA PRIVATE KEY" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" || false
+  ! grep -F "uVERYSENSITIVEKEYBODY" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" || false
+  ! grep -F "END RSA PRIVATE KEY" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" || false
+  grep -F "***REDACTED-PRIVATE-KEY***" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   # Content outside the PEM block survives
-  grep -F "after-key" /tmp/dev-lead-session-output.txt
-  rm -f /tmp/dev-lead-session-output.txt
+  grep -F "after-key" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }

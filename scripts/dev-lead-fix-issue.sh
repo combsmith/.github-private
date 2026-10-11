@@ -85,9 +85,9 @@ html_escape() {
 # in a collapsible <details> block. The source file is already secret-scrubbed
 # by engine.sh:run_writer, so no further redaction is needed here.
 session_snippet() {
-  [ -s /tmp/dev-lead-session-output.txt ] || return 0
+  [ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" ] || return 0
   printf '<details><summary>Last 40 lines of engine output (redacted)</summary>\n\n<pre>\n'
-  tail -n 40 /tmp/dev-lead-session-output.txt | html_escape
+  tail -n 40 "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" | html_escape
   printf '\n</pre>\n</details>'
 }
 

@@ -693,8 +693,8 @@ When **all** engines are exhausted, `run_writer_with_fallback` records the cause
 (including the rate-limit early return). Downstream handlers read the sidecar to classify the
 failure rather than collapsing everything into a generic exit code.
 
-The sidecars (`dev-lead-rate-limit-reset`, `dev-lead-failure-reason` and the
-`dev-lead-timeout-*` files) live in `$DEV_LEAD_SIDECAR_DIR`, which `engine.sh` defaults to `/tmp`.
+The sidecars (`dev-lead-rate-limit-reset`, `dev-lead-failure-reason`, the
+`dev-lead-timeout-*` files and `dev-lead-session-output.txt`) live in `$DEV_LEAD_SIDECAR_DIR`, which `engine.sh` defaults to `/tmp`.
 Nothing in the workflows sets it; the test suites point it at a per-test directory so that
 concurrent runs do not read each other's values (#2271).
 
