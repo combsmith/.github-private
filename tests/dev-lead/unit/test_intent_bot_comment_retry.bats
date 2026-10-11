@@ -328,3 +328,40 @@ _resolved_comments() {
   run bash "$INTENT_SCRIPT"
   [ "$(_get_env INTENT_TYPE)" = "fix-bot-comment" ]
 }
+
+# _marker_comment <body> — a retry marker comment as the sweep leaves it: posted
+# by dev-lead's identity, then edited to record the run it dispatched (#2262).
+_marker_comment() {
+  jq -nc --arg b "$1" '{id:"IC_m", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+    body:$b, createdAt:"2026-10-02T00:30:00Z", lastEditedAt:"2026-10-02T00:30:09Z",
+    isMinimized:false, minimizedReason:null}'
+}
+
+@test "bot-comment retry(#2262): a retry marker that records its run changes nothing for the dispatched pass" {
+  # The marker exactly as the sweep writes it once the dispatched run is known.
+  local marker
+  marker="$(source "$SCRIPT_DIR/scripts/lib/bot-comment-retry.sh" \
+    && bcr_retry_marker IC_cr 2026-10-01T23:05:43Z 1 2026-10-02T00:30:00Z 501)"
+  [[ "$marker" == *" at=2026-10-02T00:30:00Z run=501 -->" ]]
+
+  # The pass this very marker's dispatch started still routes to fix-bot-comment…
+  _event IC_cr
+  _node coderabbitai "Walkthrough"
+  export COMMENTS_JSON="[${CR_NODE},$(_marker_comment "$marker")]"
+  run bash "$INTENT_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(_get_env INTENT_TYPE)" = "fix-bot-comment" ]
+  [ "$(_get_env INTENT_REASON)" = "bot-comment-retry-dispatch" ]
+  # …and the classifier reads no Actions run: only the sweep does.
+  if grep -q 'actions/runs' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
+
+  # A disposition still covers the comment with the marker present.
+  : > "$GITHUB_ENV"
+  export COMMENTS_JSON="[${CR_NODE},$(_marker_comment "$marker"),
+    {\"id\":\"IC_d\",\"author\":{\"login\":\"don-petry\",\"__typename\":\"User\"},\"authorAssociation\":\"OWNER\",
+    \"body\":\"<!-- dev-lead:comment-disposition id=IC_cr disposition=informational -->\",
+    \"createdAt\":\"2026-10-02T00:45:00Z\",\"lastEditedAt\":null,\"isMinimized\":false,\"minimizedReason\":null}]"
+  run bash "$INTENT_SCRIPT"
+  [ "$(_get_env INTENT_TYPE)" = "skip" ]
+  [ "$(_get_env INTENT_REASON)" = "bot-comment-already-dispositioned" ]
+}

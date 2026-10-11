@@ -438,3 +438,50 @@ _scan_with_markers() {
   _scan_with_markers '["<!-- dev-lead-fix-reviews pr=2000 sha=abc intent=fix-reviews status=history-unavailable -->","<!-- dev-lead-fix-reviews pr=2000 sha=abc intent=fix-reviews status=unrelated-histories -->"]'
   [[ "$output" != *"DISPATCH"* ]]
 }
+
+# ── #2262: the run a bot-comment retry dispatched ────────────────────────────
+# The decision matrix and the sweep wiring are covered in
+# test_bot_comment_retry.bats; these pin the two properties the recording rests on.
+
+@test "retry(#2262): the retry marker records its run by an EDIT, and the caller stub starts no run on a comment edit" {
+  local body types
+  body="$(declare -f record_bot_comment_retry_run)"
+  [ -n "$body" ]
+  # The run is recorded on the marker the scan already posted…
+  [[ "$body" == *'--method PATCH "repos/${repo}/issues/comments/${marker_id}"'* ]]
+  # …never by posting another comment: an issue_comment `created` event starts a
+  # dev-lead run in the PR's lane, and that run would cancel the retry just sent.
+  if grep -q -- '--method POST' <<< "$body"; then echo "$body"; return 1; fi
+  # The caller stub (copied verbatim into every repo) subscribes to `created`
+  # only. If it ever subscribes to `edited`, the edit above cancels the retry it
+  # describes, and the run has to be recorded some other way.
+  types="$(awk '/^  issue_comment:/ {found=1; next}
+                found && /^    types:/ {print; exit}
+                found && /^  [a-z_]+:/ {exit}' "$BATS_TEST_DIRNAME/../../../.github/workflows/dev-lead.yml")"
+  [ "$(tr -d '[:space:]' <<< "$types")" = "types:[created]" ]
+}
+
+@test "retry(#2262): an Actions run that cannot be read is left out of the run states, never guessed" {
+  local out="$MOCK_BIN/out" err="$MOCK_BIN/err"
+  # Every read fails: an empty map (all retries keep the time-based window), rc 0.
+  gh() { return 1; }
+  fetch_bot_comment_retry_run_states "petry-projects/.github" '["501","502"]' > "$out" 2> "$err"
+  [ "$(cat "$out")" = "{}" ]
+  [ "$(grep -c '::warning::.*could not read Actions run 50[12] ' "$err")" -eq 2 ]
+  # One readable live run and one unreadable: only the readable one is reported.
+  gh() {
+    case "$*" in
+      *"/actions/runs/501") echo '{"id":501,"event":"repository_dispatch","status":"in_progress","conclusion":null}' ;;
+      *) return 1 ;;
+    esac
+  }
+  fetch_bot_comment_retry_run_states "petry-projects/.github" '["501","502"]' > "$out" 2> "$err"
+  [ "$(cat "$out")" = '{"501":{"status":"in_progress","conclusion":null,"started":null}}' ]
+  grep -q '::warning::.*could not read Actions run 502 ' "$err"
+  # Ids that are not run ids are never sent to the API.
+  gh() { echo "CALLED $*" >&2; return 1; }
+  run fetch_bot_comment_retry_run_states "petry-projects/.github" '["../x","5 01",7,null]'
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"CALLED"* ]]
+  [ "${lines[-1]}" = "{}" ]
+}
