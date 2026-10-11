@@ -747,12 +747,17 @@ _seed_all_files() {
     # (#2233). If that cannot be read, leave README.md alone: writing it without
     # the section is the deletion this guards against, and one unreadable file
     # must not block every other update.
-    if [ "$path" = "README.md" ] && ! _commercial_support_section > /dev/null; then
-      echo "::warning::skipping README.md — ${COMMERCIAL_SUPPORT_STANDARD} is unreadable; leaving the existing file untouched" >&2
-      continue
+    # Emit once and decide on that single read, so a second fetch cannot fail
+    # after the guard passed and abort the run.
+    if [ "$path" = "README.md" ]; then
+      if ! content="$(_emit_baseline "$path")"; then
+        echo "::warning::skipping README.md — ${COMMERCIAL_SUPPORT_STANDARD} is unreadable; leaving the existing file untouched" >&2
+        continue
+      fi
+    else
+      content="$(_emit_baseline "$path")"
+      [ $? -eq 0 ] || return 1
     fi
-    content="$(_emit_baseline "$path")"
-    [ $? -eq 0 ] || return 1
     _seed_file "$repo" "$path" "$content" "$branch" "$base_ref" "$reuse" || return 1
   done
 }
