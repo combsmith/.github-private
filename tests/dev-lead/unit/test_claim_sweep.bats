@@ -685,15 +685,32 @@ ${disp}")" \
   grep -q "reason=not-on-ref" "$PATCHES/471"
 }
 
-@test "#2261: cl_without_fixed_dispositions drops only replies carrying a fixed disposition, and fails on a non-array" {
+@test "#2261: cl_without_fixed_dispositions drops only replies carrying a fixed disposition" {
   local kept
   kept=$(cl_without_fixed_dispositions "$(jq -s -c . <<<"$(_pr_comment 481 "$PASS_AT" "$(_claim "$GHOST_2261")")
 $(_pr_comment 482 "$PASS_AT" "x <!-- dev-lead:comment-disposition id=IC_A disposition=fixed sha=${GHOST_2261} -->")
 $(_pr_comment 483 "$PASS_AT" "x <!-- dev-lead:comment-disposition id=IC_B disposition=answered -->")")")
   [ "$(jq -c '[.[].id]' <<<"$kept")" = "[481,483]" ]
-  run cl_without_fixed_dispositions '{"message":"Bad credentials"}'
+  # JSON that is not a list passes through for the claim selector to read as
+  # "no replies"; only a payload that is not JSON fails.
+  run cl_without_fixed_dispositions '{}'
+  [ "$status" -eq 0 ]
+  [ "$output" = "{}" ]
+  run cl_without_fixed_dispositions 'not json'
   [ "$status" -ne 0 ]
-  [ -z "$output" ]
+}
+
+@test "#2261: an issue-comment listing that is JSON but not a list does not fail the sweep" {
+  # A full-script gh stub (and any proxy) may answer the listing with an object.
+  # main's `fixed`-disposition sweep reads that as "no replies"; the claim sweep
+  # must too, or a pushed pass is reported as failed.
+  printf '{}' > "$ISSUE_COMMENTS"
+  _serve "$(_reply 495 "2026-10-09T03:01:00Z" "$(_claim "$GHOST_2261")")"
+
+  run retract_unlanded_claims fix-reviews ok
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"NOT verified"* ]]
+  [ -f "$PATCHES/495" ]
 }
 
 @test "#2261: a claim whose JSON spans lines is removed whole, so the retracted reply is not selected again" {

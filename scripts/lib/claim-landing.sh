@@ -583,14 +583,16 @@ cl_select_fixed_dispositions() {
 #   that carry a `disposition=fixed` marker, by the same test
 #   cl_select_fixed_dispositions selects them with. Those replies belong to the
 #   `fixed`-disposition sweep, which also handles a claim they carry; the claim
-#   sweep reads the rest, so no reply is rewritten by both (#2261). Returns 1 on a
-#   payload that is not an array. Pure.
+#   sweep reads the rest, so no reply is rewritten by both (#2261). A payload
+#   that is JSON but not an array is echoed unchanged: the claim selector reads it
+#   as "no replies", as it does for the review-comment listing. Returns 1 only
+#   when the payload is not JSON. Pure.
 cl_without_fixed_dispositions() {
-  jq -ce '
+  jq -c '
       if type == "array" then
         map(select(((objects | .body // "")
                     | test("<!-- dev-lead:comment-disposition [^\\n]*disposition=fixed\\s")) | not))
-      else error("not an array") end
+      else . end
     ' <<<"${1:-}" 2>/dev/null
 }
 
