@@ -174,14 +174,16 @@ check() {
 check "$*"
 prev=""
 for a in "$@"; do
-  f=""
+  f=""; kv=""
   case "$prev" in
     --input) f=$a ;;
-    -F|--field) case "$a" in *=@*) f=${a#*=@} ;; esac ;;
+    -F|--field) kv=${a#*=}; case "$kv" in @*) f=${kv#@} ;; esac ;;
   esac
   case "$a" in
     --input=*) f=${a#--input=} ;;
-    --field=*=@*|-F?*=@*) f=${a#*=@} ;;
+    --field=*=*|-F?*=*)
+      kv=${a#--field=}; kv=${kv#-F}; kv=${kv#*=}
+      case "$kv" in @*) f=${kv#@} ;; esac ;;
   esac
   if [ -n "$f" ]; then
     if [ "$f" = "-" ]; then

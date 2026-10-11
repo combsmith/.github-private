@@ -677,6 +677,17 @@ _2161_real_gh() {
   [[ "$(grep -c PRRC_f1 "$rec")" -eq 2 ]]
 }
 
+@test "cl_install_reply_recorder (#2161): a literal value containing =@ (key=note=@text) is not a file reference" {
+  local rec="$BATS_TEST_TMPDIR/rec" real="$BATS_TEST_TMPDIR/real-gh" dir
+  printf '#!/usr/bin/env bash\necho "{}"\n' > "$real"
+  chmod +x "$real"
+  dir=$(cl_install_reply_recorder "$rec" "$real")
+  run "$dir/gh" api repos/o/r/issues/5/comments -F body=note=@text
+  run "$dir/gh" api repos/o/r/issues/5/comments --field=body=note=@text
+  run "$dir/gh" api repos/o/r/issues/5/comments -Fbody=note=@text
+  [[ ! -s "$rec" ]]
+}
+
 @test "cl_install_reply_recorder (#2161): an --input path that cannot be read still fails closed" {
   local rec="$BATS_TEST_TMPDIR/rec" dir
   dir=$(cl_install_reply_recorder "$rec" "$(_2161_real_gh)")
