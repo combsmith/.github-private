@@ -66,15 +66,12 @@ PROBE
   [ "$dirs" -ge 3 ]
 }
 
-@test "ledger isolation: the engine suites leave an inherited ledger untouched" {
+# One real engine suite that wrote records and sidecar files to an inherited
+# ledger before #2304. One is enough: the isolation is suite-wide (the hook
+# above), so more suites would add minutes to this job and no coverage.
+@test "ledger isolation: a real engine suite leaves an inherited ledger untouched" {
   local -a suites=(
-    tests/dev-lead/unit/test_engine_chain.bats
-    tests/dev-lead/unit/test_engine_chain_config.bats
-    tests/dev-lead/unit/test_engine_duck_copilot_model.bats
-    tests/dev-lead/unit/test_engine_duck_model.bats
     tests/dev-lead/unit/test_engine_gemini_35.bats
-    tests/dev-lead/unit/test_engine_models.bats
-    tests/dev-lead/unit/test_engine_new_models.bats
   )
   run _fresh_bats "${suites[@]}"
   echo "$output"
