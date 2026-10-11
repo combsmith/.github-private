@@ -134,3 +134,19 @@ STUB
   run grep -c fixture "$LEDGER"
   [ "$output" = "0" ]
 }
+
+# A sixth launch site added without the wrapper would leak again with every
+# behavioural test above still green, so the launch lines themselves are pinned:
+# a model CLI is started in engine.sh only as `_engine_child timeout … <cli>`.
+@test "child-env (static): every model CLI start in engine.sh goes through _engine_child" {
+  local cli='(claude|gemini|gh[[:space:]]+copilot)' starts direct
+  # Command lines that run a CLI: under `timeout`, or with the CLI's own flag.
+  starts="$(grep -nE "(^|[^_[:alnum:]])(timeout[[:space:]].*[[:space:]]${cli}([[:space:]]|\$)|claude[[:space:]]+--print|gemini[[:space:]]+--prompt|gh[[:space:]]+copilot[[:space:]]+(--|\\\\))" "$ENGINE_SCRIPT" \
+    | grep -vE '^[0-9]+:[[:space:]]*#' | grep -vE '^[0-9]+:[[:space:]]*echo ' || true)"
+  [ -n "$starts" ]
+  direct="$(grep -vE '^[0-9]+:[[:space:]]*_engine_child[[:space:]]+timeout[[:space:]]' <<< "$starts" || true)"
+  [ -z "$direct" ] || { echo "started without _engine_child: $direct"; false; }
+  # The five sites this change wrapped are all still there.
+  [ "$(grep -c . <<< "$starts")" -ge 5 ]
+}
+

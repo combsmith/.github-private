@@ -57,12 +57,12 @@ PROBE
   local dir dirs=0
   while IFS= read -r dir; do
     dirs=$((dirs + 1))
-    [ -f "$dir/setup_suite.bash" ] || { echo "no setup_suite.bash in $dir"; return 1; }
+    [ -f "$dir/setup_suite.bash" ] || { echo "no setup_suite.bash in $dir"; false; }
     run _fresh_bats --setup-suite-file "$dir/setup_suite.bash" "$BATS_TEST_TMPDIR/probe.bats"
     echo "$dir: $output"
     [ "$status" -eq 0 ]
     _assert_ran_and_ledger_untouched
-  done < <(find tests -type f -name '*.bats' -exec dirname {} \; | sort -u)
+  done < <(find tests -type f -name '*.bats' | sed 's|/[^/]*$||' | sort -u)
   [ "$dirs" -ge 3 ]
 }
 
