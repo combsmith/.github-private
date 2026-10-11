@@ -60,14 +60,15 @@ Some of it is rule and some of it is record. An implementer builds from the rule
 
 | Rules | Record of how the rules were reached |
 |---|---|
-| §2.4, the four rules; §3, the contracts; §4, behaviour and invariants; §5, Roles and authority; §8.4, the feed; §9.1, the build order; §9.6, the serving channel and cutover | §7, options weighed; §8.3, what came from another analysis; §9.3 to §9.5 and §9.7, the review passes; §10, edits made to other documents |
+| §2.4, the four rules; §3, the contracts; §4, behaviour and invariants; §5, Roles and authority; §8.4, the feed; §9.1, the build order; §9.6, the serving channel and cutover | §7, options weighed; §8.3, what came from another analysis; §9.3 to §9.5, §9.7 and §9.8, the review passes; §10, edits made to other documents |
 
 The architecture review in `factory-mvp-architecture-review.md` is history. It records
 recommendations that were later replaced, and nothing should be built from it.
 
 ### 1.3 Still open
 
-- Where held-out eval sets live. The control room is public, so it is not there.
+- Whether the POC's agents are capped while the Factory is built. They draw on the same model
+  window as the Factory. Uncapped for now, with the budget gauge watched.
 
 ## 2. Structure
 
@@ -467,7 +468,7 @@ only go stale, which is how the POC's markers came to outlive the objects they d
 | The Lifecycle state and its reason | Facts |
 | Whether the item is held, and by whom | A label, and who applied it |
 | Whether a Run holds the item now | A run record in progress |
-| How many attempts an Intent has had, and how many Runs the item has had | Run records since the last human action on the item, counting item faults only (§3.10) |
+| How many attempts an Intent has had, and how many Runs the item has had | Run records since the last action by a person with write access, counting item faults only (§3.10) |
 | Whether the Factory itself is failing | The outcome of its most recent failed Runs, across items |
 | Whose turn it is | The Role of the last completed Run on this content |
 | Whether a Finding is open | Its thread, alert or tool report |
@@ -562,6 +563,7 @@ and its budget class set to `gate`.
 schema: authority/1
 max_rounds: 3
 shadow_sample: 0.25     # example: the share of items a shadow Role is run on
+shadow_budget: 30       # example: sampled items before the Maintainer decides on that Role
 categories:
   functional:    { owner: pr-review, shadow: qa-lead,            may_accept: [fixed, declined, deferred, not_applicable] }
   security:      { owner: pr-review, shadow: security-lead,      may_accept: [fixed, not_applicable] }
@@ -631,15 +633,21 @@ Every criterion names how it will be checked. The kinds, strongest first:
 | Kind | What it is | Strength |
 |---|---|---|
 | `test` | An executable check that exists, and fails, before the work starts | The author cannot argue with it |
-| `scenario` | A held-out scenario the author cannot see | Cannot be written to |
+| `scenario` | A held-out scenario the author cannot see. It lives under a different owner, where no Factory App is installed | Cannot be written to |
 | `mutation` | Whether the change's own tests can fail at all | Guards against tests that assert nothing |
 | `static` | A deterministic tool's report | Exact, for what it covers |
 | `role` | A named Role judging the change against the statement | Only as good as that Role |
 | `human` | The Maintainer's confirmation | Costs attention |
 
+Two protections are in play and they are different. Against **change**, a protected path is
+enough, and so would be an issue, since the implementing Role's App cannot edit issues. Against
+**reading**, neither is: every repo here is public, and the reader App that each Run holds is
+installed across the org. Only a `scenario` needs to be unseen, which is why held-out sets are kept
+under a different owner.
+
 The file and the tests it names are protected paths, so `apply` refuses any change to them by the
-Role that implements the work. Who approved the contract is not stored: it is the approval on the
-pull request that added the file.
+Role that implements the work. Who approved the contract is not stored: it is the
+Maintainer's approving review at the commit that added the file.
 
 ## 4. Behaviour
 
@@ -718,6 +726,11 @@ some reading and cannot hold a pull request by volume, which is how the POC's co
 threads be resolved stays in force, so the platform keeps backing the Factory, and each such thread
 gets one visible outcome. "Resolved by `pr-review`, not adopted" is then a fact on GitHub, from
 which each reviewer's contribution can be counted.
+
+This makes `pr-review` the one funnel for every outside view, and resolving a thread is quieter
+than adopting it. So the other direction is counted too: for each reviewer, and for `pr-review`
+itself, how many Findings were not adopted and were later proved right by a revert or a fix in the
+same place. Shadow Roles are given a sample of the unadopted Findings.
 
 Two rules stop this feeding back into the reviewers themselves. No Factory Finding mentions a
 reviewer by name, so none is drawn into a reply. And any feature by which a reviewer approves once
@@ -801,10 +814,11 @@ These are the properties the simulator asserts. Each is a sentence a test can fa
 | I-25 | An `outside` item gets no Run until the Maintainer has admitted it | FR-63 |
 | I-26 | No approval is attempted where the approver is the author or the last pusher; the item is held instead | C-6 |
 | I-27 | No model Lens runs on content that has not passed the deterministic required Lenses | §4.2 |
-| I-28 | Attempts are reset only by a human action on the item | FR-17 |
+| I-28 | Attempts are reset only by an action on the item from a person with write access. A stranger's comment, an App's and the machine user's do not count | FR-17 |
 | I-29 | Once acceptance contracts are in force, no implementing Run is admitted for an item without an approved one | FR-59 |
 | I-30 | No change by an implementing Role touches an acceptance contract or a test it names | FR-59 |
 | I-31 | An item with an acceptance contract never converges with a criterion lacking passing evidence on that content | §4.2 |
+| I-32 | While more items need the Maintainer than the declared number, no Run is admitted except one that unblocks a merge | C-10 |
 
 ### 4.5 The simulator
 
@@ -823,7 +837,7 @@ decision logic against a fake world, quickly, thousands of times.
   every step boundary, including between two Effects and before any artifact is uploaded. The
   control room unwritable, or holding nonsense. A facts read that fails or is stale. A missing capacity reading.
   A Result that fails validation. An Engine that times out. A human acting mid-Run.
-- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-31. I-1 and I-18 are checked once faults
+- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-32. I-1 and I-18 are checked once faults
   stop and the world is left to settle.
 - **Reproduction.** Each run has a seed from the standard library's generator. A failure prints the
   seed and the trace, and the trace renders as a sequence diagram.
@@ -857,7 +871,7 @@ A sweep on 2026-10-10 ran the Lifecycle against awkward inputs. Each case below 
 | A dependency update | Its class is `dependency`. Its required Lenses are deterministic ones. The POC's automerge serves it until that Intent is cut over |
 | The approver is the author or the last pusher | GitHub rejects or discards the approval. The Kernel reads `author` and `last_pusher`, attempts no approval, and holds the item with that reason (I-26). The machine user therefore never pushes (§5.1) |
 | A branch pushed every few minutes | Deterministic Lenses first; a model review starts only on content they have passed (I-27) |
-| A Hold released, or a pull request reopened, after attempts ran out | Attempts count since the last human action, so a person acting on the item grants a fresh allowance. No agent action does (I-28) |
+| A Hold released, or a pull request reopened, after attempts ran out | Attempts count since the last action by a person with write access, which grants a fresh allowance. No agent's action does, and nor does a stranger's comment: on a public repo that would let anyone keep an agent running (I-28) |
 | An empty diff | Never converges (I-24). The POC merged ten |
 | A diff too large to hash or to review | Each class has a size limit. Over it, one Hold, with the choices: split it, or review it by hand. No Run is spent finding out |
 | A conflict with the base | `mergeable` is false. It is the author's turn; in the first slice it is the Maintainer's |
@@ -877,6 +891,7 @@ Every human control is one ordinary GitHub action, the same for every Role and e
 
 | Control | What the Maintainer does | Effect |
 |---|---|---|
+| Start work on an issue | Add the label `factory:ready` | The issue comes under Factory control |
 | Hold | Add the label `factory:hold` | No Run is admitted on the item; an in-flight Run writes nothing (I-6, I-21) |
 | Release | Remove the label | The next pass resumes, with a fresh allowance of attempts (I-28) |
 | Hands-off | Add the label `factory:hands-off` | The Factory watches the item and never acts on it |
@@ -888,12 +903,19 @@ Every human control is one ordinary GitHub action, the same for every Role and e
 | Pause | Set the variable `FACTORY_PAUSED` for the org or a repo | No Run is admitted in that scope; only a person clears it |
 | Re-evaluate | Nothing | Every pass evaluates every open item |
 
-How work on an issue is started is defined with the issue Lifecycle, which is not yet written.
+A pass reads only the issues that carry `factory:ready`, so its cost follows the work in hand and
+not the size of the backlog. The rest of the issue Lifecycle is not yet written.
 
 The Factory reaches the Maintainer the same way, through GitHub. When an item becomes "needs you",
 the Controller assigns it to the Maintainer, or requests their review on a pull request, and
 GitHub's own notifications carry it to email and phone. A fault of the whole Factory goes to one
-tracking issue, never to one per item.
+tracking issue, never to one per item. The Maintainer is notified once per item per reason, and
+not again while that reason stands.
+
+**Backpressure from the Maintainer's queue.** When more than a declared number of items need the
+Maintainer, Admission admits only Runs that unblock a merge. The starting number is 10. The
+Maintainer's attention is the first limit on output (PRD C-10), and a factory that keeps producing
+work its one human cannot clear only lengthens the queue (I-32).
 
 ### 4.8 Acceptance: what a change is judged against
 
@@ -912,16 +934,21 @@ How correctness is covered:
 | **Did it do what was asked?** | **The acceptance contract** |
 | **Does the new behaviour work?** | **Checks of kind `test`, `scenario` and `mutation` in that contract** |
 
-The flow keeps one author per change by making it two changes:
+The flow is one pull request, with two authors in sequence on separate files:
 
 1. An issue states the intent.
-2. `qa-lead` drafts the contract: the criteria, a check for each, and failing tests for those of
-   kind `test`. That is one pull request, and its author is `qa-lead`.
-3. The Maintainer approves it. This is what arming the work means: one approval, of a concrete
-   thing.
-4. The implementing Role makes its change in a second pull request. It cannot touch the contract
-   or the tests the contract names.
+2. `qa-lead` makes the first commit on the work's branch: the contract, and failing tests for the
+   criteria of kind `test`.
+3. The Maintainer approves at that commit. This is what arming the work means: one approval, of a
+   concrete thing. GitHub dismisses the approval when the next commit arrives; the review remains
+   on that commit, and that is the record.
+4. The implementing Role adds its commits to the same branch. `apply` refuses any change to the
+   contract or to a test it names.
 5. `verify` and the Consumer's own checks run them. The Kernel reads one result per criterion.
+
+Failing tests therefore never reach the default branch, where they would break every other pull
+request's checks and the merge queue. "One author per change" holds file by file: no file in the
+pull request has two authors.
 
 A criterion that cannot be met is waived only by the Maintainer, as a recorded human transition.
 
@@ -940,6 +967,12 @@ documents for people, so the Intent needs a wrapper that runs them in one Run an
 contract as data. `qa-lead` becomes a Role that writes code, so it needs an eval set and, when it
 first writes, its own App. And the agent starts from criteria it is given: it turns them into
 checks and says when one is untestable, but what the work is for comes from the issue.
+
+**Independence of the drafter.** The Role that drafts the contract and the Role that implements it
+are different, but models that are wrong tend to be wrong in the same way. A test can then encode
+the same misreading as the code it tests. Where the engine configuration allows, the drafting
+Intent is served by a different model family from the implementing one. This is the place in the
+Lifecycle where a second family buys the most, and it depends on that vendor's quota.
 
 **How strict, and when.** The contract takes effect with the fix and implement Intents (§9.1,
 slice 4). At first the rule is only that every criterion names a check and has evidence, and a
@@ -1012,6 +1045,9 @@ The authority table of §3.12 is the whole rule. Five points follow from it.
   the owner where the owner was later proved right, and disagreement where the owner was later
   proved wrong. The research is plain that a reviewer no stronger than the author makes the result
   worse, so promotion is never by default.
+- **Shadow has a budget.** The evidence for promotion is escaped defects, which are rare, so a Role
+  could sit in shadow indefinitely. After a declared number of sampled items the Maintainer decides
+  for that Role: promote it, keep sampling, or stop.
 - **The security rule holds from the first day.** Whoever owns the category, a `security` Finding
   is never accepted as declined or deferred without an Override.
 
@@ -1134,6 +1170,7 @@ What this costs:
 - **A killed Run's cost is unknown.** The vendor CLI reports usage when an invocation ends.
   Duration is the estimate, and a final step uploads whatever partial usage exists.
 - **History is 90 days.** The Maintainer accepted this in place of the 180 the PRD first asked for.
+  Aggregates last longer: the control room's own git history keeps every scorecard it has held.
 - **Deleted run records undercount attempts.** A Run that wrote nothing leaves no other trace.
   Deleting them needs write access to the Factory repo, and the count of automated actions on the
   item catches every case where a Run did write. This is accepted and not designed for.
@@ -1261,7 +1298,7 @@ board. It is also not where a chat session's output is made terser; that is a se
 | `view/meta.json` | When the view was written, by which pass and Release, and how far back it reaches |
 | `view/items.json` | Every open Work item: computed State, reason, attention class, next actor, the decision required, age, attempts, Runs so far against the budget of 10 a merge, cost, links |
 | `view/runs/<date>.jsonl` | One line per Run: the run record and the usage and outcome from its artifact |
-| `view/findings.json` | Open Findings with category, severity, owner and Disposition |
+| `view/findings.json` | Open Findings with category, severity, owner and Disposition; and per reviewer, how many were adopted and how many unadopted ones were later proved right |
 | `view/scorecard.json` | The success metrics of PRD §9 and the adoption and use measures of §9.2 |
 | `view/capacity.json` | Usage per window, the estimate of what is left, and the degradation stage |
 | `view/health.json` | Whether Admission is paused and why, when the last pass ran, and recent capacity and environment faults |
@@ -1400,6 +1437,10 @@ With no period set, the decision needs a moment at which it is made. Two events 
 | The first Release on `next` that serves the Factory's repo | Continue or stop | How many Factory pull requests the Maintainer has approved, against a starting figure of 40 |
 | The first Consumer repo served | Continue or stop | The adoption and use measures above |
 
+The control room also shows what share of Factory pull requests needed the Maintainer only because
+they touched a protected path (§5.1). Early on that will be most of them, and the approval count
+should be read with it.
+
 The record is a file in the Factory repo. Passing 40 approvals before that Release stops
 nothing; it is the signal to shrink the slice further or to fall back on the POC's reviewer.
 
@@ -1500,6 +1541,24 @@ Every cross-reference resolved. Three findings were design holes and are settled
 §7.2: the unreachable first `stable` Release, a spend cap that survived after money stopped gating,
 and a cutover that still called a mechanism the poller had removed. The rest were statements left
 behind by earlier decisions, and were corrected in the same change.
+
+### 9.8 What the last two passes changed
+
+A pass that read the design as each party to it, and a pass that followed each decision one step
+further, both on 2026-10-10.
+
+| Finding | Change made |
+|---|---|
+| Nothing pushed to the Maintainer, and the controls were never listed | The control vocabulary; assignment and review requests as the notification (§4.7) |
+| A plain comment cannot be resolved, and anyone can open a thread on a public repo | A plain comment steers; only a review from a person with write access gates (§4.2, §4.6) |
+| A stranger's comment would reset an agent's attempts | Only a person with write access resets them (I-28) |
+| Failing acceptance tests would turn the default branch red | One pull request, with the contract as its first commit (§4.8) |
+| The contract's drafter and the implementer share blind spots | A different model family for the drafting Intent where configuration allows (§4.8) |
+| `pr-review` becomes the single funnel for outside views | Unadopted Findings later proved right are counted (§4.2) |
+| The Maintainer's notifications flood | One notice per item per reason; backpressure from the queue (§4.7, I-32) |
+| A pass's cost grows with the backlog | Issues come under control by a label (§4.7) |
+| A held-out set readable by the Role it tests | Held-out sets under a different owner (§3.13) |
+| A Role in shadow forever | A shadow budget (§5.2) |
 
 ## 10. What this design changes elsewhere
 

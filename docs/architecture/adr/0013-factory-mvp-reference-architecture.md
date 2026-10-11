@@ -176,8 +176,10 @@ Controller once per event; the maintainer replaced that on 2026-10-10 (decision 
   tracking issue.
 - **A work item has a class:** agent, maintainer, dependency or outside. An outside item gets no
   Run until the maintainer admits it (PRD FR-63).
-- **Attempts are counted since the last human action on the work item.** A person acting on it
-  grants a fresh allowance; no agent action does.
+- **Attempts are counted since the last action on the work item by a person with write access.**
+  That grants a fresh allowance. No agent's action does, and nor does a stranger's comment.
+- **When more items need the maintainer than a declared number, only Runs that unblock a merge are
+  admitted.** The starting number is 10.
 - **A Run is started only from a decision a pass recorded.** Only the poller can be started from
   outside the factory, and it takes no inputs, so a credential that can start workflows cannot
   direct a Run.
@@ -446,7 +448,9 @@ the Kernel.
   another component must interpret.
 - **Lenses do not address each other.** No Lens's output is another Lens's trigger. Each reports to
   the Controller, and none sees another's verdict on a content version before giving its own.
-- **One author per change.** Lenses judge a change; they do not co-write it.
+- **One author per change.** Lenses judge a change; they do not co-write it. The acceptance contract
+  is the first commit on the work's branch, by its own author, and the implementer cannot touch
+  it: no file in a pull request has two authors.
 - **Convergence is a Kernel function:** every Lens required for the item's class and stage has
   reported on the current content version, and no blocking Finding is open. An item that has not
   converged within its declared bound is placed on Hold.

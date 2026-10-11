@@ -401,6 +401,8 @@ Realizes UJ-1, UJ-3, UJ-8.
   - One merge to a protected branch causes no agent Runs on pull requests it does not conflict with.
 - **FR-21. Priority under constraint.** When capacity is short, the Controller admits Runs in a
   declared priority order: work that unblocks a merge first, then security, then the rest.
+  - The Maintainer's attention is capacity too. When more items await the Maintainer than a declared
+    number, only work that unblocks a merge is admitted.
 
 ### 6.4 Human control
 
@@ -580,7 +582,8 @@ accepts any flags. The suite cannot run on the Maintainer's machine. Realizes UJ
   Consumer repo's own tests do not qualify, because the author can edit them.
   - A Work item that leads to a code change carries an acceptance contract before the work is
     admitted: criteria, each naming how it will be checked. It is drafted by a Role other than the
-    implementing one and fixed by the Maintainer's approval.
+    implementing one, as the first commit of the work's pull request, and fixed by the Maintainer's
+    approval at that commit.
   - Passing evidence for every criterion, on the content to be merged, is a condition of
     Convergence.
   - At first a Role's judgement is allowed as a check. Executable and held-out checks are required
@@ -850,7 +853,8 @@ From the competitive analysis ([market research](../research/market-agentic-soft
 8. **OQ-8. Where does the Ledger live and who may read it?** Everything in a public repo is public.
    Decided by the Maintainer on 2026-10-10: the Ledger is the Factory's own run records and
    artifacts, and `petry-projects/software-factory-control-room` is a public, rebuildable view of
-   them with a dashboard. Every panel is public. Open: where held-out eval sets live.
+   them with a dashboard. Every panel is public. Held-out eval sets live under a different owner,
+   where no Factory App is installed, because a public repo cannot hide them from the Role they test.
 9. **OQ-9. What is the budget for the migration itself**, in weeks and in LLM spend, given that the
    POC must keep delivering while it is replaced? The three conditions ADR-0013 required were set
    by the Maintainer on 2026-10-10 (ADR-0013, decision 10). POC defects are fixed as needed, with no
