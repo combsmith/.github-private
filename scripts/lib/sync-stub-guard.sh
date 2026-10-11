@@ -27,14 +27,19 @@
 #   are out of scope, and so are PRs without the label.
 #
 # PURITY / TESTABILITY (ADR-0004)
-#   ssg_template_path, ssg_has_sync_label and ssg_declined_body are PURE.
-#   ssg_pass_touches_stubs, ssg_scan_pass and ssg_evaluate are the impure
-#   gatherers (git only); ssg_read_pr reads the PR from the API. Sourced under
+#   ssg_template_path, ssg_has_sync_label, ssg_declined_body,
+#   ssg_rebase_action, ssg_rebase_restored_body and ssg_rebase_unrestored_body
+#   are PURE.
+#   ssg_pass_touches_stubs, ssg_scan_pass, ssg_evaluate, ssg_rebase_record and
+#   ssg_rebase_restore are the impure gatherers (git only; ssg_rebase_restore
+#   also writes the worktree and index); ssg_read_pr reads the PR from the API. Sourced under
 #   `set -euo pipefail`; helpers only `return`, never `exit`.
 #
 # WHO RUNS IT
 #   fix-bot-comment / fix-reviews (commit_and_push) and fix-ci
-#   (dev-lead-fix-ci.sh, #2212).
+#   (dev-lead-fix-ci.sh, #2212) refuse the push. The rebase pass (#2232) cannot
+#   be stopped from pushing, so it records before and restores after instead
+#   (ssg_rebase_record / ssg_rebase_restore, below).
 
 set -euo pipefail
 
@@ -250,5 +255,150 @@ ssg_read_pr() {
     fi
     (( try < 3 )) && sleep "${SSG_RETRY_SLEEP:-2}"
   done
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Rebase passes (#2232): check after the rebase and restore
+# ---------------------------------------------------------------------------
+# The rebase engine resolves conflicts and force-pushes the branch itself; that
+# flow is left exactly as it is (no push blocker, nothing on the engine's PATH).
+# Before the engine runs, ssg_rebase_record lists each synced path with its blob
+# at the pre-pass head and at the old merge base. After the push,
+# ssg_rebase_restore compares each path at the new head and puts a path left in
+# a third state back: the base branch's content when the base changed the path
+# since the old merge base, otherwise the recorded pre-pass content. Blob ids
+# use `-` for "absent at that revision".
+
+# ssg_rebase_action <pre_blob> <mb_blob> <base_blob> <head_blob>
+#   Echoes `keep` when the head equals the pre-pass blob or the base, else
+#   `base` when the base changed the path since the merge base, else `pre`.
+#   Pure.
+ssg_rebase_action() {
+  local pre="${1:--}" mb="${2:--}" base="${3:--}" head="${4:--}"
+  if [[ "$head" == "$pre" || "$head" == "$base" ]]; then
+    echo "keep"
+  elif [[ "$base" != "$mb" ]]; then
+    echo "base"
+  else
+    echo "pre"
+  fi
+}
+
+# ssg_rebase_restored_body <rows>
+#   The PR comment naming each restored path. <rows> are ssg_rebase_restore
+#   `restored` lines. Pure.
+# shellcheck disable=SC2016  # the backticks are literal Markdown code spans
+ssg_rebase_restored_body() {
+  local rows="${1:-}" verdict path src list=""
+  while IFS=$'\t' read -r verdict path src _; do
+    [[ "${verdict:-}" == "restored" && -n "${path:-}" ]] || continue
+    if [[ "$src" == "base" ]]; then
+      list+="- \`${path}\` — set to the base branch's content (the base changed it)"$'\n'
+    else
+      list+="- \`${path}\` — set back to this PR's content from before the rebase"$'\n'
+    fi
+  done <<<"$rows"
+  printf '## Synced stub restored after rebase\n\n'
+  printf 'The rebase resolution left synced org-standard content on this standards-sync PR different from both the PR and the base branch. dev-lead pushed one follow-up commit that restores it:\n\n%s\n' "$list"
+  printf 'Changes to a synced stub belong in the template in `%s` (#2232).\n' "$_SSG_TEMPLATE_REPO"
+}
+
+# ssg_rebase_unrestored_body <rows>
+#   The flag comment when a path could not be restored. <rows> are
+#   `path\ttemplate` lines; empty rows mean the check itself could not run.
+#   Unlike ssg_declined_body, the branch WAS pushed. Pure.
+# shellcheck disable=SC2016  # the backticks are literal Markdown code spans
+ssg_rebase_unrestored_body() {
+  local rows="${1:-}" path tpl list=""
+  while IFS=$'\t' read -r path tpl; do
+    [[ -z "${path:-}" ]] && continue
+    if [[ -n "${tpl:-}" ]]; then
+      list+="- \`${path}\` — template: [\`${_SSG_TEMPLATE_REPO}/${tpl}\`](https://github.com/${_SSG_TEMPLATE_REPO}/blob/main/${tpl})"$'\n'
+    else
+      list+="- \`${path}\` — no template header; see [\`standards/\`](https://github.com/${_SSG_TEMPLATE_REPO}/tree/main/standards) in \`${_SSG_TEMPLATE_REPO}\`"$'\n'
+    fi
+  done <<<"$rows"
+  printf '## Synced stub changed by the rebase — human attention needed\n\n'
+  if [[ -n "$list" ]]; then
+    printf 'The `rebase` pass left synced org-standard content on this standards-sync PR different from both the PR and the base branch, and dev-lead could not restore it:\n\n%s\n' "$list"
+  else
+    printf 'The `rebase` pass touched this standards-sync PR, and whether it left its synced org-standard content intact could not be verified (the pre-pass head, the merge base, or the base branch could not be read).\n\n'
+  fi
+  printf 'The rebased branch **was** pushed, so the PR now carries this state (#2232). Restore each path to the PR'"'"'s or the base branch'"'"'s content; any other change belongs in `%s`. Auto-merge has been disabled.\n' "$_SSG_TEMPLATE_REPO"
+}
+
+# _ssg_blob <rev> <path> — the blob id of <path> at <rev>, or `-` when absent.
+_ssg_blob() {
+  git --literal-pathspecs rev-parse -q --verify "${1}:${2}" 2>/dev/null || echo "-"
+}
+
+# ssg_rebase_record <pre_pass_sha> <merge_base_sha>
+#   Echoes `path\tpre_blob\tmb_blob\ttemplate` for every synced path: each
+#   header stub at <pre_pass_sha>, and each path the PR's own commits changed
+#   (<merge_base>..<pre_pass>). Returns 2, echoing nothing, when either revision
+#   does not resolve. Impure.
+ssg_rebase_record() {
+  local pre="${1:-}" mb="${2:-}" pr_paths candidates path tpl out=""
+  if [[ -z "$pre" || -z "$mb" ]] || ! git cat-file -e "${pre}^{commit}" 2>/dev/null \
+     || ! git cat-file -e "${mb}^{commit}" 2>/dev/null; then
+    return 2
+  fi
+  # Every path the PR's own commits touched before the pass: synced content.
+  pr_paths=$(git -c core.quotePath=false log --no-renames --name-only --format= "${mb}..${pre}" 2>/dev/null) \
+    || return 2
+  candidates=$(
+    {
+      git -c core.quotePath=false grep -l -I -e 'SOURCE OF TRUTH:' "$pre" -- 2>/dev/null \
+        | sed "s#^${pre}:##" || true
+      printf '%s\n' "$pr_paths"
+    } | awk 'NF && !seen[$0]++'
+  )
+  while IFS= read -r path; do
+    [[ -z "$path" ]] && continue
+    tpl=$(_ssg_file_template "$pre" "$path") || tpl=""
+    if [[ -z "$tpl" ]] && ! grep -qxF -- "$path" <<<"$pr_paths"; then
+      continue
+    fi
+    out+="${path}"$'\t'"$(_ssg_blob "$pre" "$path")"$'\t'"$(_ssg_blob "$mb" "$path")"$'\t'"${tpl}"$'\n'
+  done <<<"$candidates"
+  printf '%s' "$out"
+}
+
+# ssg_rebase_restore <record> <pre_pass_sha> <base_rev> [head]
+#   For each <record> row (from ssg_rebase_record) whose path at <head> is in a
+#   third state, restores it in the worktree and index from <base_rev> or
+#   <pre_pass_sha> (per ssg_rebase_action) and echoes
+#   `restored\tpath\tbase|pre\ttemplate`; a path whose content cannot be put
+#   back (a missing blob, a failed checkout) echoes `failed\t...` instead and is
+#   left as it is. Commits nothing. Returns 2, echoing nothing, when <base_rev>
+#   does not resolve. Impure.
+ssg_rebase_restore() {
+  local record="${1:-}" pre="${2:-}" base_rev="${3:-}" head="${4:-HEAD}"
+  local path pre_blob mb_blob tpl base_blob head_blob action src target
+  git cat-file -e "${base_rev}^{commit}" 2>/dev/null || return 2
+  while IFS=$'\t' read -r path pre_blob mb_blob tpl; do
+    [[ -z "${path:-}" ]] && continue
+    base_blob=$(_ssg_blob "$base_rev" "$path")
+    head_blob=$(_ssg_blob "$head" "$path")
+    action=$(ssg_rebase_action "$pre_blob" "$mb_blob" "$base_blob" "$head_blob")
+    [[ "$action" == "keep" ]] && continue
+    if [[ "$action" == "base" ]]; then
+      src="$base_rev"; target="$base_blob"
+    else
+      src="$pre"; target="$pre_blob"
+    fi
+    if [[ "$target" == "-" ]]; then
+      git --literal-pathspecs rm -q -f --ignore-unmatch -- "$path" >/dev/null 2>&1 \
+        && [[ ! -e "$path" ]] \
+        && { printf 'restored\t%s\t%s\t%s\n' "$path" "$action" "$tpl"; continue; }
+    elif git cat-file -e "$target" 2>/dev/null \
+      && [[ "$(_ssg_blob "$src" "$path")" == "$target" ]] \
+      && git --literal-pathspecs checkout -q "$src" -- "$path" 2>/dev/null; then
+      printf 'restored\t%s\t%s\t%s\n' "$path" "$action" "$tpl"
+      continue
+    fi
+    printf 'failed\t%s\t%s\t%s\n' "$path" "$action" "$tpl"
+  done <<<"$record"
   return 0
 }
