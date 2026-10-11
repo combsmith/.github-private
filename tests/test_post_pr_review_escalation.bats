@@ -353,6 +353,79 @@ write_approve_verdict() {
   [ "$(cat "$POSTED_REVIEWS_FILE")" = "[]" ]
 }
 
+# ── #2169: the marker word is derived from the verdict, not model text ──────
+# prompts/cascade-action.md substituted the verdict's raw `decision` value
+# (`approve`) into the marker, while the #1754 guard requires `decision=approved`.
+# A valid approve verdict then failed on formatting alone and nothing was posted.
+
+@test "#2169: approve verdict whose marker says decision=approve is submitted as decision=approved" {
+  local body="<!-- pr-review-agent v1 sha=${SHA} decision=approve risk=MEDIUM -->
+
+## Automated review — APPROVED ✓"
+  local vf; vf=$(write_approve_verdict "$body")
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"lacks a complete approval marker"* ]]
+  grep -qF "<!-- pr-review-agent v1 sha=${SHA} decision=approved risk=MEDIUM -->" "$REVIEW_OUT"
+  ! grep -qE 'decision=approve([[:space:]]|-->)' "$REVIEW_OUT"
+}
+
+@test "#2169: decision=approve directly before the marker close is normalized too" {
+  local body="<!-- pr-review-agent v1 sha=${SHA} risk=LOW decision=approve-->
+
+## Automated review — APPROVED ✓"
+  local vf; vf=$(write_approve_verdict "$body")
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 0 ]
+  grep -qF "decision=approved-->" "$REVIEW_OUT"
+}
+
+@test "#2169: decision=approve for a STALE sha still fails closed" {
+  local old="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  local body="<!-- pr-review-agent v1 sha=${old} decision=approve risk=LOW -->
+
+## Automated review — APPROVED ✓"
+  local vf; vf=$(write_approve_verdict "$body")
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 1 ]
+  [ ! -s "$REVIEW_OUT" ]
+  [ "$(cat "$POSTED_REVIEWS_FILE")" = "[]" ]
+}
+
+@test "#2169: an approve verdict whose marker contradicts it (decision=escalate) still fails closed" {
+  local body="<!-- pr-review-agent v1 sha=${SHA} decision=escalate risk=HIGH -->
+
+## Automated review — NEEDS HUMAN REVIEW"
+  local vf; vf=$(write_approve_verdict "$body")
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"lacks a complete approval marker"* ]]
+  [ ! -s "$REVIEW_OUT" ]
+  [ "$(cat "$POSTED_REVIEWS_FILE")" = "[]" ]
+}
+
+@test "#2169: decision=approve outside the v1 marker (prose) is not rewritten and still fails closed" {
+  local body="<!-- pr-review-agent v1 sha=${SHA} risk=LOW -->
+
+The verdict was decision=approve in prose only."
+  local vf; vf=$(write_approve_verdict "$body")
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 1 ]
+  [ ! -s "$REVIEW_OUT" ]
+}
+
+@test "#2169: cascade-action prompt maps the decision word before substituting the marker" {
+  local prompt="$REPO_ROOT/prompts/cascade-action.md"
+  grep -qF 'DECISION_MARKER=$([ "$DECISION" = "approve" ] && echo "approved" || echo "escalated")' "$prompt"
+  grep -qF 's|PLACEHOLDER_DECISION|$DECISION_MARKER|g' "$prompt"
+  ! grep -qF 's|PLACEHOLDER_DECISION|$DECISION|g' "$prompt"
+}
+
 @test "AC2: exit 100 (not 101) when no escalation comment can be confirmed" {
   export COMMENT_FAILS=1
   local vf; vf=$(write_escalate_verdict)

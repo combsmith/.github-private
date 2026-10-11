@@ -48,6 +48,9 @@ ESCALATE_TO_AI=$(jq -r 'if .decision == "escalate" and .risk != "HIGH" then "tru
 # a metadata digest so the demanded metadata fix (which mints no commit) re-arms the
 # re-review; a false value keeps commit-only re-arm. Default false.
 METADATA_ONLY=$(jq -r 'if .decision == "escalate" and (.metadata_only == true) then "true" else "false" end' "$FINAL_RESULT")
+# Marker vocabulary: "approved"/"escalated" — the posting guard and review-cycle
+# consumers expect these exact strings, never the raw verdict word (#2169)
+DECISION_MARKER=$([ "$DECISION" = "approve" ] && echo "approved" || echo "escalated")
 ```
 
 2. Compose the review body. Write it to a temp file to avoid shell quoting issues:
@@ -80,7 +83,7 @@ Replace each PLACEHOLDER with the actual values using sed. Then substitute the r
 HEADING=$([ "$DECISION" = "approve" ] && echo "APPROVED ✓" || echo "NEEDS HUMAN REVIEW")
 sed -i \
   -e "s|PLACEHOLDER_SHA|$PR_HEAD_SHA|g" \
-  -e "s|PLACEHOLDER_DECISION|$DECISION|g" \
+  -e "s|PLACEHOLDER_DECISION|$DECISION_MARKER|g" \
   -e "s|PLACEHOLDER_RISK|$RISK|g" \
   -e "s|PLACEHOLDER_HEADING|$HEADING|g" \
   -e "s|PLACEHOLDER_TIER|$FINAL_TIER|g" \
