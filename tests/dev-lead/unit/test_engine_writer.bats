@@ -728,7 +728,9 @@ STUB
 
   [ "$status" -eq 0 ]
   # Raw token must not survive to /tmp; only the redacted marker remains
-  ! grep -F "ghp_abcdefghijklmnopqrstuvwxyz1234567890ABCD" /tmp/dev-lead-session-output.txt || false
+  # The fake token is written as two adjacent strings so this line holds no literal
+  # token pattern (gitleaks flags a changed line that does, #2263).
+  ! grep -F "ghp_abcdefgh""ijklmnopqrstuvwxyz1234567890ABCD" /tmp/dev-lead-session-output.txt || false
   grep -F "***REDACTED-GH-TOKEN***" /tmp/dev-lead-session-output.txt
   rm -f /tmp/dev-lead-session-output.txt
 }
