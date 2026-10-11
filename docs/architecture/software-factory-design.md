@@ -94,7 +94,7 @@ Some of it is rule and some of it is record. An implementer builds from the rule
 
 | Rules | Record of how the rules were reached |
 |---|---|
-| §2.4, the four rules; §3, the contracts; §4, behaviour and invariants; §5, Roles and authority; §8.4, the feed; §9.1, the build order; §9.6, the serving channel and cutover | §7, options weighed; §8.3, what came from another analysis; §9.3 to §9.5 and §9.7 to §9.11, the review passes; §9.12, how it is built; §10, edits made to other documents |
+| §2.4, the four rules; §3, the contracts; §4, behaviour and invariants; §5, Roles and authority; §8.4, the feed; §9.1, the build order; §9.6, the serving channel and cutover | §7, options weighed and the build-or-adopt research; §8.3, what came from another analysis; §9.3 to §9.5 and §9.7 to §9.11, the review passes; §9.12, how it is built; §10, edits made to other documents |
 
 The architecture review in `factory-mvp-architecture-review.md` is history. It records
 recommendations that were later replaced, and nothing should be built from it.
@@ -103,9 +103,8 @@ recommendations that were later replaced, and nothing should be built from it.
 
 - Whether the POC's agents are capped while the Factory is built. They draw on the same model
   window as the Factory. Uncapped for now, with the budget gauge watched.
-- The Kernel's language, and whether an open-source framework should carry part of it. Python with
-  the standard library only is the standing choice. It is to be settled in its own decision
-  record, after a small trial of the alternatives.
+- The Kernel's language. Research found no framework worth building on and recommends Python with
+  the standard library only at run time (§7.5). The Maintainer has not yet ruled.
 
 ## 2. Structure
 
@@ -961,7 +960,7 @@ Lifecycle graph (every state reaches a terminal one, every non-terminal state ha
 and the authority data (§5.4).
 
 The simulator samples interleavings. It does not prove their absence. A formal model in TLA+ would,
-for a small model, and is held in reserve for crash recovery if the simulator finds a
+for a small model, and is held in reserve, written in Quint (§7.5), for crash recovery if the simulator finds a
 fault there that it cannot pin down.
 
 ### 4.6 Boundary cases
@@ -1423,6 +1422,68 @@ late or not at all.
 | A record on the item: a check run's output or one comment | Nothing an issue can carry; a comment record is a marker again |
 | Events batched as artifacts and committed by one job | Two paths to keep correct, for a log Actions already keeps |
 | A database | Needs an always-on service |
+
+### 7.5 Build the Kernel, or adopt one
+
+Researched on 2026-10-11 from project repos, release pages and official documentation. Nothing was
+installed or run. Versions and dates are as read that day.
+
+**Verdict: build the Kernel, and adopt only libraries that run at test time.** No framework fits
+"a pure function over facts read afresh on every pass, with nothing stored" better than a few
+hundred lines of the Factory's own code.
+
+| Part of the Kernel | Verdict | Why |
+|---|---|---|
+| The Lifecycle | Build: versioned data, its own interpreter and graph check | The one credible library, XState, advances a stored snapshot by events. This Kernel works State out from facts each time. Its graph tools list paths; they do not prove that every state ends |
+| Admission and the gate | Build, as plain functions | The policy engines (OPA, Cedar, Zen, CUE) are separate binaries or native code. Using one turns each decision into a call to another process, in a second language, and slows a simulator that needs thousands of runs |
+| The authority table | Build, as data with a schema | Cedar's model is the nearest fit and is far larger than a table needs |
+| The simulator | Build it; adopt a property-testing library to drive it | Hypothesis in Python and fast-check in TypeScript are equivalent, one dependency each, and both replay a failure from a seed |
+| The formal model held in reserve | Quint, in preference to TLA+ written by hand | It has a seeded simulator of its own and hands the same specification to the model checkers |
+| Schemas | Keep JSON Schema | CUE is a separate binary and is not yet at version 1 |
+
+Two things are worth copying and not running, since both need a server: the shape of
+`palantir/policy-bot`'s rule file, where named rules are combined with "and" and "or"; and the
+design of Prow's Tide, which also reads the platform's state afresh on every pass.
+
+Excluded because each needs a server, a database or both: Temporal, Restate, DBOS, Inngest,
+Hatchet, Zuul and Kodiak. Mergify's engine is no longer open, and bors-ng is archived. The agent
+frameworks, LangGraph among them, offer nothing to a deterministic function.
+
+**What would change the verdict.**
+
+| If | Then |
+|---|---|
+| The Lifecycle comes to need nested or parallel states | Adopt XState, which means TypeScript |
+| Policy has to be edited or audited by someone other than the Maintainer, or vary by repo | Adopt OPA, in the job that decides and never in `apply` |
+| The simulator finds a fault in ordering that it cannot explain | Make the Quint model a required check |
+
+**What this means for the language.** No candidate forces the choice. The facts that bear on it:
+
+| Fact | Favours |
+|---|---|
+| The runner's default image has Python 3.12 and Node 22, with newer versions of each cached | Neither |
+| Node runs TypeScript files directly without a build, but the Node 22 documentation still calls that a release candidate; it is stable from Node 24.12 | Python, slightly, until the runner's default moves |
+| Run that way, TypeScript loses enums and some other syntax, and nothing checks the types; a type checker is still a development dependency | Neither: Python needs one too |
+| A schema validator with no dependencies exists for Python, though only up to draft 07; the usual TypeScript one has four | Python, slightly, because `apply` should carry as little third-party code as possible |
+| The page in the control room is JavaScript whichever is chosen | TypeScript, slightly |
+| Adopting XState would require TypeScript | TypeScript, only if the first row of the table above comes true |
+
+**Recommendation: Python, standard library only at run time, with Hypothesis as a test-only
+dependency that never enters `apply`.** A laptop needs a current Python installed; the system one
+on macOS is too old for the test library. Pin the runner image by version, not `ubuntu-latest`,
+since the default will move.
+
+Sources: the runner image's software list
+(<https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md>); Node's
+TypeScript documentation (<https://nodejs.org/api/typescript.html>); XState's pure transitions
+(<https://stately.ai/docs/pure-transitions>); OPA's command line
+(<https://www.openpolicyagent.org/docs/cli>); Quint (<https://quint.sh/docs/getting-started>);
+Hypothesis's stateful testing (<https://hypothesis.readthedocs.io/en/latest/stateful.html>);
+policy-bot (<https://github.com/palantir/policy-bot>); Tide
+(<https://docs.prow.k8s.io/docs/components/core/tide/>).
+
+Not verified: whether a Quint run repeats exactly from its seed; and whether the merge queue is
+available to a public repo on the free plan, which the documentation implies and does not state.
 
 ## 8. The control room
 
