@@ -59,6 +59,16 @@ fleet_pause_paused_run_nodes() {
   ' 2>/dev/null || true
 }
 
+# fleet_pause_resolved_runs   (GraphQL `nodes` response on stdin)
+#   Prints how many runs the response carries a job list for: nodes that
+#   resolved AND have a check suite. A token that cannot see check runs gets
+#   `checkSuite: null` back with no error, which would otherwise read as "no
+#   notice job ran". Prints 0 for empty or unparseable input.
+fleet_pause_resolved_runs() {
+  jq -r '[.data.nodes[]? | select(type == "object" and .checkSuite != null)] | length' 2>/dev/null \
+    || printf '0\n'
+}
+
 # fleet_pause_drop_runs <paused_nodes_json>   (runs JSON on stdin)
 #   Prints the runs whose `node_id` is NOT in the given JSON array of node ids.
 #   A run with no `node_id` is always kept.

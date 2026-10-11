@@ -133,17 +133,26 @@ FLEET_PAUSE_RUNS_QUERY='query($ids:[ID!]!){nodes(ids:$ids){... on WorkflowRun{id
 # Only runs that ended `success` are asked about: a paused run of a workflow with
 # a notice job always ends green, and a run that ended any other way keeps its
 # own conclusion. Best-effort: a failed read is a `::warning::` on stderr and
-# those runs stay counted exactly as before, never dropped.
+# those runs stay counted exactly as before, never dropped. So is a read that
+# succeeded but came back without the jobs of some runs (a token that may call
+# GraphQL but not see check runs answers `checkSuite: null` with no error).
 fetch_paused_run_nodes() {
-  local runs_json="$1" batch resp
+  local runs_json="$1" batch resp asked resolved
   while IFS= read -r batch; do
     [ -n "$batch" ] || continue
+    asked=$(jq 'length' <<< "$batch")
     # gh exits non-zero on a GraphQL `errors` member but still prints the body,
     # which holds every node it could resolve. Keep the body either way.
-    resp=$(jq -n --arg q "$FLEET_PAUSE_RUNS_QUERY" --argjson ids "$batch" \
+    if resp=$(jq -n --arg q "$FLEET_PAUSE_RUNS_QUERY" --argjson ids "$batch" \
         '{query: $q, variables: {ids: $ids}}' \
-      | gh api graphql --input - 2>/dev/null) \
-      || echo "::warning::Cannot read jobs for $(jq 'length' <<< "$batch") run(s) — a fleet-paused run among them stays counted as a success" >&2
+      | gh api graphql --input - 2>/dev/null); then
+      resolved=$(printf '%s' "$resp" | fleet_pause_resolved_runs)
+      if [ "$resolved" -lt "$asked" ]; then
+        echo "::warning::Jobs read answered for ${resolved} of ${asked} run(s) — a fleet-paused run among the rest stays counted as a success" >&2
+      fi
+    else
+      echo "::warning::Cannot read jobs for ${asked} run(s) — a fleet-paused run among them stays counted as a success" >&2
+    fi
     printf '%s' "$resp" | fleet_pause_paused_run_nodes
   done < <(jq -c --argjson n "$FLEET_PAUSE_BATCH" '
     [.[] | select(.conclusion == "success") | .node_id | select(. != null)] as $ids

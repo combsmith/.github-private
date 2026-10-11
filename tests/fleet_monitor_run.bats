@@ -24,7 +24,7 @@ setup() {
   CALLS="${WORK}/calls.log"; export CALLS
   GRAPHQL_LOG="${WORK}/graphql.log"; export GRAPHQL_LOG
   : > "$GRAPHQL_LOG"
-  unset FAKE_GRAPHQL_FAIL FLEET_PAUSE_BATCH
+  unset FAKE_GRAPHQL_FAIL FAKE_GRAPHQL_NO_SUITE FLEET_PAUSE_BATCH
   ORG="petry-projects"; export ORG
   STUB_BIN="${WORK}/bin"
   mkdir -p "$FAKE_API" "$FAKE_ROOT" "$STUB_BIN"
@@ -61,6 +61,12 @@ case "$path" in
     body="$(cat)"
     printf '%s\n' "$(jq -c . <<< "$body")" >> "$GRAPHQL_LOG"
     [ -z "${FAKE_GRAPHQL_FAIL:-}" ] || { echo "gh: HTTP 502" >&2; exit 1; }
+    # FAKE_GRAPHQL_NO_SUITE=1: the request succeeds, but every run comes back
+    # with no check suite, as for a token that cannot see check runs.
+    if [ -n "${FAKE_GRAPHQL_NO_SUITE:-}" ]; then
+      jq -c '{data: {nodes: [.variables.ids[] | {id: ., checkSuite: null}]}}' <<< "$body"
+      exit 0
+    fi
     jobs='{}'; [ -f "${FAKE_API}/jobs.json" ] && jobs="$(cat "${FAKE_API}/jobs.json")"
     jq -c --argjson jobs "$jobs" '{data: {nodes: [.variables.ids[] as $id
       | {id: $id, checkSuite: {checkRuns: {nodes:
@@ -376,4 +382,45 @@ five_runs_two_paused() {
   # Nothing is dropped or guessed: the old numbers, and no paused section.
   [ "$(detail_row ".github/workflows/stale-manager.yml")" = " 5 | 3 | 1 | 0 | 20% " ]
   [ -z "$(paused_row ".github/workflows/stale-manager.yml")" ]
+}
+
+@test "fleet_monitor: a jobs read that succeeds without the jobs warns and leaves the runs counted as before" {
+  five_runs_two_paused
+  export FAKE_GRAPHQL_NO_SUITE=1
+
+  run_monitor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::warning::Jobs read answered for 0 of 3 run(s)"* ]]
+  [ "$(detail_row ".github/workflows/stale-manager.yml")" = " 5 | 3 | 1 | 0 | 20% " ]
+  [ -z "$(paused_row ".github/workflows/stale-manager.yml")" ]
+}
+
+@test "fleet_monitor: a complete jobs read raises no warning about it" {
+  five_runs_two_paused
+
+  run_monitor
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Jobs read answered for"* ]]
+  [[ "$output" != *"Cannot read jobs for"* ]]
+}
+
+# bad_batch_falls_back <value> — the monitor warns about the value, then reads
+# all three green runs in one request and still finds the two paused ones.
+bad_batch_falls_back() {
+  five_runs_two_paused
+  export FLEET_PAUSE_BATCH="$1"
+
+  run_monitor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::warning::FLEET_PAUSE_BATCH='$1' is not a positive integer"* ]]
+  [ "$(wc -l < "$GRAPHQL_LOG" | tr -d ' ')" = "1" ]
+  [ "$(paused_row ".github/workflows/stale-manager.yml")" = "2" ]
+}
+
+@test "fleet_monitor: a zero FLEET_PAUSE_BATCH warns and falls back to 100" {
+  bad_batch_falls_back 0
+}
+
+@test "fleet_monitor: a non-numeric FLEET_PAUSE_BATCH warns and falls back to 100" {
+  bad_batch_falls_back abc
 }
