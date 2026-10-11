@@ -501,9 +501,25 @@ PR-triggered check on the existing Lint workflow — **no new cron/scheduled wor
     in another repo, which no PR in this repo can make, so failing would only turn unrelated PRs red. It
     mirrors the N-1 rule (the same lag in the other direction), which is also accepted and flagged.
   - **Only a file that matches no standards emission is DRIFTED**, and that still fails.
-  - **A comparison that cannot be made is said so.** If the standards HEAD commit or its emission cannot
-    be read, the file stays DRIFTED and fails, but the row is tagged `ahead-unchecked` and the message
-    tells you to re-run with `STANDARDS_REF=<standards main commit>` before re-seeding.
+  - **HEAD is compared only when it is newer (#2237).** A SHA that differs from HEAD does not prove HEAD
+    is newer: an explicit `STANDARDS_REF` can name a standards branch that is not in `main`'s history. So
+    the AHEAD comparison runs only when the baseline commit is an ancestor of the standards HEAD. This is
+    read once per run from the compare API. A baseline that is ahead of HEAD or diverged from it never
+    yields AHEAD; a `::notice::` says why.
+  - **A comparison that cannot be made is said so.** If the standards HEAD commit, its relation to the
+    baseline, or its emission cannot be read, the file stays DRIFTED and fails. The row is tagged
+    `ahead-unchecked`, and the message tells you to re-run with `STANDARDS_REF=<standards main commit>`
+    before re-seeding.
+  - **A file may also match a commit between the channel and HEAD (#2237).** The comparison checks only
+    the channel and HEAD, so a template synced from a standards commit between them is still DRIFTED.
+    When HEAD is newer than the channel, the DRIFTED message does not give the bare "Re-seed it" remedy.
+    It says an intermediate-commit sync is possible and how to check it: re-run with
+    `STANDARDS_REF=<commit>` for the commits in that range that touched the file's source. If one reports
+    ALIGNED, re-seed at standards HEAD and promote standards. Never re-seed from the channel.
+    - **Decision: a message, not detection.** To match intermediate commits, the guard would need each
+      file's standards source paths, which only `seed-repo-template.sh` knows. It would also need one
+      commits-list call per DRIFTED file and one emission per commit in the range. That adds network
+      cost to every PR's lint run. The message removes the wrong advice without that cost.
 
 - **Reference rows — `agent-ingress.yml` (#1729, AC #12):** `.github/workflows/agent-ingress.yml` is
   enrolled in the drift manifest for **post-collapse byte-identity coverage**, but
