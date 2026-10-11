@@ -94,7 +94,7 @@ Some of it is rule and some of it is record. An implementer builds from the rule
 
 | Rules | Record of how the rules were reached |
 |---|---|
-| §2.4, the four rules; §3, the contracts; §4, behaviour and invariants; §5, Roles and authority; §8.4, the feed; §9.1, the build order; §9.6, the serving channel and cutover | §7, options weighed and the build-or-adopt research; §8.3, what came from another analysis; §9.3 to §9.5 and §9.7 to §9.11, the review passes; §9.12, how it is built; §10, edits made to other documents |
+| §2.4, the four rules; §3, the contracts; §4, behaviour and invariants; §5, Roles and authority; §8.4, the feed; §9.1, the build order; §9.6, the serving channel and cutover | §7, options weighed and the build-or-adopt research; §8.3, what came from another analysis; §9.3 to §9.5 and §9.7 to §9.11, the review passes; §9.12 to §9.14, how it is built; §10, edits made to other documents |
 
 The architecture review in `factory-mvp-architecture-review.md` is history. It records
 recommendations that were later replaced, and nothing should be built from it.
@@ -1482,8 +1482,9 @@ Hypothesis's stateful testing (<https://hypothesis.readthedocs.io/en/latest/stat
 policy-bot (<https://github.com/palantir/policy-bot>); Tide
 (<https://docs.prow.k8s.io/docs/components/core/tide/>).
 
-Not verified: whether a Quint run repeats exactly from its seed; and whether the merge queue is
-available to a public repo on the free plan, which the documentation implies and does not state.
+Not verified: whether a Quint run repeats exactly from its seed. The merge queue's availability to
+a public repo on the free plan is not stated in the documentation; it is in use on
+`.github-private`, which settles it.
 
 ## 8. The control room
 
@@ -1630,7 +1631,7 @@ Anything not needed for that event is in a later slice.
 
 | Slice | Delivers | Who approves Factory changes |
 |---|---|---|
-| 0. Foundations | The repo, its ruleset and `factory / verify`. The schemas the first slice uses, with golden examples. The pull-request Lifecycle. The rubric for `pr-review`. The simulator with a skeleton Kernel. Three Apps: the Controller's, the reviewer's and the shared reader. The trials of §6 that the first slice rests on, each leaving a fixture | The Maintainer |
+| 0. Foundations | A small proof of concept of the Kernel, the schemas and the validators, built first (§9.13). The context the Factory's authors work from: `AGENTS.md`, standards, a decision log and the lessons of the POC (§9.14). The repo, its ruleset and `factory / verify`. The schemas the first slice uses, with golden examples. The pull-request Lifecycle. The rubric for `pr-review`. The simulator with a skeleton Kernel. Three Apps: the Controller's, the reviewer's and the shared reader. The trials of §6 that the first slice rests on, each leaving a fixture | The Maintainer |
 | 1. First approval | The facts and records ports. The Kernel's Lifecycle, Convergence and gate. The poller, nudged directly by the Factory's own repo. `run` and `apply` for the review Intent, with its eval set. Deterministic checks read as Findings. The status on the item. A feed of two files, `meta` and `items` | The Maintainer, until the first Release on `next` serves the Factory's repo; then the Factory's reviewer, with the Maintainer able to block |
 | 2. The Factory's own author | The fix and implement Intents under the run contract, with `verify`. Acceptance contracts drafted by `qa-lead` and approved by the Maintainer (§4.8). From here the Factory writes most of its own code | The Factory |
 | 3. A Consumer repo, and the weekly comparison | The first `stable` Release, promoted on evidence from `next`. One low-risk Consumer, cut over by pause and repoint (§9.6). The relay. The weekly comparison of the POC and the Factory, as a file and one tracking issue (§9.2) | The Factory |
@@ -1643,7 +1644,9 @@ decision of 2026-10-11. Until slice 2 every line of Factory code is written in t
 sessions (§9.12), so the sooner the Factory can write, the sooner that load falls. Until slice 4
 the Maintainer has the status on each item and the two feed files.
 
-**Slice 0 is done when** `factory / verify` is a required check and passes; every schema the first
+**Slice 0 is done when** the proof of concept has answered its questions; an agent given only the
+repo's own context can add a rule to the Kernel and pass the required check without being told
+how; `factory / verify` is a required check and passes; every schema the first
 slice uses has an example that validates; the Lifecycle passes its exhaustive checks; the simulator
 runs its fixed seeds against a skeleton Kernel; the three Apps exist; and each platform trial the
 first slice rests on has a recorded fixture.
@@ -1935,6 +1938,51 @@ On plugins: the built-in review, security-review and orchestration features are 
 community plugins that install hooks or run with broad reach. One such plugin is close in spirit to
 this design, a council of six specialist reviewers; it should be read before it is installed, since
 a plugin's hooks run with the session's own permissions.
+
+### 9.13 The first proof of concept
+
+Before the repo, the Apps or any credential exists, a small proof of concept is built: the Kernel,
+the schemas and the validators, and nothing that touches GitHub. It needs no decision from the
+platform trials, and it tests the claim this whole design rests on, that the decisions can be a
+pure function which is checked before it is trusted.
+
+| It contains | It answers |
+|---|---|
+| A schema and a golden example for the facts, the Decision, the Finding, the acceptance contract, the rubric and the authority table | Can every contract of §3 be written down and checked mechanically? |
+| A validator for those schemas with no third-party code | Is the standard library enough for what `apply` must check? |
+| The pull-request Lifecycle as data, and its exhaustive check | Does the Lifecycle of §4.1 terminate, and is every cycle bounded? |
+| The Kernel's decision for a pull request: derived State, Convergence, Admission and the attention class | Can State really be derived from facts and run records alone? |
+| The boundary cases of §4.6 as tests, and a first seeded simulator with two faults | Do the invariants hold, and does a failure replay from its seed? |
+| A check that the Kernel imports nothing able to do I/O | Can the boundary be asserted by a tool? |
+
+It is written in Python with the standard library only, as recommended in §7.5, and is where that
+recommendation is tested. It is built locally and becomes the first commits of the Factory repo.
+It is not a throwaway: what survives review stays.
+
+### 9.14 Context engineering
+
+Most of the Factory is written by agents, and an agent builds from what it is given to read. That
+context is treated as part of the product: versioned, reviewed, kept small, and tested. Slice 0
+establishes it, on the Maintainer's instruction of 2026-10-11.
+
+| What | Its job | Rule that keeps it good |
+|---|---|---|
+| `AGENTS.md` at the root | What the repo is, the rules that are never broken, the one command that verifies, and a map of where things live | Short enough to be read in full on every task. Every rule in it names the check that enforces it; a rule no check enforces is a wish |
+| An `AGENTS.md` in each major directory | The rules of that place only: in `kernel/`, no I/O and the clock as an argument | Read only when working there, so the root file stays short |
+| Standards | How code, tests, workflows, security boundaries and reviews are done here | One page each. Examples before prose. The review standard is the rubric of §3.14, not a second copy |
+| A decision log | Why each structural choice was made, and the boundary a check can assert | It starts again in the new repo at number one, with the current state of ADR-0013 and no history of how it was reached |
+| Lessons | What the POC learned the hard way: each failure, the rule it produced, the check that holds the rule | Drawn from this repo's 1,100-line `AGENTS.md`, its postmortems, the review's root causes and defects, and the standards repo. A lesson with no check is rewritten until it has one, or dropped |
+| The glossary | The PRD's terms, used exactly | One term, one meaning; a synonym is a defect |
+| Skills | Procedures done rarely and exactly: run a platform trial, cut a Release, add a Role | Loaded when the task calls for them, so they cost nothing otherwise |
+| Hooks and permissions | The rules that must hold whatever the agent was told | Enforcement by tool, not by instruction (§9.12) |
+
+Three practices come from outside this org and are adopted as they stand: keep what is always
+loaded small and disclose the rest on demand; prefer a worked example to a paragraph of
+instruction; and treat context like code, so that a change to it is reviewed and, where an eval
+exists, measured.
+
+The test of the context is in slice 0's exit: an agent given only the repo can add a rule to the
+Kernel and pass the required check without being told how.
 
 ## 10. What this design changes elsewhere
 
