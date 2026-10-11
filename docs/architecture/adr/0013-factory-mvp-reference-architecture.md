@@ -154,7 +154,8 @@ means the factory's run records and artifacts in GitHub Actions, as indexed in t
   decision can be replayed.
 - **The control room is a materialized view.** `petry-projects/software-factory-control-room` holds
   an index of the run records and artifacts and every item's computed State. Only the Controller
-  writes it. It is public, reaches back 90 days, and can be deleted and rebuilt from GitHub. A view
+  writes it. It is public. For the 90 days GitHub keeps run records it can be deleted and rebuilt;
+  it may keep what it has collected for longer, for reporting only. A view
   rebuilt from GitHub equals the view updated pass by pass, and a check asserts it.
 - **No decision reads the control room.** The same facts and run records give the same decision
   whatever the view holds, so the view can be wrong or missing without the factory misbehaving.
@@ -189,9 +190,10 @@ Controller once per event; the maintainer replaced that on 2026-10-10 (decision 
 - **A fault in the environment is not an attempt.** A failed Run is classed as a fault of the item,
   of capacity or of the environment, or as superseded. Only the first counts against the item. Several environment
   faults in a row pause Admission, raise one alert, and clear when a probe Run succeeds.
-- **An external timer may also start a pass.** It holds no credential over the factory repo: it
-  causes a nudge through an event anyone may cause. It keeps no state and decides nothing. Correctness never depends on it. It is optional, and it is
-  the one permitted exception to "no always-on component".
+- **A hosted relay supplies low latency.** One small stateless function outside GitHub receives the
+  Controller App's webhooks for every repo and runs a timer, and turns each into a nudge. It holds
+  no credential over the factory repo, keeps no state and decides nothing. Correctness never
+  depends on it. It is the one permitted exception to "no always-on component".
 - **One workflow, the one that carries a Run, is the only one that invokes an Engine or references
   an LLM credential.** The poller invokes none.
 - **At most one Run that can produce Effects is active per work item,** by the lane. Org-wide
@@ -217,8 +219,7 @@ These brakes sit outside the Kernel, so that a defect in the Kernel cannot disab
 
 And a nudge is bounded in what it can cost:
 
-- **A consumer repo may carry the nudge file, and needs none to be served.** Where it is installed,
-  its one job drops events authored by a factory identity in its job-level `if:`.
+- **A consumer repo carries no factory file.** The poller reads it and the relay hears its events.
 
 ### 4. One run contract; a job is a credential boundary
 
@@ -279,7 +280,8 @@ account, as a person. "The App" in the boundaries below means the App of the Rol
 - **Registering an App is a manual step.** A new Role is one pull request and one registration.
 - **Every write by a factory identity is reconciled with a recorded Effect.** A write with no match
   raises an alert: a credential is in use outside the factory.
-- **The model credential is the factory's alone,** not the maintainer's own subscription.
+- **The model credential is the factory's alone,** not the maintainer's own subscription. If a
+  subscription cannot be used, the fallback is a metered API credential under a monthly cap.
 - **Apps are installed across the org, and each token is minted for one repo.**
 - **The machine user approves and does nothing else.** It never pushes and never opens a pull
   request, because GitHub does not count an approval from an author or a last pusher.
@@ -309,14 +311,13 @@ file in the Release. The factory repo is served by `next`, and `stable` serves c
 - **Every Run records the Release it ran.**
 - **Inside a Release, factory files are read at `github.job_workflow_sha`,** never at a branch.
 - **The only factory files that run from the default branch are the entry shim in the factory repo
-  and the nudge file in a consumer that carries one.** Both are byte-frozen thin callers under ADR-0001:
+  and a workflow in the factory repo that nudges the poller on the factory's own events.** Both are byte-frozen thin callers under ADR-0001:
   every job `uses:` a pinned factory reusable and declares no `steps:` or `run:`. The shim has one
   static caller job per channel and selects between them with a job-level `if:` on the output of a
   pinned ring-resolution job and on the pause variable. Those two non-event predicates are the only
   additions to ADR-0007's filter rule.
-- **A consumer repo carries at most one factory file,** byte-identical to the template in the
-  Release it follows. It subscribes to no event that would run a copy of itself from a work-item
-  branch.
+- **A consumer repo carries no factory file.** Nothing of the factory runs from a consumer's
+  branches.
 - **Rollback executes no file from the Release being rolled back.**
 - **A candidate reaches `stable` only when the Ledger holds, for that Release, an eval result for
   each production Intent whose inputs changed and verified Effects from the `next` ring.** A run
@@ -428,7 +429,7 @@ measures of the settled ones.
 - **Over two weeks of serving the factory repo:** handling passes and nudges uses at most 10% of
   the org's job-minutes; a pass costs at most 3,000 GraphQL points an hour at peak; and the
   95th-percentile delay from a change that produces no event to a decision is at most 15 minutes.
-- **If the delay threshold fails, the nudge file is installed where it fails.** If it still fails,
+- **If the delay threshold fails with the relay in place,**
   a follow-on ADR decides between a longer-lived polling job and a wake per event.
 - **If the view cannot be kept equal to a rebuild, a follow-on ADR replaces it.** Decisions 1 and
   4 to 10 stand either way, because the Kernel does no I/O.
@@ -464,6 +465,9 @@ the Kernel.
 - **Convergence is a Kernel function:** every Lens required for the item's class and stage has
   reported on the current content version, and no blocking Finding is open. An item that has not
   converged within its declared bound is placed on Hold.
+- **A reviewing Role declares a rubric.** Its criteria are data, each Finding cites one, and a
+  Result reports on every criterion that applies. A rubric is a floor: a Finding outside it is
+  allowed and counted, and is how the rubric grows.
 - **Convergence also needs evidence, not only the absence of objection.** Where a work item has an
   acceptance contract, every criterion in it must have passing evidence on the current content.
   The contract is written before the work by a Role other than the one that implements it, is
@@ -485,9 +489,9 @@ Numbers are assigned when each is written. Each lands with the migration step th
 
 | Follow-on | Must decide | Effect on the log |
 |---|---|---|
-| **Agent identity** | Each Role's App and its permissions (the shared name prefix is `combsmith-sf-`); how tokens are narrowed per Role; the credential that a consumer's nudge file and the external timer use; the reviewer credential's confinement; what interaction model §12.2 says afterwards. | Supersedes ADR-0008. |
+| **Agent identity** | Each Role's App and its permissions (the shared name prefix is `combsmith-sf-`); how tokens are narrowed per Role; what the relay holds; the reviewer credential's confinement; what interaction model §12.2 says afterwards. | Supersedes ADR-0008. |
 | **Records and the control room** | Run naming; the artifact and view schemas; where held-out eval sets live; how legacy markers are read during migration. | New. No ADR governs this today. |
-| **Admission** | The poller and its schedule; the nudge file; the external timer; the pass record; how a human Pause and a Hold are read; the LLM capacity signal and its credential (PRD OQ-3); priority order. | Extends ADR-0007, including a `pull_request_target` subscription that ADR-0007 excludes and that is safe only because the nudge file checks out nothing and sends a nudge that carries nothing. Admission trusts no event: an Outside contributor's pull request produces no Run that holds secrets or writes without a Maintainer decision (PRD FR-63). ADR-0010's job-level concurrency key stays in use for the per-item group. Supersedes ADR-0009 when the router it names is retired. |
+| **Admission** | The poller and its schedule; the relay; the pass record; how a human Pause and a Hold are read; the LLM capacity signal and its credential (PRD OQ-3); priority order. | Replaces ADR-0007's file in each consumer with none: the poller reads every repo and the relay hears its events. Admission trusts no event: an Outside contributor's pull request produces no Run that holds secrets or writes without a Maintainer decision (PRD FR-63). ADR-0010's job-level concurrency key stays in use for the per-item group. Supersedes ADR-0009 when the router it names is retired. |
 | **Run contract** | Task, Result and Effect schemas; the sandbox; resume; whether an adopted runtime fills the inner half. | Extends ADR-0005. Supersedes ADR-0011, which should be accepted now as the interim rule. |
 | **Release unit and promotion** | The eval gate and its cost budget; ring membership; rollback; retirement of per-agent names. | Supersedes ADR-0002 and ADR-0006, restating what survives of each. |
 | **Kernel language and verification** | Type checking; size and complexity budgets; recorded-interface tests; when the legacy suite becomes required. | Supersedes ADR-0004, restating its principle. |
@@ -662,7 +666,7 @@ extension remains a separate decision.
   evidence on councils and convergence (§15), reviewer surfaces and a starting council (§16), where
   a Lens runs (§17), building in place against building greenfield (§18).
 - ADR-0000 (process) — immutability and supersede-not-edit, which the precedence rule above follows.
-- ADR-0001 (thin caller / reusable) — the boundary the entry shim and the nudge file keep.
+- ADR-0001 (thin caller / reusable) — the boundary the entry shim keeps.
 - ADR-0003 (review artifact contract and rubric registry) — the existing data contract that
   decision 12 generalizes from review targets to Lenses.
 - ADR-0002 (channel tags and rings) — the mechanism decision 6 reuses with one name.

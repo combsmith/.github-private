@@ -74,7 +74,9 @@ Made by the Maintainer on 2026-10-10, in addition to ADR-0013's twelve decisions
 | The Maintainer records continue or stop at two decision points | §9.2 |
 | Decisions read GitHub only; the control room is written and never read back (from the simplification pass, §9.4) | §3.9 |
 | Every `run` job reads through one shared reader App; a Role gets its own App when it first writes | §5.1 |
-| An external timer may start a pass | §7.3 |
+| A hosted relay turns webhooks and a timer into nudges; no Consumer repo carries a Factory file | §7.3 |
+| Each reviewing Intent declares a rubric, which is a floor and grows from what it missed | §3.14 |
+| The Factory's own author Role comes before the control room and the shadow Roles | §9.1 |
 | Each Lens has a declared scope of paths | Role manifests (§5.3) |
 | A Consumer repo's setup and test commands are part of its onboarding contract | The Consumer entry (§3.12) |
 | Design by simulation first, with a formal model held in reserve | §4.5 |
@@ -92,7 +94,7 @@ Some of it is rule and some of it is record. An implementer builds from the rule
 
 | Rules | Record of how the rules were reached |
 |---|---|
-| §2.4, the four rules; §3, the contracts; §4, behaviour and invariants; §5, Roles and authority; §8.4, the feed; §9.1, the build order; §9.6, the serving channel and cutover | §7, options weighed; §8.3, what came from another analysis; §9.3 to §9.5 and §9.7 to §9.11, the review passes; §10, edits made to other documents |
+| §2.4, the four rules; §3, the contracts; §4, behaviour and invariants; §5, Roles and authority; §8.4, the feed; §9.1, the build order; §9.6, the serving channel and cutover | §7, options weighed; §8.3, what came from another analysis; §9.3 to §9.5 and §9.7 to §9.11, the review passes; §9.12, how it is built; §10, edits made to other documents |
 
 The architecture review in `factory-mvp-architecture-review.md` is history. It records
 recommendations that were later replaced, and nothing should be built from it.
@@ -101,6 +103,9 @@ recommendations that were later replaced, and nothing should be built from it.
 
 - Whether the POC's agents are capped while the Factory is built. They draw on the same model
   window as the Factory. Uncapped for now, with the budget gauge watched.
+- The Kernel's language, and whether an open-source framework should carry part of it. Python with
+  the standard library only is the standing choice. It is to be settled in its own decision
+  record, after a small trial of the alternatives.
 
 ## 2. Structure
 
@@ -257,8 +262,8 @@ on that log surviving.
 2. **Immutable tag, moving channel.** A Release is an immutable tag. A channel is a moving tag that
    points at one, moved through one path by one identity under a ruleset. Moving it back is the
    rollback.
-3. **At most one Factory file in a Consumer repo.** It is byte-identical to the template in the
-   Release the repo follows, and it never needs editing for a new Role, Intent or trigger.
+3. **No Factory file in a Consumer repo.** The poller reads every repo, and the relay of §7.3 hears
+   their events. Adopting the Factory changes nothing in the repo's workflows.
 4. **A concurrency key per Work item, declared at job level.** One running and one pending entry
    per item is the coalescing the design wants, not a defect to work around.
 
@@ -286,6 +291,7 @@ A reader rejects a major version it does not know. Messages are JSON. Files a pe
 | Authority table | Maintainer | Kernel | Who decides each category of Finding |
 | Consumer entry | Repo owner | Kernel, `verify` | How one Consumer repo is served |
 | Acceptance contract | `qa-lead`, approved by the Maintainer | Kernel, `verify`, the author Role | What a change must show to be correct |
+| Rubric | Factory developer, approved by the Maintainer | A reviewing Role, its evals | The least a Role must check, and how it grades what it finds |
 | Lifecycle | Factory developer | Kernel | States, Transitions, Gates and actors |
 
 ### 3.2 Nudge
@@ -570,7 +576,8 @@ outcome file; it is treated as `item` unless other Runs are failing as `environm
 time. The `capacity` outcome is the capacity signal the PRD has lacked (OQ-3): observed, not
 estimated. One cause must never become fifty Holds.
 
-Run records and artifacts are kept for 90 days, which is the Factory's history (PRD FR-40).
+Run records and artifacts are kept for 90 days, which is the Factory's own history (PRD FR-40). The
+control room may keep what it has collected for longer (§7.2).
 
 ### 3.11 Role manifest
 
@@ -638,7 +645,6 @@ verify:
   test: "scripts/factory-test.sh"
   protected_paths: ["scripts/factory-setup.sh", "scripts/factory-test.sh", ".github/**", "CODEOWNERS"]
 reviewers: [coderabbit, cubic, gemini-code-assist, sonarqube-cloud]
-nudge_installed: false
 ```
 
 Adopting the Factory is more than this entry. The repo also needs the two scripts, a ruleset that
@@ -695,6 +701,51 @@ under a different owner.
 The file and the tests it names are protected paths, so `apply` refuses any change to them by the
 Role that implements the work. Who approved the contract is not stored: it is the
 Maintainer's approving review at the commit that added the file.
+
+### 3.14 Rubric
+
+A Role that reviews declares how it judges. Without that, a Finding's severity is the model's mood,
+and a Result that reports nothing cannot be told from one that did not look.
+
+```yaml
+schema: rubric/1
+role: pr-review
+intent: review-change
+version: 3
+criteria:
+  - id: PR-1
+    statement: The change does what its issue asks, and nothing the issue does not ask.
+    category: requirements
+    evidence: The acceptance contract, or the issue where there is none.
+    severity_if_violated: major
+  - id: PR-2
+    statement: No code path writes outside what the Role's permitted Effects allow.
+    category: security
+    evidence: The diff.
+    severity_if_violated: blocking
+  - id: PR-3
+    statement: New behaviour has a test that would fail without it.
+    category: functional
+    evidence: The diff and the test results.
+    severity_if_violated: major
+    applies_when: { paths: ["**/*.py"] }
+```
+
+Three things bind to it.
+
+- **A Finding cites its criterion.** `criterion: PR-3` is a field of the Finding of §3.7, and the
+  severity comes from the rubric.
+- **A Result reports coverage.** For every criterion that applies: `met`, a Finding, or
+  `not_applicable` with a reason. A reviewing Result that omits one fails validation.
+- **The Role's eval set is scored against the same rubric,** so what is measured is what runs.
+
+**A rubric is a floor, not a ceiling.** A Role may raise a Finding that cites no criterion. It is
+marked off-rubric and counted. An off-rubric Finding that is acted on, or an escaped defect that no
+criterion covered, is the evidence for adding a criterion, and that is how a rubric grows. Rubrics
+are among the paths only the Maintainer approves (§5.1), because removing a criterion loosens a
+gate.
+
+`pr-review` has a rubric from the first slice. Each domain Role gets one before it leaves shadow.
 
 ## 4. Behaviour
 
@@ -870,6 +921,7 @@ These are the properties the simulator asserts. Each is a sentence a test can fa
 | I-34 | A run record counts only if it is the Factory's own workflow, on the default branch, started by a schedule or a dispatch | §3.10 |
 | I-35 | A Run whose Task holds `outside` or `advisory` text has no shell and no network tool | FR-12 |
 | I-36 | An `outside` item's admission holds only if it was given after the author's latest push | FR-63 |
+| I-37 | A reviewing Result reports on every criterion of its rubric that applies; one that does not applies no Effect | §3.14 |
 
 ### 4.5 The simulator
 
@@ -888,7 +940,7 @@ decision logic against a fake world, quickly, thousands of times.
   every step boundary, including between two Effects and before any artifact is uploaded. The
   control room unwritable, or holding nonsense. A facts read that fails or is stale. A missing capacity reading.
   A Result that fails validation. An Engine that times out. A human acting mid-Run.
-- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-36. I-1 and I-18 are checked once faults
+- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-37. I-1 and I-18 are checked once faults
   stop and the world is left to settle.
 - **Reproduction.** Each run has a seed from the standard library's generator. A failure prints the
   seed and the trace, and the trace renders as a sequence diagram.
@@ -1026,7 +1078,7 @@ Intent is served by a different model family from the implementing one. This is 
 Lifecycle where a second family buys the most, and it depends on that vendor's quota.
 
 **How strict, and when.** The contract takes effect with the fix and implement Intents (§9.1,
-slice 4). At first the rule is only that every criterion names a check and has evidence, and a
+slice 2). At first the rule is only that every criterion names a check and has evidence, and a
 `role` check is allowed. It tightens as measurements arrive: `P0` criteria must have an executable
 check, then held-out scenarios where they prove their worth.
 
@@ -1050,7 +1102,7 @@ room. That shapes every row.
 | From a fork, start a workflow run named like a Factory Run, with forged artifacts | Run records count by workflow, event and repo, never by name (I-34) |
 | Put instructions in a pull-request title, which reaches the feed, which a board in the Maintainer's own Claude session reads | The feed carries no free text from outside (§8.4) |
 | Get a harmless fork commit admitted, then push the real one | Admission lapses on the next push (I-36) |
-| Steal the external timer's credential | The timer holds none (§7.3) |
+| Steal what the relay holds | It holds a webhook secret and nothing that can act on the Factory repo. The worst a thief can do is cause passes (§7.3) |
 | Forge a fault report from inside a Run, to pause the Factory | A pause needs agreeing faults from Runs on different items, and `apply` and the poller class the faults they see themselves. The worst case is delay, bounded by the probe Run |
 | Replace the commit bundle from inside `verify` | The bundle is taken by identifier and digest (§3.6) |
 | Craft a Result that has `apply` approve something else | An approval is for exactly the admitted commit (§3.6) |
@@ -1073,7 +1125,11 @@ it is long-lived, it can approve, and it can merge.
 | The Controller's App key | Start Runs; write the control room, statuses and labels | The poller | Environment secret, default branch only | On a fixed period |
 | The reader App's key | Read public repos | The `run` job | Environment secret, default branch only | On a fixed period |
 | The held-out sets' credential | Read the held-out repo | The eval job only | Environment secret, default branch only | On a fixed period |
-| The external timer | Nothing over the Factory repo | The timer service | None needed | Not applicable |
+| The relay's webhook secret | Prove that a webhook came from GitHub | The relay | The relay's host | On a fixed period |
+| The relay itself | Nothing over the Factory repo | The relay's host | None needed | Not applicable |
+
+If the subscription cannot be used, the fallback is a metered API credential under the monthly cap
+of PRD FR-73, held and stored the same way.
 
 Only the Controller can start or delete runs. The readiness check (§3.12) asserts the settings
 these rules rest on: fork workflows need approval, the default workflow token is read-only, secret
@@ -1115,8 +1171,8 @@ state. The fourth column is the plan.
   It approves and does nothing else. It never pushes and never opens a pull request, because GitHub
   will not count an approval from an author or a last pusher.
 - **The Maintainer is the only code owner for the Factory's own rules** in the Factory repo:
-  `lifecycle/`, the authority table, the gate function, the brakes, the invariants and the
-  simulator's fixed seeds, and `.github/`. GitHub then
+  `lifecycle/`, the authority table, the rubrics, the gate function, the brakes, the invariants and
+  the simulator's fixed seeds, and `.github/`. GitHub then
   enforces that the Factory cannot approve a change to what governs it, whichever Release is
   serving.
 - The Apps share the name prefix `combsmith-sf-`, so `qa-lead` acts as `combsmith-sf-qa-lead[bot]`. The frozen Consumer file drops
@@ -1221,6 +1277,7 @@ it observed as a recorded fixture, which is what the simulator's fake GitHub is 
 | P-20 | Does an event that anyone may cause, such as starring a repo, still start a workflow, and how often may it? | Yes, often enough for a tick every minute or two |
 | P-26 | Can the model CLI's sandbox stop a tool reading the parent process's environment, and limit where it connects? | Yes to both, or the first and third layers of §4.9 carry the weight |
 | P-27 | Does a fork's pull-request workflow run wait for approval, and can it never be a schedule or dispatch run? | Yes to both |
+| P-31 | Does the Controller App's webhook reach a hosted function for every repo it is installed on, and can that function cause a nudge with no credential over the Factory? | Yes to both |
 | P-28 | Can the actor who last pushed a pull request's head be read as a fact? | Yes, or I-26 has to be met another way |
 | P-29 | Is the hash of a pull request's own diff stable when only the base moves, and how does a truncated diff present? | Stable; truncation is detectable |
 | P-30 | Which identity can cut a Release and move a channel tag under a tag ruleset, from a workflow in the Factory repo? | One identity, through one path |
@@ -1279,7 +1336,9 @@ comparable system rebuilds its state from the platform.
 | A fast index of the last two, and every item's computed State | The control room (§8) | The Controller |
 
 GitHub is the source of truth for all of it. The control room is a materialized view: it holds
-nothing GitHub does not, for the 90 days GitHub keeps it.
+nothing GitHub does not for the 90 days GitHub keeps run records, and for that span it can be
+rebuilt. It may keep what it has collected for as long as it likes. Older history then exists only
+there, and is used for reporting and never for a decision.
 
 What this costs:
 
@@ -1310,7 +1369,7 @@ late or not at all.
 | W-3 | Use at most 10% of the org's job-minutes, from a pool of 20 slots shared with all CI | PRD §7, C-9 |
 | W-4 | Stay under 3,000 GraphQL points an hour at peak | ADR-0013, decision 11, NFR-14 |
 | W-5 | Keep one writer per item and coalesce requests that arrive during a Run | FR-16 |
-| W-6 | Put at most one unchanging file, and no write credential, in a Consumer repo | FR-51 |
+| W-6 | Put no file and no credential in a Consumer repo | FR-51 |
 | W-7 | Be unable to feed itself without bound | FR-18 |
 | W-8 | Notice that CI has finished | Review §14.2 |
 | W-9 | Need no always-on service | C-4 |
@@ -1320,7 +1379,7 @@ late or not at all.
 | 1. A wake per event | A file in each Consumer forwards every subscribed event to the hub, which starts one Controller run for that item | W-2 at its best, W-5, W-9 | W-3: about three jobs per event, and at least 12,500 events a week from the busiest repo. W-1 still needs a sweep. W-7: the Factory's own writes are events. W-8: a `workflow_run` trigger must name each workflow |
 | 2. A scheduled poller | One job on a timer lists every open item in every repo in a few queries and evaluates them all in one process | W-1, W-3 to W-9. Nothing at all in any Consumer | W-2: a schedule cannot be finer than five minutes, about 60% of ticks are dropped here, and gaps of hours have been observed |
 | 3. A looping job | One job ticks every 30 seconds for some hours, then starts its successor | W-1 to W-8 | W-9 in spirit. One of 20 slots, permanently. GitHub's terms do not say whether this is allowed |
-| **4. A poller with nudges** | Option 2 is the base. An event carries no work: it only asks for a pass now. The poller holds one concurrency group, so any number of nudges during a pass collapse into exactly one more pass | W-1, W-3 to W-9. W-2 wherever a nudge file is installed | W-2 elsewhere. A Consumer that wants low latency carries a file, with a credential that can only dispatch |
+| **4. A poller with nudges** | Option 2 is the base. An event carries no work: it only asks for a pass now. The poller holds one concurrency group, so any number of nudges during a pass collapse into exactly one more pass | W-1, W-3 to W-9, and W-2 while the relay is up | W-2 when the relay is down, when only the schedule remains |
 
 **Decided: option 4, built as option 2 first.**
 
@@ -1335,15 +1394,21 @@ late or not at all.
 - A Run is still its own workflow run, holding its item's lane from `run` to `apply`.
 - Several staggered schedule lines on the poller restart a broken chain. A second scheduled
   workflow was considered as a watchdog and dropped: it is the same unreliable scheduler twice.
-- **An external timer may start a pass, and holds no credential over the Factory.** A nudge carries
-  nothing and passes coalesce, so the thing that causes one can be something anyone may do: for
-  example, starring a designated repo. A hosted timer does that on a fixed interval. There is then
-  nothing on the timer service worth stealing; a credential able to start a workflow could also
-  cancel runs and delete run records. Anyone can cause a pass this way, and the cost of that is
-  already bounded at one runner slot. It is the only tick independent of GitHub's scheduler, and
-  it closes most of the latency gap in W-2. Correctness never depends on it. Which service, and
-  which public event, are settled by trial (P-20).
-- The Factory's own repo carries the nudge file from the first day.
+- **A hosted relay supplies the low latency, and holds no credential over the Factory.** One small
+  stateless function outside GitHub does two things. It receives the Controller App's webhooks,
+  which GitHub sends for every repo the App is installed on, and it runs a timer. Each webhook and
+  each tick becomes a nudge. It checks each webhook's signature, keeps no state and decides
+  nothing. This is what replaces a nudge file in every Consumer repo: no file anywhere, and events
+  heard everywhere.
+- A nudge carries nothing and passes coalesce, so the relay causes one through something anyone may
+  do: for example, starring a designated repo. There is then nothing on the relay worth stealing;
+  a credential able to start a workflow could also cancel runs and delete run records. Anyone can
+  cause a pass this way, and the cost of that is already bounded at one runner slot.
+- The relay is the one permitted exception to "no always-on service". Correctness never depends on
+  it: if it is down, the Factory falls back to GitHub's schedule and only latency suffers. Which
+  host, and which public event, are settled by trial (P-20, P-31).
+- The Factory's own repo nudges the poller directly, from a workflow of its own, from the first
+  day.
 - Only the poller can be started from outside the Factory, and it takes no inputs. A Run starts
   from a recorded Decision (§3.5), so a credential that can start workflows cannot direct one.
 - Option 3 is held until GitHub's terms are answered. Option 1 is held unless a requirement appears
@@ -1418,6 +1483,7 @@ board. It is also not where a chat session's output is made terser; that is a se
 | `view/runs/<date>.jsonl` | One line per Run: the run record and the usage and outcome from its artifact |
 | `view/findings.json` | Open Findings with category, severity, owner and Disposition; and per reviewer, how many were adopted and how many unadopted ones were later proved right |
 | `view/scorecard.json` | The success metrics of PRD §9 and the adoption and use measures of §9.2 |
+| `view/comparison.json` | The weekly comparison of the POC and the Factory (§9.2) |
 | `view/capacity.json` | Usage per window, the estimate of what is left, and the degradation stage |
 | `view/health.json` | Whether Admission is paused and why, when the last pass ran, and recent capacity and environment faults |
 | `view/consumers.json` | Each Consumer repo's ring, and what its readiness check finds missing |
@@ -1503,13 +1569,18 @@ Anything not needed for that event is in a later slice.
 
 | Slice | Delivers | Who approves Factory changes |
 |---|---|---|
-| 0. Foundations | The repo, its ruleset and `factory / verify`. The schemas the first slice uses, with golden examples. The pull-request Lifecycle. The simulator with a skeleton Kernel. Three Apps: the Controller's, the reviewer's and the shared reader. The trials of §6 that the first slice rests on, each leaving a fixture | The Maintainer |
-| 1. First approval | The facts and records ports. The Kernel's Lifecycle, Convergence and gate. The poller and the nudge file on the Factory's own repo. `run` and `apply` for the review Intent. Deterministic checks read as Findings. The status on the item. A feed of two files, `meta` and `items` | The Maintainer, until the first Release on `next` serves the Factory's repo; then the Factory's reviewer, with the Maintainer able to block |
-| 2. Control room and measurement | The rest of the feed and the dashboard page. Adoption counted per Advisory reviewer, so that each one's contribution is measured. Runs per merge on every item | The Factory |
-| 3. Domain Roles in shadow | The adjudicating Intents of `qa-lead`, `security-lead`, `solution-architect`, `devops-lead` and `sre-lead`, each with its eval set, running on the reader App, deciding on a sample and binding nothing. Promotion follows, one Role at a time, and brings that Role its own App | The Factory |
-| 4. Fix Intents | Fix CI and fix review findings under the run contract, with `verify`. Acceptance contracts drafted by `qa-lead` and approved by the Maintainer take effect here (§4.8) | The Factory |
-| 5. A Consumer repo | The first `stable` Release, promoted on evidence from `next`. One low-risk Consumer, cut over by pause and repoint (§9.6) | The Factory |
-| 6. Onward | Implementation, the initiative driver, the remaining personas, as in the review's migration shape | The Factory |
+| 0. Foundations | The repo, its ruleset and `factory / verify`. The schemas the first slice uses, with golden examples. The pull-request Lifecycle. The rubric for `pr-review`. The simulator with a skeleton Kernel. Three Apps: the Controller's, the reviewer's and the shared reader. The trials of §6 that the first slice rests on, each leaving a fixture | The Maintainer |
+| 1. First approval | The facts and records ports. The Kernel's Lifecycle, Convergence and gate. The poller, nudged directly by the Factory's own repo. `run` and `apply` for the review Intent, with its eval set. Deterministic checks read as Findings. The status on the item. A feed of two files, `meta` and `items` | The Maintainer, until the first Release on `next` serves the Factory's repo; then the Factory's reviewer, with the Maintainer able to block |
+| 2. The Factory's own author | The fix and implement Intents under the run contract, with `verify`. Acceptance contracts drafted by `qa-lead` and approved by the Maintainer (§4.8). From here the Factory writes most of its own code | The Factory |
+| 3. A Consumer repo, and the weekly comparison | The first `stable` Release, promoted on evidence from `next`. One low-risk Consumer, cut over by pause and repoint (§9.6). The relay. The weekly comparison of the POC and the Factory, as a file and one tracking issue (§9.2) | The Factory |
+| 4. The control room | The rest of the feed and the dashboard page. Adoption counted per Advisory reviewer. Runs per merge on every item | The Factory |
+| 5. Domain Roles in shadow | The reviewing and adjudicating Intents of `qa-lead`, `security-lead`, `solution-architect`, `devops-lead` and `sre-lead`, each with its rubric and eval set, running on the reader App on a sample and binding nothing. Promotion follows, one Role at a time, and brings that Role its own App | The Factory |
+| 6. Onward | The initiative driver and the remaining personas, as in the review's migration shape | The Factory |
+
+The control room and the shadow Roles come after the Factory's own author, on the Maintainer's
+decision of 2026-10-11. Until slice 2 every line of Factory code is written in the Maintainer's own
+sessions (§9.12), so the sooner the Factory can write, the sooner that load falls. Until slice 4
+the Maintainer has the status on each item and the two feed files.
 
 **Slice 0 is done when** `factory / verify` is a required check and passes; every schema the first
 slice uses has an example that validates; the Lifecycle passes its exhaustive checks; the simulator
@@ -1545,7 +1616,8 @@ block said why at each step.
     §9.2.
 11. Before any of it, the first batch of trials (§6.1).
 
-**Not in slice 1:** adoption measurement, domain Roles, path scopes, the dashboard page, the private
+**Not in slice 1:** the fix and implement Intents, acceptance contracts, adoption measurement,
+domain Roles, path scopes, the relay, the dashboard page, the private
 Artifact board, the comparator against the POC, any App beyond the three named, any Consumer repo.
 
 Until the first Release on `next` serves the Factory's repo, the Maintainer's attention is the
@@ -1577,6 +1649,13 @@ The control room exists to make that an informed decision. It shows:
 | Escaped defects | Whether "better" was bought by weaker review |
 
 None of these stops anything by itself.
+
+**A weekly comparison.** From slice 3 a scorecard is produced every week, automatically, setting
+the POC beside the Factory on the same measures: standing approvals, time from issue to merge, runs
+per merge, and escaped defects. The poller already reads every repo, served or not, so the POC's
+side costs nothing extra to measure. It is a file in the feed and one tracking issue that is
+updated, never one issue a week. This replaces a single re-measurement on a fixed date: the
+Maintainer sees every week whether the Factory is ahead.
 
 With no period set, the decision needs a moment at which it is made. Two events serve:
 
@@ -1766,7 +1845,35 @@ seven root causes sit there, and no policy change moves them.
 
 The case does land one point, which is put to the Maintainer: the configuration fixes and the
 narrower gate were recommended as worth having whatever else is decided, and as the cheapest test
-of how much of the rest is needed. They have not been started.
+of how much of the rest is needed. They are now tracked outside this document, in
+`petry-projects/.github-private#2276 — Epic: fixes to the current factory that are worth making whatever is rebuilt (lessons from the factory MVP review)`.
+
+### 9.12 How it is built before it builds itself
+
+Until slice 2 the Factory has no author of its own. Its code is written in the Maintainer's
+interactive sessions: Claude Code in the desktop app, the strongest available model, and the BMAD
+workflows vendored in `.github-private`. The POC's author agent does not serve the new repo, since
+that would bring the owner account's token and the POC's rules into a repo meant to start clean.
+
+What makes that way of working produce good code:
+
+| Practice | How |
+|---|---|
+| One story to a session | Each session starts from a written handoff and a plan, and ends at one pull request with at most four acceptance criteria. Long sessions lose their thread |
+| Stories before code | Epics and stories, then a readiness check of PRD, architecture and stories against each other, then one story file per piece of work |
+| Failing tests first | The test-architecture workflow writes the acceptance tests before the implementing session starts, as `qa-lead` will later do by itself |
+| The specification runs | Schemas, invariants and the simulator are in the repo. One command verifies locally exactly what the required check verifies |
+| Hooks hold the line | After each edit, the fast checks run. A session cannot end with the verification failing. A push as the machine user is refused. An edit to a protected path is refused unless the Maintainer asked for it |
+| A reader that did not write it | Before a pull request, a fresh context reviews the diff, and a separate pass looks only for security faults. For a change to the Kernel, a second model family reads the diff once and reports. Reviewers report; they do not converse |
+| Tests that can fail | Mutation testing on the Kernel, which is pure functions and so cheap to mutate |
+| Types as the code is written | A type checker and a linter are required checks, and a language-server plugin shows their errors to the agent as it edits |
+| Trials leave fixtures | Every platform trial records the real response, which the simulator's fake GitHub is then held to |
+| The Maintainer's attention | Replies lead with the verdict, decisions arrive as choices, and status lives on a page, as set out in the situation-room analysis |
+
+On plugins: the built-in review, security-review and orchestration features are preferred to
+community plugins that install hooks or run with broad reach. One such plugin is close in spirit to
+this design, a council of six specialist reviewers; it should be read before it is installed, since
+a plugin's hooks run with the session's own permissions.
 
 ## 10. What this design changes elsewhere
 

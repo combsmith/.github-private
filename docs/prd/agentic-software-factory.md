@@ -185,7 +185,7 @@ ceiling near eight, and the limit they name is their own attention (§3.1 to §3
   a regression; promotion stops, the previous release keeps serving, and one action restores it
   everywhere.
 - **UJ-6. A Repo owner adopts the factory.**
-  The Repo owner adds one registry entry, and one optional file where low latency matters. Within an hour every role serves the repo. No
+  The Repo owner adds one registry entry, and nothing to the repo itself. Within an hour every role serves the repo. No
   later change to the factory requires an edit in that repo.
 - **UJ-7. A Factory developer adds a role or gives a role a new trigger.**
   One pull request in one repo adds a manifest, a prompt and eval cases. It reaches consumers by the
@@ -273,7 +273,8 @@ These are facts of the environment. A design that ignores one is not viable.
 - **C-4. GitHub-native operation.** The June 2026 release initiative fixed "no new repos, no
   external infrastructure". The Maintainer lifted the first half on 2026-10-10: the Factory is
   built in a new repo (§11, OQ-5). `[ASSUMPTION]` The second half, no always-on infrastructure,
-  still holds (OQ-1), with one exception: an optional external timer that only starts the poller.
+  still holds (OQ-1), with one exception: a small stateless relay that turns webhooks and a timer
+  into requests for a pass.
 - **C-5. The platform loses events.** Scheduled ticks are dropped about 60% of the time and always
   run the default branch. A concurrency group holds one running Run and, by default, one pending
   Run; a third arrival evicts the pending one. GitHub now documents `concurrency.queue: max`, which
@@ -333,7 +334,8 @@ Realizes UJ-1, UJ-2.
   - After any of these the item is re-evaluated without human action within the liveness limit.
   - A cancelled Run is never read as "nothing to do".
 - **FR-6. Resumable Runs.** A Run interrupted before completion preserves its progress, and the next
-  Run for that Intent resumes from it or records why it could not.
+  Run for that Intent resumes from it or records why it could not. Deferred past the first slices
+  by the Maintainer on 2026-10-11: until then an interrupted Run starts again.
 - **FR-7. Idempotent by content.** Repeating a request for unchanged content causes no new agent
   work. Content identity, not the commit hash, decides "unchanged".
   - Updating a pull request's base without changing its own diff triggers no re-review and
@@ -492,13 +494,15 @@ allows. Realizes UJ-8, UJ-9.
     as "plenty".
 - **FR-36. Graceful degradation.** Declared thresholds move the Factory through stages: full
   service, cheaper tier for low-priority work, priority work only, Pause. Each change of stage
-  notifies the Maintainer once.
+  notifies the Maintainer once. Deferred past the first slices by the Maintainer on 2026-10-11:
+  until then the Factory has full service, deferral on an observed capacity fault, and Pause.
 - **FR-37. Quota isolation.** The Factory's GitHub API usage and the Maintainer's interactive usage
   do not draw on the same limit. The Factory's LLM usage is accounted separately from interactive
   use; where both draw on one subscription window, the estimate in FR-35 says so.
 - **FR-38. Complete cost attribution.** Every Run records tokens, cost, duration and outcome,
   including Runs that failed, timed out or were cancelled, attributed to Work item, Role, Intent,
-  repo and Release, and marked as first-pass or rework.
+  repo and Release, and marked as first-pass or rework. A Run killed before it can report is costed
+  by estimate from its duration, and marked as an estimate.
 - **FR-39. Cost ceiling per Work item.** Each class of Work item has a declared ceiling.
   Reaching it places a Hold that states the amount spent. The ceiling that gates is a number of
   Runs, because decisions read GitHub only and what a Run cost is known only to the control room
@@ -513,7 +517,9 @@ Hosting repo are machine-filed reports. Realizes UJ-2, UJ-9.
 
 - **FR-40. Ledger.** Every Admission, Run and Effect is appended to a durable Ledger retained for at
   least 90 days and queryable by Work item, Role, repo, Release and time. The Maintainer set 90
-  days on 2026-10-10, in place of 180: it is how long GitHub keeps run records in a public repo.
+  days for the Factory's own records on 2026-10-10, in place of 180: it is how long GitHub keeps
+  run records in a public repo. The control room may keep what it has collected without limit, for
+  reporting.
 - **FR-41. Work-item timeline.** The full history of a Work item can be reconstructed from the
   Ledger alone.
 - **FR-42. Scorecard.** A weekly and on-demand scorecard reports the success metrics in §9 from the
@@ -551,7 +557,7 @@ trigger surface in up to eight. Realizes UJ-5, UJ-6, UJ-7.
 - **FR-50. Self-hosting safety.** The Release that reviews and merges a change to the Factory was
   cut before that change existed, so no change reviews itself. The Factory's own repo is served by
   `next`. A Release reaches `stable`, and so any Consumer repo, only on evidence from `next`.
-- **FR-51. Onboarding.** A Consumer repo adopts the Factory with one registry entry, and at most one optional file, and
+- **FR-51. Onboarding.** A Consumer repo adopts the Factory with one registry entry and no file of the Factory's, and
   is served by every Role within an hour. A later Release, new Role or new trigger requires no edit
   in the Consumer repo. Installing Advisory reviewers in vendor consoles is outside this bound.
 - **FR-52. Version-skew safety.** Messages between components running different Releases carry a
@@ -621,6 +627,10 @@ replaces the discussion with a contract. Realizes UJ-1, UJ-2, UJ-9.
 - **FR-64. One Finding contract for every Lens.** Roles, Advisory reviewers, tools and humans all
   contribute Findings in one schema. What a person reads on the Work item is rendered from those
   records by the Harness.
+  - A Role that reviews declares a rubric: its criteria as data. Each of its Findings cites a
+    criterion, and its Result reports on every criterion that applies.
+  - A rubric is a minimum. A Finding outside it is allowed and counted, and rubrics grow from what
+    they missed.
 - **FR-65. Lenses report; they do not converse.** No Lens's output triggers another Lens or is
   addressed to one. Each reports to the Controller.
   - A Lens that judges a change gives its Findings without seeing another Lens's verdict on that
@@ -821,8 +831,8 @@ From the competitive analysis ([market research](../research/market-agentic-soft
 
 1. **OQ-1. Is "no always-on infrastructure" still a hard constraint?** It decides whether an
    off-GitHub control plane is a candidate for the MVP or a later option. One exception was allowed
-   by the Maintainer on 2026-10-10: an optional external timer that only starts the poller, keeps
-   no state and decides nothing.
+   by the Maintainer: a small stateless relay that turns webhooks and a timer into requests for a
+   pass, keeps no state and decides nothing.
 2. **OQ-2. Will the Maintainer move the code-writing Role off the owner account?** FR-26 and FR-17
    need it. It reverses the choice made in `petry-projects/.github-private#1316 — dev-lead regressed
    to committing as donpetry-bot (review-only machine user) instead of don-petry` and recorded in
@@ -893,6 +903,8 @@ From the competitive analysis ([market research](../research/market-agentic-soft
     forces the question anyway.
 15. **OQ-15. What is the metered fallback budget?** FR-73 needs a monthly figure in currency at
     which the Factory stops, and a decision on whether to hold a funded API credential in reserve.
+    Decided in part on 2026-10-11: a metered API credential is the fallback if the Factory's own
+    subscription cannot be used. The monthly figure is still open.
 16. **OQ-16. Is release and operation the next scope after the MVP?** It is the widest gap in the
     market at a solo builder's price and is outside §10.1.
 17. **OQ-17. Should the first non-goal be restated?** The research supports keeping the Factory out
