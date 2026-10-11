@@ -25,11 +25,14 @@ FIX_REVIEWS_SCRIPT="${REPO_ROOT}/scripts/dev-lead-fix-reviews.sh"
 RETRY_SCRIPT="${REPO_ROOT}/scripts/dev-lead-retry.sh"
 STUB_ENGINE_DIR=""
 GITHUB_ENV_FILE=""
+# The real writers run below; give them a private sidecar directory so this
+# scenario does not share /tmp/dev-lead-* with other sessions (#2271).
+DEV_LEAD_SIDECAR_DIR="$(mktemp -d)" || exit 1
+export DEV_LEAD_SIDECAR_DIR
 
 cleanup() {
   rm -f "$GITHUB_ENV_FILE" 2>/dev/null || true
-  rm -rf "$STUB_ENGINE_DIR" 2>/dev/null || true
-  rm -f /tmp/dev-lead-rate-limit-reset 2>/dev/null || true
+  rm -rf "$STUB_ENGINE_DIR" "$DEV_LEAD_SIDECAR_DIR" 2>/dev/null || true
 }
 
 trap cleanup EXIT

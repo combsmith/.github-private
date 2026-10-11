@@ -2885,7 +2885,7 @@ post_reviews_rate_limited() {
   # resolve-failed (a thread/comment resolution or finalization failure) is not a
   # quota hold either: it takes the same non-quota status and backoff (#2045).
   if [ "$reason" = "blocked" ] || [ "$reason" = "resolve-failed" ]; then
-    printf '%s' "$(date -u -d '+30 minutes' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)" > /tmp/dev-lead-rate-limit-reset
+    printf '%s' "$(date -u -d '+30 minutes' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
   fi
 
   # Expire any stale terminal markers (applied/no-changes/failed) for this SHA+intent
@@ -2919,7 +2919,7 @@ post_reviews_rate_limited() {
   fi
 
   local reset_time
-  reset_time=$(cat /tmp/dev-lead-rate-limit-reset 2>/dev/null || true)
+  reset_time=$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" 2>/dev/null || true)
   local reset_detail=""
   if [ -n "$reset_time" ]; then
     reset_detail=" reset=${reset_time}"

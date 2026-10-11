@@ -247,14 +247,14 @@ handle_engine_failure() {
   # Cause class from the engine layer; default to engine-error if the sidecar is
   # absent (e.g. an older engine.sh). exit 2 always means rate-limited.
   local reason="engine-error"
-  if [ -s /tmp/dev-lead-failure-reason ]; then
-    reason=$(tr -d '[:space:]' < /tmp/dev-lead-failure-reason)
+  if [ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason" ]; then
+    reason=$(tr -d '[:space:]' < "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")
   fi
   [ -n "$reason" ] || reason="engine-error"
   [ "$engine_rc" -eq 2 ] && reason="rate-limited"
 
   local reset=""
-  [ -f /tmp/dev-lead-rate-limit-reset ] && reset=$(cat /tmp/dev-lead-rate-limit-reset)
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" ] && reset=$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset")
 
   local attempt
   attempt=$(( $(count_prior_attempts) + 1 ))
@@ -300,9 +300,9 @@ Set the missing engine credential (and confirm it is a supported token type), th
   # attempt-ceiling / retry logic below on purpose. (#1018)
   if [ "$reason" = "timeout" ]; then
     local tier="deep/action" budget="unknown" elapsed="unknown" raise_var="DEEP_TIMEOUT_SEC"
-    [ -s /tmp/dev-lead-timeout-tier ]    && tier=$(tr -d '[:space:]' < /tmp/dev-lead-timeout-tier)
-    [ -s /tmp/dev-lead-timeout-budget ]  && budget=$(tr -d '[:space:]' < /tmp/dev-lead-timeout-budget)
-    [ -s /tmp/dev-lead-timeout-elapsed ] && elapsed=$(tr -d '[:space:]' < /tmp/dev-lead-timeout-elapsed)
+    [ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-tier" ]    && tier=$(tr -d '[:space:]' < "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-tier")
+    [ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-budget" ]  && budget=$(tr -d '[:space:]' < "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-budget")
+    [ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-elapsed" ] && elapsed=$(tr -d '[:space:]' < "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-elapsed")
     case "$tier" in
       action|writer) raise_var="ACTION_TIMEOUT_SEC" ;;
       deep)          raise_var="DEEP_TIMEOUT_SEC" ;;

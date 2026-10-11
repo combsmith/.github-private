@@ -97,6 +97,7 @@ jobs:
         run: |
           scripts/run-bats.sh \
             tests/test_duplicate_decl_gate.bats \
+            tests/test_check_fixed_tmp_paths.bats \
             tests/agent_ingress_markets_package.bats \
             tests/test_vendored_installed_tools.bats \
             tests/fleet_report.bats \

@@ -9,6 +9,8 @@ GH_STUBS_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/stubs"
 setup() {
   export GITHUB_ENV="$(mktemp)"
   export GITHUB_OUTPUT="$(mktemp)"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 
   # Set up stub binary directory
   STUB_BIN_DIR="$(mktemp -d)"

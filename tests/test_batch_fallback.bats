@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 setup() {
-  export TEST_DIR="$BATS_TMPDIR/batch-test"
+  export TEST_DIR="$BATS_TEST_TMPDIR/batch-test"
   mkdir -p "$TEST_DIR/scripts"
   mkdir -p "$TEST_DIR/bin"
   cd "$TEST_DIR"
