@@ -433,7 +433,13 @@ build_and_run() {
     engine_path="${shim_dir}:${PATH}"
   else
     echo "::warning::could not install the reply recorder — no-change dispositions are disabled this pass (#2079)"
-    [ -n "${PASS_REPLY_RECORD:-}" ] && printf 'UNATTRIBUTED\n' > "$PASS_REPLY_RECORD"
+    # Any reply the engine posts now has an unknown id; stamp_pass_replies keeps that
+    # on the PR until a human clears it (#2161).
+    if [ -n "${PASS_REPLY_RECORD:-}" ]; then
+      printf 'UNATTRIBUTED\n' > "$PASS_REPLY_RECORD" || PASS_REPLIES_UNKNOWN=1
+    else
+      PASS_REPLIES_UNKNOWN=1
+    fi
   fi
   PATH="$engine_path" run_writer_with_fallback "$prompt_file" "${INTENT_TYPE:-}" || rc=$?
   [ -n "$shim_dir" ] && rm -rf "$shim_dir"
@@ -1146,7 +1152,7 @@ resolve_addressed_bot_threads() {
     }
   }'
 
-  local resolved_count=0
+  local resolved_count=0 failed_count=0
   local id node_json cur_resolved comments_json marker_idx marker_body
   while IFS= read -r id; do
     [ -z "$id" ] && continue
@@ -1221,12 +1227,17 @@ resolve_addressed_bot_threads() {
         echo "::notice::skipping thread ${id} — a bot comment postdates the no-change disposition; leaving unresolved (#2079)"
         continue
       fi
-      if gh api graphql -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \
-          -f id="$id" >/dev/null 2>&1; then
+      # A failed resolve is a resolver failure, not a skip (#2161 AC3): the caller
+      # posts a resolve-failed retry marker, as for the deferred resolver.
+      local nochange_resp
+      nochange_resp=$(gh api graphql -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \
+          -f id="$id" 2>/dev/null) || nochange_resp=""
+      if [ "$(printf '%s' "$nochange_resp" | jq -r '.data.resolveReviewThread.thread.isResolved // false' 2>/dev/null)" = "true" ]; then
         resolved_count=$((resolved_count + 1))
         echo "::notice::resolved bot thread ${id} due to no-change disposition (${nochange_disposition})"
       else
         echo "::warning::failed to resolve bot thread ${id} despite no-change disposition"
+        failed_count=$((failed_count + 1))
       fi
       continue
     elif [ "${nochange_rc:-0}" -eq 2 ]; then
@@ -1346,6 +1357,8 @@ resolve_addressed_bot_threads() {
     fi
   done <<< "$ids"
   echo "::notice::resolve_addressed_bot_threads: resolved ${resolved_count} addressed bot thread(s) on PR #${PR_NUMBER}"
+  # A no-change verdict whose resolve mutation failed must not read as success.
+  [ "$failed_count" -eq 0 ]
 }
 
 # ── `fixed` disposition verification by diff content (#2004) ─────────────────
@@ -1590,52 +1603,11 @@ resolve_deferred_bot_threads() {
        then "yes" else "no" end' 2>/dev/null || echo "no")
     [ "$origin_bot" = "yes" ] || continue
 
-    # Expected nonzero returns are captured via `||` so `set -e` never aborts the pass.
-    reply_idx=$(dtv_latest_own_reply_index "$comments_json" "$bot_user") || continue
-    [ -n "$reply_idx" ] || continue
-    reply_body=$(printf '%s' "$comments_json" | jq -r --argjson i "$reply_idx" '.[$i].body // ""' 2>/dev/null || echo "")
-    parse_rc=0
-    ref=$(dtv_parse_deferral "$reply_body") || parse_rc=$?
-    if [ "$parse_rc" -ne 0 ]; then
-      # Most threads simply carry no deferral. A malformed deferral attempt is a
-      # failure, not a skip: the thread stays merge-blocking, so no terminal may be
-      # posted over it and the pass must stay retryable.
-      if [ "$ref" != "no-deferral" ]; then
-        echo "::warning::thread ${id} — deferral marker not verifiable (${ref}); leaving unresolved (#2045)"
-        failed_count=$((failed_count + 1))
-      fi
-      continue
-    fi
-
-    # A finding edited after our deferral was not the finding we deferred (#2008):
-    # leave it for the next pass. An unreadable edit time fails closed the same way.
-    local edited_after
-    edited_after=$(printf '%s' "$comments_json" | jq -r --argjson i "$reply_idx" '
-      .[0] as $o | (.[$i].createdAt // "") as $r
-      | if ($o | type) != "object" or ($o | has("lastEditedAt") | not) or $r == "" then "unknown"
-        elif $o.lastEditedAt == null then "no"
-        elif ($o.lastEditedAt | type) != "string" then "unknown"
-        elif $o.lastEditedAt > $r then "yes" else "no" end' 2>/dev/null || echo "unknown")
-    if [ "$edited_after" = "yes" ]; then
-      echo "::notice::skipping thread ${id} — the bot finding was edited after our deferral; leaving unresolved (#2045)"
-      continue
-    elif [ "$edited_after" != "no" ]; then
-      # Unreadable is a resolver failure, not a skip: a terminal marker must not
-      # be posted over a thread we could not evaluate.
-      echo "::warning::could not read the edit time of review thread ${id} while checking deferrals"
-      failed_count=$((failed_count + 1))
-      continue
-    fi
-
-    post_rc=0
-    post_reason=$(acv_post_marker_clear "$comments_json" "$reply_idx" "$bot_user") || post_rc=$?
-    if [ "$post_rc" -ne 0 ]; then
-      echo "::notice::skipping thread ${id} — an unaddressed comment landed after our deferral (${post_reason}); leaving unresolved (#2045)"
-      continue
-    fi
-
-    # Check for a no-change disposition before checking for required disposition or deferral (#2079 AC1).
-    # A maintainer's "no change needed" verdict can resolve the thread without a deferral.
+    # A maintainer's "no change needed" verdict can resolve the thread without a
+    # deferral (#2079 AC1). It is checked BEFORE our own reply, the deferral parse and
+    # the post-marker gate (#2161 AC3): those all require a deferral reply from us, so
+    # a thread with none never reached this branch. This resolver runs on every pass,
+    # including a no-commit one, where resolve_addressed_bot_threads does not.
     local nochange_disposition nochange_rc
     if [ "$stamp_ok" -eq 1 ]; then
       nochange_disposition=$(acv_latest_nochange_disposition "$comments_json" "$nochange_epoch") && nochange_rc=0 || nochange_rc=$?
@@ -1692,6 +1664,50 @@ resolve_deferred_bot_threads() {
       continue
     elif [ "${nochange_rc:-0}" -eq 2 ]; then
       echo "::notice::skipping thread ${id} — a no-change disposition could not be parsed; leaving unresolved (fail closed) (#2079)"
+      continue
+    fi
+
+    # Expected nonzero returns are captured via `||` so `set -e` never aborts the pass.
+    reply_idx=$(dtv_latest_own_reply_index "$comments_json" "$bot_user") || continue
+    [ -n "$reply_idx" ] || continue
+    reply_body=$(printf '%s' "$comments_json" | jq -r --argjson i "$reply_idx" '.[$i].body // ""' 2>/dev/null || echo "")
+    parse_rc=0
+    ref=$(dtv_parse_deferral "$reply_body") || parse_rc=$?
+    if [ "$parse_rc" -ne 0 ]; then
+      # Most threads simply carry no deferral. A malformed deferral attempt is a
+      # failure, not a skip: the thread stays merge-blocking, so no terminal may be
+      # posted over it and the pass must stay retryable.
+      if [ "$ref" != "no-deferral" ]; then
+        echo "::warning::thread ${id} — deferral marker not verifiable (${ref}); leaving unresolved (#2045)"
+        failed_count=$((failed_count + 1))
+      fi
+      continue
+    fi
+
+    # A finding edited after our deferral was not the finding we deferred (#2008):
+    # leave it for the next pass. An unreadable edit time fails closed the same way.
+    local edited_after
+    edited_after=$(printf '%s' "$comments_json" | jq -r --argjson i "$reply_idx" '
+      .[0] as $o | (.[$i].createdAt // "") as $r
+      | if ($o | type) != "object" or ($o | has("lastEditedAt") | not) or $r == "" then "unknown"
+        elif $o.lastEditedAt == null then "no"
+        elif ($o.lastEditedAt | type) != "string" then "unknown"
+        elif $o.lastEditedAt > $r then "yes" else "no" end' 2>/dev/null || echo "unknown")
+    if [ "$edited_after" = "yes" ]; then
+      echo "::notice::skipping thread ${id} — the bot finding was edited after our deferral; leaving unresolved (#2045)"
+      continue
+    elif [ "$edited_after" != "no" ]; then
+      # Unreadable is a resolver failure, not a skip: a terminal marker must not
+      # be posted over a thread we could not evaluate.
+      echo "::warning::could not read the edit time of review thread ${id} while checking deferrals"
+      failed_count=$((failed_count + 1))
+      continue
+    fi
+
+    post_rc=0
+    post_reason=$(acv_post_marker_clear "$comments_json" "$reply_idx" "$bot_user") || post_rc=$?
+    if [ "$post_rc" -ne 0 ]; then
+      echo "::notice::skipping thread ${id} — an unaddressed comment landed after our deferral (${post_reason}); leaving unresolved (#2045)"
       continue
     fi
 
@@ -3328,32 +3344,68 @@ nochange_epoch_cutoff() {
 # captured the node id of each reply the pass posted, and ONLY those ids are rewritten
 # (`<!-- dev-lead:reply -->` appended when no agent marker is present). A comment whose
 # id was not recorded — e.g. the maintainer's own, posted mid-pass — is never touched.
-# Returns non-zero when no recorder record exists, a reply could not be attributed, or a
-# fetch/update failed; the resolvers then skip the no-change path (fail closed).
-# Idempotent: a stamped reply carries a marker and is skipped.
+#
+# Every id that was recorded is stamped, even when the pass also posted a reply whose
+# id is unknown (#2161). Ids that could not be stamped, and an `UNATTRIBUTED` entry for
+# a reply whose id is unknown, are kept on the PR in a marker comment
+# (save_pending_replies), because the next pass runs on a fresh runner. Later passes
+# retry the listed ids; `UNATTRIBUTED` stays until a human clears it. A listed reply
+# that no longer exists, or a node that is not a review comment, cannot be read as a
+# thread verdict and drops out of the list.
+# Returns non-zero when no recorder record exists, the pending list could not be read,
+# or anything is still pending; the resolvers then skip the no-change path (fail
+# closed). Idempotent: a stamped reply carries a marker and is skipped.
 stamp_pass_replies() {
-  local record="${PASS_REPLY_RECORD:-}" ids id body_json body failed=0
-  local pending_file="${PASS_REPLY_PENDING_FILE:-${RUNNER_TEMP:-/tmp}/dev-lead-unstamped-replies-${PR_NUMBER:-0}}"
-  local recorded="" pending="" new_pending=""
-  if recorded=$(cl_recorded_reply_ids "$record"); then
-    :
-  else
-    echo "::warning::stamp_pass_replies: no usable reply record — no-change dispositions are disabled this pass (#2079)"
+  local record="${PASS_REPLY_RECORD:-}" ids id body_json body state failed=0
+  local recorded="" pending="" new_pending="" markers="" marker_ids="" m read_ok=1
+  if ! recorded=$(cl_recorded_reply_ids "$record"); then
     failed=1
-    recorded=""
+    if cl_record_unattributed "$record"; then
+      echo "::warning::stamp_pass_replies: this pass posted a reply whose id is unknown — no-change dispositions stay disabled on PR #${PR_NUMBER:-} until a human clears it (#2161)"
+      new_pending+="UNATTRIBUTED"$'\n'
+    else
+      echo "::warning::stamp_pass_replies: no usable reply record — no-change dispositions are disabled this pass (#2079)"
+    fi
   fi
-  # Replies that failed to be stamped in an earlier pass stay pending until stamped,
-  # so a marker-less dev-lead reply is never forgotten (#2079).
-  [ -f "$pending_file" ] && pending=$(cat "$pending_file" 2>/dev/null || true)
+  if [ "${PASS_REPLIES_UNKNOWN:-0}" = "1" ]; then
+    echo "::warning::stamp_pass_replies: the engine ran without a reply recorder — no-change dispositions stay disabled on PR #${PR_NUMBER:-} until a human clears it (#2161)"
+    failed=1
+    new_pending+="UNATTRIBUTED"$'\n'
+  fi
+  # Replies an earlier pass could not stamp stay pending until stamped (#2161).
+  if markers=$(pending_reply_marker_comments); then
+    while IFS= read -r m; do
+      [ -z "$m" ] && continue
+      marker_ids+="$(jq -r '.id' <<<"$m")"$'\n'
+      pending+="$(cl_pending_marker_ids "$(jq -r '.body // ""' <<<"$m")" || true)"$'\n'
+    done <<< "$markers"
+  else
+    echo "::warning::stamp_pass_replies: could not read the pending-replies marker on PR #${PR_NUMBER:-} — no-change dispositions are disabled this pass (#2161)"
+    read_ok=0
+    failed=1
+  fi
   ids=$(printf '%s\n%s\n' "$recorded" "$pending" | awk 'NF && !seen[$0]++')
   while IFS= read -r id; do
     [ -z "$id" ] && continue
-    if ! body_json=$(gh api graphql \
-        -f query='query($id:ID!){node(id:$id){... on PullRequestReviewComment{body}}}' \
-        -f id="$id" 2>/dev/null); then
+    if [ "$id" = "UNATTRIBUTED" ]; then
       failed=1; new_pending+="${id}"$'\n'; continue
     fi
-    body=$(jq -er '.data.node.body // empty' <<<"$body_json" 2>/dev/null) || { failed=1; new_pending+="${id}"$'\n'; continue; }
+    body_json=$(gh api graphql \
+        -f query='query($id:ID!){node(id:$id){__typename ... on PullRequestReviewComment{body}}}' \
+        -f id="$id" 2>/dev/null) || true
+    state=$(jq -r '
+      if (.data.node.body | type) == "string" then "body"
+      elif (.data.node.__typename // "") != "" then "other"
+      elif any(.errors[]?; .type == "NOT_FOUND") then "gone"
+      else "unknown" end' <<<"$body_json" 2>/dev/null || echo unknown)
+    case "$state" in
+      body) ;;
+      gone|other)
+        echo "::notice::stamp_pass_replies: ${id} is not an existing review comment (${state}) — nothing to stamp (#2161)"
+        continue ;;
+      *) failed=1; new_pending+="${id}"$'\n'; continue ;;
+    esac
+    body=$(jq -r '.data.node.body' <<<"$body_json")
     review_thread_is_agent_authored "$body" && continue
     if ! gh api graphql \
         -f query='mutation($id:ID!,$body:String!){updatePullRequestReviewComment(input:{pullRequestReviewCommentId:$id,body:$body}){pullRequestReviewComment{id}}}' \
@@ -3363,15 +3415,57 @@ stamp_pass_replies() {
       new_pending+="${id}"$'\n'
     fi
   done <<< "$ids"
-  # Persist whatever is still unstamped so later passes retry it and keep no-change
-  # dispositions disabled until it is resolved.
-  if [ -n "$new_pending" ]; then
-    printf '%s' "$new_pending" > "$pending_file" 2>/dev/null || \
-      echo "::warning::stamp_pass_replies: could not persist unstamped reply ids to ${pending_file} (#2079)"
-  else
-    rm -f "$pending_file" 2>/dev/null || true
+  new_pending=$(printf '%s' "$new_pending" | awk 'NF && !seen[$0]++')
+  if ! save_pending_replies "$new_pending" "$read_ok" "$marker_ids" "$markers"; then
+    echo "::warning::stamp_pass_replies: could not save the pending-replies marker on PR #${PR_NUMBER:-} (#2161)"
+    failed=1
   fi
   [ "$failed" -eq 0 ]
+}
+
+# pending_reply_marker_comments — our pending-replies marker comments on the PR
+# (#2161), one compact {id, body} JSON object per line. Only our own account's
+# comments count: an id listed by anyone else would make dev-lead rewrite that
+# comment. Returns 1 when the PR's comments cannot be read.
+pending_reply_marker_comments() {
+  local raw bot="${BOT_USER:-donpetry-bot}"
+  local bot_stripped="${bot%\[bot\]}"
+  raw=$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" 2>/dev/null) || return 1
+  printf '%s' "$raw" | jq -cs --arg u "$bot" --arg us "$bot_stripped" --arg m "$_CL_PENDING_MARKER_PREFIX" '
+    .[] | if type == "array" then .[] else empty end | objects
+    | (.user.login // "") as $l
+    | select($l == $u or $l == $us or $l == ($us + "[bot]"))
+    | select((.body // "") | contains($m))
+    | {id, body}' 2>/dev/null
+}
+
+# save_pending_replies <ids> <read_ok> <marker_comment_ids> <markers> — write the
+# pending list (#2161). An empty list deletes our marker comments; otherwise the first
+# marker is rewritten (left alone when unchanged) and any others are deleted. When
+# the markers could not be read (<read_ok> 0), nothing is deleted and a non-empty list
+# is posted as a new marker: readers take the union of every marker, so no earlier
+# entry is lost. Returns 1 when a non-empty list could not be written.
+save_pending_replies() {
+  local ids="$1" read_ok="$2" marker_ids="$3" markers="$4" body cid first="" first_body=""
+  if [ -n "$ids" ]; then
+    body=$(cl_pending_marker_body "$ids")
+    if [ "$read_ok" -eq 1 ] && [ -n "$(printf '%s' "$marker_ids" | tr -d '[:space:]')" ]; then
+      first=$(printf '%s\n' "$marker_ids" | awk 'NF {print; exit}')
+      first_body=$(printf '%s\n' "$markers" | awk 'NF {print; exit}' | jq -r '.body // ""' 2>/dev/null || true)
+      if [ "$first_body" != "$body" ]; then
+        gh api -X PATCH "repos/${REPO}/issues/comments/${first}" -f body="$body" >/dev/null 2>&1 || return 1
+      fi
+    else
+      gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" -f body="$body" >/dev/null 2>&1 || return 1
+    fi
+  fi
+  [ "$read_ok" -eq 1 ] || return 0
+  for cid in $marker_ids; do
+    [ "$cid" = "$first" ] && continue
+    gh api -X DELETE "repos/${REPO}/issues/comments/${cid}" >/dev/null 2>&1 \
+      || echo "::warning::save_pending_replies: could not delete pending-replies marker ${cid} on PR #${PR_NUMBER:-} (#2161)"
+  done
+  return 0
 }
 
 # retract_unlanded_claims <intent> <ok|failed> — the claim-retraction sweep (#2013).
@@ -3768,6 +3862,20 @@ post_resolve_failed_marker() {
   post_reviews_rate_limited "$intent" "resolve-failed"
 }
 
+# addressed_failed <intent> <marker_intent> <cp_rc>: resolve_addressed_bot_threads
+# failed (an unreadable thread list, or a no-change verdict whose resolve mutation
+# failed, #2161 AC3). Same handling as a failed deferral: the pass fails, is never
+# auto-merged, and posts a resolve-failed retry marker so dev-lead-retry.sh runs it
+# again (the marker also expires the terminal posted earlier in the pass).
+addressed_failed() {
+  local intent="$1" marker_intent="$2" cp_rc="${3:-1}"
+  rc=1
+  echo "::warning::${intent}: a bot review thread could not be resolved — posting a retry marker so the pass is retried"
+  _REVIEW_INCOMPLETE=1
+  _AM_NEEDS_RESTORE=0
+  post_resolve_failed_marker "$marker_intent" "$cp_rc"
+}
+
 # resolution_gate_open [cp_rc]
 #   Gate check for whether resolution of review threads is allowed based on git state.
 resolution_gate_open() {
@@ -3887,7 +3995,7 @@ case "$INTENT_TYPE" in
           resolve_actor_outdated_threads "fix-reviews"
           # Resolve bot threads dev-lead addressed in-thread but left open (#1547) —
           # these are not necessarily outdated, so the nets above miss them.
-          resolve_addressed_bot_threads "fix-reviews" || rc=1
+          resolve_addressed_bot_threads "fix-reviews" || addressed_failed "fix-reviews" "fix-reviews" "$cp_rc"
         else
           echo "::notice::resolution gate closed (#1609): the fix-reviews pass did not advance PR #${PR_NUMBER}'s head — zero review threads resolved"
         fi
@@ -4015,7 +4123,7 @@ case "$INTENT_TYPE" in
           resolve_actor_outdated_threads "fix-bot-comment"
           # Resolve bot threads dev-lead addressed in-thread but left open (#1547) —
           # these are not necessarily outdated, so the nets above miss them.
-          resolve_addressed_bot_threads "fix-bot-comment" || rc=1
+          resolve_addressed_bot_threads "fix-bot-comment" || addressed_failed "fix-bot-comment" "fix-reviews" "$cp_rc"
         else
           echo "::notice::resolution gate closed (#1609): the fix-bot-comment pass did not advance PR #${PR_NUMBER}'s head — zero review threads resolved"
         fi
@@ -4158,7 +4266,7 @@ case "$INTENT_TYPE" in
         resolve_actor_outdated_threads "review-changes"
         # Resolve bot threads dev-lead addressed in-thread but left open (#1547) —
         # these are not necessarily outdated, so the nets above miss them.
-        resolve_addressed_bot_threads "review-changes" || rc=1
+        resolve_addressed_bot_threads "review-changes" || addressed_failed "review-changes" "review-changes" "$cp_rc"
       else
         echo "::notice::resolution gate closed (#1609): the review-changes pass did not advance PR #${PR_NUMBER}'s head — zero review threads resolved"
       fi

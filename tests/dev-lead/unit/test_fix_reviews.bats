@@ -1363,7 +1363,15 @@ case "\$ARGS" in
     ;;
   # The deferral resolver (#2045) asks for fullDatabaseId: answer with a readable,
   # comment-less thread so it skips cleanly instead of reading this fixture.
-  *"fullDatabaseId"*) echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+  *"fullDatabaseId"*)
+    if [ "$commit" = "no" ]; then
+      jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
+        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
+    else
+      echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+    ;;
   *"PullRequestReviewThread"*)
     # The claim names the commit THIS pass produced (resolved at call time), not the
     # pre-pass base_sha: since #2013 a pre-pass SHA is the stale-claim defect and
@@ -1434,7 +1442,15 @@ case "\$ARGS" in
     ;;
   # The deferral resolver (#2045) asks for fullDatabaseId: answer with a readable,
   # comment-less thread so it skips cleanly instead of reading this fixture.
-  *"fullDatabaseId"*) echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+  *"fullDatabaseId"*)
+    if [ "$commit" = "no" ]; then
+      jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
+        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
+    else
+      echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+    ;;
   *"PullRequestReviewThread"*)
     echo '{"data":{"node":{"isResolved":false,"latest":{"nodes":[{"author":{"login":"donpetry-bot"},"body":"Skipping — first-party channel tag, intentional mutable ref."}]}}}}'
     ;;
@@ -1557,7 +1573,15 @@ case "\$ARGS" in
     ;;
   # The deferral resolver (#2045) asks for fullDatabaseId: answer with a readable,
   # comment-less thread so it skips cleanly instead of reading this fixture.
-  *"fullDatabaseId"*) echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+  *"fullDatabaseId"*)
+    if [ "$commit" = "no" ]; then
+      jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
+        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
+    else
+      echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+    ;;
   *"PullRequestReviewThread"*)
     echo '{"data":{"node":{"isResolved":false,"latest":{"nodes":[{"author":{"login":"someone-else"},"body":"Applied in scripts/foo.sh. <!-- dev-lead:addressed -->"}]}}}}'
     ;;
@@ -1644,7 +1668,15 @@ case "\$ARGS" in
     ;;
   # The deferral resolver (#2045) asks for fullDatabaseId: answer with a readable,
   # comment-less thread so it skips cleanly instead of reading this fixture.
-  *"fullDatabaseId"*) echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+  *"fullDatabaseId"*)
+    if [ "$commit" = "no" ]; then
+      jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
+        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
+    else
+      echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+    ;;
   *"PullRequestReviewThread"*)
     echo '{"data":{"node":{"isResolved":false,"path":"fix.txt","comments":{"nodes":[{"author":{"login":"donpetry-bot","__typename":"User"},"body":"${marker_reply}","createdAt":"2026-09-01T10:00:00Z"},${POST_MARKER_NODE}]}}}}'
     ;;
@@ -2314,7 +2346,15 @@ case "\$ARGS" in
     ;;
   # The deferral resolver (#2045) asks for fullDatabaseId: answer with a readable,
   # comment-less thread so it skips cleanly instead of reading this fixture.
-  *"fullDatabaseId"*) echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+  *"fullDatabaseId"*)
+    if [ "$commit" = "no" ]; then
+      jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
+        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
+    else
+      echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+    ;;
   *"PullRequestReviewThread"*)
     echo '{"data":{"node":{"isResolved":false,"latest":{"nodes":[{"author":{"login":"donpetry-bot"},"body":"Looked into this but made no change."}]}}}}'
     ;;
@@ -2437,7 +2477,15 @@ case "\$ARGS" in
     ;;
   # The deferral resolver (#2045) asks for fullDatabaseId: answer with a readable,
   # comment-less thread so it skips cleanly instead of reading this fixture.
-  *"fullDatabaseId"*) echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+  *"fullDatabaseId"*)
+    if [ "$commit" = "no" ]; then
+      jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
+        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
+    else
+      echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+    ;;
   *"PullRequestReviewThread"*)
     echo '{"data":{"node":{"isResolved":false,"path":"scripts/other.sh","comments":{"nodes":[{"author":{"login":"donpetry-bot","__typename":"User"},"body":"Fixed in scripts/other.sh. <!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\"v\":1,\"sha\":\"'"\$(git rev-parse HEAD)"'\",\"files\":[\"scripts/other.sh\"]} -->","createdAt":"2026-09-01T10:00:00Z"}]}}}}'
     ;;
@@ -2485,7 +2533,15 @@ case "\$ARGS" in
     ;;
   # The deferral resolver (#2045) asks for fullDatabaseId: answer with a readable,
   # comment-less thread so it skips cleanly instead of reading this fixture.
-  *"fullDatabaseId"*) echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+  *"fullDatabaseId"*)
+    if [ "$commit" = "no" ]; then
+      jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
+        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
+    else
+      echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+    ;;
   *"PullRequestReviewThread"*)
     echo '{"data":{"node":{"isResolved":false,"path":"fix.txt","comments":{"nodes":[{"author":{"login":"donpetry-bot","__typename":"User"},"body":"Fixed in fix.txt. <!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\"v\":1,\"sha\":\"${absent_sha}\",\"files\":[\"fix.txt\"]} -->","createdAt":"2026-09-01T10:00:00Z"}]}}}}'
     ;;
@@ -2530,7 +2586,15 @@ case "\$ARGS" in
     ;;
   # The deferral resolver (#2045) asks for fullDatabaseId: answer with a readable,
   # comment-less thread so it skips cleanly instead of reading this fixture.
-  *"fullDatabaseId"*) echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+  *"fullDatabaseId"*)
+    if [ "$commit" = "no" ]; then
+      jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
+        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
+    else
+      echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+    ;;
   *"PullRequestReviewThread"*)
     echo '{"data":{"node":{"isResolved":false,"path":"fix.txt","comments":{"nodes":[{"author":{"login":"donpetry-bot","__typename":"User"},"body":"Fixed. <!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\"v\":1, not valid json} -->","createdAt":"2026-09-01T10:00:00Z"}]}}}}'
     ;;
@@ -2576,7 +2640,15 @@ case "\$ARGS" in
     ;;
   # The deferral resolver (#2045) asks for fullDatabaseId: answer with a readable,
   # comment-less thread so it skips cleanly instead of reading this fixture.
-  *"fullDatabaseId"*) echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+  *"fullDatabaseId"*)
+    if [ "$commit" = "no" ]; then
+      jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
+        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
+    else
+      echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+    ;;
   *"PullRequestReviewThread"*)
     echo '{"data":{"node":{"isResolved":false,"path":"fix.txt","comments":{"nodes":[{"author":{"login":"a-maintainer","__typename":"User"},"body":"ACCEPTED — required before merge","createdAt":"2099-01-01T00:00:00Z"},{"author":{"login":"donpetry-bot","__typename":"User"},"body":"Fixed in fix.txt. <!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\"v\":1,\"sha\":\"'"\$(git rev-parse HEAD)"'\",\"files\":[\"fix.txt\"]} -->","createdAt":"2026-09-01T10:00:00Z"}]}}}}'
     ;;
@@ -2634,7 +2706,15 @@ case "\$ARGS" in
     ;;
   # The deferral resolver (#2045) asks for fullDatabaseId: answer with a readable,
   # comment-less thread so it skips cleanly instead of reading this fixture.
-  *"fullDatabaseId"*) echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+  *"fullDatabaseId"*)
+    if [ "$commit" = "no" ]; then
+      jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
+        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
+    else
+      echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+    ;;
   *"PullRequestReviewThread"*)
     echo '{"data":{"node":{"isResolved":false,"latest":{"nodes":[{"author":{"login":"donpetry-bot"},"body":"Applied. <!-- dev-lead:addressed -->"}]}}}}'
     ;;
@@ -6061,7 +6141,15 @@ case "\$ARGS" in
     ;;
   # The deferral resolver (#2045) asks for fullDatabaseId: answer with a readable,
   # comment-less thread so it skips cleanly instead of reading this fixture.
-  *"fullDatabaseId"*) echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+  *"fullDatabaseId"*)
+    if [ "$commit" = "no" ]; then
+      jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
+        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
+    else
+      echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+    ;;
   *"PullRequestReviewThread"*)
     printf '%s\n' "{\"data\":{\"node\":{\"isResolved\":false,\"path\":\"fix.txt\",\"comments\":{\"nodes\":[{\"author\":{\"login\":\"donpetry-bot\",\"__typename\":\"User\"},\"body\":\"\${reply}\",\"createdAt\":\"2099-01-01T00:00:00Z\"}]}}}}"
     ;;
@@ -6918,7 +7006,9 @@ _fbc_reply() {  # $1=disposition-tail $2=createdAt
 _nochange_resolver_case() {
   # $1 = pass mode: pass-reply | maintainer | unattributed
   # $2 = epoch: set | unset
-  local mode="$1" epoch="${2:-set}"
+  # $3 = commit: yes (the pass pushes a fix) | no (a no-commit pass, #2161)
+  # NC_RESOLVE_FAIL=1 makes resolveReviewThread fail (#2161).
+  local mode="$1" epoch="${2:-set}" commit="${3:-yes}"
   local tmpdir="$BATS_TEST_TMPDIR/workdir"
   mkdir -p "$tmpdir"
   MUTATIONS_FILE="$BATS_TEST_TMPDIR/mutations"
@@ -6940,12 +7030,15 @@ _nochange_resolver_case() {
   git -C "$tmpdir" update-ref refs/remotes/origin/main "$(git -C "$tmpdir" rev-parse HEAD)"
   NC_BASE_SHA="$(git -C "$tmpdir" rev-parse HEAD)"
 
+  : > "$BATS_TEST_TMPDIR/gh-calls"
   cat > "$STUB_BIN_DIR/gh" << GHEOF
 #!/usr/bin/env bash
 ARGS="\$*"
+echo "\$ARGS" >> "$BATS_TEST_TMPDIR/gh-calls"
 case "\$ARGS" in
   *"resolveReviewThread"*)
     echo "\$*" >> "$MUTATIONS_FILE"
+    if [ "${NC_RESOLVE_FAIL:-0}" = "1" ]; then echo "gh: HTTP 502" >&2; exit 1; fi
     echo '{"data":{"resolveReviewThread":{"thread":{"isResolved":true}}}}'
     ;;
   *"updatePullRequestReviewComment"*)
@@ -6959,7 +7052,15 @@ case "\$ARGS" in
   *"PullRequestReviewComment{body}"*)
     jq -cn --rawfile b "$BODY_FILE" '{data:{node:{body:\$b}}}'
     ;;
-  *"fullDatabaseId"*) echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+  *"fullDatabaseId"*)
+    if [ "$commit" = "no" ]; then
+      jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,comments:{pageInfo:{hasNextPage:false},nodes:[
+        {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401234567"},
+        {author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:\$b,createdAt:"2099-01-01T00:00:00Z",lastEditedAt:null,fullDatabaseId:"2401239999"}]}}}}'
+    else
+      echo '{"data":{"node":{"isResolved":false,"comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+    ;;
   *"PullRequestReviewThread"*)
     jq -cn --rawfile b "$BODY_FILE" '{data:{node:{isResolved:false,path:"fix.txt",comments:{pageInfo:{hasNextPage:false},nodes:[
       {author:{login:"gemini-code-assist",__typename:"Bot"},authorAssociation:"NONE",body:"Missing a guard.",createdAt:"2098-01-01T00:00:00Z"},
@@ -6982,7 +7083,7 @@ GHEOF
   cat > "$STUB_BIN_DIR/claude" << 'STUB'
 #!/usr/bin/env bash
 echo "Addressed feedback."
-printf 'fixed\n' > fix.txt
+[ "$NC_COMMIT" = "no" ] || printf 'fixed\n' > fix.txt
 if [ "$NC_MODE" != "maintainer" ]; then
   gh api graphql -f query='mutation { addPullRequestReviewThreadReply(input:{}) { comment { id } } }' \
     -f tid=PRRT_nochange_bot -f body='No change needed in this pass: the guard already exists.' >/dev/null
@@ -7000,7 +7101,7 @@ GITEOF
   [ "$epoch" = "set" ] && epoch_export="export DEV_LEAD_NOCHANGE_EPOCH=2026-10-10T00:00:00Z"
   run bash -c "
     cd '$tmpdir'
-    export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false NC_MODE='$mode'
+    export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false NC_MODE='$mode' NC_COMMIT='$commit'
     export PR_NUMBER=54 HEAD_SHA=$NC_BASE_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='gemini-code-assist[bot]'
@@ -7113,4 +7214,57 @@ _stale_nodes() {
     [[ "$out" == *'- `IC_stale_marker`'* ]]
     [[ "$out" != *'${STALE_DISPOSITIONS}'* ]]
   done
+}
+
+# ── #2161 AC3: the deferred resolver's no-change branch is reachable ─────────────
+# It used to run after the deferral parse and the post-marker gate, so a thread with
+# no deferral never reached it. It now runs first, and the deferred resolver runs on
+# every pass — including a no-commit pass, where resolve_addressed_bot_threads does not.
+
+@test "resolve_deferred_bot_threads (#2161 AC3): a maintainer no-change verdict on a thread with no deferral resolves on a no-commit pass" {
+  _nochange_resolver_case maintainer set no
+  [[ "$output" == *"resolution gate closed"* ]]
+  [[ "$output" == *"resolved deferred bot thread PRRT_nochange_bot due to no-change disposition"* ]]
+  grep -q "PRRT_nochange_bot" "$MUTATIONS_FILE"
+}
+
+@test "resolve_deferred_bot_threads (#2161 AC3): with DEV_LEAD_NOCHANGE_EPOCH unset the no-commit pass resolves nothing" {
+  _nochange_resolver_case maintainer unset no
+  ! grep -q "PRRT_nochange_bot" "$MUTATIONS_FILE"
+}
+
+@test "resolve_deferred_bot_threads (#2161 AC3): this pass's own marker-less skip note is stamped and resolves nothing on a no-commit pass" {
+  _nochange_resolver_case pass-reply set no
+  grep -q 'dev-lead:reply' "$BODY_FILE"
+  ! grep -q "PRRT_nochange_bot" "$MUTATIONS_FILE"
+}
+
+# ── #2161 AC3: a failed no-change resolve in resolve_addressed_bot_threads is retried ──
+
+@test "resolve_addressed_bot_threads (#2161 AC3): a failed no-change resolve fails the pass and posts a resolve-failed retry marker" {
+  NC_RESOLVE_FAIL=1 _nochange_resolver_case maintainer set
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"failed to resolve bot thread PRRT_nochange_bot despite no-change disposition"* ]]
+  grep -q "status=blocked reason=resolve-failed" "$BATS_TEST_TMPDIR/gh-calls"
+}
+
+# ── #2161 AC4: the cutoff is wired from an Actions variable, off by default ──────
+
+@test "dev-lead-reusable.yml (#2161 AC4): DEV_LEAD_NOCHANGE_EPOCH is mapped from vars with an empty default" {
+  local wf="$SCRIPT_DIR/.github/workflows/dev-lead-reusable.yml"
+  grep -qxF "      DEV_LEAD_NOCHANGE_EPOCH: \${{ vars.DEV_LEAD_NOCHANGE_EPOCH || '' }}" "$wf"
+}
+
+@test "nochange_epoch_cutoff (#2161 AC4): empty or unparseable keeps the path disabled" {
+  eval "$(sed -n '/^nochange_epoch_cutoff()/,/^}/p' "$FIX_REVIEWS_SCRIPT")"
+  source "$SCRIPT_DIR/scripts/lib/addressed-claim-verify.sh"
+  DEV_LEAD_NOCHANGE_EPOCH="" run nochange_epoch_cutoff
+  [ "$status" -ne 0 ]
+  DEV_LEAD_NOCHANGE_EPOCH="soon" run nochange_epoch_cutoff
+  [ "$status" -ne 0 ]
+  DEV_LEAD_NOCHANGE_EPOCH="2026-13-40T00:00:00Z" run nochange_epoch_cutoff
+  [ "$status" -ne 0 ]
+  DEV_LEAD_NOCHANGE_EPOCH="2026-10-12T00:00:00Z" run nochange_epoch_cutoff
+  [ "$status" -eq 0 ]
+  [ "$output" = "2026-10-12T00:00:00Z" ]
 }

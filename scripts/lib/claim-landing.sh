@@ -141,11 +141,16 @@ cl_select_pass_claims() {
 #   account the maintainer uses, so "our login since the pass start" would also match a
 #   comment the human posts mid-pass. Instead a `gh` shim is installed in a fresh
 #   directory (echoed on stdout; the caller prepends it to the engine's PATH). The shim
-#   forwards every call to the real gh unchanged and, for an
-#   reply-creating call (the GraphQL reply mutation, any */replies* REST path,
-#   in_reply_to, or a query/payload read from --input / @file), appends the posted reply's node id to
-#   <record_file> (or the literal UNATTRIBUTED when the response carries no id, so the
-#   caller can fail closed). The record file is created empty. Returns 1 on failure.
+#   forwards every call to the real gh unchanged and, for a reply-creating
+#   `gh api` call (the GraphQL reply mutation, any */replies* REST path, or
+#   in_reply_to — in the arguments or in a payload read from --input or a typed
+#   -F/--field key=@file), appends the posted reply's node id to <record_file> (or
+#   the literal UNATTRIBUTED when the response carries no id, so the caller can
+#   fail closed). Only `gh api` can create a review-thread reply, so no other
+#   subcommand is inspected, and a raw -f value or a --body that merely starts with
+#   `@` (e.g. "@coderabbitai …") is plain text, not a file (#2161). A payload file
+#   that cannot be read still flags the call (fail closed). The record file is
+#   created empty. Returns 1 on failure.
 cl_install_reply_recorder() {
   local record="${1:-}" real="${2:-}"
   [[ -z "$record" ]] && return 1
@@ -158,6 +163,7 @@ cl_install_reply_recorder() {
     printf '#!/usr/bin/env bash\n'
     printf 'real=%q\nrec=%q\n' "$real" "$record"
     cat <<'SHIM'
+[ "${1:-}" = "api" ] || exec "$real" "$@"
 flag=0
 tmpin=""
 check() {
@@ -169,11 +175,13 @@ check "$*"
 prev=""
 for a in "$@"; do
   f=""
-  [ "$prev" = "--input" ] && f=$a
+  case "$prev" in
+    --input) f=$a ;;
+    -F|--field) case "$a" in *=@*) f=${a#*=@} ;; esac ;;
+  esac
   case "$a" in
     --input=*) f=${a#--input=} ;;
-    *=@*) f=${a#*=@} ;;
-    @*) f=${a#@} ;;
+    --field=*=@*|-F?*=@*) f=${a#*=@} ;;
   esac
   if [ -n "$f" ]; then
     if [ "$f" = "-" ]; then
@@ -218,16 +226,56 @@ SHIM
 }
 
 # cl_recorded_reply_ids <record_file>
-#   Emits the unique node ids the recorder captured, one per line. Returns 1 when the
-#   record is missing or holds an UNATTRIBUTED entry (a reply whose id is unknown, so
-#   nothing can be trusted: the no-change path must be disabled). Pure.
+#   Emits the unique node ids the recorder captured, one per line — including when
+#   the record also holds an UNATTRIBUTED entry, so the replies whose ids WERE
+#   captured are still stamped (#2161). Returns 1 when the record is missing or holds
+#   an UNATTRIBUTED entry (a reply whose id is unknown: the no-change path must be
+#   disabled). Pure.
 cl_recorded_reply_ids() {
   local record="${1:-}"
   [[ -n "$record" && -f "$record" ]] || return 1
-  if grep -qx 'UNATTRIBUTED' "$record"; then
-    return 1
-  fi
-  { grep -v '^[[:space:]]*$' "$record" || true; } | sort -u
+  { grep -v -x -e '[[:space:]]*' -e 'UNATTRIBUTED' "$record" || true; } | sort -u
+  ! cl_record_unattributed "$record"
+}
+
+# cl_record_unattributed <record_file>
+#   0 when the record holds an UNATTRIBUTED entry (a reply this pass posted whose id
+#   is unknown, so it can never be stamped), 1 otherwise. Pure.
+cl_record_unattributed() {
+  [[ -n "${1:-}" && -f "$1" ]] && grep -qx 'UNATTRIBUTED' "$1"
+}
+
+# The PR issue comment that carries the pass replies dev-lead could not stamp yet
+# (#2161). Each pass runs on a fresh runner, so the list lives on the PR, like
+# dev-lead's other state markers. `UNATTRIBUTED` in the list stands for a reply whose
+# id is unknown; only a human can clear it.
+readonly _CL_PENDING_MARKER_PREFIX='<!-- dev-lead:unstamped-replies ids='
+
+# cl_pending_marker_body <ids>
+#   The body of the pending-replies marker comment for the newline-separated <ids>
+#   (deduplicated, order kept; ids outside [A-Za-z0-9_=+/-] are dropped). Pure.
+cl_pending_marker_body() {
+  local ids
+  ids=$(printf '%s\n' "${1:-}" | awk '/^[A-Za-z0-9_=+\/-]+$/ && !seen[$0]++' | paste -sd, -)
+  printf '%s%s -->\n' "$_CL_PENDING_MARKER_PREFIX" "$ids"
+  printf '%s\n' \
+    '**dev-lead: review-thread replies not yet marked as dev-lead'"'"'s.**' \
+    '' \
+    'dev-lead posted review-thread replies on this PR that it could not mark as its own. Until they are marked, dev-lead will not resolve a bot review thread on a "no change needed" reply here, because one of these replies could be mistaken for a maintainer'"'"'s verdict (#2079, #2161).' \
+    '' \
+    'dev-lead retries listed reply ids on every pass and deletes this comment once none are left. `UNATTRIBUTED` means a reply whose id is unknown: check that every dev-lead reply on this PR carries a `<!-- dev-lead` marker, then delete this comment (or remove `UNATTRIBUTED` from the list above).'
+}
+
+# cl_pending_marker_ids <body>
+#   Emits the reply ids listed in a pending-replies marker body, one per line
+#   (malformed entries dropped). Returns 1 when <body> carries no marker. Pure.
+cl_pending_marker_ids() {
+  local body="${1:-}" line
+  line=$(grep -m1 -F -- "$_CL_PENDING_MARKER_PREFIX" <<<"$body") || return 1
+  line=${line#*"$_CL_PENDING_MARKER_PREFIX"}
+  line=${line%%-->*}
+  tr ',' '\n' <<<"$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+    | awk '/^[A-Za-z0-9_=+\/-]+$/ && !seen[$0]++'
   return 0
 }
 
