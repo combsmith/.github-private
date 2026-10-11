@@ -32,7 +32,7 @@ set -euo pipefail
 # Soft thresholds — a PR is a candidate when it exceeds ANY of these.
 : "${RUNAWAY_MAX_COMMITS:=50}"       # > this many commits
 : "${RUNAWAY_MAX_COMMENTS:=200}"     # > this many issue comments
-: "${RUNAWAY_MAX_CYCLES:=10}"        # > this many automated cycles (see #926)
+: "${RUNAWAY_MAX_CYCLES:=25}"        # > this many automated cycles: half the #926 cap, p95 of PRs (#2224)
 : "${RUNAWAY_MIN_AGE_HOURS:=48}"     # open longer than this, AND churning
 : "${RUNAWAY_CHURN_MIN_CYCLES:=1}"   # min cycles that count as "active churn"
 
@@ -80,7 +80,7 @@ pr_runaway_reasons() {
   local max_commits max_comments max_cycles min_age churn_floor
   max_commits=$(_runaway_threshold "${RUNAWAY_MAX_COMMITS}" 50)
   max_comments=$(_runaway_threshold "${RUNAWAY_MAX_COMMENTS}" 200)
-  max_cycles=$(_runaway_threshold "${RUNAWAY_MAX_CYCLES}" 10)
+  max_cycles=$(_runaway_threshold "${RUNAWAY_MAX_CYCLES}" 25)
   min_age=$(_runaway_threshold "${RUNAWAY_MIN_AGE_HOURS}" 48)
   churn_floor=$(_runaway_threshold "${RUNAWAY_CHURN_MIN_CYCLES}" 1)
 
@@ -154,7 +154,7 @@ generate_runaway_report() {
   local max_commits max_comments max_cycles min_age smell_commits smell_files
   max_commits=$(_runaway_threshold "${RUNAWAY_MAX_COMMITS}" 50)
   max_comments=$(_runaway_threshold "${RUNAWAY_MAX_COMMENTS}" 200)
-  max_cycles=$(_runaway_threshold "${RUNAWAY_MAX_CYCLES}" 10)
+  max_cycles=$(_runaway_threshold "${RUNAWAY_MAX_CYCLES}" 25)
   min_age=$(_runaway_threshold "${RUNAWAY_MIN_AGE_HOURS}" 48)
   smell_commits=$(_runaway_threshold "${REBASE_SMELL_MIN_COMMITS}" 50)
   smell_files=$(_runaway_threshold "${REBASE_SMELL_MAX_FILES}" 20)
