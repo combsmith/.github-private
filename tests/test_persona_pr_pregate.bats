@@ -149,8 +149,8 @@ STUB
 }
 
 @test "skip: budget-exhausted (>= MAX automated actions since last human)" {
-  # 10 bot comments, no human -> compute_pr_automation_cycles >= MAX (10).
-  bots="$(jq -n '[range(10) | {created_at: "2026-09-20T00:00:0\(.)Z", user: {login: "github-actions[bot]"}}]')"
+  # 50 bot comments, no human -> compute_pr_automation_cycles >= MAX (50, #2224).
+  bots="$(jq -n '[range(50) | {created_at: "2026-09-20T00:00:\(. + 100 | tostring | .[1:])Z", user: {login: "github-actions[bot]"}}]')"
   STUB_RAW_COMMENTS="$bots" \
     run persona_event_pregate qa-lead pull_request petry-projects/.github-private 5 opened
   [ "$status" -eq 1 ]
