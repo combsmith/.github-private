@@ -551,7 +551,7 @@ More numbers would be more false comfort.
 
 The ceiling is therefore the **existing** two controls, and they remain authoritative:
 
-1. **The per-PR automation budget** — `MAX_PR_AUTOMATION_CYCLES=10` in
+1. **The per-PR automation budget** — `MAX_PR_AUTOMATION_CYCLES=50` in
    `scripts/lib/pr-automation-budget.sh`. It counts agent-authored commits + review cycles +
    acks **since the last human interaction** (action-counting, not failure-counting; per-PR,
    not per-worker — §7 rules 3, 4). On exhaustion it stops all automated writes, adds
@@ -563,15 +563,22 @@ The ceiling is therefore the **existing** two controls, and they remain authorit
    events (Dependabot's commit, the dependabot-automerge App's branch updates and
    re-approvals) neither count nor reset: a push to `main` causes them, not an agent
    answering an agent. And a comment or review that carries one of our automation markers
-   never resets the budget, whatever login posted it, because dev-lead, the personas and
-   auto-rebase post as the owner account. **Known limit:** a commit, an unmarked comment or
-   a review that an agent makes under the owner account still reads as a human interaction
-   and resets the budget. Inline review-thread replies (`/pulls/{pr}/comments`) are not
-   collected at all, so they neither count nor reset.
+   is an agent event whatever login posted it: it counts and it never resets, because
+   dev-lead, the personas and auto-rebase post as the owner account. **Known limit:** a
+   commit, an unmarked comment or a review with no marker in its body that an agent makes
+   under the owner account still reads as a human interaction and resets the budget. That
+   includes review-thread replies: the reply text (`/pulls/{pr}/comments`) is not read, but
+   each reply arrives as a review with an empty body, and that review is collected.
+
+   The cap of 50 is set from measurement so that only extreme cases trip it (#2224). Across
+   332 agent-authored PRs (2026-09-10 to 2026-10-10, plus those still open), the peak count
+   between two human interactions was median 10, p95 25, p99 35; no PR that merged went
+   above 35 and one PR exceeded 50. #860 peaks at 1,487 under the same rule.
 2. **The runaway detector** — the pushed detection signal in
    `daily-pr-review-health` / `scripts/fleet_monitor.sh` that flags open PRs over soft
    thresholds (commit/comment/cycle counts, or open >48h with active agent churn), so a
-   runaway is surfaced rather than waited-on (§7 rule 7).
+   runaway is surfaced rather than waited-on (§7 rule 7). Its cycle threshold is 25, half
+   the budget cap, so a PR is reported well before it is stopped.
 
 **Rule.** A new agentic role or timer must obey these two ceilings and declare which via its
 contract's `budget` field (§8.1). It must **not** invent its own numeric cap as a substitute

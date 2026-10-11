@@ -143,19 +143,23 @@ HUMAN="alice"
 mk_bot_events() {  # mk_bot_events <count>
   local n="$1" i=0 out=()
   while [ "$i" -lt "$n" ]; do
-    out+=("$(ev "2026-06-24T01:00:$(printf '%02d' "$i")Z" "$BOT")")
+    out+=("$(ev "2026-06-24T01:$(printf '%02d:%02d' $((i / 60)) $((i % 60)))Z" "$BOT")")
     i=$((i + 1))
   done
   events "${out[@]}"
 }
 
+@test "the default cap is 50 (#2224: set from measured PR peaks)" {
+  [ "$MAX_PR_AUTOMATION_CYCLES" = "50" ]
+}
+
 @test "below threshold is not exhausted (exit 1)" {
-  run pr_budget_exhausted "$(mk_bot_events 9)"
+  run pr_budget_exhausted "$(mk_bot_events $((MAX_PR_AUTOMATION_CYCLES - 1)))"
   [ "$status" -ne 0 ]
 }
 
 @test "reaching MAX_PR_AUTOMATION_CYCLES is exhausted (exit 0)" {
-  run pr_budget_exhausted "$(mk_bot_events 10)"
+  run pr_budget_exhausted "$(mk_bot_events "$MAX_PR_AUTOMATION_CYCLES")"
   [ "$status" -eq 0 ]
 }
 
@@ -168,7 +172,7 @@ mk_bot_events() {  # mk_bot_events <count>
 
 @test "a human interaction rescues a PR from exhaustion" {
   local many j
-  many=$(mk_bot_events 20)
+  many=$(mk_bot_events $((MAX_PR_AUTOMATION_CYCLES + 10)))
   # Append a trailing human event -> resets to 0 -> not exhausted.
   j=$(echo "$many" | jq --arg l "$HUMAN" '. + [{when:"2026-06-25T00:00:00Z", login:$l}]')
   run pr_budget_exhausted "$j"
@@ -229,7 +233,7 @@ mk_bot_events() {  # mk_bot_events <count>
 }
 
 @test "pr_resume_suppressed: exhausted budget (no label) → suppress (exit 0)" {
-  run pr_resume_suppressed 860 petry-projects/demo '["bug"]' "$(mk_bot_events 10)"
+  run pr_resume_suppressed 860 petry-projects/demo '["bug"]' "$(mk_bot_events "$MAX_PR_AUTOMATION_CYCLES")"
   [ "$status" -eq 0 ]
 }
 
@@ -300,7 +304,7 @@ mk_bot_events() {  # mk_bot_events <count>
 }
 
 @test "pr_resume_suppressed: FORCE_REVIEW must not bypass the budget" {
-  FORCE_REVIEW=true run pr_resume_suppressed 860 petry-projects/demo '["bug"]' "$(mk_bot_events 10)"
+  FORCE_REVIEW=true run pr_resume_suppressed 860 petry-projects/demo '["bug"]' "$(mk_bot_events "$MAX_PR_AUTOMATION_CYCLES")"
   [ "$status" -eq 0 ]
 }
 
@@ -425,20 +429,20 @@ bd176_events() {
   local j; j=$(pr_budget_flag_mechanical "$(bd176_events)" "$DEPENDABOT")
   run compute_pr_automation_cycles "$j"
   [ "$output" = "2" ]
-  run pr_budget_exhausted "$j"
+  MAX_PR_AUTOMATION_CYCLES=10 run pr_budget_exhausted "$j"   # the cap in force that day
   [ "$status" -ne 0 ]
 }
 
-@test "#2224: the same ten events on a PR authored by anyone else count 10, exhausted" {
+@test "#2224: the same ten events on a PR authored by anyone else count 10" {
   local j; j=$(pr_budget_flag_mechanical "$(bd176_events)" "don-petry")
   run compute_pr_automation_cycles "$j"
   [ "$output" = "10" ]
-  run pr_budget_exhausted "$j"
+  MAX_PR_AUTOMATION_CYCLES=10 run pr_budget_exhausted "$j"
   [ "$status" -eq 0 ]
 }
 
 @test "#2224: an agent looping on a Dependabot PR still exhausts the budget" {
-  local j; j=$(pr_budget_flag_mechanical "$(mk_bot_events 10)" "$DEPENDABOT")
+  local j; j=$(pr_budget_flag_mechanical "$(mk_bot_events "$MAX_PR_AUTOMATION_CYCLES")" "$DEPENDABOT")
   run pr_budget_exhausted "$j"
   [ "$status" -eq 0 ]
 }
@@ -492,8 +496,8 @@ bd176_events() {
 # Agent comments posted under a human login (#2224). dev-lead, the personas and
 # auto-rebase post as the owner account, so login alone reads them as a human
 # and each one re-armed the budget. A comment or review whose body carries one
-# of our automation markers is an agent event whatever its login: it never
-# resets. It does not count either — only bot logins count, as before.
+# of our automation markers is an agent event whatever its login: it counts,
+# and it never resets.
 # ---------------------------------------------------------------------------
 
 OWNER="don-petry"
@@ -505,19 +509,30 @@ mev() { jq -n --arg when "$1" --arg login "$2" '{when: $when, login: $login, age
   # #176: ten bot events, then dev-lead's hold notice posted as the owner.
   local j; j=$(jq --argjson m "$(mev 2026-10-09T04:35:08Z "$OWNER")" '. + [$m]' <<<"$(bd176_events)")
   run compute_pr_automation_cycles "$j"
-  [ "$output" = "10" ]
-  run pr_budget_exhausted "$j"
-  [ "$status" -eq 0 ]
+  [ "$output" = "11" ]   # the ten before it are still counted, and so is it
 }
 
-@test "#2224: a marker-carrying comment under a human login does not count" {
+@test "#2224: a marker-carrying comment under a human login counts" {
   local j
   j=$(events \
     "$(mev 2026-10-09T01:00:00Z "$OWNER")" \
     "$(mev 2026-10-09T02:00:00Z "$OWNER")" \
     "$(ev  2026-10-09T03:00:00Z "$BOT")")
   run compute_pr_automation_cycles "$j"
-  [ "$output" = "1" ]
+  [ "$output" = "3" ]
+}
+
+@test "#2224: an agent looping under a human login exhausts the budget with no bot login involved" {
+  local out=() i=0 n=$((MAX_PR_AUTOMATION_CYCLES))
+  while [ "$i" -lt "$n" ]; do
+    out+=("$(mev "2026-10-09T$(printf '%02d:%02d' $((i / 60)) $((i % 60))):00Z" "$OWNER")")
+    i=$((i + 1))
+  done
+  run pr_budget_exhausted "$(events "${out[@]}")"
+  [ "$status" -eq 0 ]
+  unset 'out[0]'
+  run pr_budget_exhausted "$(events "${out[@]}")"
+  [ "$status" -ne 0 ]
 }
 
 @test "#2224: an unmarked comment under the same login still resets the budget" {
@@ -536,7 +551,7 @@ mev() { jq -n --arg when "$1" --arg login "$2" '{when: $when, login: $login, age
     "$(mev 2026-10-09T04:00:00Z "$OWNER")" \
     "$(ev  2026-10-09T05:00:00Z "$BOT")")
   run compute_pr_automation_cycles "$j"
-  [ "$output" = "2" ]
+  [ "$output" = "3" ]   # everything after the 02:00 human event, marked or bot
 }
 
 @test "#2224: every automation marker family is recognised as an agent body" {
@@ -575,6 +590,7 @@ mev() { jq -n --arg when "$1" --arg login "$2" '{when: $when, login: $login, age
     "<!-- maintainer:not-a-finding -->" \
     "<!-- maintainer-resolve id=1 -->" \
     "the marker is written <!-- dev-lead and never closed" \
+    'dev-lead posts `<!-- dev-lead-hold-notice label=needs-human-review -->` when it holds a PR' \
     "<!-- some-other-tool note -->"; do
     run pr_budget_body_is_agent_marked "$body"
     [ "$status" -ne 0 ] || { echo "wrongly recognised: $body"; return 1; }
@@ -653,7 +669,7 @@ JSON
   [ "$(jq 'length' <<<"$j")" = "10" ]
   [ "$(compute_pr_automation_cycles "$j")" = "2" ]
   grep -q "8 Dependabot-pipeline event(s)" "$BATS_TEST_TMPDIR/err"
-  run enforce_pr_budget 176 petry-projects/demo
+  MAX_PR_AUTOMATION_CYCLES=10 run enforce_pr_budget 176 petry-projects/demo
   [ "$status" -ne 0 ]
 }
 
@@ -681,7 +697,7 @@ JSON
     {created_at:"2026-10-09T04:35:08Z", user:{login:"don-petry"}, body:"<!-- dev-lead-hold-notice label=needs-human-review -->\n\n**dev-lead is holding this PR**"}
   ]' "$FIXD/comments.json" > "$tmp" && mv "$tmp" "$FIXD/comments.json"
   local j; j=$(gather_pr_automation_events 176 petry-projects/demo 2>"$BATS_TEST_TMPDIR/err")
-  [ "$(compute_pr_automation_cycles "$j")" = "10" ]
+  [ "$(compute_pr_automation_cycles "$j")" = "12" ]
   grep -q "2 marker-carrying agent event(s)" "$BATS_TEST_TMPDIR/err"
 }
 
@@ -692,7 +708,7 @@ JSON
   jq '. + [{submitted_at:"2026-10-09T05:00:00Z", user:{login:"don-petry"}, body:"<!-- persona:qa-lead -->\n## QA Lead"}]' \
     "$FIXD/reviews.json" > "$tmp" && mv "$tmp" "$FIXD/reviews.json"
   local j; j=$(gather_pr_automation_events 176 petry-projects/demo 2>/dev/null)
-  [ "$(compute_pr_automation_cycles "$j")" = "10" ]
+  [ "$(compute_pr_automation_cycles "$j")" = "11" ]
   jq '. + [{created_at:"2026-10-09T06:00:00Z", user:{login:"don-petry"}, body:"Looked at this, carry on."}]' \
     "$FIXD/comments.json" > "$tmp" && mv "$tmp" "$FIXD/comments.json"
   j=$(gather_pr_automation_events 176 petry-projects/demo 2>/dev/null)

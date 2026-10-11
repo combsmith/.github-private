@@ -13,7 +13,7 @@
 #     the count to zero; a machine action (bot comment, bot commit, machine
 #     approval) never does — so the runaway can't re-arm its own budget.
 #   pr_budget_exhausted <events_json>
-#     Exit 0 when the count has reached MAX_PR_AUTOMATION_CYCLES (default 10).
+#     Exit 0 when the count has reached MAX_PR_AUTOMATION_CYCLES (default 50).
 #   gather_pr_automation_events <pr> <repo>   -> normalized {when, login}[] JSON
 #   enforce_pr_budget <pr> <repo>
 #     The orchestration entrypoint scripts call before doing automated writes:
@@ -38,9 +38,9 @@
 #   agent_marked: true  A comment or review whose body carries one of our
 #                       automation markers (PR_BUDGET_AGENT_MARKER_RE). dev-lead,
 #                       the personas and auto-rebase post as the owner account,
-#                       so their login reads as a human. Such an event never
-#                       resets the budget. It does not count either: only bot
-#                       logins count.
+#                       so their login reads as a human. Such an event is an
+#                       agent event whatever its login: it counts, and it never
+#                       resets.
 # Still read as human, because nothing in the event tells them apart: a commit,
 # an unmarked comment, or a review-thread reply an agent makes under a human login.
 
@@ -48,7 +48,15 @@
 # the agent identity (donpetry-bot) and repair-pr-approvals, whose machine
 # approvals must not reset the budget.
 : "${AUTOMATION_BOT_LOGINS:=donpetry-bot github-actions[bot] repair-pr-approvals}"
-: "${MAX_PR_AUTOMATION_CYCLES:=10}"
+# The cap is set from measurement, to trip only on extreme cases (#2224). The
+# sample is 332 agent-authored PRs: every one created in the org from 2026-09-10
+# to 2026-10-10, plus those still open. The peak count a PR reached between two
+# human interactions was: median 10, p95 25, p99 35. The highest on a PR that
+# merged was 35; one PR (93) was above 50. #860 peaks at 1,487 under the same
+# rule, and its ack storm (one every ~9 seconds) reaches 50 in under ten
+# minutes. Before #2224 the cap was 10 and agent comments posted under the owner
+# login were not counted; at 10 with them counted, half the sample would trip.
+: "${MAX_PR_AUTOMATION_CYCLES:=50}"
 
 # Space-separated logins of the Dependabot merge pipeline. Their events are
 # flagged `mechanical` on a PR authored by dependabot[bot], and nowhere else.
@@ -95,9 +103,9 @@ _PR_BUDGET_JQ_DEFS='
 '
 
 # compute_pr_automation_cycles <events_json>
-#   Prints the number of bot-authored events newer than the latest human event.
-#   `mechanical` events are left out altogether; an `agent_marked` event under a
-#   human login is not a human event (#2224).
+#   Prints the number of automated events newer than the latest human event.
+#   An event is automated when its login is a bot or it is `agent_marked`; every
+#   other event is human. `mechanical` events are left out altogether (#2224).
 compute_pr_automation_cycles() {
   local events_json="${1:-[]}"
   local bots_json count
@@ -107,7 +115,7 @@ compute_pr_automation_cycles() {
     map(select(.when != null and .when != "" and .mechanical != true))
     | ([.[] | select(((.login | is_bot($bots)) | not) and (.agent_marked != true)) | .when]
         | max // "") as $last_human
-    | [.[] | select((.login | is_bot($bots)) and (.when > $last_human))]
+    | [.[] | select(((.login | is_bot($bots)) or (.agent_marked == true)) and (.when > $last_human))]
     | length
   ' <<<"$events_json" 2>/dev/null) || count=0
   # Defensive: malformed input degrades to 0 so the integer comparison at the
@@ -319,7 +327,7 @@ pr_budget_exhausted() {
   local events_json="${1:-[]}"
   local n
   n=$(compute_pr_automation_cycles "$events_json")
-  if [ "${n:-0}" -ge "${MAX_PR_AUTOMATION_CYCLES:-10}" ]; then
+  if [ "${n:-0}" -ge "${MAX_PR_AUTOMATION_CYCLES:-50}" ]; then
     return 0
   fi
   return 1
@@ -378,7 +386,7 @@ gather_pr_automation_events() {
 
 # _pr_budget_log_flags <pr> <repo> <events_json>
 #   One stderr line per kind of flagged event, so a run log shows why a count is
-#   lower than the PR's bot activity suggests. Silent when nothing is flagged.
+#   not what the logins alone suggest. Silent when nothing is flagged.
 _pr_budget_log_flags() {
   local pr="$1" repo="$2" events_json="${3:-[]}" bots_json n_mech n_marked
   bots_json=$(printf '%s' "${AUTOMATION_BOT_LOGINS}" \
@@ -391,7 +399,7 @@ _pr_budget_log_flags() {
     echo "  [budget] PR #${pr} in ${repo}: ${n_mech} Dependabot-pipeline event(s) left out of the automation budget (#2224)" >&2
   fi
   if [ "${n_marked:-0}" -gt 0 ] 2>/dev/null; then
-    echo "  [budget] PR #${pr} in ${repo}: ${n_marked} marker-carrying agent event(s) under a human login do not reset the automation budget (#2224)" >&2
+    echo "  [budget] PR #${pr} in ${repo}: ${n_marked} marker-carrying agent event(s) under a human login counted as automated (#2224)" >&2
   fi
   return 0
 }
