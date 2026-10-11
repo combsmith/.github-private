@@ -31,9 +31,11 @@ setup() {
   REMOTE="$BATS_TEST_TMPDIR/remote.git"
   WORK="$BATS_TEST_TMPDIR/work"
   COMMENTS="$BATS_TEST_TMPDIR/comments.json"
+  ISSUE_COMMENTS="$BATS_TEST_TMPDIR/issue-comments.json"
   PATCHES="$BATS_TEST_TMPDIR/patches"
   mkdir -p "$PATCHES"
   echo '[]' > "$COMMENTS"
+  echo '[]' > "$ISSUE_COMMENTS"
 
   git init -q --bare "$REMOTE"
   local seed="$BATS_TEST_TMPDIR/seed"
@@ -68,6 +70,8 @@ case "\$*" in
     for a in "\$@"; do
       case "\$a" in
         *pulls/comments/*) id="\${a##*/}" ;;
+        # Issue-comment PATCHes (#2156) are recorded as issue-<id>.
+        *issues/comments/*) id="issue-\${a##*/}" ;;
         body=*) body="\${a#body=}" ;;
       esac
     done
@@ -75,6 +79,7 @@ case "\$*" in
     echo '{}'
     ;;
   *"pulls/54/comments"*) cat "$COMMENTS" ;;
+  *"issues/54/comments"*) cat "$ISSUE_COMMENTS" ;;
   # github_knows_commit: GH_KNOWN_COMMIT was pushed; GH_COMMITS_ERROR fails the lookup.
   *"/commits/"*)
     all="\$*"; sha="\${all##*/commits/}"; sha="\${sha%% *}"
@@ -90,12 +95,14 @@ GHEOF
 
   # shellcheck source=/dev/null
   source "$LIB_DIR/addressed-claim-verify.sh"
+  source "$LIB_DIR/comment-disposition-verify.sh"
   source "$LIB_DIR/claim-landing.sh"
   source "$LIB_DIR/git-push-guard.sh"
   source "$LIB_DIR/git-history.sh"
   eval "$(sed -n '/^github_knows_commit()/,/^}/p' "$FIX_REVIEWS_SCRIPT")"
   eval "$(sed -n '/^sweep_earlier_claims()/,/^}/p' "$FIX_REVIEWS_SCRIPT")"
   eval "$(sed -n '/^retract_unlanded_claims()/,/^}/p' "$FIX_REVIEWS_SCRIPT")"
+  eval "$(sed -n '/^sweep_fixed_dispositions()/,/^}/p' "$FIX_REVIEWS_SCRIPT")"
   declare -F sweep_earlier_claims >/dev/null
   declare -F retract_unlanded_claims >/dev/null
 
@@ -344,4 +351,146 @@ _landed_fix() {
   run retract_unlanded_claims fix-reviews failed
   [ -f "$PATCHES/211" ]
   grep -q "reason=not-on-ref" "$PATCHES/211"
+}
+
+# ---------------------------------------------------------------------------
+# #2156: issue-comment `fixed` dispositions are swept like review-thread claims
+# ---------------------------------------------------------------------------
+# PR #2080: comment 6073169970 carried `disposition=fixed` citing 9313650…, which
+# never reached the branch; the review-thread claim was retracted, this was not.
+
+# _disposition <comment_id> <disposition> [sha] [ref] — the reply's body.
+_disposition() {
+  printf 'Handled the empty-input case.\n\n<!-- dev-lead:comment-disposition id=%s disposition=%s%s%s -->' \
+    "$1" "$2" "${3:+ sha=$3}" "${4:+ ref=$4}"
+}
+
+# _serve_issue <id> <created_at> <body> [<id> <created_at> <body>]... — the PR's
+# issue comments: our replies (REST shape).
+_serve_issue() {
+  local rows=()
+  while [ "$#" -ge 3 ]; do
+    rows+=("$(jq -c -n --argjson id "$1" --arg at "$2" --arg body "$3" \
+      '{id: $id, user: {login: "donpetry-bot"}, created_at: $at, body: $body}')")
+    shift 3
+  done
+  printf '%s\n' "${rows[@]}" | jq -s -c . > "$ISSUE_COMMENTS"
+}
+
+@test "#2156 AC1/AC2: an earlier fixed issue-comment reply citing an unlanded commit is retracted" {
+  local ghost="931365099bfb2c283aecfb16b0f5f0b8d59436b2"
+  _serve_issue 6073169970 "2026-10-09T02:42:00Z" "$(_disposition IC_kwDO123 fixed "$ghost")"
+
+  run sweep_earlier_claims
+  [ "$status" -eq 0 ]
+  [ -f "$PATCHES/issue-6073169970" ]
+  grep -q "Retracted" "$PATCHES/issue-6073169970"
+  grep -q "<!-- dev-lead:retracted reason=not-on-ref -->" "$PATCHES/issue-6073169970"
+  # The marker is gone, so neither the minimizer nor a reader sees "fixed" any more…
+  ! grep -q "dev-lead:comment-disposition" "$PATCHES/issue-6073169970" || false
+  run cdv_parse_disposition "$(cat "$PATCHES/issue-6073169970")"
+  [ "$status" -eq 1 ]
+  # …and the original text is kept as a quote.
+  grep -q "^> Handled the empty-input case." "$PATCHES/issue-6073169970"
+}
+
+@test "#2156 AC1: an earlier fixed reply whose commit landed is kept" {
+  local fix
+  fix=$(_landed_fix "2026-10-05T00:00:00Z")
+  _serve_issue 301 "2026-10-05T00:01:00Z" "$(_disposition IC_kwDO123 fixed "$fix")"
+
+  run sweep_earlier_claims
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sweep_fixed_dispositions: retracted 0 earlier"* ]]
+  [ ! -f "$PATCHES/issue-301" ]
+}
+
+@test "#2156 AC1: an earlier fixed reply whose commit GitHub knows (pushed, then rewritten) is kept" {
+  local ghost="931365099bfb2c283aecfb16b0f5f0b8d59436b2"
+  export GH_KNOWN_COMMIT="$ghost"
+  _serve_issue 302 "2026-10-09T02:42:00Z" "$(_disposition IC_kwDO123 fixed "$ghost")"
+
+  run sweep_earlier_claims
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pushed, then rewritten"* ]]
+  [ ! -f "$PATCHES/issue-302" ]
+}
+
+@test "#2156 AC3: invalid / answered / informational / out-of-scope replies are never retracted" {
+  _serve_issue \
+    311 "2026-10-09T02:42:00Z" "$(_disposition IC_a invalid)" \
+    312 "2026-10-09T02:42:00Z" "$(_disposition IC_b answered)" \
+    313 "2026-10-09T02:42:00Z" "$(_disposition IC_c informational)" \
+    314 "2026-10-09T02:42:00Z" "$(_disposition IC_d out-of-scope "" "#9999")"
+
+  run sweep_earlier_claims
+  [ "$status" -eq 0 ]
+  [ -z "$(ls -A "$PATCHES")" ]
+
+  _serve_issue \
+    315 "2026-10-09T03:01:00Z" "$(_disposition IC_a invalid)" \
+    316 "2026-10-09T03:01:00Z" "$(_disposition IC_b answered)" \
+    317 "2026-10-09T03:01:00Z" "$(_disposition IC_c informational)" \
+    318 "2026-10-09T03:01:00Z" "$(_disposition IC_d out-of-scope "" "#9999")"
+  run retract_unlanded_claims fix-bot-comment failed
+  [ "$status" -eq 0 ]
+  [ -z "$(ls -A "$PATCHES")" ]
+}
+
+@test "#2156 AC1/AC2: the end-of-pass sweep retracts this pass's fixed reply whose commit did not land" {
+  # This pass committed a fix and the model cited it, but the push never landed.
+  echo fixed > f; git add f; git commit -q -m "fix(reviews): address review comments"
+  local cited; cited=$(git rev-parse HEAD)
+  _serve_issue 320 "2026-10-09T03:01:00Z" "$(_disposition IC_kwDO123 fixed "$cited")"
+
+  run retract_unlanded_claims fix-bot-comment failed
+  [ -f "$PATCHES/issue-320" ]
+  grep -q "reason=not-on-ref" "$PATCHES/issue-320"
+  ! grep -q "dev-lead:comment-disposition" "$PATCHES/issue-320"
+}
+
+@test "#2156 AC1: the end-of-pass sweep keeps this pass's fixed reply whose commit landed" {
+  echo fixed > f; git add f; git commit -q -m "fix(reviews): address review comments"
+  local cited; cited=$(git rev-parse HEAD)
+  git push -q origin main
+  _serve_issue 321 "2026-10-09T03:01:00Z" "$(_disposition IC_kwDO123 fixed "$cited")"
+
+  run retract_unlanded_claims fix-bot-comment ok
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sweep_fixed_dispositions: retracted 0 pass"* ]]
+  [ ! -f "$PATCHES/issue-321" ]
+}
+
+@test "#2156 AC1: the end-of-pass sweep leaves earlier passes' fixed replies to the start-of-pass sweep" {
+  local ghost="931365099bfb2c283aecfb16b0f5f0b8d59436b2"
+  _serve_issue 322 "2026-10-09T02:42:00Z" "$(_disposition IC_kwDO123 fixed "$ghost")"
+
+  run retract_unlanded_claims fix-bot-comment ok
+  [ ! -f "$PATCHES/issue-322" ]
+}
+
+@test "#2156: a clean rebase re-points this pass's fixed reply at the landed commit instead of retracting it" {
+  echo fixed > f; git add f; git commit -q -m "fix(reviews): address review comments"
+  local cited; cited=$(git rev-parse HEAD)
+  _serve_issue 323 "2026-10-09T03:01:00Z" "$(_disposition IC_kwDO123 fixed "$cited")"
+  _foreign_push merged-main.txt "from main"
+  push_no_clobber
+  local rebased; rebased=$(git rev-parse HEAD)
+  [ "$rebased" != "$cited" ]
+
+  run retract_unlanded_claims fix-bot-comment ok
+  [ "$status" -eq 0 ]
+  [ -f "$PATCHES/issue-323" ]
+  ! grep -q "Retracted" "$PATCHES/issue-323" || false
+  run cdv_parse_disposition "$(cat "$PATCHES/issue-323")"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .sha <<<"$output")" = "$rebased" ]
+  [ "$(jq -r .disposition <<<"$output")" = "fixed" ]
+}
+
+@test "#2156: a failed issue-comment listing is reported, not read as clean" {
+  printf 'not json' > "$ISSUE_COMMENTS"
+  run retract_unlanded_claims fix-bot-comment ok
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"issue comments"* ]]
 }

@@ -57,7 +57,7 @@ _engine() {
   [ "$(ai_models_chain claude triage)" = "claude-sonnet-5" ]
   [ "$(ai_models_chain claude audit)" = "claude-fable-5" ]
   # an omitted key keeps its default
-  [ "$(ai_models_chain claude action)" = "claude-sonnet-5-5,claude-sonnet-5,claude-opus-4-8" ]
+  [ "$(ai_models_chain claude action)" = "claude-sonnet-5-5,claude-sonnet-5,claude-opus-5-5" ]
 }
 
 @test "parse: duplicate models collapse; the last entry for a key wins" {

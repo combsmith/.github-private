@@ -132,16 +132,17 @@ _source_engine() {
   [ "$first" = "claude-opus-5-5" ]
 }
 
-@test "new-models: CLAUDE_ACTION_MODEL_CHAIN leads with sonnet-5-5 and falls back to opus-4-8 (not opus-4-7) — #1978" {
+@test "new-models: CLAUDE_ACTION_MODEL_CHAIN leads with sonnet-5-5 and falls back to opus-5-5 (not opus-4-8/4-7) — #1978, #1900" {
   _source_engine "claude"
   local first
   first="${CLAUDE_ACTION_MODEL_CHAIN%%,*}"
   first="${first// /}"
   [ "$first" = "claude-sonnet-5-5" ]
-  # sonnet-5 is the in-family safety hop between sonnet-5-5 and opus-4-8.
-  [[ ",${CLAUDE_ACTION_MODEL_CHAIN// /}," == *",claude-sonnet-5-5,claude-sonnet-5,claude-opus-4-8,"* ]]
-  # opus-4-8 is the cross-family safety hop; opus-4-7 must not appear.
-  [[ "$CLAUDE_ACTION_MODEL_CHAIN" == *"claude-opus-4-8"* ]]
+  # sonnet-5 is the in-family safety hop between sonnet-5-5 and opus-5-5.
+  [[ ",${CLAUDE_ACTION_MODEL_CHAIN// /}," == *",claude-sonnet-5-5,claude-sonnet-5,claude-opus-5-5,"* ]]
+  # opus-5-5 is the cross-family safety hop (#1900); opus-4-8 and opus-4-7 must not appear.
+  [[ "$CLAUDE_ACTION_MODEL_CHAIN" == *"claude-opus-5-5"* ]]
+  [[ "$CLAUDE_ACTION_MODEL_CHAIN" != *"claude-opus-4-8"* ]]
   [[ "$CLAUDE_ACTION_MODEL_CHAIN" != *"claude-opus-4-7"* ]]
 }
 
@@ -209,17 +210,18 @@ _source_engine() {
   grep -q "claude-opus-4-8" "$MODEL_RECORD"
 }
 
-@test "new-models: action chain sonnet rate-limited → opus-4-8 tried (not opus-4-7)" {
+@test "new-models: action chain sonnet rate-limited → opus-5-5 tried (not opus-4-8/4-7)" {
   _source_engine "claude"
   # Both sonnet hops (sonnet-5-5 primary, sonnet-5 safety) throttle so the walk
-  # reaches the opus-4-8 cross-family hop (#1978).
-  export STUB_ENGINE_EXIT_BY_MODEL="claude-sonnet-5-5=1|claude-sonnet-5=1|claude-opus-4-8=0"
-  export STUB_ENGINE_RESPONSE_BY_MODEL="claude-sonnet-5-5=too many requests|claude-sonnet-5=too many requests|claude-opus-4-8=action done"
+  # reaches the opus-5-5 cross-family hop (#1978, #1900).
+  export STUB_ENGINE_EXIT_BY_MODEL="claude-sonnet-5-5=1|claude-sonnet-5=1|claude-opus-5-5=0"
+  export STUB_ENGINE_RESPONSE_BY_MODEL="claude-sonnet-5-5=too many requests|claude-sonnet-5=too many requests|claude-opus-5-5=action done"
 
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
-  grep -q "claude-opus-4-8" "$MODEL_RECORD"
+  grep -q "claude-opus-5-5" "$MODEL_RECORD"
+  ! grep -q "claude-opus-4-8" "$MODEL_RECORD" || false
   ! grep -q "claude-opus-4-7" "$MODEL_RECORD"
 }
 
