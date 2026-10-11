@@ -1412,6 +1412,7 @@ rdc_commit_diff() {
 rdc_fixed_verdict() {
   local sha="$1" body="$2" created="$3"
   local facts on_head="false" in_base="unknown" own_files=0 commit_date="" content this_pass="false"
+  local own_list="" touches_named="false"
   if [ -n "${RDC_FIXED_REF:-}" ]; then
     facts=$(acv_gather_commit_facts "$sha" "${RDC_FIXED_BASE:-}" "$RDC_FIXED_REF")
     on_head=$(printf '%s' "$facts" | jq -r '.on_head // false' 2>/dev/null || echo "false")
@@ -1419,17 +1420,23 @@ rdc_fixed_verdict() {
       in_base=$(printf '%s' "$facts" | jq -r 'if .in_base == false then "false" else "true" end' 2>/dev/null || echo "true")
     fi
     own_files=$(printf '%s' "$facts" | jq -r '(.own_files // []) | length' 2>/dev/null || echo "0")
+    own_list=$(printf '%s' "$facts" | jq -r '(.own_files // []) | .[]' 2>/dev/null || echo "")
     commit_date=$(printf '%s' "$facts" | jq -r '.commit_date // ""' 2>/dev/null || echo "")
   fi
-  # A tokenless finding verifies only on a commit this pass produced: one not
-  # reachable from the pre-pass head. No snapshot or an unreadable sha is "no".
+  # #2269: does the commit change a file the finding names?
+  if cdv_touches_named_file "$own_list" "$(cdv_finding_paths "$body")"; then
+    touches_named="true"
+  fi
+  # A tokenless finding, and a fix that removes no token the finding names
+  # (#2269), verify only on a commit this pass produced: one not reachable from
+  # the pre-pass head. No snapshot or an unreadable sha is "no".
   if [ -n "${RESOLUTION_BASE_SHA:-}" ] \
      && git cat-file -e "${sha}^{commit}" 2>/dev/null \
      && ! git merge-base --is-ancestor "$sha" "$RESOLUTION_BASE_SHA" 2>/dev/null; then
     this_pass="true"
   fi
   content=$(cdv_diff_token_verdict "$(rdc_commit_diff "$sha")" "$(cdv_finding_tokens "$body")") || true
-  cdv_fixed_verdict "$on_head" "$in_base" "$own_files" "$commit_date" "$created" "$content" "$this_pass"
+  cdv_fixed_verdict "$on_head" "$in_base" "$own_files" "$commit_date" "$created" "$content" "$this_pass" "$touches_named"
 }
 
 # rdc_live_comment_body <comment_node_id>
@@ -2091,6 +2098,8 @@ resolve_dispositioned_comments() {
         # it: on the PR's pushed head, not on the base branch, a non-empty diff that
         # REMOVES a token the finding names and does not ADD it, dated after the
         # finding. A finding with no token fails closed unless the cited sha was produced by this pass (tokenless-not-this-pass).
+        # A commit this pass produced that removes no token (an additive fix)
+        # verifies when it changes a file the finding names (#2269).
         # The old "produced by THIS pass" rule could never accept a fix that landed
         # in an earlier pass. Accepting any later commit would let an unrelated
         # commit resolve the comment.
