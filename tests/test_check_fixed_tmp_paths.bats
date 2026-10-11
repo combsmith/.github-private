@@ -71,6 +71,28 @@ except() {
   [ "$status" -eq 0 ]
 }
 
+@test "tests: the body of a one-line test is read, its title is not" {
+  put tests/a.bats "@test \"writes $T/in-a-title\" { echo x > $T/in-a-body; }"
+  put tests/b.bats "@test 'single $T/quoted-title' { cat $T/after-single; }"
+  put tests/c.bats "@test \"an \\\"escaped\\\" $T/title\" { true; }"
+  run bash "$CHECK" "$SANDBOX"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FIXED     $T/in-a-body  (1 file: tests/a.bats)"* ]]
+  [[ "$output" == *"FIXED     $T/after-single  (1 file: tests/b.bats)"* ]]
+  [[ "$output" != *"in-a-title"* ]]
+  [[ "$output" != *"quoted-title"* ]]
+  [[ "$output" != *"tests/c.bats"* ]]
+}
+
+@test "tests: a fixed name under \$BATS_TMPDIR fails however the variable is closed" {
+  put tests/a.bats 'setup() {' "  a=\"$B\"/quoted-then-slash" "  b=\"\${${B#?}}\"/braced-and-quoted" "  c=\"\${${B#?}}/braced\"" '}'
+  run bash "$CHECK" "$SANDBOX"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FIXED     $B/quoted-then-slash  (1 file: tests/a.bats)"* ]]
+  [[ "$output" == *"FIXED     $B/braced-and-quoted  (1 file: tests/a.bats)"* ]]
+  [[ "$output" == *"FIXED     $B/braced  (1 file: tests/a.bats)"* ]]
+}
+
 @test "tests: the default of a stub's \${VAR:-…} expansion is a fixed path" {
   put tests/stubs/gh '#!/usr/bin/env bash' "echo true > \"\${GH_STUB_FILE:-$T/stub-called}\""
   run bash "$CHECK" "$SANDBOX"

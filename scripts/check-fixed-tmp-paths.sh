@@ -47,7 +47,7 @@ ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 ALLOWLIST_REL="scripts/lib/fixed-tmp-paths.tsv"
 SCAN_DIRS=(tests scripts)
 
-hits_file="$(mktemp)"
+hits_file="$(mktemp)" || { echo "::error::check-fixed-tmp-paths: cannot create a temporary file — cannot certify clean." >&2; exit 2; }
 trap 'rm -f "$hits_file"' EXIT
 
 for d in "${SCAN_DIRS[@]}"; do
@@ -83,7 +83,13 @@ awk -v allow_rel="$ALLOWLIST_REL" '
     if (!(tok in order_of)) { order_of[tok] = ++n_tok; order[n_tok] = tok }
   }
 
-  BEGIN { FS = "\t"; bad = 0 }
+  BEGIN {
+    FS = "\t"; bad = 0
+    # A single-quoted @test title, built here because a quote cannot sit in this
+    # single-quoted awk program.
+    sq = sprintf("%c", 39)
+    sq_title = "^[ \t]*@test[ \t]+" sq "[^" sq "]*" sq
+  }
 
   # First file: the exceptions. path <TAB> file <TAB> reason.
   FILENAME == ARGV[1] {
@@ -103,7 +109,12 @@ awk -v allow_rel="$ALLOWLIST_REL" '
     c1 = index(line, ":"); file = substr(line, 1, c1 - 1); line = substr(line, c1 + 1)
     c2 = index(line, ":"); lno = substr(line, 1, c2 - 1); text = substr(line, c2 + 1)
     if (file == allow_rel) next
-    if (text ~ /^[ \t]*#/ || text ~ /^[ \t]*@test /) next
+    if (text ~ /^[ \t]*#/) next
+    # A bats `@test` line: drop the TITLE (a path named in prose is not a path
+    # opened) and read what follows it, so a one-line test body is still seen.
+    if (text ~ /^[ \t]*@test[ \t]/) {
+      if (!sub(/^[ \t]*@test[ \t]+"([^"\\]|\\.)*"/, "", text) && !sub(sq_title, "", text)) next
+    }
     in_tests = (file ~ /^tests\//)
 
     pos = 1
@@ -128,9 +139,11 @@ awk -v allow_rel="$ALLOWLIST_REL" '
     # "$BATS_TMPDIR/<name>": the base temp directory of bats is /tmp on Linux and
     # is the same for every session, so a fixed name beneath it is a fixed path.
     rest = text
-    while (in_tests && match(rest, /BATS_TMPDIR(:-\/tmp)?[}]?\/[A-Za-z0-9_.+\/$*?{}-]+/)) {
+    # The variable may be closed by a brace, a quote or both before the slash:
+    # "$BATS_TMPDIR/x", "${BATS_TMPDIR}/x" and "$BATS_TMPDIR"/x are one path.
+    while (in_tests && match(rest, /BATS_TMPDIR(:-\/tmp)?[}]?"?\/[A-Za-z0-9_.+\/$*?{}-]+/)) {
       tok = substr(rest, RSTART, RLENGTH); rest = substr(rest, RSTART + RLENGTH)
-      sub(/^BATS_TMPDIR(:-\/tmp)?[}]?/, "", tok)        # keep "/<name>"
+      sub(/^BATS_TMPDIR(:-\/tmp)?[}]?"?/, "", tok)      # keep "/<name>"
       if (tok ~ /[$*?]/ || tok ~ /XXX/) continue
       sub(/[.\/]+$/, "", tok)
       if (tok != "") note("$BATS_TMPDIR" tok, file, lno)

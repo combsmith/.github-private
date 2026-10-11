@@ -27,7 +27,7 @@ STUB_ENGINE_DIR=""
 GITHUB_ENV_FILE=""
 # The real writers run below; give them a private sidecar directory so this
 # scenario does not share /tmp/dev-lead-* with other sessions (#2271).
-DEV_LEAD_SIDECAR_DIR="$(mktemp -d)"
+DEV_LEAD_SIDECAR_DIR="$(mktemp -d)" || exit 1
 export DEV_LEAD_SIDECAR_DIR
 
 cleanup() {
