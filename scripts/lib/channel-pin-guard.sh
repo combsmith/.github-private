@@ -120,15 +120,21 @@ cpg_scan_pass() {
       *) continue ;;
     esac
     before=$(_cpg_pins_at "$pre" "$path")
-    _cpg_has_channel_pin "$before" || continue
     if git --literal-pathspecs cat-file -e "${head}:${path}" 2>/dev/null; then
       after=$(_cpg_pins_at "$head" "$path")
+      if ! _cpg_has_channel_pin "$before"; then
+        if _cpg_has_channel_pin "$after"; then
+          drift+="${path}"$'\t'"$(_cpg_summary "$before")"$'\t'"$(_cpg_summary "$after")"$'\n'
+        fi
+        continue
+      fi
       [[ "$after" == "$before" ]] && continue
       if [[ -n "$base" && -n "$after" && "$after" == "$(_cpg_pins_at "$base" "$path")" ]]; then
         continue
       fi
       drift+="${path}"$'\t'"$(_cpg_summary "$before")"$'\t'"$(_cpg_summary "$after")"$'\n'
     else
+      _cpg_has_channel_pin "$before" || continue
       drift+="${path}"$'\t'"$(_cpg_summary "$before")"$'\t'"<deleted>"$'\n'
     fi
   done <<<"$files"

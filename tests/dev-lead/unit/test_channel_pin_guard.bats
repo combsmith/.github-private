@@ -152,6 +152,17 @@ _mk_pr() {
   [[ "$output" == "clean" ]]
 }
 
+@test "cpg_scan_pass: adding a first-party channel pin to a previously unpinned workflow is refused (drift)" {
+  _mk_pr
+  _stub_body "dev-lead/v139-ring0" > .github/workflows/lint.yml
+  git commit -qam "refactor: add channel pin to lint workflow"
+  run cpg_scan_pass "$PRE" HEAD
+  [[ "$status" -eq 1 ]]
+  [[ "${lines[0]}" == "drift" ]]
+  [[ "${lines[1]}" == ".github/workflows/lint.yml"$'\t'"<none>"$'\t'* ]]
+  [[ "${lines[1]}" == *"dev-lead/v139-ring0"* ]]
+}
+
 @test "cpg_scan_pass: a pass that changes nothing is clean" {
   _mk_pr
   run cpg_scan_pass "$PRE" HEAD
