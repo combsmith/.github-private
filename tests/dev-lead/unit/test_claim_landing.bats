@@ -734,3 +734,37 @@ _2161_real_gh() {
   run cl_pending_marker_ids '<!-- dev-lead:unstamped-replies ids=PRRC_ok,bad id,<x> -->'
   [[ "$output" == "PRRC_ok" ]]
 }
+
+# ── recorder false positives: --jq projections and reads that mention in_reply_to ──
+
+@test "cl_install_reply_recorder: the reply mutation with a --jq projection records the bare id" {
+  local rec="$BATS_TEST_TMPDIR/rec" real="$BATS_TEST_TMPDIR/real-gh" dir
+  printf '#!/usr/bin/env bash\necho "PRRC_jq1"\n' > "$real"
+  chmod +x "$real"
+  dir=$(cl_install_reply_recorder "$rec" "$real")
+  run "$dir/gh" api graphql -f query='mutation { addPullRequestReviewThreadReply(input:{}) { comment { id } } }' --jq '.data.addPullRequestReviewThreadReply.comment.id'
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "PRRC_jq1" ]]
+  run cl_recorded_reply_ids "$rec"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "PRRC_jq1" ]]
+}
+
+@test "cl_install_reply_recorder: a read whose --jq filter mentions in_reply_to_id is not recorded" {
+  local rec="$BATS_TEST_TMPDIR/rec" dir
+  dir=$(cl_install_reply_recorder "$rec" "$(_2161_real_gh)")
+  run "$dir/gh" api repos/o/r/pulls/7/comments --jq '.[] | select(.in_reply_to_id == 1) | .body'
+  [[ "$status" -eq 0 ]]
+  run "$dir/gh" api repos/o/r/pulls/7/comments/1/replies -X GET
+  run "$dir/gh" api repos/o/r/pulls/7/comments
+  [[ ! -s "$rec" ]]
+}
+
+@test "cl_install_reply_recorder: a genuine REST reply (in_reply_to field) with no id is UNATTRIBUTED" {
+  local rec="$BATS_TEST_TMPDIR/rec" dir
+  dir=$(cl_install_reply_recorder "$rec" "$(_2161_real_gh)")
+  run "$dir/gh" api repos/o/r/pulls/7/comments -f body=x -F in_reply_to=1
+  run cl_recorded_reply_ids "$rec"
+  [[ "$status" -eq 1 ]]
+  grep -qx UNATTRIBUTED "$rec"
+}
