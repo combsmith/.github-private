@@ -6676,7 +6676,7 @@ _test_job() {
   local r
   for r in failure cancelled skipped ""; do
     _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
-    : > "$T2013_PUSH"; : > "$T2013_PATCH"
+    : > "$T2013_PUSH"; : > "$T2013_PATCH"; : > "$BATS_TEST_TMPDIR/label_posts"
     _run_2143 work fix-reviews
     # a verdict that says green must not count when the job itself did not succeed
     T2143_VERDICT='{"verdict":"green","cmd":"./suite.sh","tests":[]}' T2143_JOB="$r" _run_2143 push fix-reviews
