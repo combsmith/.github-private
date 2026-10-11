@@ -77,7 +77,10 @@ jobs:
 
   bats:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 20, not 10: the suite list has grown until the job routinely takes 7 to 9
+    # minutes (405 to 562 seconds across recent runs), so any change that adds a
+    # suite was being cancelled at the limit rather than failing on a test.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
