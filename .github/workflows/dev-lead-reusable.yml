@@ -753,15 +753,17 @@ jobs:
   # Finishes a guarded pass (#2143): restores the dispatch job's exact commits,
   # reads the test-suite verdict and pushes only when it allows, then runs
   # everything that follows a push — push verification, the claim-retraction
-  # sweep, thread resolution, the terminal comment. `always()`: a failed,
-  # cancelled or timed-out test job still gets here, so a "Fixed" reply whose
-  # commit does not land is retracted. That case has no verdict, so the script
-  # does not push (tjh_verdict fails closed). Skipped (no runner) without a handoff.
-  # AGENTS_PAUSED skips this whole job (every job carries the pause gate; see
-  # tests/dev-lead/integration/test_agents_paused_preflight.py), so nothing is
-  # pushed and no cleanup runs. A pause set before the run also skips dispatch, so
-  # no handoff exists; flipping it mid-run leaves dispatch's claims for the next
-  # pass to retract (#2143).
+  # sweep, thread resolution, the terminal comment. The 60-minute timeout (below)
+  # covers the push and all cleanup; if paginated API calls or post-push operations
+  # exceed that limit, the commit lands but terminal reporting and thread resolution
+  # may not complete. `always()`: a failed, cancelled or timed-out test job still
+  # gets here, so a "Fixed" reply whose commit does not land is retracted. That case
+  # has no verdict, so the script does not push (tjh_verdict fails closed). Skipped
+  # (no runner) without a handoff. AGENTS_PAUSED skips this whole job (every job
+  # carries the pause gate; see tests/dev-lead/integration/test_agents_paused_preflight.py),
+  # so nothing is pushed and no cleanup runs. A pause set before the run also skips
+  # dispatch, so no handoff exists; flipping it mid-run leaves dispatch's claims for
+  # the next pass to retract (#2143).
   push:
     needs: [dispatch, test-suite]
     if: always() && needs.dispatch.outputs.handoff == 'true' && vars.AGENTS_PAUSED != 'true'
