@@ -723,7 +723,7 @@ GHEOF
   run dispatch_ci_retry "petry-projects/.github-private" 2009 abc "CI failure"
   [ "$status" -eq 1 ]
   # The rate-limit scan increments its count only inside `if dispatch_…; then`.
-  ! grep -qE '^\s*dispatch_(ci|reviews)_retry ' "$RETRY_SCRIPT"
+  ! grep -qE '^\s*dispatch_(ci|reviews)_retry ' "$RETRY_SCRIPT" || false
   grep -qE 'if dispatch_ci_retry ' "$RETRY_SCRIPT"
   grep -qE 'if dispatch_reviews_retry ' "$RETRY_SCRIPT"
 }
@@ -828,7 +828,7 @@ GHEOF
   [ "$gate_line" -lt "$guard_line" ]
   [ "$guard_line" -lt "$scan_line" ]
   # The scan sits inside that guard: no `fi` closes it before the scan call.
-  ! sed -n "${guard_line},${scan_line}p" "$REVIEW" | grep -qE '^\s*fi\s*$'
+  ! sed -n "${guard_line},${scan_line}p" "$REVIEW" | grep -qE '^\s*fi\s*$' || false
   sed -n "${gate_line},${verdict_line}p" "$REVIEW" | grep -q ') 2>&1 ) || true'
 }
 

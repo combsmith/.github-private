@@ -812,7 +812,7 @@ DELETE AGENTS_PAUSE_SOURCE" ]
   [ "$status" -eq 1 ]
   [[ "$output" == *"credential *** was rejected"* ]]
   [[ "$output" != *"$WRITE_CRED"* ]]
-  ! grep -qF -- "$WRITE_CRED" "$GITHUB_STEP_SUMMARY"
+  ! grep -qF -- "$WRITE_CRED" "$GITHUB_STEP_SUMMARY" || false
 
   # The same for the read path (state listing) ...
   unset MOCK_FAIL_ON

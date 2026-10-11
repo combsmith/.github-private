@@ -369,7 +369,7 @@ EOF
   AM_STATE=""
   run restore_auto_merge
   [ "$status" -eq 0 ]
-  ! grep -q -- "--subject" "$GH_CALLS"
+  ! grep -q -- "--subject" "$GH_CALLS" || false
   ! grep -q -- "--body" "$GH_CALLS"
 }
 

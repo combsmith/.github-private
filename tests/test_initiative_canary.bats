@@ -151,7 +151,7 @@ teardown() {
 
   # Status surfaced for the workflow alert step.
   grep -qF "CANARY_STATUS=OK" "$GITHUB_ENV"
-  ! grep -qF "CANARY_FAILED=true" "$GITHUB_ENV"
+  ! grep -qF "CANARY_FAILED=true" "$GITHUB_ENV" || false
 
   rm -f "$CANARY_OUT" "$GITHUB_ENV"
 }

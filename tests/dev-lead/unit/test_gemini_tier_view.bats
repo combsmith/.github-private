@@ -820,8 +820,8 @@ jsonschema.validate(json.load(open(sys.argv[1])), json.load(open(sys.argv[2])))'
   [ "$status" -eq 0 ]
   [[ "$output" != *"evil.example"* ]]
   [[ "$output" != *"click"* ]]
-  ! grep -q 'evil.example' "$dir/history.jsonl"
-  ! grep -q '"key_index":{' "$dir/history.jsonl"
+  ! grep -q 'evil.example' "$dir/history.jsonl" || false
+  ! grep -q '"key_index":{' "$dir/history.jsonl" || false
   # The well-formed records survive.
   grep -q '"key_index":1' "$dir/history.jsonl"
   grep -q '"key_index":"2b"' "$dir/history.jsonl"

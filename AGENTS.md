@@ -285,6 +285,10 @@ calling it a regression, and treat CI as authoritative.**
   independent of the live `scripts/lib/consumer-manifest.json` so a legitimate manifest refresh does not break
   the guard — only a change to the mapper's output does, which then requires an explicit fixture update visible
   in the diff. It runs in the always-run `bats` job (no `paths:` filter) so it stays a stable check.
+- **Exception:** The `bats-negation` job in `lint.yml` (#2263) is a repo-specific lint with no org template
+  equivalent. It runs `scripts/check-bats-negation.sh` (tests: `tests/test_check_bats_negation.bats`), which
+  fails on a negated command in a `.bats` file that can never fail its test. Template syncs must not remove
+  it. If the org template gains an equivalent, remove this exception and defer to the template instead.
 - **Exception:** `holdout-guard.yml` (#692, epic #581) is a documented repo-specific workflow with no
   corresponding org template in `standards/workflows/`. It is the hard CI enforcement behind the advisory
   `.github/CODEOWNERS` rule over `evals/`: it fails any PR authored by the automated skill-proposer identity
@@ -718,6 +722,24 @@ artifact). **The human go/no-go to enable live pilot remediation — and, later,
 recorded as a comment on the tracking issue/PR**, consistent with the repo's go/no-go pattern and the
 initiative-planner inert-epic model: the loop stays inert (dry-run) until a human explicitly flips a
 run to `remediate=live` for the configured pilot.
+
+### Bats tests — a negated command must be able to fail
+
+Bash exempts a `!`-negated command from `errexit`, and bats fails a test through `errexit`. So a
+line like `! grep -q "pr comment" "$GH_LOG"` in the **middle** of a test runs, has its result thrown
+away, and the test passes either way. It only counts as the **last** command of the test. By the time
+this was caught (#2263), 113 such lines across 41 files were asserting nothing, and two of them were
+hiding a test whose setup was wrong.
+
+**Rule: write a negative assertion so it can fail.**
+
+```bash
+! grep -q "pr comment" "$GH_LOG" || false   # fails the test when grep matches
+run ! grep -q "pr comment" "$GH_LOG"        # bats >= 1.5; overwrites $status and $output
+```
+
+`scripts/check-bats-negation.sh` enforces this in the `bats-negation` lint job. When a new negative
+assertion is added for a fix, prove it: run the test against the unfixed code and watch it fail.
 
 ### Agent Profiles (`agents/*.md`)
 

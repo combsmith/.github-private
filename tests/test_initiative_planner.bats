@@ -333,7 +333,7 @@ EOF
   grep -qF -- "name=widgets" "$GH_LOG"
   # Open-epics lookup runs against the target repo, not .github-private.
   grep -qF -- "--repo acme/widgets" "$GH_LOG"
-  ! grep -qF -- ".github-private" "$GH_LOG"
+  ! grep -qF -- ".github-private" "$GH_LOG" || false
   # The assembled context records the target repo.
   [ "$(jq -r '.repo' "$CTX")" = "acme/widgets" ]
 }

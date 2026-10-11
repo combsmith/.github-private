@@ -223,7 +223,7 @@ _source_engine() {
 
   [ "$status" -eq 0 ]
   grep -q "claude-opus-5-5" "$MODEL_RECORD"
-  ! grep -q "claude-opus-4-8" "$MODEL_RECORD"
+  ! grep -q "claude-opus-4-8" "$MODEL_RECORD" || false
   ! grep -q "claude-opus-4-7" "$MODEL_RECORD"
 }
 

@@ -637,6 +637,6 @@ EOF
   [[ "$output" == *"in-flight=1 (0 gated excluded)"* ]]
   [[ "$output" != *"ZOMBIE"* ]]
   # …and posts no zombie report on the epic
-  ! grep -qF "issue comment 1" "$GH_LOG"
+  ! grep -qF "issue comment 1" "$GH_LOG" || false
   ! grep -qF "issue edit" "$GH_LOG"
 }

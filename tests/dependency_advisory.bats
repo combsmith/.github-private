@@ -154,7 +154,7 @@ claude_calls() { local n; n="$(cat "$CLAUDE_COUNT_FILE")"; echo "${n:-0}"; }
   [ "$status" -eq 0 ]
   [ "$(claude_calls)" -eq 3 ]
   # Advisory is informational — a persistent overload must not post a comment...
-  ! grep -q "ARGS: pr comment" "$GH_LOG"
+  ! grep -q "ARGS: pr comment" "$GH_LOG" || false
   # ...and must emit a visible warning rather than fail silently.
   echo "$output" | grep -q "::warning::"
 }

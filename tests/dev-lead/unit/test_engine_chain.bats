@@ -380,7 +380,7 @@ _source_engine() {
   # Only one invocation, and it's the pinned model — not opus-5-5 or sonnet.
   [ "$(wc -l < "$MODEL_RECORD")" -eq 1 ]
   grep -q "claude-haiku-4-5-20251001" "$MODEL_RECORD"
-  ! grep -q "claude-sonnet-5" "$MODEL_RECORD"
+  ! grep -q "claude-sonnet-5" "$MODEL_RECORD" || false
   ! grep -q "claude-opus-5-5" "$MODEL_RECORD"
 }
 
@@ -393,7 +393,7 @@ _source_engine() {
   [ "$status" -eq 0 ]
   [ "$(wc -l < "$MODEL_RECORD")" -eq 1 ]
   grep -q "claude-haiku-4-5-20251001" "$MODEL_RECORD"
-  ! grep -q "claude-sonnet-5" "$MODEL_RECORD"
+  ! grep -q "claude-sonnet-5" "$MODEL_RECORD" || false
   ! grep -q "claude-opus-4-8" "$MODEL_RECORD"
 }
 
@@ -475,7 +475,7 @@ _source_engine() {
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
-  ! grep -q -- "--effort" "$args_rec"
+  ! grep -q -- "--effort" "$args_rec" || false
   rm -f "$args_rec"
 }
 
@@ -490,6 +490,6 @@ _source_engine() {
   run run_triage "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
-  ! grep -q -- "--effort" "$args_rec"
+  ! grep -q -- "--effort" "$args_rec" || false
   rm -f "$args_rec"
 }
