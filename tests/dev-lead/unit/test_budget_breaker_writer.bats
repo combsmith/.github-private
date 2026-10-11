@@ -172,8 +172,11 @@ seed_runs() { printf '%s\n' "$@" | jq -cs '.' > "$MOCK_DIR/runs.json"; }
 
 # woken_by <event> [<now_offset_sec>] — the run as the runner starts it: the
 # event's name, this workflow's file and this run's id. The clock moves to NOW
-# + offset; NOW is the start of a two-minute slot, so offset 90 is inside the
-# slot that starts at `ts 0`.
+# + offset; NOW is the start of a ten-minute slot (and so of a two-minute and a
+# one-minute one), so offset 90 is inside the slot that starts at `ts 0` for
+# every slot length these tests use. The guard keeps a change to NOW from moving
+# that boundary unnoticed.
+(( NOW % 600 == 0 )) || { echo "NOW must be a multiple of 600 (the default slot)" >&2; exit 1; }
 OWN_RUN_ID=9000
 woken_by() {
   export GITHUB_EVENT_NAME="$1"
@@ -2302,7 +2305,9 @@ FAILED DELETE AGENTS_PAUSE_UNTIL" ]
       armed
     fi
     woken_by workflow_run 90
-    # Created ten seconds into the two-minute slot this run is in.
+    # Created ten seconds into the slot this run is in (ten minutes, the
+    # default). The quota markers are all in another repository (seed_quota),
+    # so this is also the accepted cost: such markers wait for the next slot.
     seed_runs "$(wrun 8001 success 10 25)"
     run bash "$SCRIPT"
     [ "$status" -eq 0 ] || { echo "$mode: status=$status $output"; false; }
@@ -2544,6 +2549,9 @@ DELETE AGENTS_PAUSE_UNTIL" ]
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+  run scanned
+  [ "$status" -eq 0 ]
   woken_by workflow_run 90
 
   export BUDGET_BREAKER_MIN_INTERVAL_MIN="2m"

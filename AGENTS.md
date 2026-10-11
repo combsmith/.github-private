@@ -1075,7 +1075,9 @@ as soon as the workflow is on `main`.
   The default was two minutes when the trigger was added and was raised to ten after the
   first 84 minutes of real runs (2026-10-11): 309 runs were created, 115 executed, and a slot
   of two minutes meant up to 30 organisation scans an hour on the maintainer login's shared
-  API quota. With ten, there are at most 6. A quota marker posted in this repository still
+  API quota. With ten, event wake-ups cause at most 6. A scheduled run always scans, so each
+  scheduled tick that is delivered adds one (up to 6 more an hour; two were delivered in the
+  first 13 hours). A quota marker posted in this repository still
   makes the next run decide at once; one posted only in another repository is read by the
   first run of the next slot, so up to ten minutes later.
   The early exit never applies to a scheduled run, never while the fleet is paused by
