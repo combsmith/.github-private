@@ -7000,6 +7000,156 @@ _run_2004() {
   ! grep -q 'comment-disposition' "$POSTLOG"
 }
 
+# ── #2269: an additive fix to a finding that names a token ───────────────────
+# The PR #2205 shape: the fix adds one guard to the file the finding names and
+# removes nothing, so the removed-token rule alone could never verify it. Most
+# cases here use a finding of that comment's form that names a script. One runs
+# the real comment against its test file, which also takes the pass through the
+# test-tamper guard. The real diff is tested against the pure verdict in
+# test_comment_disposition_verify.bats.
+
+_2269_FINDING='## CodeAnt Nitpicks
+
+#### 1. This branch never checks that the no-ADR path says `escalate = no`, so changing that decision to yes goes unnoticed.
+
+Incomplete implementation · [`scripts/advisory_offline_mode.sh:14`](https://github.com/petry-projects/.github-private/pull/54/files#diff-0R14-R14)'
+
+# _2269_setup — _setup_2004, plus the file the finding names as a PR-branch commit
+# that predates the finding, and a `git push` that succeeds (the repo has no remote).
+_2269_setup() {
+  _setup_2004
+  _2004_commit "feat: offline-mode advisory" "2026-10-01T11:00:00Z" \
+    "printf '#!/usr/bin/env bash\necho advisory\n' > scripts/advisory_offline_mode.sh" >/dev/null
+  cat > "$STUB_BIN_DIR/git" <<'GITEOF'
+#!/usr/bin/env bash
+if [ "$1" = "push" ]; then exit 0; fi
+exec /usr/bin/git "$@"
+GITEOF
+  chmod +x "$STUB_BIN_DIR/git"
+}
+
+# _2269_engine_fixes <file> [line] — the engine appends <line> to <file>, commits
+# it, and answers the finding with a `fixed` disposition citing that commit, as
+# the fix-bot-comment prompt tells the model to. <line> defaults to a guard that
+# names none of the finding's tokens; it must not contain a single quote.
+_2269_engine_fixes() {
+  local line="${2:-[ -n \"\${ADR:-}\" ] || exit 3}"
+  cat > "$STUB_BIN_DIR/claude" <<CLAUDEEOF
+#!/usr/bin/env bash
+printf '%s\n' '${line}' >> '$1'
+git add -A
+git -c user.email=t@test -c user.name=T commit -q -m "fix(bot): add the missing guard"
+sha=\$(git rev-parse HEAD)
+jq -c --arg sha "\$sha" '. + [{id:"R1", author:{login:"donpetry-bot", __typename:"User"},
+  body:("Fixed in $1: added the missing guard.\n<!-- dev-lead:comment-disposition id=IC_FIND disposition=fixed sha=" + \$sha + " -->"),
+  isMinimized:false, minimizedReason:null, createdAt:"2026-10-01T16:00:00Z"}]' "\$NODES_FILE" > "\$NODES_FILE.new"
+mv "\$NODES_FILE.new" "\$NODES_FILE"
+echo "Addressed the finding."
+CLAUDEEOF
+  chmod +x "$STUB_BIN_DIR/claude"
+}
+
+@test "#2269 AC1: an additive fix this pass made in the file the finding names verifies and minimizes in that pass" {
+  _2269_setup
+  _2269_engine_fixes scripts/advisory_offline_mode.sh
+  _2004_nodes "$_2269_FINDING"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"\`fixed\` disposition verified against"*"(this-pass-touches-named-file)"* ]]
+  [[ "$output" != *"fixed-unverified"* ]]
+  grep -Eq 'classifier:RESOLVED.*id=IC_FIND' "$MINLOG"
+}
+
+@test "#2269 AC2: the same additive commit from an EARLIER pass stays unverified" {
+  _2269_setup
+  # The fix already sits on the branch when this pass starts; the engine changes nothing.
+  local earlier
+  earlier=$(_2004_commit "fix(bot): add the missing guard" "2026-10-01T14:00:00Z" \
+    "printf '%s\n' '# the no-ADR path must not escalate' >> scripts/advisory_offline_mode.sh")
+  _2004_nodes "$_2269_FINDING" <(_2004_fixed_reply R1 "2026-10-01T14:30:00Z" "$earlier")
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fixed-unverified:content-no-token-removed"* ]]
+  ! grep -q 'IC_FIND' "$MINLOG" || false
+}
+
+@test "#2269 AC2: this pass's commit in a file the finding does not name stays unverified" {
+  _2269_setup
+  _2269_engine_fixes other.txt
+  _2004_nodes "$_2269_FINDING"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fixed-unverified:content-no-token-removed"* ]]
+  ! grep -q 'IC_FIND' "$MINLOG" || false
+}
+
+@test "#2269: a commit that ADDS a token the finding names stays unverified, even from this pass in the named file" {
+  _2269_setup
+  # The finding names `escalate = no`. A line that adds it is not shown to be a fix.
+  _2269_engine_fixes scripts/advisory_offline_mode.sh 'echo "escalate = no"'
+  _2004_nodes "$_2269_FINDING"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fixed-unverified:content-adds-token"* ]]
+  ! grep -q 'IC_FIND' "$MINLOG" || false
+}
+
+@test "#2269: a comment-only line in the named file verifies too (accepted limit: where and when, not what)" {
+  # The rule checks which pass made the commit and which file it changes, not
+  # that the added lines address the finding. Pinned so that tightening it is a
+  # deliberate change.
+  _2269_setup
+  _2269_engine_fixes scripts/advisory_offline_mode.sh '# the no-ADR path must not escalate'
+  _2004_nodes "$_2269_FINDING"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"(this-pass-touches-named-file)"* ]]
+  grep -Eq 'classifier:RESOLVED.*id=IC_FIND' "$MINLOG"
+}
+
+@test "#2269: the real PR #2205 comment through the full script — a test added to the TEST file it names verifies" {
+  # A pass that edits a test file also runs the test-tamper guard, which asks the
+  # API for the PR's base branch and fetches it. Serve that lookup, give the repo
+  # an origin holding main, and leave the rest to the stub.
+  _2269_setup
+  /usr/bin/git init -q --bare "$BATS_TEST_TMPDIR/origin2269.git"
+  /usr/bin/git -C "$T2004_REPO" remote add origin "$BATS_TEST_TMPDIR/origin2269.git"
+  /usr/bin/git -C "$T2004_REPO" push -q origin refs/remotes/origin/main:refs/heads/main
+  _2004_commit "test: offline-mode guard" "2026-10-01T11:30:00Z" \
+    "mkdir -p tests && printf '@test \"no-ADR bullet\" {\n  true\n}\n' > tests/test_advisory_offline_mode.bats" >/dev/null
+  mv "$STUB_BIN_DIR/gh" "$STUB_BIN_DIR/gh-2004"
+  cat > "$STUB_BIN_DIR/gh" <<GHEOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"pulls/54"*".base.ref"*) echo main; exit 0 ;;
+esac
+exec "$STUB_BIN_DIR/gh-2004" "\$@"
+GHEOF
+  chmod +x "$STUB_BIN_DIR/gh"
+  # A new test appended to the file: an addition the guard lets through.
+  _2269_engine_fixes tests/test_advisory_offline_mode.bats '@test "no-ADR bullet does not escalate" { true; }'
+  _2004_nodes "$(cat "$SCRIPT_DIR/tests/fixtures/comment-disposition/pr2205-codeant-nitpick.md")"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Test-tamper guard"* ]]
+  [[ "$output" == *"(this-pass-touches-named-file)"* ]]
+  grep -Eq 'classifier:RESOLVED.*id=IC_FIND' "$MINLOG"
+}
+
+@test "#2269 AC4: both prompts and the gate doc state the additive-fix rule" {
+  local f
+  for f in prompts/dev-lead/fix-reviews.md prompts/dev-lead/fix-bot-comment.md docs/pr-review-agent/maintainer-comment-gate.md; do
+    grep -q "this-pass-touches-named-file" "$SCRIPT_DIR/$f" || { echo "missing in $f"; return 1; }
+    grep -q "#2269" "$SCRIPT_DIR/$f" || { echo "no #2269 in $f"; return 1; }
+  done
+}
+
 # The fix-bot-comment idempotency snippet, executed (#2004 / #1992). A re-fire may
 # re-answer an UNVERIFIED `fixed` (its comment is still open) exactly where the
 # harness re-checks it. A RESOLVED comment's `fixed` and any non-`fixed`
