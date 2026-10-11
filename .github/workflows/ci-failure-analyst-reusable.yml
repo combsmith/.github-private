@@ -22,7 +22,11 @@ permissions:
 jobs:
   analyze:
     # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
-    # (neutral, not red) and `fleet-paused` below reports why.
+    # (neutral, not red).
+    # No `fleet-paused` notice job here: the canary promotion gate counts every
+    # run of this reusable that ends success or failure as a health sample, and a
+    # run whose only work was the notice would end success. With every job
+    # skipped the run ends skipped, which the gate does not count.
     if: vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -175,22 +179,3 @@ jobs:
           fi
           rm -f "$_analyst_out"
           exit "$_analyst_rc"
-
-  # Fleet pause notice (#2249). With AGENTS_PAUSED=true the `analyze` job above is
-  # skipped by its `if:`, and a skipped job cannot log. This job runs instead, on
-  # the same events, and says why in one line. Inventory and rules: AGENTS.md
-  # "Pausing the agent fleet" and scripts/lib/fleet-pause-registry.tsv.
-  fleet-paused:
-    if: vars.AGENTS_PAUSED == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions: {}
-    env:
-      PAUSE_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
-      PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
-    steps:
-      - name: Report the fleet pause
-        run: |
-          echo "::notice title=Agent fleet paused::CI Failure Analyst: not run, the agent fleet is paused (AGENTS_PAUSED=true)." \
-            "Pause source: ${PAUSE_SOURCE:-not set (paused by hand)}." \
-            "Paused until: ${PAUSE_UNTIL:-not set}."

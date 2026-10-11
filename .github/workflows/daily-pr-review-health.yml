@@ -42,7 +42,10 @@ jobs:
         with:
           node-version: '20'
 
+      # AGENTS_PAUSED (#2249): the three CLI setup steps are skipped with the fleet
+      # paused, like the two model-calling steps they serve (see "Run health check").
       - name: Resolve claude-code version
+        if: vars.AGENTS_PAUSED != 'true'
         # A literal "latest" cache key never changes, so the first CLI ever cached
         # was reused indefinitely (2.1.138 outlived the Opus 5.5 launch — #1957).
         # Resolve it to the concrete npm version so a new release misses the cache,
@@ -68,12 +71,14 @@ jobs:
           echo "install=$install" >> "$GITHUB_OUTPUT"
 
       - name: Cache claude-code CLI
+        if: vars.AGENTS_PAUSED != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.npm-global
           key: claude-code-${{ steps.claude_code_version.outputs.version }}-${{ runner.os }}
 
       - name: Install Claude Code CLI
+        if: vars.AGENTS_PAUSED != 'true'
         env:
           CLAUDE_CODE_VERSION: ${{ steps.claude_code_version.outputs.install || vars.CLAUDE_CODE_VERSION || 'latest' }}
         run: |
@@ -363,9 +368,12 @@ jobs:
         run: bash scripts/mcp_connectivity_check.sh
 
       # Fleet pause notice (#2249): one line saying which steps the pause skipped.
+      # `always()` so a scan failing above does not silence it. The job-level
+      # Claude credential is blanked: this step only prints a line.
       - name: Report the fleet pause
-        if: vars.AGENTS_PAUSED == 'true'
+        if: always() && vars.AGENTS_PAUSED == 'true'
         env:
+          CLAUDE_CODE_OAUTH_TOKEN: ''
           PAUSE_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
           PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
         run: |

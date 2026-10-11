@@ -10,8 +10,12 @@
 #     notice job is the exact complement;
 #   • executes each notice step and checks the one line it prints;
 #   • proves the check fails under mutation: a gate removed or made bypassable, a
-#     new model-calling workflow with no row, a second ungated model job, a notice
-#     job lost or on different events, a bad registry row;
+#     new model-calling workflow with no row, a second ungated model job or step,
+#     a notice job lost, on different events, or able to reach a credential, an
+#     exempt workflow that gains a credential, a bad registry row;
+#   • pins the detector's reach: what it catches (a call inside a script a step
+#     runs, secrets handed to a reusable under any name, `gh models`) and one
+#     documented limit it does not;
 #   • keeps the AGENTS.md inventory table equal to the registry.
 #
 # Run: bats tests/test_fleet_pause_coverage.bats   (needs python3 + PyYAML)
@@ -22,11 +26,12 @@ REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
 CHECK="$REPO_ROOT/tests/dev-lead/integration/test_fleet_pause_coverage.py"
 REGISTRY_REL="scripts/lib/fleet-pause-registry.tsv"
 
-# The workflows #2249 gated with a job condition and a `fleet-paused` notice job
-# (dev-lead-reusable.yml was gated before, by #1525; spec-drift.yml is gated by
-# #2249 with no notice job; daily-pr-review-health.yml is gated per step).
+# The workflows #2249 gated with a job condition and a `fleet-paused` notice job.
+# Gated with NO notice job: dev-lead-reusable.yml (since #1525), and by #2249
+# pr-review.yml, ci-failure-analyst-reusable.yml and spec-drift.yml.
+# daily-pr-review-health.yml is gated per step.
 NEWLY_GATED=(
-  pr-review.yml persona-runner-reusable.yml ci-failure-analyst-reusable.yml
+  persona-runner-reusable.yml
   gh-aw-cross-org.yml issue-triage-runner.yml initiative-planner.yml idea-triage.yml
   dependency-advisory.yml docs-health-check.yml readme-refresh.yml
   release-notes.yml stale-manager.yml skill-eval-report.yml model-ab.yml
@@ -107,6 +112,8 @@ PY
   grep -q "^daily-pr-review-health.yml	step-gate	" "$REPO_ROOT/$REGISTRY_REL"
   grep -q "^dev-lead-reusable.yml	job-gate-silent	dispatch,ci-relay,resume	" "$REPO_ROOT/$REGISTRY_REL"
   grep -q "^spec-drift.yml	job-gate-silent	spec-drift	" "$REPO_ROOT/$REGISTRY_REL"
+  grep -q "^pr-review.yml	job-gate-silent	review	" "$REPO_ROOT/$REGISTRY_REL"
+  grep -q "^ci-failure-analyst-reusable.yml	job-gate-silent	analyze	" "$REPO_ROOT/$REGISTRY_REL"
 }
 
 # ── skipped when true, runs when unset or false (AC 2, AC 3) ─────────────────
@@ -146,12 +153,22 @@ PY
   done
   grep -q "^daily-pr-review-health.yml	health-check/Run health check	true	skipped$" <<< "$output"
   grep -q "^daily-pr-review-health.yml	health-check/Assert MCP connectivity	false	runs$" <<< "$output"
-  # dev-lead keeps its three #1525 gates and has no notice job; nor has spec-drift.
+  # The CLI setup steps are flagged by the rule (they name the CLI package), so
+  # they are gated and listed too, though the registry row names only the two
+  # model-calling steps.
+  grep -q "^daily-pr-review-health.yml	health-check/Install Claude Code CLI	true	skipped$" <<< "$output"
+  grep -q "^daily-pr-review-health.yml	health-check/Resolve claude-code version	unset	runs$" <<< "$output"
+  # dev-lead keeps its three #1525 gates and has no notice job; nor have the
+  # other three job-gate-silent workflows.
   [ "$(grep -c "^dev-lead-reusable.yml	" <<< "$output")" -eq 12 ]
-  [ "$(grep -c "^spec-drift.yml	spec-drift	" <<< "$output")" -eq 4 ]
-  grep -q "^spec-drift.yml	spec-drift	true	skipped$" <<< "$output"
-  grep -q "^spec-drift.yml	spec-drift	unset	runs$" <<< "$output"
-  run grep -E "^(dev-lead-reusable|spec-drift).yml	fleet-paused	" <<< "$output"
+  local wf job
+  for wf in spec-drift.yml:spec-drift pr-review.yml:review ci-failure-analyst-reusable.yml:analyze; do
+    job="${wf#*:}"; wf="${wf%%:*}"
+    [ "$(grep -c "^${wf}	${job}	" <<< "$output")" -eq 4 ] || { echo "$wf: expected 4 rows"; return 1; }
+    grep -q "^${wf}	${job}	true	skipped$" <<< "$output"
+    grep -q "^${wf}	${job}	unset	runs$" <<< "$output"
+  done
+  run grep -E "^(dev-lead-reusable|spec-drift|pr-review|ci-failure-analyst-reusable).yml	fleet-paused	" <<< "$output"
   [ "$status" -eq 1 ]
 }
 
@@ -171,7 +188,7 @@ PY
 
 @test "notice: an unset source and until time read as not set (a pause set by hand)" {
   local wf script
-  for wf in pr-review.yml dev-lead-retry.yml; do
+  for wf in gh-aw-cross-org.yml dev-lead-retry.yml; do
     script="$(notice_script "$wf")"
     PAUSE_SOURCE='' PAUSE_UNTIL='' run bash -c "$script"
     [ "$status" -eq 0 ]
@@ -282,7 +299,7 @@ jobs:
 YAML
   check
   [ "$status" -eq 1 ]
-  [[ "$output" == *"new-cli.yml can reach a model (job 'go': AI CLI or action)"* ]]
+  [[ "$output" == *"new-cli.yml can reach a model (job 'go': AI CLI or action, model CLI call or API host)"* ]]
   rm "$WF/new-cli.yml"
 
   cat > "$WF/new-action.yml" <<'YAML'
@@ -351,7 +368,7 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-@test "a new model-calling workflow passes once gated and registered, or exempt with a reason" {
+@test "a new model-calling workflow passes once gated and registered, or exempt-credential with a reason" {
   cat > "$WF/new-agent.yml" <<'YAML'
 name: New Agent
 on:
@@ -378,15 +395,22 @@ YAML
   [ "$status" -eq 0 ]
 
   drop_row new-agent.yml
-  add_row new-agent.yml exempt - "Must run through a pause because it is the only thing that can lift one."
+  add_row new-agent.yml exempt-credential think "Must run through a pause; holds the credential to read usage only, no model call."
   check
   [ "$status" -eq 0 ]
 
   drop_row new-agent.yml
-  add_row new-agent.yml exempt - -
+  add_row new-agent.yml exempt-credential think -
   check
   [ "$status" -eq 1 ]
-  [[ "$output" == *"new-agent.yml is 'exempt' and needs a reason in the note column"* ]]
+  [[ "$output" == *"new-agent.yml is 'exempt-credential' and needs a reason in the note column"* ]]
+
+  # Plain exempt is not enough for a workflow the rule flags.
+  drop_row new-agent.yml
+  add_row new-agent.yml exempt - "Must run through a pause."
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"new-agent.yml is listed as exempt (no model call), but job 'think' now matches the model-calling rule (model credential)"* ]]
 }
 
 @test "mutation: a second, ungated model-calling job in a gated workflow fails" {
@@ -414,7 +438,7 @@ YAML
 YAML
   check
   [ "$status" -eq 1 ]
-  [[ "$output" == *"persona-runner.yml: job 'inline' reaches a model (AI CLI or action) outside the reusable the registry names (persona-runner-reusable.yml)"* ]]
+  [[ "$output" == *"persona-runner.yml: job 'inline' reaches a model (AI CLI or action, model CLI call or API host) outside the reusable the registry names (persona-runner-reusable.yml)"* ]]
 }
 
 # ── mutation: the notice job ─────────────────────────────────────────────────
@@ -456,6 +480,445 @@ PY
   check
   [ "$status" -eq 1 ]
   [[ "$output" == *"skill-eval-report.yml: job 'fleet-paused' must stand alone"* ]]
+}
+
+# ── the notice runs while paused: it must not be able to reach a model ───────
+# (review items 2 and 3)
+
+# notice_env_add <workflow> <yaml-line> — add one line to the fleet-paused job's env.
+notice_env_add() {
+  replace_in "$WF/$1" "(  fleet-paused:\n(?:.*\n)*?    env:\n)" "\\1      $2\n"
+}
+
+@test "mutation: a fleet-paused job that holds a model credential fails" {
+  notice_env_add stale-manager.yml 'CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}'
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"stale-manager.yml: job 'fleet-paused' runs while the fleet is paused and must not reach a model, but holds: model credential"* ]]
+  [[ "$output" == *"stale-manager.yml: job 'fleet-paused' must not reference \`secrets.*\` or \`github.token\`"* ]]
+}
+
+@test "mutation: a fleet-paused job that references any secret or the run token fails" {
+  notice_env_add idea-triage.yml 'SOME_PAT: ${{ secrets.GH_PAT_DON_PETRY }}'
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"idea-triage.yml: job 'fleet-paused' must not reference \`secrets.*\` or \`github.token\`"* ]]
+
+  cp "$REPO_ROOT/.github/workflows/idea-triage.yml" "$WF/idea-triage.yml"
+  notice_env_add idea-triage.yml 'GH_TOKEN: ${{ github.token }}'
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"idea-triage.yml: job 'fleet-paused' must not reference \`secrets.*\` or \`github.token\`"* ]]
+}
+
+@test "mutation: a fleet-paused job that uses an AI action, or any action, fails" {
+  cat >> "$WF/readme-refresh.yml" <<'YAML'
+      - uses: anthropics/claude-code-action@v1
+        with:
+          prompt: say why we are paused
+YAML
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"readme-refresh.yml: job 'fleet-paused' runs while the fleet is paused and must not reach a model, but holds: AI CLI or action"* ]]
+  [[ "$output" == *"readme-refresh.yml: job 'fleet-paused' must only run shell steps"* ]]
+}
+
+@test "mutation: a fleet-paused job that runs a model CLI, or a script that does, fails" {
+  cat >> "$WF/release-notes.yml" <<'YAML'
+      - run: claude -p "explain the pause"
+YAML
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"release-notes.yml: job 'fleet-paused' runs while the fleet is paused and must not reach a model, but holds: model CLI call or API host"* ]]
+
+  cp "$REPO_ROOT/.github/workflows/release-notes.yml" "$WF/release-notes.yml"
+  printf '#!/usr/bin/env bash\ngh models run openai/gpt-4o "explain the pause"\n' > "$TREE/scripts/explain-pause.sh"
+  cat >> "$WF/release-notes.yml" <<'YAML'
+      - run: bash scripts/explain-pause.sh
+YAML
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"release-notes.yml: job 'fleet-paused' runs while the fleet is paused and must not reach a model, but holds: model call in scripts/explain-pause.sh"* ]]
+}
+
+@test "mutation: a fleet-paused job turned into a reusable call with secrets fails" {
+  python3 - "$WF/docs-health-check.yml" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path, encoding="utf-8").read()
+head, sep, _ = text.partition("\n  fleet-paused:\n")
+assert sep, "notice job not found"
+open(path, "w", encoding="utf-8").write(head + """
+  fleet-paused:
+    if: vars.AGENTS_PAUSED == 'true'
+    uses: some-org/some-repo/.github/workflows/notify.yml@v1
+    secrets: inherit
+""")
+PY
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"docs-health-check.yml: job 'fleet-paused' must not declare \`secrets:\`"* ]]
+}
+
+@test "mutation: a fleet-paused job is checked even in a workflow with no registry row" {
+  cat > "$WF/new-quiet.yml" <<'YAML'
+name: New Quiet
+on:
+  workflow_dispatch:
+jobs:
+  fleet-paused:
+    if: vars.AGENTS_PAUSED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - run: echo "::notice::paused"
+YAML
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"new-quiet.yml: job 'fleet-paused' runs while the fleet is paused and must not reach a model, but holds: model credential"* ]]
+}
+
+@test "live tree: no fleet-paused job can see a workflow-level credential" {
+  # The two workflows that set a personal access token for every job blank it
+  # in the notice job; no other gated workflow has a secret in its top-level env.
+  run python3 - "$REPO_ROOT/.github/workflows" <<'PY'
+import glob, os, re, sys, yaml
+rx = re.compile(r"secrets\s*[.\[]|github\.token", re.I)
+seen = []
+for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.yml"))):
+    doc = yaml.safe_load(open(path, encoding="utf-8")) or {}
+    notice = (doc.get("jobs") or {}).get("fleet-paused")
+    if not isinstance(notice, dict):
+        continue
+    for key, value in (doc.get("env") or {}).items():
+        if rx.search(str(value)):
+            own = (notice.get("env") or {})
+            assert own.get(key, "missing") == "", f"{path}: {key} not blanked"
+            seen.append(f"{os.path.basename(path)}:{key}")
+print(" ".join(seen))
+PY
+  [ "$status" -eq 0 ]
+  [ "$output" = "dev-lead-retry.yml:GH_TOKEN gh-aw-cross-org.yml:GH_TOKEN" ]
+}
+
+@test "mutation: removing the blanked GH_TOKEN from a notice job fails, in both workflows that need it" {
+  local wf
+  for wf in dev-lead-retry.yml gh-aw-cross-org.yml; do
+    replace_in "$WF/$wf" "      GH_TOKEN: ''\n" ""
+    check
+    [ "$status" -eq 1 ] || { echo "$wf: an inherited GH_TOKEN was not detected"; return 1; }
+    [[ "$output" == *"$wf: job 'fleet-paused' inherits the credential \`GH_TOKEN\` from the workflow-level \`env:\`; blank it in the notice's own env (\`GH_TOKEN: ''\`)"* ]]
+    cp "$REPO_ROOT/.github/workflows/$wf" "$WF/$wf"
+  done
+}
+
+@test "mutation: a new workflow-level secret env reaches the notice job unless it is blanked" {
+  replace_in "$WF/stale-manager.yml" "^jobs:\n" "env:\n  REPORT_PAT: \${{ secrets.DON_PETRY_BOT_GH_PAT }}\n\njobs:\n"
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"stale-manager.yml: job 'fleet-paused' inherits the credential \`REPORT_PAT\` from the workflow-level \`env:\`"* ]]
+
+  notice_env_add stale-manager.yml "REPORT_PAT: ''"
+  check
+  [ "$status" -eq 0 ]
+}
+
+@test "mutation: a job-gate-silent workflow that grows a fleet-paused job fails" {
+  # pr-review and ci-failure-analyst are sampled by the canary promotion gate: a
+  # paused run must end skipped, and a notice job would make it end green.
+  cat >> "$WF/pr-review.yml" <<'YAML'
+
+  fleet-paused:
+    if: vars.AGENTS_PAUSED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      PAUSE_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
+      PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
+    steps:
+      - run: echo "::notice::paused ${PAUSE_SOURCE} ${PAUSE_UNTIL}"
+YAML
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"pr-review.yml: mode job-gate-silent means no \`fleet-paused\` job, but the workflow has one"* ]]
+}
+
+# ── step-gated job: every model-calling step, and a notice that always runs ──
+# (review items 4 and 5)
+
+# daily_add_step <yaml> — insert a step just before the pause notice step.
+daily_add_step() {
+  python3 - "$WF/daily-pr-review-health.yml" "$1" <<'PY'
+import sys
+path, step = sys.argv[1:3]
+text = open(path, encoding="utf-8").read()
+marker = "      # Fleet pause notice (#2249)"
+assert text.count(marker) == 1
+open(path, "w", encoding="utf-8").write(text.replace(marker, step.rstrip("\n") + "\n\n" + marker))
+PY
+}
+
+@test "mutation: an ungated step holding a model credential in a step-gated job fails" {
+  daily_add_step '      - name: Second opinion
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: bash scripts/pr_stall_scan.sh'
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"daily-pr-review-health.yml: step 'Second opinion' is not paused by AGENTS_PAUSED (it reaches a model: model credential)"* ]]
+}
+
+@test "mutation: an ungated step that runs a model-calling script in a step-gated job fails" {
+  printf '#!/usr/bin/env bash\nclaude --print --model x <<< "summarise"\n' > "$TREE/scripts/summarise.sh"
+  daily_add_step '      - name: Summarise the scans
+        run: bash scripts/summarise.sh'
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"daily-pr-review-health.yml: step 'Summarise the scans' is not paused by AGENTS_PAUSED (it reaches a model: model call in scripts/summarise.sh)"* ]]
+
+  # Gated, the same step passes.
+  replace_in "$WF/daily-pr-review-health.yml" "      - name: Summarise the scans\n" "      - name: Summarise the scans\n        if: vars.AGENTS_PAUSED != 'true'\n"
+  check
+  [ "$status" -eq 0 ]
+}
+
+@test "mutation: ungating a flagged step the registry row does not name fails" {
+  replace_in "$WF/daily-pr-review-health.yml" "      - name: Install Claude Code CLI\n        if: vars\.AGENTS_PAUSED != 'true'\n" "      - name: Install Claude Code CLI\n"
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"daily-pr-review-health.yml: step 'Install Claude Code CLI' is not paused by AGENTS_PAUSED (it reaches a model: AI CLI or action)"* ]]
+}
+
+@test "mutation: a second model-calling job beside a step-gated job fails" {
+  cat >> "$WF/daily-pr-review-health.yml" <<'YAML'
+
+  second-opinion:
+    runs-on: ubuntu-latest
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - run: bash scripts/pr_review_health.sh
+YAML
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"daily-pr-review-health.yml: job 'second-opinion' reaches a model (model credential) but the registry's step-gate row covers job 'health-check' only"* ]]
+}
+
+@test "the daily health notice step runs even after a failed step, and holds no credential" {
+  grep -q "^        if: always() && vars.AGENTS_PAUSED == 'true'\$" "$REPO_ROOT/.github/workflows/daily-pr-review-health.yml"
+  # Dropping always() fails the check.
+  replace_in "$WF/daily-pr-review-health.yml" "if: always\(\) && vars\.AGENTS_PAUSED == 'true'" "if: vars.AGENTS_PAUSED == 'true'"
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"daily-pr-review-health.yml: the pause notice step in job 'health-check' must run even after an earlier step failed"* ]]
+
+  # So does letting the step inherit the job-level Claude credential.
+  cp "$REPO_ROOT/.github/workflows/daily-pr-review-health.yml" "$WF/daily-pr-review-health.yml"
+  replace_in "$WF/daily-pr-review-health.yml" "          CLAUDE_CODE_OAUTH_TOKEN: ''\n" ""
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"the pause notice step in job 'health-check' inherits the credential \`CLAUDE_CODE_OAUTH_TOKEN\` from the job-level \`env:\`"* ]]
+}
+
+@test "the other steps of the daily health job keep their conditions (no always() added)" {
+  # Item 5 changes the notice step only.
+  [ "$(grep -c 'always()' "$REPO_ROOT/.github/workflows/daily-pr-review-health.yml")" -eq 2 ]
+  grep -q '^      # `always()` so a scan failing above does not silence it' "$REPO_ROOT/.github/workflows/daily-pr-review-health.yml"
+}
+
+# ── exempt rows are re-checked (review item 6) ───────────────────────────────
+
+@test "mutation: an exempt workflow that gains a credential fails" {
+  cat >> "$WF/engine-token-liveness.yml" <<'YAML'
+
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: bash scripts/engine_liveness.sh
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+YAML
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"engine-token-liveness.yml is listed as exempt (no model call), but job 'probe' now matches the model-calling rule (model credential)"* ]]
+}
+
+@test "mutation: an exempt workflow that starts handing secrets to a reusable fails" {
+  cat >> "$WF/budget-breaker.yml" <<'YAML'
+
+  notify:
+    uses: some-org/some-repo/.github/workflows/notify.yml@v1
+    secrets: inherit
+YAML
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"budget-breaker.yml is listed as exempt (no model call), but job 'notify' now matches the model-calling rule (reusable call with secrets: inherit)"* ]]
+}
+
+@test "mutation: budget-poller, which holds the Claude credential, cannot be a plain exempt row" {
+  drop_row budget-poller.yml
+  add_row budget-poller.yml exempt - "Control plane."
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"budget-poller.yml is listed as exempt (no model call), but job 'poll' now matches the model-calling rule"* ]]
+}
+
+@test "mutation: an exempt-credential row accounts for exactly the jobs the rule flags" {
+  # A second credential-holding job is not covered by the row.
+  cat >> "$WF/budget-poller.yml" <<'YAML'
+
+  ask:
+    runs-on: ubuntu-latest
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - run: bash scripts/budget_poller.sh
+YAML
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"budget-poller.yml: job 'ask' matches the model-calling rule (model credential) and is not one of the jobs the exempt-credential row accounts for (poll)"* ]]
+
+  # A workflow the rule does not flag must be plain exempt.
+  cp "$REPO_ROOT/.github/workflows/budget-poller.yml" "$WF/budget-poller.yml"
+  drop_row budget-breaker.yml
+  add_row budget-breaker.yml exempt-credential trip "Reason."
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"budget-breaker.yml: mode exempt-credential, but the model-calling rule flags nothing in this workflow; use plain exempt"* ]]
+}
+
+# ── what the detector reaches, and one thing it does not (review item 7) ─────
+
+@test "detector: a model call inside a script a run: step invokes is caught (no credential named)" {
+  printf '#!/usr/bin/env bash\n# quiet helper\ncurl -s https://api.anthropic.com/v1/messages -d @body.json\n' > "$TREE/scripts/quiet-helper.sh"
+  cat > "$WF/new-quiet.yml" <<'YAML'
+name: New Quiet
+on:
+  workflow_dispatch:
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    env:
+      SOME_KEY: ${{ secrets.SOME_KEY }}
+    steps:
+      - run: bash scripts/quiet-helper.sh
+YAML
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"new-quiet.yml can reach a model (job 'go': model call in scripts/quiet-helper.sh)"* ]]
+}
+
+@test "detector: a script that is only linted or syntax-checked is not a call" {
+  printf '#!/usr/bin/env bash\nclaude -p "hello"\n' > "$TREE/scripts/agent.sh"
+  cat > "$WF/new-lint.yml" <<'YAML'
+name: New Lint
+on:
+  pull_request:
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          # bash scripts/agent.sh would be a call; this is not
+          shellcheck --severity=warning scripts/other.sh \
+            scripts/agent.sh
+          bash -n scripts/agent.sh
+YAML
+  check
+  [ "$status" -eq 0 ]
+}
+
+@test "detector: a reusable handed secrets under a name the patterns do not list is caught" {
+  cat > "$WF/new-caller.yml" <<'YAML'
+name: New Caller
+on:
+  workflow_dispatch:
+jobs:
+  call:
+    uses: some-org/some-repo/.github/workflows/agent-reusable.yml@v1
+    secrets:
+      LLM_KEY: ${{ secrets.TEAM_LLM_KEY }}
+YAML
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"new-caller.yml can reach a model (job 'call': reusable call with a secrets: mapping)"* ]]
+}
+
+@test "detector: a reusable called with no secrets at all is not flagged" {
+  cat > "$WF/new-caller.yml" <<'YAML'
+name: New Caller
+on:
+  workflow_dispatch:
+jobs:
+  call:
+    uses: some-org/some-repo/.github/workflows/lint-reusable.yml@v1
+YAML
+  check
+  [ "$status" -eq 0 ]
+}
+
+@test "detector: gh models with nothing but the ordinary GitHub token is caught, inline and in a script" {
+  cat > "$WF/new-models.yml" <<'YAML'
+name: New Models
+on:
+  workflow_dispatch:
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - run: gh models run openai/gpt-4o "hello"
+YAML
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"new-models.yml can reach a model (job 'go': model CLI call or API host)"* ]]
+
+  printf '#!/usr/bin/env bash\ngh models run openai/gpt-4o "hello"\n' > "$TREE/scripts/ask-models.sh"
+  replace_in "$WF/new-models.yml" 'run: gh models run openai/gpt-4o "hello"' "run: ./scripts/ask-models.sh"
+  check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"new-models.yml can reach a model (job 'go': model call in scripts/ask-models.sh)"* ]]
+}
+
+@test "known limit: a model call in a library that a script sources is NOT seen" {
+  # Documented in the registry header and AGENTS.md. If this starts failing, the
+  # detector grew a second level: update both documents and turn this around.
+  mkdir -p "$TREE/scripts/lib"
+  printf '#!/usr/bin/env bash\nask() { gh models run openai/gpt-4o "$1"; }\n' > "$TREE/scripts/lib/ask.sh"
+  printf '#!/usr/bin/env bash\nsource "$(dirname "$0")/lib/ask.sh"\nask hello\n' > "$TREE/scripts/outer.sh"
+  cat > "$WF/new-indirect.yml" <<'YAML'
+name: New Indirect
+on:
+  workflow_dispatch:
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - run: bash scripts/outer.sh
+YAML
+  check
+  [ "$status" -eq 0 ]
+}
+
+@test "known limits are written down where the rule is" {
+  grep -q '^# KNOWN LIMITS' "$REPO_ROOT/$REGISTRY_REL"
+  grep -q 'a model call in a library that a script sources' "$REPO_ROOT/$REGISTRY_REL"
+  grep -q '\*\*Known limits of the check\.\*\*' "$REPO_ROOT/AGENTS.md"
+}
+
+# ── the promise in AGENTS.md is true as written (review item 1) ──────────────
+
+@test "AGENTS.md: the pause promise names every workflow the registry lists as not paused" {
+  local wf section
+  section="$(sed -n '/^### Pausing the agent fleet/,/^#### Which workflows honour the pause/p' "$REPO_ROOT/AGENTS.md")"
+  [[ "$section" == *"**except** the ones the registry lists as not paused"* ]]
+  while IFS= read -r wf; do
+    [[ "$section" == *"\`$wf\`"* ]] || { echo "the pause promise does not name $wf"; return 1; }
+  done < <(awk -F'\t' '$2 == "upstream" { print $1 }' "$REPO_ROOT/$REGISTRY_REL")
+  [[ "$section" == *"petry-projects/.github#1295"* ]]
 }
 
 # ── mutation: the registry ───────────────────────────────────────────────────

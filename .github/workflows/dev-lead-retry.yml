@@ -130,6 +130,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     env:
+      # This workflow sets GH_TOKEN (a personal access token) for every job in its
+      # top-level `env:`. `permissions:` does not remove an inherited env value,
+      # so blank it: this job only prints a line.
+      GH_TOKEN: ''
       PAUSE_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
       PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
     steps:
