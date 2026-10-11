@@ -86,7 +86,7 @@ REVIEWS_MARKER_PREFIX="<!-- dev-lead-fix-reviews pr="
 # When this pass started, i.e. a lower bound on when it read the PR's comments.
 # Stamped on terminal markers as read_at= so the #2008 stale-edit dedup can tell a
 # pass that read an edited body from one that merely FINISHED after the edit.
-PASS_STARTED_AT="${PASS_STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+PASS_STARTED_AT="${PASS_STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)}"
 INTEGRITY_MARKER_PREFIX="<!-- dev-lead-conflict-integrity pr="
 NONCONVERGE_MARKER_PREFIX="<!-- dev-lead-review-nonconverge pr="
 # Consecutive not-applied passes against the same review before escalating to a
@@ -490,7 +490,7 @@ ${msg}"
       comment_part="${comment_part} version=${COMMENT_VERSION}"
     fi
   fi
-  if [[ "${PASS_STARTED_AT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+  if [[ "${PASS_STARTED_AT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]]; then
     read_part=" read_at=${PASS_STARTED_AT}"
   fi
   local marker="${REVIEWS_MARKER_PREFIX}${PR_NUMBER}${sha_part} intent=${intent} status=${status}${comment_part}${read_part} -->"
@@ -938,7 +938,7 @@ post_stale_pass_start() {
   [[ "${STALE_LATEST_EDIT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]] || return 0
   local sha_part="" read_part=""
   [[ "${HEAD_SHA:-}" =~ ^[0-9a-f]+$ ]] && sha_part=" sha=${HEAD_SHA}"
-  if [[ "${PASS_STARTED_AT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+  if [[ "${PASS_STARTED_AT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]]; then
     read_part=" read_at=${PASS_STARTED_AT}"
   fi
   local marker="<!-- dev-lead-fix-reviews-start pr=${PR_NUMBER}${sha_part} intent=fix-reviews edit=${STALE_LATEST_EDIT}${read_part} -->"
