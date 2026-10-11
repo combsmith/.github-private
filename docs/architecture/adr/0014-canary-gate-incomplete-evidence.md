@@ -12,7 +12,7 @@ GitHub run history: executed runs since a candidate's cut, failures since the
 cut, and a 14-day baseline that sizes the sample a promotion needs. Every one
 of those reads has a cap. A run listing returns at most 1,000 results when it
 carries a search parameter. Attributing an ADR-0007 `agent-ingress.yml` run to
-a role costs one jobs read per run, bounded by `CANARY_INGRESS_JOBS_MAX`
+a role costs one jobs API read per run, bounded by `CANARY_INGRESS_JOBS_MAX`
 (default 300).
 
 No recorded decision said what the gate does when a cap is hit. The
@@ -25,7 +25,7 @@ wrong:
   less than a day. Over a 5-day window the list showed 0 failures and a
   complete read showed 33.
 - The baseline zero-filled the days a capped list never reached. For a
-  workflow with 437 executed runs on its one visible day the pure sizing
+  workflow with 437 executed runs on its one visible day, the pure sizing
   function returned the clamp minimum (3). From that day alone it returns the
   maximum (15).
 - A truncated baseline read that observed nothing emitted a count of `1`, so
@@ -35,8 +35,8 @@ ADR-0007's Consequences name the cost ("run attribution coarsens", "union
 subscription starts more runs") and set no read budget. `markets`, the only
 collapsed repo, produced 265 ingress runs in its first 7.3 days, 127 of them
 in one day. Of the 265, 163 were cancelled, 93 succeeded, 8 were skipped and
-1 failed. A jobs read takes about 0.8 s. A union ingress on `.github-private`
-would pass 300 runs within hours, and because a candidate's window only
+1 failed. A jobs API read takes about 0.8 s. A union ingress on `.github-private`
+would exceed 300 runs within hours, and because a candidate's window only
 grows, a cap hit there cannot clear until the next cut.
 
 ADR-0004 already says a pure path that cannot resolve its source stays inert
@@ -82,7 +82,7 @@ not observed. The checkable boundaries:
   narrowing, and an exemption is that lever.
 - **The ingress read budget bounds uncached reads per sweep, not the size of
   the window.** We will persist the jobs of completed ingress runs across
-  sweeps, keyed by run id and run attempt, and count only cache misses
+  sweeps, keyed by run ID and run attempt, and count only cache misses
   against `CANARY_INGRESS_JOBS_MAX`. We will keep the default at 300 and will
   not raise it as a substitute. This must land before a named ring member
   (`.github`, `.github-private`, or a `ring1` repo) is collapsed.
@@ -98,7 +98,7 @@ above holds the gate only where evidence of a failure could be missing.
   sweep after the change, so some promotions that would have gone through
   will block.
 - Busy agents are sized from observed days and reach the clamp maximum
-  without a special case. At their volume that sample accumulates inside the
+  without a special case. At their volume, that sample accumulates inside the
   dwell floor.
 - **The clamp minimum for an unknown baseline accepts thin evidence on one
   narrow shape:** a role busy enough to deserve a larger sample whose runs
@@ -108,7 +108,7 @@ above holds the gate only where evidence of a failure could be missing.
 - **Persisting job reads adds state to a gate that keeps none today.** The
   state is evidence, not a decision: a cache miss costs a read and nothing
   else, and a lost cache is a slow sweep. It still needs a correct key. A
-  re-run keeps its run id and replaces its jobs, so keying on the run id
+  re-run keeps its run ID and replaces its jobs, so keying on the run ID
   alone would serve stale conclusions. A run with no jobs recorded yet must
   not be cached.
 - A cold cache on a busy collapsed repo takes several sweeps to fill, and
@@ -142,5 +142,5 @@ above holds the gate only where evidence of a failure could be missing.
   `petry-projects/.github#1314` (indeterminate triage, issue #1249),
   `petry-projects/.github#1315` (non-ingress roles, issue #1247): the
   changes that implement every bullet except the read budget.
-- `petry-projects/.github#548`: the gate standard the sample sizing comes
-  from.
+- `petry-projects/.github#548`: the gate standard that the sample sizing
+  comes from.
