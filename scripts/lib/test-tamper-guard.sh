@@ -318,8 +318,9 @@ ttg_scan_pass() {
         ttg_is_test_path "$path" || continue
         [[ "$seen" == *$'\n'"${path}"$'\n'* ]] && continue
         seen+="${path}"$'\n'
+        # Binary on either side (the first row seen for a path may be the text one).
         fbin=false
-        [[ "$_a" == "-" ]] && fbin=true
+        [[ $'\n'"$numstat"$'\n'"$base_side"$'\n' == *$'\n-\t-\t'"$path"$'\n'* ]] && fbin=true
         res=$(_ttg_moved_base_file "$base" "$mb_sha" "$umb_sha" "$path" "$fbin") || { echo "unknown"; return 2; }
         read -r removed fskips <<<"$res"
         (( removed > 0 )) && touched+="${path}"$'\n'

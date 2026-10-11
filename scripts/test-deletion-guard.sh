@@ -22,7 +22,7 @@ if ! merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA" 2>/dev/null)" || [ -z 
   exit 2
 fi
 
-deleted="$(git diff --diff-filter=D --name-only "$merge_base" "$HEAD_SHA" -- 'tests/')"
+deleted="$(git diff --no-renames --diff-filter=D --name-only "$merge_base" "$HEAD_SHA" -- 'tests/')"
 if [ -z "$deleted" ]; then
   echo "No files deleted under tests/. OK."
   exit 0

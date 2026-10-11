@@ -74,3 +74,12 @@ _run_guard() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"merge base"* ]]
 }
+
+@test "moving a test file out of tests/ counts as a deletion" {
+  mkdir -p other
+  git mv tests/b.bats other/b.bats
+  git commit -q -m "move b out of tests"
+  _run_guard
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"tests/b.bats"* ]]
+}
