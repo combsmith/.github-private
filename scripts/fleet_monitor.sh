@@ -171,6 +171,11 @@ failed_file=$(mktemp)
 # metrics TSV so the existing high-failure JSON export contract is untouched.
 # TSV: repo <TAB> wf_file <TAB> expected <TAB> actual <TAB> hit_rate <TAB> missed <TAB> label
 schedule_metrics_file=$(mktemp)
+# Normalized {role,conclusion} JSONL for the legacy (non-ingress) runs sampled in
+# the loop below, combined with the ingress runs of 2e for the per-role
+# attribution report (#1727). Created HERE, before the loop that appends to it:
+# under `set -u` an append to a not-yet-assigned name aborts the whole monitor.
+legacy_attr_file=$(mktemp)
 any_failures=0
 total_workflows=0
 
@@ -550,7 +555,6 @@ fi
 # per-repo API read failure is a `::warning::`, never fatal (mirrors 2a–2d).
 # ---------------------------------------------------------------------------
 ingress_attr_file=$(mktemp)   # accumulates normalized {role,conclusion} JSONL
-legacy_attr_file=$(mktemp)    # accumulates normalized legacy runs for parity
 for repo in "${repos[@]}"; do
   # The collapsed ingress workflow id for this repo (basename match), if present.
   if ! ingress_wf_id=$(gh api "repos/${repo}/actions/workflows?per_page=100" --paginate \
