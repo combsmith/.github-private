@@ -104,7 +104,8 @@ recommendations that were later replaced, and nothing should be built from it.
 - Whether the POC's agents are capped while the Factory is built. They draw on the same model
   window as the Factory. Uncapped for now, with the budget gauge watched.
 - The Kernel's language. Research found no framework worth building on and recommends Python with
-  the standard library only at run time (§7.5). The Maintainer has not yet ruled.
+  the standard library only at run time (§7.5), and the proof of concept bears that out (§9.13).
+  The Maintainer has not yet ruled.
 
 ## 2. Structure
 
@@ -272,7 +273,9 @@ on that log surviving.
 
 Every message carries `schema` (name and major version), an identifier, and the `release` that
 produced it.
-A reader rejects a major version it does not know. Messages are JSON. Files a person edits are YAML.
+A reader rejects a major version it does not know. Messages are JSON. Files a person edits are shown
+here as YAML because it reads more easily; in the repo they are JSON, since the standard library
+has no YAML parser and nothing third-party runs in the Factory.
 
 | Contract | From | To | Carries |
 |---|---|---|---|
@@ -317,7 +320,7 @@ for contract tests, so one schema has three uses.
 | `changed_paths` | Paths in that diff |
 | `labels` | Names |
 | `reviews` | Actor, state, commit, time |
-| `threads` | Thread id, path, line, resolved, outdated, opening actor and whether that actor has write access, resolving actor |
+| `threads` | Thread id, path, line, when it was opened, resolved, outdated, opening actor and whether that actor has write access, resolving actor |
 | `checks` | Name, App, conclusion, completion time, annotation count |
 | `alerts` | Tool, rule, alert number, state, severity, path |
 | `queue` | Merge-queue membership |
@@ -512,10 +515,10 @@ only go stale, which is how the POC's markers came to outlive the objects they d
 |---|---|
 | The Lifecycle state and its reason | Facts |
 | Whether the item is held, and by whom | A label, and who applied it |
-| Whether a Run holds the item now | A run record in progress |
+| Whether a Run holds the item now | A run record that is in progress, or admitted and still waiting for a runner |
 | How many attempts an Intent has had, and how many Runs the item has had | Run records since the last action by a person with write access, counting item faults only (§3.10) |
 | Whether the Factory itself is failing | The outcome of its most recent failed Runs, across items |
-| Whose turn it is | The Role of the last completed Run on this content |
+| Whose turn it is on an open thread | Whether the author has completed a Run since the thread was opened, and whether the owner has ruled since that Run. Not "the last Run on this content": the author's answer is usually new content (§9.13) |
 | Whether a Finding is open | Its thread, alert or tool report |
 | Whether an owner accepted or rejected a proposal | The thread, and whether the owner's Run on this content has completed |
 | Whether this content was already reviewed | The reviewer's completed Run on this `content_id`, and the review object |
@@ -921,6 +924,7 @@ These are the properties the simulator asserts. Each is a sentence a test can fa
 | I-35 | A Run whose Task holds `outside` or `advisory` text has no shell and no network tool | FR-12 |
 | I-36 | An `outside` item's admission holds only if it was given after the author's latest push | FR-63 |
 | I-37 | A reviewing Result reports on every criterion of its rubric that applies; one that does not applies no Effect | §3.14 |
+| I-38 | A Run asks the Kernel again as it starts, and does nothing if it is no longer the Run that is wanted | §9.13 |
 
 ### 4.5 The simulator
 
@@ -939,7 +943,7 @@ decision logic against a fake world, quickly, thousands of times.
   every step boundary, including between two Effects and before any artifact is uploaded. The
   control room unwritable, or holding nonsense. A facts read that fails or is stale. A missing capacity reading.
   A Result that fails validation. An Engine that times out. A human acting mid-Run.
-- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-37. I-1 and I-18 are checked once faults
+- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-38. I-1 and I-18 are checked once faults
   stop and the world is left to settle.
 - **Reproduction.** Each run has a seed from the standard library's generator. A failure prints the
   seed and the trace, and the trace renders as a sequence diagram.
@@ -1958,6 +1962,41 @@ pure function which is checked before it is trusted.
 It is written in Python with the standard library only, as recommended in §7.5, and is where that
 recommendation is tested. It is built locally and becomes the first commits of the Factory repo.
 It is not a throwaway: what survives review stays.
+
+**What it found**, built on 2026-10-11. It is about 1,300 lines, of which the Kernel is 340, and it
+needs nothing installed.
+
+| Question | Answer |
+|---|---|
+| Can the contracts be written down and checked? | Yes. Nine schemas, each with an example, and four counter-examples that must be rejected, including facts that carry prose and a Decision whose reason is a sentence |
+| Is the standard library enough for validation? | Yes, in about a hundred lines, for the subset of JSON Schema these contracts use. The validator refuses a schema that uses anything else |
+| Does the Lifecycle terminate? | Yes. The check also catches an unbounded cycle and a dead end when either is put in on purpose |
+| Can State be derived from facts and run records alone? | Yes, with two corrections to this design, below |
+| Do the invariants hold under faults? | On 300 fixed seeds, with stale reads, incomplete reads, dropped ticks, a Run missing from the list and Runs killed mid-flight. A failure prints its seed and a trace |
+| Can the tests fail? | Nineteen deliberate breaks of the Kernel, one rule each; all nineteen are caught |
+| Can the Kernel's purity be asserted by a tool? | Yes, from its syntax tree |
+| Does it run on a stock laptop? | Yes, on Python 3.9 and 3.12 with the same results from the same seeds |
+
+**Two errors in this design that the simulator found.** Both are corrected above.
+
+- *Whose turn it is.* This document said the turn is read from the Role of the last completed Run
+  on the current content. But the author's answer to a thread is usually new content. On that new
+  content the last Run is the reviewer's re-review, so the thread was never judged and the author
+  was sent to fix it again, until the Run ceiling stopped it. Four in ten simulated pull requests
+  ended that way. With the rule corrected, 279 of 300 merge under faults.
+- *A Run that has been admitted but has not started.* A pass that cannot see it admits another.
+  The records port must report a Run that is waiting for a runner, and the Kernel must count it
+  as holding the item.
+
+**One rule the simulator added** (I-38). When the list of runs lags behind a Run just started, a
+pass can still admit a duplicate. A Run therefore asks the Kernel again as it starts, and does
+nothing if it is no longer the Run that is wanted.
+
+**Smaller findings.** Seeds reproduce across Python versions only if the simulator avoids the
+library's `choice`, whose sequence differs between versions. Data files are JSON, not YAML. In the
+simulation a pull request takes a median of three model Runs to merge and ten at the ninetieth
+percentile, against the PRD's ceiling of ten; that is a property of the made-up rates at which
+reviews find faults and checks fail, and says nothing yet about the real ones.
 
 ### 9.14 Context engineering
 
