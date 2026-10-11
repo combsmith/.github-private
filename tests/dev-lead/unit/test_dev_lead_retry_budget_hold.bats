@@ -433,14 +433,21 @@ _assert_fail_open() {
 }
 
 @test "workflow (#2139 AC4): permissions are exactly contents: write + actions: read, none per job" {
-  run python3 -I -c 'import sys, yaml
-doc = yaml.safe_load(open(sys.argv[1]))
-assert doc["permissions"] == {"contents": "write", "actions": "read"}, doc["permissions"]
-for name, job in doc["jobs"].items():
-    assert "permissions" not in job, name
-print("ok")' "$RETRY_WORKFLOW"
-  [ "$status" -eq 0 ]
-  [ "$output" = "ok" ]
+  # Read with awk and grep, not a YAML library: the unit job installs only Bats,
+  # so importing PyYAML passed only while the runner image happened to ship it (#2162).
+  local top
+  top="$(awk '
+    /^permissions:[[:space:]]*(#.*)?$/ { inblock = 1; next }   # the top-level key, block form
+    inblock && /^[[:space:]]*(#.*)?$/  { next }                # blank line or comment
+    inblock && /^[^[:space:]]/         { inblock = 0 }         # the next top-level key ends it
+    inblock { sub(/[[:space:]]+#.*$/, ""); gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print }
+  ' "$RETRY_WORKFLOW" | LC_ALL=C sort)"
+  # Exactly these two scopes at the top level: nothing missing, nothing extra.
+  [ "$top" = "$(printf 'actions: read\ncontents: write')" ]
+  # One `permissions` key in the whole file, and it is that top-level block: a
+  # per-job block, or an inline top-level value such as `read-all`, fails here.
+  [ "$(grep -cE '^[[:space:]]*permissions[[:space:]]*:' "$RETRY_WORKFLOW")" -eq 1 ]
+  [ "$(grep -cE '^permissions:[[:space:]]*(#.*)?$' "$RETRY_WORKFLOW")" -eq 1 ]
 }
 
 @test "workflow (#2139 AC4): secrets referenced are only the existing GitHub PATs/token" {
