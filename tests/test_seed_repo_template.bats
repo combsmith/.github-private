@@ -903,6 +903,160 @@ GHEOF
   [ -z "$output" ]
 }
 
+# ── #2233: commercial-support sections + one open seed PR per repo ─────────────
+# Fixtures: standards/commercial-support-standard.md at standards/v1.2.0, and
+# README.md / BOOTSTRAP.md from petry-projects/repo-template main at bb43b0db.
+SEED_FIXTURES="$SCRIPT_DIR/tests/fixtures/seed-repo-template"
+# Git blob SHAs of those two repo-template files (guards the fixtures themselves
+# against an editor/hook adding a trailing newline).
+REPO_TEMPLATE_README_BLOB=b0b70720038659d7d303f8611fb54703e05df428
+REPO_TEMPLATE_BOOTSTRAP_BLOB=b0d2f01630b2c19437288dedd535c1c6b1ba8771
+
+_fixture_commercial_standard() {
+  cp "$SEED_FIXTURES/commercial-support-standard.md" \
+    "$STANDARDS_DIR/standards/commercial-support-standard.md"
+}
+
+# The canonical README block of a standard file, extracted independently of the
+# seeder: the body of the ```markdown fence.
+_standard_readme_block() { # <standard-file>
+  sed -n '/^```markdown$/,/^```$/p' "$1" | sed '1d;$d'
+}
+
+# Blob SHA of content as the seeder writes it: the $()-capture drops trailing
+# newlines and _put_file encodes it with printf '%s'.
+_seeded_blob() { printf '%s' "$1" | git hash-object --stdin; }
+
+@test "#2233: BOOTSTRAP.md emission is blob-identical to repo-template main (bb43b0db)" {
+  [ "$(git hash-object "$SEED_FIXTURES/repo-template-BOOTSTRAP.md")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
+  run bash "$SEED" --emit-baseline BOOTSTRAP.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"## 4. Contributing & Commercial Support"* ]]
+  [ "$(_seeded_blob "$output")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
+}
+
+@test "#2233: README.md keeps repo-template's preamble and appends the standard's canonical section" {
+  [ "$(git hash-object "$SEED_FIXTURES/repo-template-README.md")" = "$REPO_TEMPLATE_README_BLOB" ]
+  _stub_gh_empty
+  _fixture_commercial_standard
+  run bash "$SEED" --emit-baseline README.md
+  [ "$status" -eq 0 ]
+  # Everything on repo-template main before its commercial section, byte for byte.
+  local preamble; preamble="$(sed '/^## Commercial Support/,$d' "$SEED_FIXTURES/repo-template-README.md")"
+  [[ "$preamble" == *$'\n---' ]]
+  [ "${output:0:${#preamble}}" = "$preamble" ]
+  # …followed by one blank line and exactly the standard's canonical block.
+  local block; block="$(_standard_readme_block "$STANDARDS_DIR/standards/commercial-support-standard.md")"
+  [ -n "$block" ]
+  [ "$output" = "${preamble}"$'\n\n'"${block}" ]
+}
+
+@test "#2233: README.md section is read from the standard, not a copy in the script" {
+  _stub_gh_empty
+  _fixture_commercial_standard
+  sed -i -e 's/\$199\/month/$299\/month/' -e 's/^## 💼 Commercial Support.*/## Commercial Support (changed upstream)/' \
+    "$STANDARDS_DIR/standards/commercial-support-standard.md"
+  run bash "$SEED" --emit-baseline README.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"## Commercial Support (changed upstream)"* ]]
+  [[ "$output" == *'$299/month'* ]]
+  [[ "$output" != *'$199/month'* ]]
+  [[ "$output" == *"$(_standard_readme_block "$STANDARDS_DIR/standards/commercial-support-standard.md")" ]]
+}
+
+@test "#2233: README.md FAILS LOUD when the commercial-support standard is absent" {
+  _stub_gh_empty
+  run bash "$SEED" --emit-baseline README.md
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"commercial-support-standard.md"* ]]
+}
+
+@test "#2233: README.md FAILS LOUD when the standard has no canonical README block" {
+  _stub_gh_empty
+  printf '# Commercial Support\n\n## Canonical README Section\n\nNo fence here.\n\n## Other\n' \
+    > "$STANDARDS_DIR/standards/commercial-support-standard.md"
+  run bash "$SEED" --emit-baseline README.md
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Canonical README Section"* ]]
+}
+
+@test "#2233: a seed run whose commercial standard is unreadable leaves README.md untouched" {
+  _stub_gh
+  _drop_all_standards_fixtures
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"README.md"* ]]
+  grep -qF "contents/BOOTSTRAP.md" "$CALLS"
+  run grep -qF "contents/README.md" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+# gh stub with an OPEN older seed PR (#17 on seed-scaffold/2026-10-01). Contents
+# reads are served per ref from "<path>@<ref>=<file>" pairs; anything else reads
+# as absent. Writes are logged to $CALLS.
+_stub_gh_open_seed_pr() { # [<path>@<ref> <file> ...]
+  {
+    echo '#!/usr/bin/env bash'
+    echo 'args="$*"'
+    echo 'case "$args" in'
+    echo "  *\"--method PUT\"*|*\"--method POST\"*|*\"PATCH\"*|*\"pr create\"*) echo \"\$args\" >> \"$CALLS\"; echo '{}' ;;"
+    echo "  *\"pr list\"*\"--head seed-scaffold/2026-10-01\"*) echo 17 ;;"
+    echo "  *\"pr list\"*\"headRefName\"*) printf '17\\tseed-scaffold/2026-10-01\\n' ;;"
+    echo '  *"pr list"*) ;;'
+    echo "  *\"git/ref/heads/\"*) echo basesha ;;"
+    echo "  *\"repos/petry-projects/repo-template --jq\"*) echo main ;;"
+    while [ $# -ge 2 ]; do
+      local p="${1%@*}" r="${1##*@}" f="$2"; shift 2
+      local b64; b64="$(base64 -w0 < "$f" 2>/dev/null || base64 < "$f")"
+      echo "  *\"contents/${p}?ref=${r}\"*) echo '{\"sha\":\"feedface\",\"content\":\"${b64}\"}' ;;"
+    done
+    echo "  *) echo '{}' ;;"
+    echo 'esac'
+  } > "$STUB_BIN/gh"
+  chmod +x "$STUB_BIN/gh"
+}
+
+@test "#2233: an open seed-scaffold/* PR is updated in place — no second PR, no new branch" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  _stub_gh_open_seed_pr
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"#17"* ]]
+  [ -f "$CALLS" ]
+  # Writes land on the existing PR's branch…
+  grep -qF "contents/BOOTSTRAP.md" "$CALLS"
+  grep -qF "branch=seed-scaffold/2026-10-01" "$CALLS"
+  run grep -F "branch=seed-scaffold/$(date -u +%Y-%m-%d)" "$CALLS"
+  [ "$status" -eq 1 ]
+  # …no branch is created and no PR is opened.
+  run grep -F "git/refs --method POST" "$CALLS"
+  [ "$status" -eq 1 ]
+  run grep -F "pr create" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2233: updating an open seed PR restores files its branch changed but the fresh seed would not" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  local current="$BATS_TEST_TMPDIR/codeowners" stale="$BATS_TEST_TMPDIR/stale" agents="$BATS_TEST_TMPDIR/agents"
+  bash "$SEED" --emit-baseline .github/CODEOWNERS > "$current"
+  bash "$SEED" --emit-baseline AGENTS.md > "$agents"
+  printf '* @someone-else\n' > "$stale"
+  # CODEOWNERS: main already matches the seed, but the old PR's branch changed it.
+  # AGENTS.md: main and the branch both already match the seed.
+  _stub_gh_open_seed_pr \
+    ".github/CODEOWNERS@main" "$current" \
+    ".github/CODEOWNERS@seed-scaffold/2026-10-01" "$stale" \
+    "AGENTS.md@main" "$agents" \
+    "AGENTS.md@seed-scaffold/2026-10-01" "$agents"
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  [ "$status" -eq 0 ]
+  grep -F "contents/.github/CODEOWNERS --method PUT" "$CALLS" | grep -qF "branch=seed-scaffold/2026-10-01"
+  run grep -F "contents/AGENTS.md --method PUT" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
 # ── argument handling ─────────────────────────────────────────────────────────
 @test "errors on a malformed --repo value (not owner/name)" {
   _stub_gh
