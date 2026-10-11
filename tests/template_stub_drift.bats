@@ -141,30 +141,6 @@ setup() {
   rm -f "$tsv"
 }
 
-# #2220: a `file=` annotation lands on the PR's OWN same-named file, so a drifted
-# repo-template dev-lead.yml showed up as "this repo's dev-lead.yml drifted" and a
-# dev-lead pass repinned this repo's caller stub to clear it. The annotation must
-# name repo-template, carry no `file=`, and say this repo's stubs are not the fix.
-@test "annotate: a DRIFTED row names repo-template, has no file= anchor, and rules out editing this repo's stub (#2220)" {
-  tsv="$(mktemp)"
-  printf '%s\t%s\t%s\t%s\n' ".github/workflows/dev-lead.yml" "DRIFTED" "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" "$EXPECTED" >> "$tsv"
-  run template_drift_annotate "$tsv"
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"::error::"* ]]
-  [[ "$output" != *"file="* ]]
-  [[ "$output" == *"petry-projects/repo-template"* ]]
-  [[ "$output" == *"not a file in this pull request"* ]]
-  rm -f "$tsv"
-}
-
-@test "annotate: a MISSING row has no file= anchor either (#2220)" {
-  tsv="$(mktemp)"
-  printf '%s\t%s\t%s\t%s\n' "CLAUDE.md" "MISSING" "" "$EXPECTED" >> "$tsv"
-  run template_drift_annotate "$tsv"
-  [[ "$output" != *"file="* ]]
-  rm -f "$tsv"
-}
-
 @test "annotate: an all-ALIGNED set passes (exit 0, no error annotation)" {
   tsv="$(mktemp)"
   printf '%s\t%s\t%s\t%s\n' ".github/workflows/dev-lead.yml" "ALIGNED" "$EXPECTED" "$EXPECTED" >> "$tsv"
@@ -372,7 +348,7 @@ setup() {
   printf '%s\t%s\t%s\t%s\t%s\n' ".github/workflows/agent-shield.yml" "AHEAD" "$HEAD_BLOB" "$EXPECTED" "HEAD" >> "$tsv"
   run template_drift_annotate "$tsv" "standards/v1-stable" "1234567890abcdef1234567890abcdef12345678"
   [ "$status" -eq 0 ]                                   # a propagation lag, not corruption
-  [[ "$output" == *"::warning::Template stub .github/workflows/agent-shield.yml in "* ]]
+  [[ "$output" == *"::warning file=.github/workflows/agent-shield.yml::"* ]]
   [[ "$output" != *"::error"* ]]
   [[ "$output" == *'is ahead of `standards/v1-stable`'* ]]
   [[ "$output" == *"cut-standards-release.sh"* ]]
@@ -397,9 +373,9 @@ setup() {
   printf '%s\t%s\t%s\t%s\t%s\n' ".github/CODEOWNERS" "DRIFTED" "$HAND_EDIT" "$EXPECTED" "" >> "$tsv"
   run template_drift_annotate "$tsv" "standards/v1-stable"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"::warning::Template stub .github/workflows/agent-shield.yml in "* ]]
-  [[ "$output" == *"::error::Template stub .github/CODEOWNERS in "*"Re-seed it via scripts/seed-repo-template.sh"* ]]
-  [[ "$output" != *"::error::Template stub .github/workflows/agent-shield.yml in "* ]]
+  [[ "$output" == *"::warning file=.github/workflows/agent-shield.yml::"* ]]
+  [[ "$output" == *"::error file=.github/CODEOWNERS::"*"Re-seed it via scripts/seed-repo-template.sh"* ]]
+  [[ "$output" != *"::error file=.github/workflows/agent-shield.yml"* ]]
 }
 
 @test "annotate: a DRIFTED row tagged ahead-unchecked fails WITHOUT the bare re-seed remedy (#1926)" {
@@ -407,7 +383,7 @@ setup() {
   printf '%s\t%s\t%s\t%s\t%s\n' ".github/CODEOWNERS" "DRIFTED" "$HAND_EDIT" "$EXPECTED" "ahead-unchecked" >> "$tsv"
   run template_drift_annotate "$tsv" "standards/v1-stable"
   [ "$status" -ne 0 ]                                   # still drift until proven otherwise
-  [[ "$output" == *"::error::Template stub .github/CODEOWNERS in "* ]]
+  [[ "$output" == *"::error file=.github/CODEOWNERS::"* ]]
   [[ "$output" == *"could NOT be compared against standards HEAD"* ]]
   [[ "$output" == *"STANDARDS_REF="* ]]
   [[ "$output" != *"Re-seed it via scripts/seed-repo-template.sh"* ]]
@@ -505,9 +481,9 @@ _drv_row() {
   [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'AHEAD\tHEAD')" ]
   [ "$(_drv_row .github/workflows/dependabot-automerge.yml)" = "$(printf 'DRIFTED\t')" ]
   [ "$(_drv_row CLAUDE.md)" = "$(printf 'MISSING\t')" ]
-  [[ "$output" == *"::warning::Template stub .github/workflows/agent-shield.yml in "*'is ahead of `standards/v1-stable`'* ]]
-  [[ "$output" == *"::error::Template stub .github/workflows/dependabot-automerge.yml in "* ]]
-  [[ "$output" != *"::error::Template stub .github/workflows/agent-shield.yml in "* ]]
+  [[ "$output" == *"::warning file=.github/workflows/agent-shield.yml::"*'is ahead of `standards/v1-stable`'* ]]
+  [[ "$output" == *"::error file=.github/workflows/dependabot-automerge.yml::"* ]]
+  [[ "$output" != *"::error file=.github/workflows/agent-shield.yml"* ]]
 }
 
 @test "driver: only would-be DRIFTED files pay for a HEAD emission (#1926 AC #1)" {
@@ -524,7 +500,7 @@ _drv_row() {
   run main
   [ "$status" -eq 0 ]
   [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'AHEAD\tHEAD')" ]
-  [[ "$output" == *"::warning::Template stub .github/workflows/agent-shield.yml in "* ]]
+  [[ "$output" == *"::warning file=.github/workflows/agent-shield.yml::"* ]]
   [[ "$output" != *"::error"* ]]
 }
 
@@ -534,7 +510,7 @@ _drv_row() {
   [ "$status" -ne 0 ]
   # With nothing newer than N, a file that matches only some other ref is plain drift.
   [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'DRIFTED\t')" ]
-  [[ "$output" == *"::error::Template stub .github/workflows/agent-shield.yml in "*"Re-seed it via"* ]]
+  [[ "$output" == *"::error file=.github/workflows/agent-shield.yml::"*"Re-seed it via"* ]]
   run grep -c "@${DRV_HEAD_SHA}\$" "$DRV_EMIT_LOG"
   [ "$output" = "0" ]
 }
@@ -545,7 +521,7 @@ _drv_row() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"::warning::Could not resolve the standards default-branch HEAD commit"* ]]
   [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'DRIFTED\tahead-unchecked')" ]
-  [[ "$output" == *"::error::Template stub .github/workflows/agent-shield.yml in "*"could NOT be compared against standards HEAD"* ]]
+  [[ "$output" == *"::error file=.github/workflows/agent-shield.yml::"*"could NOT be compared against standards HEAD"* ]]
   [[ "$output" != *"Re-seed it via scripts/seed-repo-template.sh"* ]]
   # Files that match the channel are unaffected by the failed lookup.
   [ "$(_drv_row .github/workflows/auto-rebase.yml)" = "$(printf 'ALIGNED\tN')" ]

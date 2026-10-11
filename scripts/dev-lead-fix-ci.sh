@@ -14,10 +14,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/auto-merge.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/pr-automation-budget.sh"
 # Structured PR-body backfill (#1805): heal an existing PR whose body is still
 # missing 3+ required description sections, once, marker-keyed.
-source "$(dirname "$0")/lib/dev-lead-pr-body.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/dev-lead-pr-body.sh"
 # Sync-stub guard (#2185/#2212): a fix on a standards-sync PR must not change the
 # org-standard stub the PR exists to sync.
-source "$(dirname "$0")/lib/sync-stub-guard.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/sync-stub-guard.sh"
 # Channel-pin guard (#2220): a pass may never change a caller stub's channel pin.
 source "$(dirname "${BASH_SOURCE[0]}")/lib/channel-pin-guard.sh"
 

@@ -309,7 +309,7 @@ GHEOF
 }
 
 @test "fix-ci: a refused SHA is terminal for idempotency" {
-  grep -qE 'status=\(applied\|failed\|no-changes\|refused\)' "$FIX_CI"
+  grep -qF 'status=(applied|failed|no-changes|declined|refused)' "$FIX_CI"
 }
 
 # ---------------------------------------------------------------------------

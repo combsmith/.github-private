@@ -231,7 +231,7 @@ _remote_feat() { git --git-dir="$REMOTE" rev-parse refs/heads/feat; }
 # ---------------------------------------------------------------------------
 
 @test "Wiring: fix-ci sources the guard and evaluates it before push_with_merge_guard" {
-  grep -q 'source "$(dirname "$0")/lib/sync-stub-guard.sh"' "$FIX_CI"
+  grep -qF 'source "$(dirname "${BASH_SOURCE[0]}")/lib/sync-stub-guard.sh"' "$FIX_CI"
   local body
   body=$(awk '/^main\(\) \{/,/^}/' "$FIX_CI")
   local eval_line push_line
