@@ -3463,7 +3463,7 @@ rebase_record_synced_stubs() {
   if [ -n "$SSG_REBASE_PRE" ]; then
     mb=$(ttg_resolve_merge_base "$SSG_REBASE_BASE" "$SSG_REBASE_PRE" "${HEAD_REF:-}" 2>/dev/null) || mb=""
   fi
-  SSG_REBASE_RECORD=$(ssg_rebase_record "$SSG_REBASE_PRE" "$mb") || SSG_REBASE_UNKNOWN=1
+  SSG_REBASE_RECORD=$(ssg_rebase_record "$SSG_REBASE_PRE" "$mb" "origin/${SSG_REBASE_BASE}") || SSG_REBASE_UNKNOWN=1
   echo "::notice::Sync-stub guard: recorded $(printf '%s' "$SSG_REBASE_RECORD" | grep -c . || true) synced path(s) on standards-sync PR #${PR_NUMBER} before the rebase (#2232)"
 }
 
@@ -3476,7 +3476,7 @@ rebase_record_synced_stubs() {
 rebase_restore_synced_stubs() {
   [ "${SSG_REBASE_ACTIVE:-0}" = "1" ] || return 0
   local out="" rc=0 restored failed before
-  git fetch -q origin "$SSG_REBASE_BASE" >/dev/null 2>&1 || true
+  git fetch -q origin "+refs/heads/${SSG_REBASE_BASE}:refs/remotes/origin/${SSG_REBASE_BASE}" >/dev/null 2>&1 || true
   if [ "${SSG_REBASE_UNKNOWN:-0}" = "1" ]; then
     rc=2
   else
