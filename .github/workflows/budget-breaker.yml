@@ -11,7 +11,11 @@
 #     workflow, and do not add it to budget-poller.yml (the poller stays read-only).
 #   • DEFAULT OFF, TWICE: nothing is written unless the repository variable
 #     BUDGET_BREAKER_ARMED is exactly `true` AND the secret is set. Disarmed, the
-#     run still decides and logs the write it would have made.
+#     run still decides and logs the write it would have made. Only lowercase
+#     `true` arms; `false`, empty or unset disarm quietly; any other value is
+#     disarmed plus one `::error::`.
+#   • DO NOT ARM before the preconditions in AGENTS.md ("Arming preconditions",
+#     #2251) are met.
 #   • SCHEDULE ONLY. Do NOT add workflow_dispatch, pull_request, push or any other
 #     trigger: a manual or event run can execute branch code, and this job holds
 #     a credential that can pause every repository. `schedule` only ever runs the
@@ -57,12 +61,16 @@ jobs:
 
       - name: Decide and apply
         env:
-          # Arm switch. The script requires the exact string `true`.
+          # Arm switch. The script requires the exact string `true`. `false`,
+          # empty and unset disarm quietly; any other value (TRUE, 1, yes, a
+          # padded value) disarms and logs one error.
           BUDGET_BREAKER_ARMED: ${{ vars.BUDGET_BREAKER_ARMED }}
           # WRITE credential: organisation Variables read and write, nothing else.
-          # Handed to the step only when armed (an expression compares without
-          # regard to case, so the script's exact check is the one that counts),
-          # and the script uses it only for the variable calls.
+          # Handed to the step only when armed. An expression compares without
+          # regard to case and that cannot be changed here, so `TRUE` or `True`
+          # also delivers it: the script's exact check is the one that counts,
+          # and it drops the credential unused and says so. The script uses it
+          # only for the variable calls.
           BUDGET_BREAKER_TOKEN: ${{ vars.BUDGET_BREAKER_ARMED == 'true' && secrets.BUDGET_BREAKER_PAT || '' }}
           # The secret's NAME, for messages and the age check (never its value).
           BUDGET_BREAKER_SECRET_NAME: BUDGET_BREAKER_PAT

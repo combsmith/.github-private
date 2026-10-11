@@ -39,6 +39,25 @@
 #           AGENTS_PAUSE_UNTIL
 # A step whose target already holds the wanted state is skipped.
 #
+# The pause guard (#2251). A trip that has written a source or an until reads
+# the state ONCE MORE before it sets the pause. If the fleet is by then paused
+# by anyone, or the state is in any other way not "what was read before, plus
+# what this run wrote", the pause is not set and the run takes back what it
+# wrote: it deletes AGENTS_PAUSE_SOURCE first (the source is what makes a pause
+# the breaker's), then AGENTS_PAUSE_UNTIL. It deletes only a variable THIS run
+# wrote and that still holds the value this run wrote; it never sets anything.
+# That narrows the window in which a pause set by hand can be claimed to the
+# one call between this read and the write of the pause. It does not close it.
+#
+# Leftover ownership markers (#2251). The breaker's own source on a fleet that
+# is NOT paused is left over: from a trip that failed before it set the pause,
+# or from a pause someone ended by hand without deleting the source. While it
+# is there, a pause set by hand reads as the breaker's own and would be lifted
+# by it. bbw_leftover_plan plans its removal (the source, then the until), and
+# an armed run applies that INSTEAD of deciding: it is that run's one state
+# change. Only the breaker's own value is ever removed; a source with any other
+# value is somebody else's and is left alone, as is an until with no own source.
+#
 # ----------------------------------------------------------------------------
 # Credentials
 #
@@ -47,7 +66,9 @@
 # process inherits one unless a call here hands it over for that call alone.
 #   write   organisation Variables read and write   state read + variable writes
 #   read    the fleet's read-only scan credential   the collector, secret age
-#   notify  this repository's workflow token        the tracking-issue notice
+#   notify  this repository's workflow token        the tracking-issue notice,
+#                                                   and the look-up of an
+#                                                   earlier one
 # Everything this file prints goes through bbw_redact.
 #
 # Sourced (`# shellcheck source=scripts/lib/budget-breaker-writer.sh`) AFTER
@@ -83,6 +104,34 @@ BBW_FAILED_STEP=""
 BBW_FAILED_KIND=""
 # The visibility bbw_create_visibility resolved.
 BBW_CREATE_VIS=""
+# The pause guard of the last bbw_apply (BBW_FAILED_KIND is then "guard"):
+#   BBW_GUARD            why the pause was not set: "paused" (the fleet is paused
+#                        by someone else), "changed" (the state is otherwise not
+#                        what this run left) or "unreadable" (the read failed;
+#                        BBW_GUARD_HTTP / BBW_GUARD_ERR are that read's)
+#   BBW_GUARD_STATE      the three values as that read saw them ("" if unreadable)
+#   BBW_ROLLED_BACK      what the roll-back removed
+#   BBW_ROLLBACK_KEPT    what this run wrote and the roll-back left, with why
+#   BBW_ROLLBACK_FAILED  the roll-back step that failed ("" when none did;
+#                        BBW_HTTP / BBW_ERR are then that call's)
+#   BBW_ROLLBACK_OWN_SOURCE  "true" when the breaker's source is still set after
+#                        the roll-back: an earlier run left it, or its delete failed
+BBW_GUARD=""
+BBW_GUARD_HTTP=""
+BBW_GUARD_ERR=""
+BBW_GUARD_STATE=""
+BBW_ROLLED_BACK=()
+BBW_ROLLBACK_KEPT=()
+BBW_ROLLBACK_FAILED=""
+BBW_ROLLBACK_OWN_SOURCE=""
+# The values the current bbw_apply call has written ("" = not written by it).
+_BBW_WROTE_SOURCE=""
+_BBW_WROTE_UNTIL=""
+# The number of the open tracking issue, as bbw_find_tracking_issue last saw it.
+BBW_TRACKING_NUMBER=""
+# A hold run looks for a pause's missing notice only while the pause switch was
+# set less than this many minutes ago (see bbw_notice_lookup_due).
+BBW_NOTICE_CATCHUP_MIN=60
 
 # ---------------------------------------------------------------------------
 # bbw_take_credentials — move the three credentials out of the environment into
@@ -123,6 +172,18 @@ bbw_redact() {
     text="${text//"$c"/***}"
   done
   printf '%s' "$text"
+}
+
+# ---------------------------------------------------------------------------
+# bbw_show <text> — PURE. A value that is not the script's own (a variable as a
+# maintainer typed it, a field of an API answer), made safe to put in ONE log
+# line: every character that is not printable becomes `?`, so it cannot start a
+# new line or a workflow command, and it is cut to 40 characters.
+# ---------------------------------------------------------------------------
+bbw_show() {
+  local text="${1:-}"
+  text="${text//[^[:print:]]/?}"
+  printf '%s' "${text:0:40}"
 }
 
 bbw_log()    { printf 'budget-breaker: %s\n' "$(bbw_redact "$*")"; }
@@ -257,6 +318,21 @@ bbw_hold_remaining() {
       else ([($a + $h * 60 - $t), 0] | max) end' 2>/dev/null || printf '0'
 }
 
+# ---------------------------------------------------------------------------
+# bbw_time_not_after <iso_time> <now_epoch> — PURE. Returns 0 when the time is a
+# well-formed ISO-8601 UTC second that is not later than now, so it can be the
+# start of the minimum hold. A missing, malformed or FUTURE time returns 1: a
+# hold measured from a time that has not come yet would last until it came,
+# however far off, and bad data must never keep the fleet paused.
+# ---------------------------------------------------------------------------
+bbw_time_not_after() {
+  jq -ne --arg at "${1:-}" --arg now "${2:-}" '
+    ($at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+    and ($now | test("^[0-9]{1,12}$"))
+    and ((try ($at | fromdateiso8601) catch null) as $a
+         | $a != null and $a <= ($now | tonumber))' >/dev/null 2>&1
+}
+
 # The plan, as one jq program. The writer re-checks ownership itself rather
 # than trusting the decision it is handed: a trip is planned only for a fleet
 # that is not paused, and a resume only for a pause carrying the breaker's own
@@ -303,6 +379,24 @@ bbw_plan() {
     "$_BBW_PLAN_JQ" 2>/dev/null
 }
 
+# ---------------------------------------------------------------------------
+# bbw_leftover_plan <vars_json> — PURE. The steps that remove the breaker's
+# leftover ownership markers (see the header): `[]` unless the fleet is NOT
+# paused AND AGENTS_PAUSE_SOURCE holds exactly the breaker's own value; then
+# delete the source, and delete the until when there is one. `[]` too when the
+# state cannot be read: unreadable data never causes a write.
+# ---------------------------------------------------------------------------
+bbw_leftover_plan() {
+  local plan
+  plan=$(jq -c --arg own "$BUDGET_BREAKER_PAUSE_SOURCE" \
+    --arg np "$BBW_VAR_PAUSED" --arg ns "$BBW_VAR_SOURCE" --arg nu "$BBW_VAR_UNTIL" '
+    if (((.[$np].value // "") | ascii_downcase) != "true") and ((.[$ns].value // "") == $own)
+    then [ {op: "delete", name: $ns} ]
+         + (if .[$nu] != null then [ {op: "delete", name: $nu} ] else [] end)
+    else [] end' <<< "${1:-}" 2>/dev/null) || plan=""
+  printf '%s' "${plan:-[]}"
+}
+
 # bbw_plan_text <plan_json> — the plan as one line for a log.
 bbw_plan_text() {
   jq -r 'if length == 0 then "nothing"
@@ -341,19 +435,143 @@ bbw_create_visibility() {
 }
 
 # ---------------------------------------------------------------------------
+# _bbw_delete_var <org> <name> — the one delete call, with the write credential.
+# ---------------------------------------------------------------------------
+_bbw_delete_var() {
+  _bbw_gh "$_BBW_WRITE_CRED" api -X DELETE "orgs/${1:-}/actions/variables/${2:-}"
+}
+
+# ---------------------------------------------------------------------------
+# _bbw_rollback <org> <vars_json> — take back what the current bbw_apply call
+# wrote, after the pause guard refused to set the pause. <vars_json> is the
+# state the guard just read, or "" when that read failed.
+#
+# It only ever DELETES, and only a variable this call wrote that still holds the
+# value this call wrote (with no state to compare against, it deletes what this
+# call wrote). The source goes first, because the source is what makes a pause
+# the breaker's own. Two things are deliberately NOT done:
+#   - if deleting the source fails, the until is left alone. A pause that still
+#     carries the breaker's source and has no end time is released by the very
+#     next run (bb_decide fails open on a missing until); with its end time it
+#     stands at least until then, which is the time a maintainer has to act on
+#     the error.
+#   - if the source was set by an EARLIER run (this call did not write it, so
+#     it may not remove it) and is still there, the until this call wrote is
+#     left too, for the same reason. BBW_ROLLBACK_OWN_SOURCE reports it.
+# Never retries. Returns 1 when a delete failed (BBW_ROLLBACK_FAILED names it).
+# ---------------------------------------------------------------------------
+_bbw_rollback() {
+  local org="${1:-}" vars="${2:-}" cur
+  BBW_ROLLED_BACK=()
+  BBW_ROLLBACK_KEPT=()
+  BBW_ROLLBACK_FAILED=""
+  BBW_ROLLBACK_OWN_SOURCE="false"
+
+  if [ -n "$_BBW_WROTE_SOURCE" ]; then
+    cur="$_BBW_WROTE_SOURCE"
+    if [ -n "$vars" ]; then
+      cur="$(bbw_var_value "$vars" "$BBW_VAR_SOURCE")"
+    fi
+    if [ "$cur" = "$_BBW_WROTE_SOURCE" ]; then
+      if ! _bbw_delete_var "$org" "$BBW_VAR_SOURCE"; then
+        BBW_ROLLBACK_FAILED="delete ${BBW_VAR_SOURCE}"
+        BBW_ROLLBACK_OWN_SOURCE="true"
+        return 1
+      fi
+      BBW_ROLLED_BACK+=("deleted ${BBW_VAR_SOURCE}")
+    else
+      BBW_ROLLBACK_KEPT+=("${BBW_VAR_SOURCE} (it no longer holds the value this run wrote)")
+    fi
+  elif [ -z "$vars" ] || [ "$(bbw_var_value "$vars" "$BBW_VAR_SOURCE")" = "$BUDGET_BREAKER_PAUSE_SOURCE" ]; then
+    # Not written by this call: a trip skips the source only when it already
+    # held the breaker's value, so an earlier run left it.
+    BBW_ROLLBACK_OWN_SOURCE="true"
+  fi
+
+  if [ -n "$_BBW_WROTE_UNTIL" ]; then
+    cur="$_BBW_WROTE_UNTIL"
+    if [ -n "$vars" ]; then
+      cur="$(bbw_var_value "$vars" "$BBW_VAR_UNTIL")"
+    fi
+    if [ "$cur" != "$_BBW_WROTE_UNTIL" ]; then
+      BBW_ROLLBACK_KEPT+=("${BBW_VAR_UNTIL} (it no longer holds the value this run wrote)")
+    elif [ "$BBW_ROLLBACK_OWN_SOURCE" = "true" ]; then
+      BBW_ROLLBACK_KEPT+=("${BBW_VAR_UNTIL}=${_BBW_WROTE_UNTIL} (${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} from an earlier run is still set, and a pause carrying that source with no end time would be lifted at once)")
+    else
+      if ! _bbw_delete_var "$org" "$BBW_VAR_UNTIL"; then
+        BBW_ROLLBACK_FAILED="delete ${BBW_VAR_UNTIL}"
+        return 1
+      fi
+      BBW_ROLLED_BACK+=("deleted ${BBW_VAR_UNTIL}")
+    fi
+  fi
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# _bbw_pause_guard <org> <state_key_before_the_writes> — the last look before
+# the pause is set (see "The pause guard" in the header). Reads the state again
+# into BBW_VARS. Returns 0 only when it is exactly the state bbw_apply started
+# from plus what this call wrote: not paused, and the source and until this call
+# wrote still in place. Otherwise sets BBW_GUARD, rolls back and returns 1.
+# Sets globals: call it directly, never inside `$(...)`.
+# ---------------------------------------------------------------------------
+_bbw_pause_guard() {
+  local org="${1:-}" before="${2:-}" expected="" now_key paused_now rc=0
+  BBW_GUARD="" BBW_GUARD_HTTP="" BBW_GUARD_ERR="" BBW_GUARD_STATE=""
+  bbw_read_org_vars "$org" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    BBW_GUARD="unreadable"
+    BBW_GUARD_HTTP="$BBW_HTTP"
+    BBW_GUARD_ERR="$BBW_ERR"
+    _bbw_rollback "$org" "" || true
+    return 1
+  fi
+  expected=$(jq -c --arg s "$_BBW_WROTE_SOURCE" --arg u "$_BBW_WROTE_UNTIL" '
+    if type == "array" and length == 3
+    then [.[0], (if $s != "" then $s else .[1] end), (if $u != "" then $u else .[2] end)]
+    else error("no state to compare against") end' <<< "$before" 2>/dev/null) || expected=""
+  now_key="$(bbw_state_key "$BBW_VARS")"
+  BBW_GUARD_STATE="$now_key"
+  if [ -n "$expected" ] && [ "$now_key" = "$expected" ]; then
+    return 0
+  fi
+  paused_now="$(bbw_var_value "$BBW_VARS" "$BBW_VAR_PAUSED")"
+  if [ "${paused_now,,}" = "true" ]; then
+    BBW_GUARD="paused"
+  else
+    BBW_GUARD="changed"
+  fi
+  _bbw_rollback "$org" "$BBW_VARS" || true
+  return 1
+}
+
+# ---------------------------------------------------------------------------
 # bbw_apply <org> <plan_json> — carry out the plan in order with the write
 # credential, against the state in BBW_VARS. Stops at the FIRST failure and
 # never retries. Every step is resolved to its exact call before the first
 # write, so a step that cannot be resolved means nothing is written at all.
+# Before the step that sets the pause, when this call has written a source or
+# an until, the pause guard reads the state again (and leaves it in BBW_VARS).
 # Sets BBW_DONE (the steps completed) and, on failure, BBW_FAILED_STEP,
-# BBW_FAILED_KIND and BBW_HTTP / BBW_ERR. Returns 0 only when every step ran.
+# BBW_FAILED_KIND and BBW_HTTP / BBW_ERR; BBW_FAILED_KIND "guard" means the
+# guard stopped the trip and rolled it back (see BBW_GUARD and BBW_ROLLED_BACK).
+# Returns 0 only when every step ran.
 # ---------------------------------------------------------------------------
 bbw_apply() {
-  local org="${1:-}" plan="${2:-[]}" n i op name value exists vis=""
+  local org="${1:-}" plan="${2:-[]}" n i op name value exists vis="" before
   local -a kinds=() names=() values=()
   BBW_DONE=()
   BBW_FAILED_STEP=""
   BBW_FAILED_KIND="setup"
+  BBW_GUARD="" BBW_GUARD_HTTP="" BBW_GUARD_ERR="" BBW_GUARD_STATE=""
+  BBW_ROLLED_BACK=()
+  BBW_ROLLBACK_KEPT=()
+  BBW_ROLLBACK_FAILED=""
+  BBW_ROLLBACK_OWN_SOURCE=""
+  _BBW_WROTE_SOURCE=""
+  _BBW_WROTE_UNTIL=""
+  before="$(bbw_state_key "$BBW_VARS")"
   n=$(jq -r 'length' <<< "$plan" 2>/dev/null) || n=""
   if ! [[ "$n" =~ ^[0-9]+$ ]]; then
     BBW_FAILED_STEP="read the plan"
@@ -403,6 +621,14 @@ bbw_apply() {
   for (( i = 0; i < n; i++ )); do
     name="${names[$i]}"
     value="${values[$i]}"
+    if [ "${kinds[$i]}" != "delete" ] && [ "$name" = "$BBW_VAR_PAUSED" ] && [ "$value" = "true" ] \
+        && [ -n "${_BBW_WROTE_SOURCE}${_BBW_WROTE_UNTIL}" ]; then
+      if ! _bbw_pause_guard "$org" "$before"; then
+        BBW_FAILED_KIND="guard"
+        BBW_FAILED_STEP="set ${name}=${value}"
+        return 1
+      fi
+    fi
     case "${kinds[$i]}" in
       update)
         if ! _bbw_gh "$_BBW_WRITE_CRED" api -X PATCH \
@@ -420,13 +646,18 @@ bbw_apply() {
         fi
         BBW_DONE+=("${name}=${value} (created, visibility ${vis})") ;;
       delete)
-        if ! _bbw_gh "$_BBW_WRITE_CRED" api -X DELETE \
-            "orgs/${org}/actions/variables/${name}"; then
+        if ! _bbw_delete_var "$org" "$name"; then
           BBW_FAILED_STEP="delete ${name}"
           return 1
         fi
         BBW_DONE+=("deleted ${name}") ;;
     esac
+    if [ "${kinds[$i]}" != "delete" ]; then
+      case "$name" in
+        "$BBW_VAR_SOURCE") _BBW_WROTE_SOURCE="$value" ;;
+        "$BBW_VAR_UNTIL")  _BBW_WROTE_UNTIL="$value" ;;
+      esac
+    fi
   done
   BBW_FAILED_KIND=""
   return 0
@@ -447,6 +678,88 @@ bbw_secret_updated_at() {
 }
 
 # ---------------------------------------------------------------------------
+# bbw_find_tracking_issue <repo> — look for the single tracking issue, with the
+# notify credential: by label and exact title among the open issues. Sets
+# BBW_TRACKING_NUMBER to its number, or to "" when there is none yet. Returns 1
+# (BBW_HTTP / BBW_ERR say why) when the issues could not be listed.
+# Sets globals: call it directly, never inside `$(...)`.
+# ---------------------------------------------------------------------------
+bbw_find_tracking_issue() {
+  local repo="${1:-}" number=""
+  BBW_TRACKING_NUMBER=""
+  if ! _bbw_gh "$_BBW_NOTIFY_CRED" issue list --repo "$repo" --state open \
+      --label "$BBW_TRACKING_LABEL" --limit 100 --json number,title; then
+    return 1
+  fi
+  number=$(jq -r --arg t "$BBW_TRACKING_TITLE" \
+    '[.[] | select(.title == $t) | .number] | min // empty' <<< "$BBW_OUT" 2>/dev/null) || number=""
+  if [[ "$number" =~ ^[0-9]+$ ]]; then
+    BBW_TRACKING_NUMBER="$number"
+  fi
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# bbw_pause_marker <until> — PURE. The hidden first line of every notice that
+# announces a pause. It carries the pause's end time, which identifies the pause
+# (the script keeps nothing between runs), so a later run can tell from the
+# tracking issue alone whether this pause was announced.
+# ---------------------------------------------------------------------------
+bbw_pause_marker() {
+  printf '<!-- budget-breaker-notice kind=pause until=%s -->' "${1:-}"
+}
+
+# ---------------------------------------------------------------------------
+# bbw_notice_lookup_due <pause_updated_at> <now_epoch> — PURE. Whether a run
+# that holds an own pause should look for that pause's notice. Returns 0 while
+# the pause switch was set less than BBW_NOTICE_CATCHUP_MIN minutes ago, and
+# also when that time cannot be read (looking costs two read calls; not looking
+# could leave a pause unannounced). Returns 1 for an older pause: the look-up is
+# for the runs right after a trip whose notice failed, not for every tick of a
+# pause that can last hours.
+# ---------------------------------------------------------------------------
+bbw_notice_lookup_due() {
+  local at="${1:-}" now="${2:-}"
+  bbw_time_not_after "$at" "$now" || return 0
+  jq -ne --arg at "$at" --arg now "$now" --arg win "$BBW_NOTICE_CATCHUP_MIN" \
+    '(($now | tonumber) - ($at | fromdateiso8601)) < (($win | tonumber) * 60)' >/dev/null 2>&1
+}
+
+# ---------------------------------------------------------------------------
+# bbw_pause_notice_posted <repo> <until> — READ ONLY, notify credential. Is
+# there a comment on the tracking issue carrying the marker of the pause that
+# ends at <until>? Returns 0 when there is, 1 when there is not (no tracking
+# issue yet counts as not), 2 when it cannot be told (BBW_HTTP / BBW_ERR).
+# Any comment carrying the marker counts, whoever wrote it: a forged marker can
+# only stop a late notice from being posted, it can never cause a write.
+# Sets globals: call it directly, never inside `$(...)`.
+# ---------------------------------------------------------------------------
+bbw_pause_notice_posted() {
+  local repo="${1:-}" until="${2:-}" marker count
+  if ! [[ "$repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ \
+      && "$until" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+    BBW_HTTP="" BBW_ERR="the repository or the pause's end time is not readable"
+    return 2
+  fi
+  bbw_find_tracking_issue "$repo" || return 2
+  [ -n "$BBW_TRACKING_NUMBER" ] || return 1
+  # The marker is digits, letters, `-`, `:`, `=`, `<`, `!` and `>` only (the end
+  # time was just checked), so it is safe inside the filter's string literal.
+  # With --paginate the filter runs once per page: one count per page.
+  marker="$(bbw_pause_marker "$until")"
+  _bbw_gh "$_BBW_NOTIFY_CRED" api --paginate \
+    "repos/${repo}/issues/${BBW_TRACKING_NUMBER}/comments?per_page=100" \
+    --jq "[.[] | select((.body // \"\") | contains(\"${marker}\"))] | length" || return 2
+  count=$(jq -rs 'if all(.[]; type == "number") then add // 0 else error("not counts") end' \
+    <<< "$BBW_OUT" 2>/dev/null) || count=""
+  if ! [[ "$count" =~ ^[0-9]+$ ]]; then
+    BBW_HTTP="" BBW_ERR="the tracking issue's comments could not be parsed"
+    return 2
+  fi
+  [ "$count" -gt 0 ]
+}
+
+# ---------------------------------------------------------------------------
 # bbw_notify <repo> <body> — post ONE comment on the single tracking issue,
 # with the notify credential. The issue is found by label and exact title among
 # the open issues and created on first use, labelled so dev-lead ignores it.
@@ -454,12 +767,8 @@ bbw_secret_updated_at() {
 # ---------------------------------------------------------------------------
 bbw_notify() {
   local repo="${1:-}" body="${2:-}" number=""
-  if ! _bbw_gh "$_BBW_NOTIFY_CRED" issue list --repo "$repo" --state open \
-      --label "$BBW_TRACKING_LABEL" --limit 100 --json number,title; then
-    return 1
-  fi
-  number=$(jq -r --arg t "$BBW_TRACKING_TITLE" \
-    '[.[] | select(.title == $t) | .number] | min // empty' <<< "$BBW_OUT" 2>/dev/null) || number=""
+  bbw_find_tracking_issue "$repo" || return 1
+  number="$BBW_TRACKING_NUMBER"
 
   if ! [[ "$number" =~ ^[0-9]+$ ]]; then
     # First use. The labels may already exist; creating them again fails
@@ -494,7 +803,7 @@ It pauses the fleet when the fleet itself reports that the model provider is ref
 
 - To keep the fleet paused by hand: set `AGENTS_PAUSED=true` and delete `AGENTS_PAUSE_SOURCE`. The breaker never touches a pause without its own source.
 - To end a breaker pause early: set `AGENTS_PAUSED=false` and delete `AGENTS_PAUSE_SOURCE`.
-- To switch the breaker off: set the repository variable `BUDGET_BREAKER_ARMED` to anything but `true`.
+- To switch the breaker off: set the repository variable `BUDGET_BREAKER_ARMED` to `false`, or delete it. Only the exact lowercase value `true` arms it.
 
 See AGENTS.md, "Pausing the agent fleet". Keep this issue open; it is labelled so that dev-lead ignores it.
 BODY
