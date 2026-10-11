@@ -7,7 +7,10 @@
 #     workflow (CI: test-dev-lead.yml job `agents-paused-preflight`);
 #   - the inventory table in AGENTS.md ("Pausing the agent fleet") is generated
 #     from it (`--markdown`), and tests/test_fleet_pause_coverage.bats fails when
-#     the two differ.
+#     the two differ;
+#   - scripts/fleet_monitor.sh reads the `job-gate` rows (through
+#     scripts/lib/fleet-pause.sh) to know which reusables carry a notice job, so
+#     that a caller's paused runs are counted as paused, not as successes (#2266).
 #
 # A workflow is MODEL-CALLING when, outside comments, a job
 #   1. names a model credential (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY,
