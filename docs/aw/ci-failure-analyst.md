@@ -4,9 +4,9 @@ Agentic workflow that diagnoses CI failures and posts a root-cause comment on th
 
 ## What it does
 
-When a check run completes with `conclusion: failure` on a non-fork PR, the workflow:
+When a check run or a watched GitHub Actions workflow run completes with `conclusion: failure` on a non-fork PR, the workflow:
 
-1. Resolves the PR number from the check run payload (with a commits-to-pulls API fallback)
+1. Resolves the head SHA, the PR number and the failing run from the `check_run` or `workflow_run` payload, with a commits-to-pulls API fallback for the PR (open PRs only)
 2. Checks idempotency — skips if a `<!-- ci-analyst sha=<HEAD_SHA> -->` comment already exists for this SHA
 3. Fetches the failed run logs from the GitHub Actions API
 4. Identifies the specific step that failed and its error message
@@ -87,6 +87,81 @@ if: >-
   github.event.check_run.conclusion == 'failure' &&
   !startsWith(github.event.check_run.name, 'CI Failure Analyst')
 ```
+
+## Which failures are covered
+
+| Failure | Event | Covered |
+|---|---|---|
+| A check from another app (SonarCloud and the like) | `check_run` | Yes, through the current stub |
+| A failed GitHub Actions job (CI, Lint, Tests, …) | `workflow_run` | Once the stub carries the `workflow_run` trigger below |
+
+GitHub does not start a workflow for an event raised by GitHub Actions' own token, so a check run
+created by an Actions job never delivers `check_run` to the stub. The `check_run` trigger therefore
+only ever sees third-party checks. Failed Actions runs reach the analyst through `workflow_run` (#2235).
+
+The reusable accepts either payload. `scripts/ci-failure-analyst-resolve.sh` (tests:
+`tests/ci_failure_analyst_resolve.bats`) reads it and resolves:
+
+- **`check_run`**: head SHA, PR (the payload's non-fork `pull_requests`), check name, details URL, and
+  the Actions run id when the details URL points at one. A third-party check has no run, so the
+  analysis falls back to the PR diff.
+- **`workflow_run`**: head SHA from `workflow_run.head_sha`, PR from `workflow_run.pull_requests`
+  (non-fork only), run id from `workflow_run.id`, and the run's failed jobs and their failing steps.
+
+When the payload has no non-fork PR, the commits-to-pulls lookup is tried, counting open PRs only.
+A failure on the default branch is therefore not reported on the PR already merged into it. A
+payload that carries neither event, or a run with no open non-fork PR, ends in a "skipping" notice
+with exit 0.
+
+The reusable fetches the script from its own commit (`github.job_workflow_sha`), so a caller pinned
+to a channel runs the script that matches the workflow it pinned.
+
+### The `workflow_run` trigger and the watched-workflow list
+
+The stub adds `workflow_run` next to `check_run`:
+
+```yaml
+on:
+  check_run:
+    types: [completed]
+  # Each repo may edit this list: name every workflow whose failures should be
+  # analysed. GitHub requires names (the `name:` of each workflow file); there
+  # is no wildcard. Never list "CI Failure Analyst" itself.
+  workflow_run:
+    workflows: ["CI", "Lint", "Tests"]
+    types: [completed]
+
+concurrency:
+  group: "ci-failure-analyst-${{ github.event.check_run.head_sha || github.event.workflow_run.head_sha }}"
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    if: >-
+      (github.event_name == 'check_run' &&
+       github.event.check_run.conclusion == 'failure' &&
+       !startsWith(github.event.check_run.name, 'CI Failure Analyst')) ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'failure' &&
+       !startsWith(github.event.workflow_run.name, 'CI Failure Analyst'))
+```
+
+To change which Actions failures are analysed, edit the `workflows:` list in your repo's stub. Each
+entry must match the target workflow's `name:` exactly. A workflow that is not listed is not analysed.
+The `workflows:` list is the one part of the stub a repo is expected to change.
+
+When several watched workflows fail on the same commit, each failure starts an analyst run. The
+per-SHA concurrency group runs them one at a time, and the `<!-- ci-analyst sha=... -->` marker
+makes every run after the first an idempotency skip, giving one comment per commit.
+
+**Rollout order.** The stubs pin `ci-failure-analyst/v1-stable`. A trigger takes effect as soon as
+the stub merges, but the reusable it calls is whatever that channel points at. The reusable at
+v1.0.0 reads only `check_run` and fails a `workflow_run` call with `jq: Cannot iterate over null`.
+So the `workflow_run` trigger goes into `templates/ci-failure-analyst.yml` and this repo's
+`ci-failure-analyst.lock.yml` only after the pinned channel has been promoted to a commit carrying
+the dual-payload reusable. That stub change also needs `caller-stub-freeze`'s baseline regenerated,
+plus matching updates to `interaction-contracts/ci-failure-analyst.yml` and the §4 row of the
+[agentic interaction model](../agentic-interaction-model.md).
 
 ## Root cause categories
 

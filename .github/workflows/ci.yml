@@ -63,7 +63,9 @@ jobs:
           chmod +x actionlint
           rm actionlint.tar.gz
           shopt -s extglob
-          ./actionlint -ignore 'SC2129' .github/workflows/!(*.lock).yml
+          # `job_workflow_sha` is a valid reusable-workflow context property (the
+          # reusable's own commit); the actionlint schema omits it.
+          ./actionlint -ignore 'SC2129' -ignore '"job_workflow_sha" is not defined' .github/workflows/!(*.lock).yml
 
   shellcheck:
     name: ShellCheck
