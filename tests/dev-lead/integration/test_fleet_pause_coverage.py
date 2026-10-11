@@ -101,8 +101,11 @@ SIGNALS = (
 # A script under scripts/ being executed by a `run:` line: `bash x.sh`,
 # `source x.sh`, `. x.sh`, or x.sh in command position. `bash -n x.sh` (a syntax
 # check) and `shellcheck x.sh` are not executions.
+# The path prefix is matched by alternatives that cannot start on the same
+# character (an expression, a lone `$`, or any other non-separator), so the
+# pattern has one way to match a given string and cannot backtrack exponentially.
 SCRIPT_RUN_RX = re.compile(
-    r"(?:(?<![\w./-])(?:bash|sh|source)|(?:^|[\s;&|(])\.)[ \t]+(?:-[a-mo-zA-Z]+[ \t]+)*[\"']?(?:\$\{\{[^}]*\}\}|[^\s\"';|&])*?"
+    r"(?:(?<![\w./-])(?:bash|sh|source)|(?:^|[\s;&|(])\.)[ \t]+(?:-[a-mo-zA-Z]+[ \t]+)*[\"']?(?:\$\{\{[^}]*\}\}|\$(?!\{\{)|[^\s\"';|&$])*?"
     r"(scripts/[\w./-]+\.sh)"
     r"|(?:^|[;&|(])[ \t]*(?:\./)?(scripts/[\w./-]+\.sh)(?=[\s\"']|$)",
     re.M)
@@ -280,10 +283,10 @@ class Scanner:
         """Why a job reaches a model; empty when it does not."""
         why = self.text_signals(job)
         if reusable_target(job):
-            secrets = job.get("secrets")
-            if secrets == "inherit":
+            passed = job.get("secrets")
+            if passed == "inherit":
                 why.append("reusable call with secrets: inherit")
-            elif secrets:
+            elif passed:
                 why.append("reusable call with a secrets: mapping")
         else:
             why.extend(self.script_signals(steps_of(job)))
@@ -310,13 +313,18 @@ def reusable_target(job):
     return uses.strip() if isinstance(uses, str) else None
 
 
-def secret_env_keys(env):
-    """Keys of an `env:` mapping whose value carries a secret or the run token."""
+def flagged_env_names(env):
+    """Names of the `env:` keys that would hand a job a credential.
+
+    Only key NAMES are returned and reported; no value is ever read out of a
+    workflow run here (this parses YAML text, where a value is an expression
+    such as a reference into the secrets context, not the credential itself).
+    """
     if not isinstance(env, dict):
         return []
-    credential_name = SIGNALS[0][1]
+    name_rx = SIGNALS[0][1]
     return [k for k, v in env.items()
-            if SECRET_REF_RX.search(str(v)) or credential_name.search(str(k))]
+            if SECRET_REF_RX.search(str(v)) or name_rx.search(str(k))]
 
 
 # ── registry ─────────────────────────────────────────────────────────────────
@@ -371,7 +379,7 @@ def check_env_blanked(where, own_env, inherited, fails):
     """Every credential the notice would inherit must be overridden with ''."""
     own = own_env if isinstance(own_env, dict) else {}
     for scope, env in inherited:
-        for key in secret_env_keys(env):
+        for key in flagged_env_names(env):
             if key not in own or own[key] not in ("", None):
                 fails.add(f"{where} inherits the credential `{key}` from the {scope} `env:`; "
                           f"blank it in the notice's own env (`{key}: ''`)")
