@@ -35,7 +35,9 @@ Made by the Maintainer on 2026-10-10, in addition to ADR-0013's twelve decisions
 | The LLM credential is the existing subscription, stored as an environment secret in the Factory repo | The engine port (§2.2); no new capacity signal |
 | The review Intent is built first and reviews everything after it | The build order (§9) |
 | The comparison with the POC is a measure, not a gate | The comparator is a later, non-gating component |
-| The stopping rule is judged on outcomes | §9.2 |
+| Stopping is the Maintainer's decision, on adoption and use | §9.2 |
+| The Factory's Apps share the prefix `combsmith-sf-` | §5.1 |
+| Every panel of the control room is public | §8.6 |
 | Each Lens has a declared scope of paths | Role manifests (§5.3) |
 | A Consumer repo's setup and test commands are part of its onboarding contract | The Consumer entry (§3.12) |
 | Design by simulation first, with a formal model held in reserve | §4.5 |
@@ -49,9 +51,6 @@ takes from them are restated in §2.4 as this design's own rules.
 
 ### 1.2 Still open
 
-- The period after which the stopping rule is judged (§9.2).
-- The name prefix shared by the Factory's Apps (§5.1).
-- Whether any panel is kept off the public dashboard (§8.6).
 - Where held-out eval sets live. The control room is public, so it is not there.
 
 ## 2. Structure
@@ -456,7 +455,7 @@ Run records and artifacts are kept for 90 days, which is the Factory's history (
 ```yaml
 schema: role/1
 name: devops-lead
-app: petry-sf-devops-lead        # proposed prefix, section 5.1
+app: combsmith-sf-devops-lead
 kind: owner                      # author | reviewer | owner | advisor
 lens:
   scope:
@@ -689,7 +688,7 @@ A token is still narrowed at mint time to the Effects one Result requests.
 | Controller | Not a Role | None | None | Write the control room, the status on the item, labels and the queue |
 
 - The approving review stays with the existing machine user, because a code owner must be a user.
-- The Apps share a name prefix, proposed as `petry-sf-`. The frozen Consumer file drops
+- The Apps share the name prefix `combsmith-sf-`, so `qa-lead` acts as `combsmith-sf-qa-lead[bot]`. The frozen Consumer file drops
   Factory-authored events by that prefix, so adding a Role never changes a Consumer file.
 - Registering an App is a manual step. "A new Role in one pull request" (NFR-11, UJ-7) becomes one
   pull request plus one registration. A new Intent or trigger for an existing Role is still one
@@ -892,7 +891,7 @@ this design changes.
 | CR-4 | Is read-only. A person acts in GitHub, through a declared human transition, and the page links there | FR-22 |
 | CR-5 | Covers every Consumer repo on one page | PRD §1 |
 | CR-6 | Shows cost and capacity: a budget gauge, cost per change, the share that was rework, cost by Role | UJ-8, UJ-9, FR-38 |
-| CR-7 | Shows whether the Factory is working: the scorecard, each Lens's contribution, and the stopping rule's three measures against the POC's baseline | FR-42, FR-69, §9.2 |
+| CR-7 | Shows whether the Factory is adopted, used and better: the scorecard, each Lens's contribution, and the measures of §9.2 | FR-42, FR-69 |
 | CR-8 | Links every number to the Runs behind it | UJ-9 |
 | CR-9 | Replaces recurring report issues with one page | FR-44 |
 | CR-10 | Is one feed with several lenses. The files are the contract; a page, an Artifact or a mod only renders them | §8.5 |
@@ -925,7 +924,7 @@ board. It is also not where a chat session's output is made terser; that is a se
 | `view/items.json` | Every open Work item: computed State, reason, attention class, next actor, the decision required, age, attempts, cost, links |
 | `view/runs/<date>.jsonl` | One line per Run: the run record and the usage and outcome from its artifact |
 | `view/findings.json` | Open Findings with category, severity, owner and Disposition |
-| `view/scorecard.json` | The success metrics of PRD §9 and the stopping rule's measures |
+| `view/scorecard.json` | The success metrics of PRD §9 and the adoption and use measures of §9.2 |
 | `view/capacity.json` | Usage per window, the estimate of what is left, and the degradation stage |
 
 ```json
@@ -988,8 +987,7 @@ board private. They are reconciled as follows.
 - **The private lens remains.** The Artifact board of §8.5 is private by construction and reads the
   same files.
 
-Open: whether any panel, the budget gauge in particular, is left off the public page and shown only
-in the private lens.
+Decided on 2026-10-10: every panel is public, the budget gauge included.
 
 ## 9. Build order and the stopping rule
 
@@ -1014,21 +1012,22 @@ Using the POC's reviewer for the bootstrap was considered. Its comment gate can 
 by the POC's author Role and has no switch, so it would need a change to the POC first. It remains
 the fallback if slices 0 and 1 turn out to need more approvals than the Maintainer can give.
 
-### 9.2 The stopping rule
+### 9.2 Stopping
 
-Agreed in principle on 2026-10-10, replacing the parity rule recorded earlier that day.
+Decided by the Maintainer on 2026-10-10: there is no period and no automatic rule. If the Factory
+is not adopted and used, the Maintainer decides to stop. This replaces both the parity rule and the
+outcome-based rule recorded earlier that day.
 
-After the Factory has served its own repo and one Consumer repo for a period the Maintainer sets,
-the migration stops unless the Factory beats the POC's baseline on all three of:
+The control room exists to make that an informed decision. It shows:
 
-| Measure | POC baseline | Source |
-|---|---|---|
-| Share of agent-authored merges with a standing independent approval | At most 40% | PRD NFR-3 |
-| Issue to merge, median | 24.5 hours | PRD NFR-2 |
-| Workflow runs per merged pull request | About 1,500 | PRD NFR-1 |
+| Shown | Why |
+|---|---|
+| Consumer repos served, and the share of the org's merged pull requests the Factory handled | Adoption |
+| Runs a week, and how often the Maintainer overrides or works around the Factory | Use |
+| Standing approvals, issue-to-merge time and runs per merge, against the POC's baseline (at most 40%, 24.5 hours, about 1,500) | Whether it is better |
+| Escaped defects | Whether "better" was bought by weaker review |
 
-Escaped defects (SM-C1) are reported beside them, so that the three are not bought by weaker
-review. The period is still to be set; the earlier limit was four weeks.
+None of these stops anything by itself.
 
 ## 10. What this design changes elsewhere
 
@@ -1041,7 +1040,7 @@ Recorded in the same change as this document.
 | ADR-0013, decision 4 | The Result artifact is the intent record |
 | ADR-0013, decision 5 | One App per Role |
 | ADR-0013, decision 7 | An owning Role resolving a thread is a declared Role transition, beside the human one |
-| ADR-0013, decision 10 | The review Intent on the Factory's own repo is the first component. The comparison with the POC is a measure, not a gate. The stopping rule is outcome-based |
+| ADR-0013, decision 10 | The review Intent on the Factory's own repo is the first component. The comparison with the POC is a measure, not a gate. Stopping is the Maintainer's decision, on adoption and use |
 | ADR-0013, decision 11 | No longer two provisional mechanisms. The poller's latency and cost are measured against the same thresholds |
 | ADR-0013, decision 12 | A listed intake Role may read a thread's prose to type a Finding; the gate reads only the typed record |
 | PRD, FR-40 and the glossary | History is 90 days. The State record is computed; the Ledger is the run records and artifacts, indexed in the control room |

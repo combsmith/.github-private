@@ -238,8 +238,8 @@ rule in the factory's own token-minting code. The review had recommended one App
 this is its option d. The Maintainer may still author changes to the factory repo under the owner
 account, as a person. "The App" in the boundaries below means the App of the Role that acts.
 
-- **The factory's Apps share a name prefix,** and the consumer file drops factory-authored events
-  by that prefix. Adding a Role changes no consumer file.
+- **The factory's Apps share the name prefix `combsmith-sf-`,** and the consumer file drops
+  factory-authored events by that prefix. Adding a Role changes no consumer file.
 - **Registering an App is a manual step.** A new Role is one pull request and one registration.
 
 - **No factory workflow references the owner account's token.**
@@ -338,18 +338,15 @@ We will make the factory's own verification a required check from the first comm
 - **From that point the POC takes defect fixes only.**
 - **A compensating workflow is retired in the change that makes it unnecessary, or keeps a recorded
   reason to remain.** The number of compensating workflows does not rise during the migration.
-- **The migration has a limit, a defect policy and a stopping rule.** This decision was not in
-  force until the maintainer wrote all three. They were set on 2026-10-10, and the first and third
-  were revised the same day, when the maintainer chose to judge the factory on its own outcomes
-  and not on agreement with the POC:
-  - **Limit.** A period, set by the maintainer, in which the factory serves its own repo and one
-    consumer repo. The period is not yet set; the earlier limit was four weeks.
+- **The migration has a defect policy and a stopping rule, and no dated limit.** The first draft
+  required a dated limit, a defect policy with a weekly cap and a kill criterion before this
+  decision was in force. The maintainer settled all three on 2026-10-10:
+  - **Limit.** None. No period is set.
   - **Defect policy.** POC defects are fixed in the POC as needed. There is no weekly cap.
-  - **Stopping rule.** At the end of that period the migration stops unless the factory beats the
-    POC's baseline on all three of: the share of agent-authored merges with a standing independent
-    approval, the median time from issue to merge, and workflow runs per merged pull request.
-    Escaped defects are reported beside them. If it stops, the identity change and the
-    configuration fixes are kept and unused factory code is deleted.
+  - **Stopping rule.** If the factory is not adopted and used, the maintainer decides to stop. No
+    measure stops it automatically. The control room shows adoption, use and the factory's results
+    against the POC's baseline so that the decision is informed. If the migration stops, the
+    identity change and the configuration fixes are kept and unused factory code is deleted.
 - **Escaped defects (PRD SM-C1) are baselined before any step that raises the autonomy rate.**
 - **Three assumptions are settled on a canary repo before any cutover:** that a pull request
   authored by the App needs no extra approval under the live ruleset, which sets
@@ -414,8 +411,8 @@ Numbers are assigned when each is written. Each lands with the migration step th
 
 | Follow-on | Must decide | Effect on the log |
 |---|---|---|
-| **Agent identity** | Each Role's App and its permissions; the shared name prefix; how tokens are narrowed per Role; the dispatch-only credential a consumer uses to send a wake; the reviewer credential's confinement; what interaction model §12.2 says afterwards. | Supersedes ADR-0008. |
-| **Records and the control room** | Run naming; the artifact and view schemas; what the public page omits; where held-out eval sets live; how legacy markers are read during migration. | New. No ADR governs this today. |
+| **Agent identity** | Each Role's App and its permissions (the shared name prefix is `combsmith-sf-`); how tokens are narrowed per Role; the dispatch-only credential a consumer uses to send a wake; the reviewer credential's confinement; what interaction model §12.2 says afterwards. | Supersedes ADR-0008. |
+| **Records and the control room** | Run naming; the artifact and view schemas; where held-out eval sets live; how legacy markers are read during migration. | New. No ADR governs this today. |
 | **Admission** | The wake schema; the one-job ingress; the sweep; Pause and Hold stores; the LLM capacity signal and its credential (PRD OQ-3); priority order. | Extends ADR-0007, including a `pull_request_target` subscription that ADR-0007 excludes and that is safe only because the ingress checks out nothing and forwards a wake that carries identifiers only. Admission treats the wake as untrusted: an Outside contributor's pull request produces no Run that holds secrets or writes without a Maintainer decision (PRD FR-63). ADR-0010's job-level concurrency key stays in use for the per-item group. Supersedes ADR-0009 when the router it names is retired. |
 | **Run contract** | Task, Result and Effect schemas; the sandbox; resume; whether an adopted runtime fills the inner half. | Extends ADR-0005. Supersedes ADR-0011, which should be accepted now as the interim rule. |
 | **Release unit and promotion** | The eval gate and its cost budget; ring membership; rollback; retirement of per-agent names. | Supersedes ADR-0002 and ADR-0006, restating what survives of each. |
@@ -456,8 +453,8 @@ extension remains a separate decision.
 - **Three repos for a while.** The standards repo, this repo and the factory repo coexist until the
   last consumer is re-pinned. The split this review criticised gets wider before it gets narrower.
 
-- **Nothing limits the build before the factory first serves a repo.** The stopping rule is judged
-  after a period of service, the POC has no cap on fixes, and until the first `stable` Release
+- **Nothing limits the build, or the period in which two systems run.** Stopping is a judgement
+  the maintainer makes, the POC has no cap on fixes, and until the first `stable` Release
   every factory change needs the Maintainer's approval. The review ranks a starved migration as the
   likeliest failure (§14.2), and the period in which that would happen is the one these leave open.
   The signal to watch is the weekly share of merged pull requests that land in the factory repo.

@@ -821,16 +821,13 @@ From the competitive analysis ([market research](../research/market-agentic-soft
 8. **OQ-8. Where does the Ledger live and who may read it?** Everything in a public repo is public.
    Decided by the Maintainer on 2026-10-10: the Ledger is the Factory's own run records and
    artifacts, and `petry-projects/software-factory-control-room` is a public, rebuildable view of
-   them with a dashboard. Open: whether any panel is kept off the public page, and where held-out
-   eval sets live.
+   them with a dashboard. Every panel is public. Open: where held-out eval sets live.
 9. **OQ-9. What is the budget for the migration itself**, in weeks and in LLM spend, given that the
    POC must keep delivering while it is replaced? The three conditions ADR-0013 required were set
    by the Maintainer on 2026-10-10 (ADR-0013, decision 10). POC defects are fixed as needed, with no
-   weekly cap. The Factory is judged on its own outcomes and not on agreement with the POC: after a
-   period in which it serves its own repo and one Consumer repo, the migration stops unless it
-   beats the POC's baseline on standing approvals, lead time and runs per merge. Still open: the
-   length of that period (the earlier limit was four weeks), the LLM spend, and any limit on the
-   build before the Factory first serves a repo.
+   weekly cap. There is no dated limit and no automatic stopping rule: if the Factory is not adopted
+   and used, the Maintainer decides to stop, informed by the control room. Still open: the LLM
+   spend.
 10. **OQ-10. Should third-party reviewer comments keep gating approvals?** Decided by the Maintainer
     on 2026-10-10: reviewers are integrated through a contract, and structured Findings gate where
     comment bodies do not (FR-32, FR-33). The nine current reviewers' surfaces are established in the

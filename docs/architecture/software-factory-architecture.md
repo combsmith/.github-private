@@ -82,11 +82,11 @@ The ones that shape structure:
 Decided on 2026-10-10 and carried into the design:
 
 - A Finding is decided by the Role that owns its domain, under an authority table held as data.
-- One GitHub App per Role, with a shared name prefix.
+- One GitHub App per Role, sharing the name prefix `combsmith-sf-`.
 - The review Intent is built first and serves the Factory's own repo. The Maintainer approves
   until the first `stable` Release.
-- The comparison with the POC is a measure and not a gate. The stopping rule is judged on
-  outcomes.
+- The comparison with the POC is a measure and not a gate. Stopping is the Maintainer's decision,
+  if the Factory is not adopted and used.
 - Each Lens declares the paths it watches. A Consumer repo's setup and test commands are part of
   its onboarding entry.
 - The design is modelled before it is built: schemas with golden examples, the Lifecycle as data,
