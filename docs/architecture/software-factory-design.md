@@ -4,6 +4,38 @@
 **Date:** 2026-10-10
 **Builds on:** [ADR-0013](adr/0013-factory-mvp-reference-architecture.md), the [PRD](../prd/agentic-software-factory.md) and the [architecture review](factory-mvp-architecture-review.md)
 
+## 0. The design on one page
+
+The Factory is a set of agent Roles that turn an issue into a reviewed, merged change across the
+org's repos, and a small core that decides what each Role may do next.
+
+**It keeps no state of its own.** Every few minutes one job, the poller, reads every open work item
+from GitHub, and reads the list of the Factory's own past Runs from GitHub Actions. From those two
+things alone one pure function, the Kernel, works out where each item stands and what should happen
+next. If a tick is lost, the next one reaches the same answer.
+
+**A Run is one workflow run with up to three jobs.** `run` gives a model a Task and gets back a
+Result that only requests changes. `verify` runs the checks where the author controls nothing.
+`apply` reads the item again, and only then makes the changes, through the Role's own GitHub App.
+The model never holds a credential that can write.
+
+**A change converges when** every required check has reported, no required reviewer and no person
+with write access has an open objection, and, once acceptance contracts are in force, every
+criterion written before the work has passing evidence. Third-party reviewers inform the in-house
+reviewer, and gate only through it.
+
+**People act in GitHub.** A label holds, releases or admits. A review blocks. A comment steers. The
+Factory reaches the Maintainer by assigning the item to them.
+
+**The control room** is a public page built from the Runs' own records. The Factory writes it and
+never reads it, so it can be wrong without anything going wrong.
+
+**It is built review-first,** in a repo of its own, served by its own newest Release. The first
+milestone is the Factory approving one of its own pull requests.
+
+**Not yet designed** (§9.9): how an issue becomes a pull request; how a Release is cut; what the
+Factory does as capacity runs short; how an interrupted Run resumes; the scorecard's sums.
+
 ## 1. Purpose
 
 ADR-0013 says what shape the Factory has and why. This document says how its parts talk to each
@@ -60,7 +92,7 @@ Some of it is rule and some of it is record. An implementer builds from the rule
 
 | Rules | Record of how the rules were reached |
 |---|---|
-| §2.4, the four rules; §3, the contracts; §4, behaviour and invariants; §5, Roles and authority; §8.4, the feed; §9.1, the build order; §9.6, the serving channel and cutover | §7, options weighed; §8.3, what came from another analysis; §9.3 to §9.5, §9.7 and §9.8, the review passes; §10, edits made to other documents |
+| §2.4, the four rules; §3, the contracts; §4, behaviour and invariants; §5, Roles and authority; §8.4, the feed; §9.1, the build order; §9.6, the serving channel and cutover | §7, options weighed; §8.3, what came from another analysis; §9.3 to §9.5 and §9.7 to §9.11, the review passes; §10, edits made to other documents |
 
 The architecture review in `factory-mvp-architecture-review.md` is history. It records
 recommendations that were later replaced, and nothing should be built from it.
@@ -1189,11 +1221,31 @@ it observed as a recorded fixture, which is what the simulator's fake GitHub is 
 | P-20 | Does an event that anyone may cause, such as starring a repo, still start a workflow, and how often may it? | Yes, often enough for a tick every minute or two |
 | P-26 | Can the model CLI's sandbox stop a tool reading the parent process's environment, and limit where it connects? | Yes to both, or the first and third layers of §4.9 carry the weight |
 | P-27 | Does a fork's pull-request workflow run wait for approval, and can it never be a schedule or dispatch run? | Yes to both |
+| P-28 | Can the actor who last pushed a pull request's head be read as a fact? | Yes, or I-26 has to be met another way |
+| P-29 | Is the hash of a pull request's own diff stable when only the base moves, and how does a truncated diff present? | Stable; truncation is detectable |
+| P-30 | Which identity can cut a Release and move a channel tag under a tag ruleset, from a workflow in the Factory repo? | One identity, through one path |
 | P-21 | How often may the control room's page be rebuilt, and can a page read the feed files directly from a browser? | The page reads the feed directly and rebuilds only when its own code changes |
 | P-23 | How many threads may one App resolve in an hour before GitHub's secondary limits apply? | Enough for about 22 threads a pull request at the Factory's merge rate |
 | P-24 | With the Maintainer as the only code owner of a path, does the machine user's approval fail to satisfy code-owner review there? | It fails to satisfy it |
 | P-25 | Does resolving a reviewer's thread cause that reviewer to re-post it, reply, or approve? | No, with the configuration of §4.2 |
 | P-22 | How soon after it is started does a Run appear in the list of run records? | Soon enough that a pass never admits the same Run twice; the item's lane and I-21 cover the gap |
+
+### 6.1 The order to run them in
+
+An assumption audit on 2026-10-10 ranked each trial by what breaks if its answer is no.
+
+| Batch | Trials | If the answer is no |
+|---|---|---|
+| **1. Before any code** | P-13 (the model CLI returns structured output on a subscription); P-1, P-7, P-24 (the approval mechanics); P-17, P-22 (run records can be identified); P-3 (secrets are isolated by environment); P-28, P-29 (last pusher and content identity are readable); P-8 (a pass fits its budget) | The design does not work as written. Each of these is a foundation: no Run, no approval, no derived State, no credential boundary, or no poller |
+| **2. Before the first approval** | P-9, P-20 (chaining and the outside tick); P-5, P-23, P-25 (resolving others' threads); P-2 (an App in the merge queue); P-30 (cutting a Release); P-27, P-14, P-4 (forks, caches, narrowed tokens); P-26 (the sandbox) | One mechanism is replaced and the design stands. If threads cannot be resolved by an App, required thread resolution is dropped in repos the Factory serves |
+| **3. Before the control room** | P-11, P-19, P-21 (publishing the page); P-16, P-18 (retention and final steps) | The page is published another way, or history is shorter |
+| **4. As they come up** | P-6, P-10, P-12, P-15 | A detail changes |
+
+Two assumptions are not trials. Whether a subscription used only by automation is within the
+vendor's terms is a question for the Maintainer and the vendor. And the numbers this document
+gives as starting figures (40 approvals, 10 items in the Maintainer's queue, a shadow budget of 30,
+a sample of a quarter, three rounds, the staleness limits) are placeholders to be calibrated from
+the first weeks of data.
 
 ## 7. State, records and noticing work
 
@@ -1468,6 +1520,31 @@ first slice rests on has a recorded fixture.
 machine user's approval of it stands, the pull request has merged through the queue, and its status
 block said why at each step.
 
+**The critical path to that event,** worked backwards from it:
+
+1. The pull request merges through the queue: the Factory repo has a ruleset, a merge queue and
+   `factory / verify` running on `merge_group`.
+2. The machine user's approval stands: it is a code owner for the paths the pull request touches,
+   and it is neither the author nor the last pusher. The Maintainer's own sessions therefore push
+   as the Maintainer.
+3. `apply` submitted that approval: the effects and identity ports exist, the reviewer's App and
+   the machine user's token are environment secrets, and the Result validated.
+4. `run` produced the Result: the Harness built a Task from a Decision, the engine port ran the
+   pinned CLI with the tools that Intent is allowed, and the Factory's model credential exists.
+5. The review Intent has a prompt, a result schema and **an eval set**. A gate-deciding Intent may
+   not serve without one (FR-55), so the eval set is on the critical path. Its cheapest source is
+   the POC's own history: merged pull requests later reverted or fixed are known answers.
+6. The poller started the Run: the Controller's App exists, and a pass recorded the Decision.
+7. The Kernel reached that Decision: the pull-request Lifecycle, Convergence and the gate, with the
+   deterministic Lenses already reported. Those Lenses are workflows in the Factory repo: lint,
+   workflow security, code scanning.
+8. The pass read the facts and the run records: the two ports, with completeness flags.
+9. All of it ran from a Release on `next`: something cut that Release and moved the channel
+   (P-30), and the entry shim called it.
+10. Every pull request that built the above was approved by the Maintainer, under the count of
+    §9.2.
+11. Before any of it, the first batch of trials (§6.1).
+
 **Not in slice 1:** adoption measurement, domain Roles, path scopes, the dashboard page, the private
 Artifact board, the comparator against the POC, any App beyond the three named, any Consumer repo.
 
@@ -1630,6 +1707,66 @@ further, both on 2026-10-10.
 | A pass's cost grows with the backlog | Issues come under control by a label (§4.7) |
 | A held-out set readable by the Role it tests | Held-out sets under a different owner (§3.13) |
 | A Role in shadow forever | A shadow budget (§5.2) |
+
+### 9.9 What is not yet designed
+
+Found by explaining the design on one page and by comparing it with the PRD group by group.
+
+| Requirement | State |
+|---|---|
+| FR-1, for issues | The issue Lifecycle is a list of state names. How an issue becomes a pull request is not designed |
+| FR-6, resumable Runs | Not designed. A Run that times out pushes nothing and starts again |
+| FR-12, the injection test suite | Required before promotion; not designed |
+| FR-14, shared-branch safety | The rule is stated; the push guard is to be carried over from the POC |
+| FR-21, FR-36, priority and graceful degradation | Backpressure and the capacity outcome exist. The stages between full service and Pause are not designed |
+| FR-38, complete cost attribution | Met for every Run that ends. A killed Run's cost is an estimate from its duration |
+| FR-42, the scorecard | The feed file is named. How each metric is computed is not designed |
+| FR-45 to FR-49, release | Channels, rings and rollback are decided. The tooling that cuts and promotes is not designed |
+| FR-55, evals | Required for every gate-deciding and code-writing Intent. None is built |
+
+### 9.10 What the day's changes bought
+
+The POC, ADR-0013 as first drafted, and this design, against the things that cost effort to build
+and to run.
+
+| | POC | ADR-0013, first draft | This design |
+|---|---|---|---|
+| Authoritative stores beside GitHub | Labels and about eighty kinds of marker | A git-backed State record and Ledger | None |
+| How work is noticed | An agent per event; fifteen workflows to recover what was lost | A wake per event, with leases and a sweep | One poller; an event only asks for a pass |
+| Files a Consumer repo must carry | Several stubs per agent | One | None required |
+| What gates an approval | Every comment from nine reviewers | Structured Findings from every Lens | Required Lenses, people with write access, and acceptance evidence |
+| What a change is judged against | Not defined | Not defined | An acceptance contract written first |
+| Who decides a Finding | The author's own claim, verified afterwards | One gate function | The owner of its category; domain Roles in shadow until earned |
+| Where the Maintainer looks | Each item, and machine-filed issues | A status block per item | A status per item and one public page |
+| History | Unbounded but unqueryable | 180 days | 90 days |
+| Parts specified before building | None | Twelve decisions | Contracts with examples, 36 invariants, a simulator, 30 trials |
+
+What it cost: history is half as long; money no longer gates, only a count of Runs does; latency
+depends on an outside tick; there are four repos and, in time, about ten Apps; and nine PRD
+requirements were reworded to match (§10).
+
+### 9.11 The case for not building this
+
+The strongest case for the option the review rejected, hardening the POC, is made here so that it
+is answered and not ignored.
+
+- Several of this design's rules are policy, and the POC could adopt them without a rewrite: only
+  required Lenses gate, deterministic checks before a model review, no branch updates without a
+  conflict, attempts counted from run records. The review said the first of these would do more
+  for the largest failure class than the rewrite, and could be tried in weeks.
+- The same control plane delivered 79 merges a week at a median under an hour in July. What changed
+  was the number of gates an approval had to survive.
+- The Maintainer's attention is the binding limit, and a rebuild spends it: bootstrap approvals,
+  two systems, acceptance contracts, and a design that grew by eight review passes in a day.
+- This repo's record on finishing migrations is poor.
+
+What that case cannot reach is structural. The POC's model holds the write credential, nothing
+admits Runs in one place, there is no single Release, and State is implicit. Four of the review's
+seven root causes sit there, and no policy change moves them.
+
+The case does land one point, which is put to the Maintainer: the configuration fixes and the
+narrower gate were recommended as worth having whatever else is decided, and as the cheapest test
+of how much of the rest is needed. They have not been started.
 
 ## 10. What this design changes elsewhere
 
