@@ -209,6 +209,15 @@ teardown() {
   printf '%s' "$output" | grep -qxF '<!-- maintainer-resolve author=chatgpt-codex-connector by=a-maintainer id=IC_node1 -->'
 }
 
+# A @-mention inside the maintainer-supplied reason must be defanged too.
+@test "#2255: an @-mention in the reason is defanged" {
+  run bash -c "source '$MRC'; mrc_build_reply_body 'chatgpt-codex-connector' 'a-maintainer' 'ping @chatgpt-codex-connector and @other' 'IC_node1'"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"@chatgpt-codex-connector"* ]]
+  [[ "$output" != *"@other"* ]]
+  printf '%s' "$output" | grep -qF 'chatgpt-codex-connector and'
+}
+
 # Round-trip: the reply the bot path posts is IGNORED by the maintainer-comment
 # gate (it must not become a fresh undispositioned blocker).
 @test "AC3: the reply body the script posts is ignored by the gate → 0" {

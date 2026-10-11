@@ -221,6 +221,9 @@ mrc_reason_ok() {
 #   comment, which would block the PR again (#2255). Pure.
 mrc_build_reply_body() {
   local bot="${1:-}" viewer="${2:-}" reason="${3:-}" node="${4:-}"
+  # The free-text reason may itself @-mention an account; a zero-width space after
+  # each "@" stops GitHub resolving it as a mention.
+  reason="${reason//@/@$'​'}"
   printf '<!-- maintainer-resolve author=%s by=%s id=%s -->\n' "$bot" "$viewer" "$node"
   printf 'Maintainer disposition of `%s`'"'"'s status comment by `%s`:\n\n%s\n' \
     "$bot" "$viewer" "$reason"
