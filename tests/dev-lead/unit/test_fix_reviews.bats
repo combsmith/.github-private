@@ -7447,6 +7447,90 @@ _stale_nodes() {
   done
 }
 
+# ── #2261: a finding fixed in a bot ISSUE comment is dispositioned, not "addressed" ──
+# PR #2205: fix-bot-comment fixed a CodeAnt finding posted as a PR issue comment and
+# answered it like a review thread, with the addressed-marker and a claim. The
+# maintainer-comment gate reads neither, so the comment was never dispositioned and
+# the retries ran out. The prompt described a `fixed` disposition only for CodeRabbit
+# summaries; it now describes one for every bot's issue comment.
+
+# _fbc_issue_comment_section — the prompt's "Fixing a finding posted as a PR issue
+# comment" section, rendered as build_and_run renders it (envsubst over the
+# variables the template declares) for the triggering comment IC_FIND.
+_fbc_issue_comment_section() {
+  local p="$SCRIPT_DIR/prompts/dev-lead/fix-bot-comment.md" vars
+  vars=$(head -1 "$p" | sed 's/<!-- VARIABLES: //; s/ -->//' \
+    | tr ',' '\n' | awk '{gsub(/^ +| +$/, ""); if (length) printf "${%s}", $0}')
+  COMMENT_NODE_ID=IC_FIND PR_NUMBER=54 REPO=petry-projects/.github-private envsubst "$vars" < "$p" \
+    | awk '/^### Fixing a finding posted as a PR issue comment \(#2261\)$/{f=1; next} f && /^##+ /{exit} f'
+}
+
+@test "#2261 AC1: fix-bot-comment prompt — the addressed-marker and claim are for review threads only; an issue comment gets one fixed disposition" {
+  local p="$SCRIPT_DIR/prompts/dev-lead/fix-bot-comment.md" sec
+  # The Task steps name the issue-comment answer, not only the thread reply.
+  grep -qE '^5\. \*\*Disposition the bot.s issue comment when the finding came from one\*\*' "$p"
+  sec=$(_fbc_issue_comment_section)
+  [ -n "$sec" ]
+  [[ "$sec" == *'**The addressed-marker and the claim are for review threads only. They do not disposition an issue comment.**'* ]]
+  [[ "$sec" == *'Never put the addressed-marker or a claim in a PR comment.'* ]]
+  # Every registered reviewer bot, not only CodeRabbit.
+  [[ "$sec" == *'Every registered reviewer bot (`scripts/lib/reviewer-sources.tsv`), not only CodeRabbit'* ]]
+  # Exactly one reply, exactly one marker: fixed, with the commit's full sha.
+  [[ "$sec" == *'post **exactly one** reply on the PR'* ]]
+  [[ "$sec" == *'**exactly one** marker: `disposition=fixed` with the full 40-char sha of that commit'* ]]
+  [ "$(grep -c 'gh pr comment' <<<"$sec")" -eq 1 ]
+  [ "$(grep -c '<!-- dev-lead:comment-disposition ' <<<"$sec")" -eq 1 ]
+  # The section's own example carries neither thread marker.
+  if grep -q '<!-- dev-lead:claim ' <<<"$sec"; then false; fi
+  [ "$(grep -c '<!-- dev-lead:addressed -->' <<<"$sec")" -eq 1 ]   # named once, as what NOT to post
+  # The Constraints list repeats the rule.
+  grep -qE '^- For a finding you fix from a PR issue comment, post exactly one reply .*<!-- dev-lead:comment-disposition id=<comment node id> disposition=fixed sha=<40-hex> -->.*review threads only.*#2261' "$p"
+}
+
+@test "#2261 AC1: the prompt's issue-comment example, executed, posts one reply the disposition parser accepts as fixed for the triggering comment" {
+  local snip="$BATS_TEST_TMPDIR/fixed-snippet.sh" repo="$BATS_TEST_TMPDIR/fixrepo"
+  local posted="$BATS_TEST_TMPDIR/posted" fix_sha
+  _fbc_issue_comment_section | awk '/^```bash$/{f=1; next} f && /^```$/{exit} f' > "$snip"
+  [ -s "$snip" ]
+
+  # The pass's local fix commit, which the reply must cite.
+  mkdir -p "$repo" "$posted"
+  git -C "$repo" init -q
+  echo fixed > "$repo/f"
+  git -C "$repo" add f
+  git -C "$repo" -c user.email=t@test -c user.name=T commit -q -m "fix(bot): address bot feedback"
+  fix_sha=$(git -C "$repo" rev-parse HEAD)
+
+  # A gh that records each `gh pr comment` body as $posted/<n>, and refuses any
+  # other call (a thread reply would be one).
+  cat > "$STUB_BIN_DIR/gh" <<GHEOF
+#!/usr/bin/env bash
+case "\$*" in
+  "pr comment 54 --repo petry-projects/.github-private --body "*)
+    n=\$(find "$posted" -type f | wc -l | tr -d '[:space:]')
+    printf '%s' "\${@: -1}" > "$posted/\$((n + 1))"
+    ;;
+  *) echo "unexpected gh call: \$*" >&2; exit 1 ;;
+esac
+GHEOF
+  chmod +x "$STUB_BIN_DIR/gh"
+
+  run bash -c "cd '$repo' && bash '$snip'"
+  [ "$status" -eq 0 ]
+  # Exactly one reply was posted.
+  [ "$(find "$posted" -type f | wc -l | tr -d '[:space:]')" -eq 1 ]
+  # It carries no thread marker…
+  if grep -q 'dev-lead:addressed' "$posted/1"; then false; fi
+  if grep -q 'dev-lead:claim' "$posted/1"; then false; fi
+  # …and the normative parser reads exactly one disposition: fixed, for the
+  # triggering comment, citing the pass's commit.
+  run bash -c "source '$SCRIPT_DIR/scripts/lib/comment-disposition-verify.sh'; cdv_parse_disposition \"\$(cat '$posted/1')\""
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .id <<<"$output")" = "IC_FIND" ]
+  [ "$(jq -r .disposition <<<"$output")" = "fixed" ]
+  [ "$(jq -r .sha <<<"$output")" = "$fix_sha" ]
+}
+
 # ── #2161 AC3: the deferred resolver's no-change branch is reachable ─────────────
 # It used to run after the deferral parse and the post-marker gate, so a thread with
 # no deferral never reached it. It now runs first, and the deferred resolver runs on

@@ -55,6 +55,7 @@ Analyze the bot's findings and address each actionable issue:
 2. Locate the referenced files and line numbers using Read/Grep/Glob tools
 3. Apply targeted fixes using Edit/Write tools
 4. **Reply to each fixed thread with the specific change** — the harness resolves the addressed bot threads afterward (see below); do not resolve them yourself
+5. **Disposition the bot's issue comment when the finding came from one** — a review thread and a PR issue comment are answered differently; see [Fixing a finding posted as a PR issue comment](#fixing-a-finding-posted-as-a-pr-issue-comment-2261)
 
 ### Replying to threads from this bot
 
@@ -108,6 +109,27 @@ The claim payload is schema `v1` — one comment per reply, with a full 40-char 
 **Never rewrite an existing test to make a bot suggestion pass (#2013).** Run the **full** test suite. A previously-passing test that turns red is a reason to question the change, not the test. A bot suggestion that contradicts an existing test is not applied, and that includes "update the older test so the suite can pass". Reply explaining the conflict, **without** the addressed-marker, and leave it for a human. Changing or deleting an existing test line, or adding a `skip`, requires a cited `Test-Change-Justification: <why, with a reference>` commit trailer. Without one, the harness's test-tamper guard refuses to push and escalates. Adding a new test never needs it. Because `git commit -m` takes one message line, pass the trailer as a second `-m` paragraph: `git commit -m "fix(bot): <what>" -m "Test-Change-Justification: <why, citing #<issue>, a commit SHA, or the review URL>"`. The justification must be at least 20 characters and contain such a reference.
 
 **Do not resolve the thread yourself.** You must not call the `resolveReviewThread` (or `unresolveReviewThread`) GraphQL mutation under any circumstance — resolution is done **only** by the harness (`dev-lead-fix-reviews.sh`), whose deterministic guards are the authoritative merge gate. The harness resolves every bot thread you addressed with an our-account addressed-marker reply, plus any thread from this bot marked `isOutdated: true`. Your reply and its marker are your only lever on resolution.
+
+### Fixing a finding posted as a PR issue comment (#2261)
+
+Every registered reviewer bot (`scripts/lib/reviewer-sources.tsv`), not only CodeRabbit, can post a finding as a PR **issue comment** instead of a review thread: CodeAnt's `## CodeAnt Nitpicks`, a Qodo or CodeRabbit summary, a SonarCloud quality-gate comment. The comment that triggered this pass is one, and `${COMMENT_NODE_ID}` is its node id. An issue comment has **no** review thread, so nothing in *Replying to threads from this bot* applies to it.
+
+**The addressed-marker and the claim are for review threads only. They do not disposition an issue comment.** The maintainer-comment gate clears an issue comment only on a verified `dev-lead:comment-disposition` reply. A "Fixed in …" PR comment that ends with `<!-- dev-lead:addressed -->` and a claim leaves the bot's comment undispositioned, the retries run out, and the PR can never be approved (PR #2205). Never put the addressed-marker or a claim in a PR comment.
+
+When you fix a finding from an issue comment, **commit the fix locally first**, then post **exactly one** reply on the PR. Name the file(s) you changed and how the change addresses the finding, and end the reply with **exactly one** marker: `disposition=fixed` with the full 40-char sha of that commit.
+
+```bash
+# First run the target and already-dispositioned check under "Non-actionable bot
+# notices" below: it guards every disposition, not only `informational`.
+node_id='${COMMENT_NODE_ID}'
+[ -n "$node_id" ] || { echo "no triggering comment node id — not dispositioning" >&2; exit 1; }
+sha=$(git rev-parse HEAD)   # read AFTER committing the fix
+gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "Fixed in scripts/foo.sh: replaced the unpinned curl|bash install with a SHA-verified binary download.
+
+<!-- dev-lead:comment-disposition id=${node_id} disposition=fixed sha=${sha} -->"
+```
+
+One comment gets one reply and one marker, however many findings it lists. Say how each finding was handled, and use `fixed` if you changed code for any of them. If you changed no code, end the same single reply with `answered`, `invalid` or `out-of-scope ref=#<n>` and the reason. `informational` is only for a notice that carries no finding (see below). The harness verifies the sha against the pushed head and minimizes the bot's comment RESOLVED; do not call `minimizeComment` yourself. *Cite the commit that fixed it* below is the rule the sha must pass, and `scripts/lib/comment-disposition-verify.sh` is the normative parser. If the same bot also opened review threads, answer those in their threads with the addressed-marker and claim, and still post the one disposition reply for the comment.
 
 ## Deferring a valid finding that is out of scope (#2045)
 
@@ -230,6 +252,7 @@ Some bot comments are pure **operational notices**, not code findings: a rate-li
 - Do not suppress bot rules without a documented reason
 - Do not modify the bot's configuration files
 - For every thread you fix, post a reply naming the specific change, ending with the addressed-marker — never reply-less
+- For a finding you fix from a PR issue comment, post exactly one reply on the PR ending with exactly one `<!-- dev-lead:comment-disposition id=<comment node id> disposition=fixed sha=<40-hex> -->` marker. The addressed-marker and the claim are for review threads only: they never disposition an issue comment, so never put them in a PR comment (#2261)
 - **Never resolve a thread yourself**: do not call the `resolveReviewThread` (or `unresolveReviewThread`) mutation. Resolution is the harness's job — it resolves the addressed and outdated threads from `${ACTOR}`; your only lever is the addressed-marker on your reply
 - Stay within the scope of the pull request's changed files where possible
 - Commit your fixes locally so your claims can cite them, but **never push**. The CI workflow pushes after you finish, verifies the push landed, and retracts any claim that did not land (#2013)
@@ -242,6 +265,7 @@ After applying fixes, output a summary:
 Bot: ${ACTOR}
 Issues addressed: N
 - <issue description>: <fix applied> [replied + addressed-marker]
+- <issue description>: <fix applied> [issue comment: disposition=fixed sha=<sha>]
 - <issue description>: outdated — replied (harness resolves)
 Files changed: <list of files>
 Skipped (informational): <count>

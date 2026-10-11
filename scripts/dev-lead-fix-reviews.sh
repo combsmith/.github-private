@@ -143,6 +143,10 @@ github_knows_commit() {
 #   - earlier: a commit missing from a still-shallow checkout, one GitHub knows
 #              (pushed, then rewritten), or one GitHub cannot be asked about is
 #              left as is.
+# A reply that also carries the review-thread addressed-marker or claim (#2261)
+# is handled here in the same edit, so it has one writer: a re-point moves a
+# claim citing the same commit along with the disposition, and a retraction
+# removes the addressed-marker and the claim with it.
 # Best-effort: returns 1 on a listing/PATCH failure; the caller folds it in.
 sweep_fixed_dispositions() {
   local ref="${1:-}" window="${2:-pass}"
@@ -198,6 +202,10 @@ sweep_fixed_dispositions() {
     fi
     if [ -n "$rebased" ] && git merge-base --is-ancestor "$rebased" "$ref" 2>/dev/null \
        && new_body=$(cl_rewrite_disposition_sha "$body" "$rebased"); then
+      # #2261: a claim in the same reply citing the same commit moves with it.
+      if [ "$(acv_parse_claim "$body" 2>/dev/null | jq -r '.sha // ""' 2>/dev/null)" = "$sha" ]; then
+        new_body=$(cl_rewrite_claim_sha "$new_body" "$rebased") || new_body=$(cl_rewrite_disposition_sha "$body" "$rebased")
+      fi
       if gh api -X PATCH "repos/${REPO}/issues/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
         remapped=$((remapped + 1))
         echo "::notice::\`fixed\` reply ${id} on PR #${PR_NUMBER}: ${sha} was rebased onto a foreign commit and landed as ${rebased} — disposition updated, not retracted (#2156)"
@@ -205,7 +213,9 @@ sweep_fixed_dispositions() {
       fi
       echo "::warning::could not update \`fixed\` reply ${id} on PR #${PR_NUMBER} to the rebased commit ${rebased} — retracting it instead (#2156)"
     fi
-    new_body=$(cl_retract_disposition_body "$body" "$reason")
+    # #2261: the addressed-marker and claim go too, or the quoted original would
+    # keep a claim citing the unlanded commit. Without either, the body is unchanged.
+    new_body=$(cl_retract_disposition_body "$(cl_strip_claim_markers "$body" || printf '%s' "$body")" "$reason")
     if gh api -X PATCH "repos/${REPO}/issues/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
       retracted=$((retracted + 1))
       echo "::warning::retracted \`fixed\` disposition reply ${id} on PR #${PR_NUMBER} (${reason}; cited ${sha:-<none>}, remote head ${ref:-<unknown>}) (#2156)"
@@ -3520,6 +3530,10 @@ save_pending_replies() {
 # cl_retract_body, which strips both markers so it can never resolve a thread.
 # This pass's `fixed` disposition replies on issue comments are swept against the
 # same reference head (sweep_fixed_dispositions, #2156).
+# Claim replies are swept on both surfaces (#2261): review-thread replies, and the
+# PR issue comments the model posts when it answers a bot's issue comment the
+# same way. A PR comment that also carries a `fixed` disposition is left to
+# sweep_fixed_dispositions alone, so one reply is never rewritten by two sweeps.
 #
 # The reference head is the remote head. When there is no upstream (rc 1) on an
 # `ok` outcome, the local HEAD is what was pushed; in every other case — including
@@ -3564,10 +3578,44 @@ retract_unlanded_claims() {
     echo "::warning::retract_unlanded_claims: could not parse the review comments on PR #${PR_NUMBER} — this pass's claim replies were NOT verified (#2013)"
     return 1
   }
-  local rebased remapped=0
-  while IFS=$'\t' read -r id sha; do
+
+  # #2261: the model can also post its addressed/claim reply as a PR ISSUE comment
+  # (PR #2205: "Fixed in …" answering a bot's issue comment). That reply is not in
+  # the review-comment listing above, so its claim was never checked and kept
+  # citing a commit that was never pushed. Sweep the same selection (our account,
+  # since the pass start, carrying the marker or a claim) over the issue comments.
+  # A reply that also carries a `fixed` disposition is left out: it belongs to
+  # sweep_fixed_dispositions above, which handles its claim in the same edit.
+  # An unreadable listing is reported as a failure: those replies were NOT
+  # verified. The thread replies above are still swept.
+  local issue_raw="" issue_comments="" issue_rows=""
+  if ! issue_raw=$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" 2>/dev/null) \
+     || ! issue_comments=$(jq -s 'add // []' <<<"$issue_raw" 2>/dev/null) \
+     || ! issue_comments=$(cl_without_fixed_dispositions "$issue_comments") \
+     || ! issue_rows=$(cl_select_pass_claims "$issue_comments" "$bot_user" "$PASS_START_ISO"); then
+    echo "::warning::retract_unlanded_claims: could not list the issue comments on PR #${PR_NUMBER} — claim replies this pass posted as PR comments were NOT verified (#2261)"
+    issue_comments=""
+    issue_rows=""
+    failed=1
+  fi
+  # One row per reply: `<surface>\t<id>\t<sha>`. <surface> is the REST collection
+  # the reply lives in (pulls = review-thread reply, issues = PR issue comment),
+  # which is also the path segment its PATCH uses.
+  rows=$(
+    [ -z "$rows" ] || awk '{ print "pulls\t" $0 }' <<<"$rows"
+    [ -z "$issue_rows" ] || awk '{ print "issues\t" $0 }' <<<"$issue_rows"
+  )
+
+  local rebased remapped=0 surface listing what
+  while IFS=$'\t' read -r surface id sha; do
     [ -z "$id" ] && continue
-    body=$(printf '%s' "$comments" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
+    listing="$comments"
+    what="claim reply"
+    if [ "$surface" = "issues" ]; then
+      listing="$issue_comments"
+      what="PR-comment claim reply"
+    fi
+    body=$(printf '%s' "$listing" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
     if [ -z "$sha" ]; then
       reason="unverifiable"
     else
@@ -3593,21 +3641,24 @@ retract_unlanded_claims() {
         new_body=$(cl_rewrite_claim_sha "$body" "$rebased") || new_body=""
         if acv_claim_in_pass "$base" "$on_ref" "$in_base" >/dev/null \
            && [ -n "$new_body" ]; then
-          if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+          if gh api -X PATCH "repos/${REPO}/${surface}/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
             remapped=$((remapped + 1))
-            echo "::notice::claim reply ${id} on PR #${PR_NUMBER}: ${sha} was rebased onto a foreign commit and landed as ${rebased} — claim updated, not retracted (#2032)"
+            echo "::notice::${what} ${id} on PR #${PR_NUMBER}: ${sha} was rebased onto a foreign commit and landed as ${rebased} — claim updated, not retracted (#2032)"
             continue
           fi
-          echo "::warning::could not update claim reply ${id} on PR #${PR_NUMBER} to the rebased commit ${rebased} — retracting it instead (#2032)"
+          echo "::warning::could not update ${what} ${id} on PR #${PR_NUMBER} to the rebased commit ${rebased} — retracting it instead (#2032)"
         fi
       fi
     fi
+    # cl_retract_body removes only the addressed-marker and the claim. A
+    # non-`fixed` `dev-lead:comment-disposition` marker in the same reply is
+    # kept: the disposition resolver verifies that one on its own (#2261).
     new_body=$(cl_retract_body "$body" "$reason")
-    if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+    if gh api -X PATCH "repos/${REPO}/${surface}/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
       retracted=$((retracted + 1))
-      echo "::warning::retracted claim reply ${id} on PR #${PR_NUMBER} (${reason}; cited ${sha:-<none>}, remote head ${ref:-<unknown>}) (#2013)"
+      echo "::warning::retracted ${what} ${id} on PR #${PR_NUMBER} (${reason}; cited ${sha:-<none>}, remote head ${ref:-<unknown>}) (#2013)"
     else
-      echo "::error::could not retract claim reply ${id} on PR #${PR_NUMBER} (${reason}) — a false 'Fixed' reply may remain (#2013)"
+      echo "::error::could not retract ${what} ${id} on PR #${PR_NUMBER} (${reason}) — a false 'Fixed' reply may remain (#2013)"
       failed=1
     fi
   done <<< "$rows"

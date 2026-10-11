@@ -96,7 +96,8 @@ cl_push_landed_verdict() {
 
 # cl_select_pass_claims <comments_json> <bot_user> <since_iso>
 #   <comments_json> is the REST `pulls/{pr}/comments` array ({id, user.login, body,
-#   created_at}). Emits one `<id>\t<sha>` row per comment that (a) our account
+#   created_at}), or the `issues/{pr}/comments` array, which has the same fields
+#   (#2261). Emits one `<id>\t<sha>` row per comment that (a) our account
 #   authored (bot_user or its [bot]-suffixed / stripped form), (b) was created at or
 #   after <since_iso> (the pass start), and (c) still carries the addressed-marker or
 #   a claim comment. <sha> is the parsed claim SHA, or empty when the claim is
@@ -322,6 +323,20 @@ cl_escape_dashes() {
   printf '%s' "${t//--/-\\u002d}"
 }
 
+# cl_strip_claim_markers <body>
+#   <body> without its addressed-marker and claim comment, and without trailing
+#   whitespace. The claim comment ends at its FIRST `-->` (as acv_parse_claim reads
+#   it), so a different marker later on the same line, such as a
+#   comment-disposition, is kept, and a claim whose JSON spans lines is removed
+#   whole (#2261). Returns 1 when the body cannot be processed. Pure.
+cl_strip_claim_markers() {
+  jq -Rsr --arg marker "$_DEV_LEAD_ADDRESSED_MARKER" '
+      gsub($marker; "")
+      | gsub("<!--[[:space:]]*dev-lead:claim(?:.|\\n)*?-->"; "")
+      | sub("\\s+$"; "")
+    ' <<<"${1:-}" 2>/dev/null
+}
+
 # cl_retract_body <body> <reason>
 #   The retracted form of a claim reply. Removes the addressed-marker and the claim
 #   comment (so neither the thread gate nor another bot can treat it as a fix),
@@ -349,11 +364,7 @@ cl_retract_body() {
   fi
 
   local stripped
-  stripped=$(jq -Rsr --arg marker "$_DEV_LEAD_ADDRESSED_MARKER" '
-      gsub($marker; "")
-      | gsub("<!--[[:space:]]*dev-lead:claim[^\\n]*-->"; "")
-      | sub("\\s+$"; "")
-    ' <<<"$body" 2>/dev/null) || stripped=""
+  stripped=$(cl_strip_claim_markers "$body") || stripped=""
   local quoted
   quoted=$(printf '%s\n' "$stripped" | sed 's/^/> /')
 
@@ -565,6 +576,24 @@ cl_select_fixed_dispositions() {
     fi
     printf '%s\t%s\n' "$id" "$sha"
   done <<<"$rows"
+}
+
+# cl_without_fixed_dispositions <comments_json>
+#   <comments_json> (the REST `issues/{pr}/comments` array) without the comments
+#   that carry a `disposition=fixed` marker, by the same test
+#   cl_select_fixed_dispositions selects them with. Those replies belong to the
+#   `fixed`-disposition sweep, which also handles a claim they carry; the claim
+#   sweep reads the rest, so no reply is rewritten by both (#2261). A payload
+#   that is JSON but not an array is echoed unchanged: the claim selector reads it
+#   as "no replies", as it does for the review-comment listing. Returns 1 only
+#   when the payload is not JSON. Pure.
+cl_without_fixed_dispositions() {
+  jq -c '
+      if type == "array" then
+        map(select(((objects | .body // "")
+                    | test("<!-- dev-lead:comment-disposition [^\\n]*disposition=fixed\\s")) | not))
+      else . end
+    ' <<<"${1:-}" 2>/dev/null
 }
 
 # cl_retract_disposition_body <body> <reason>
