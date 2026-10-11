@@ -1,6 +1,6 @@
 # Issue Triage — Agentic Workflow
 
-Part of the GitHub Agentic Workflows rollout (internal discussion: [petry-projects/.github-private#228](https://github.com/petry-projects/.github-private/discussions/228) — requires repo access).
+Part of the [GitHub Agentic Workflows rollout](https://github.com/petry-projects/.github-private/discussions/228).
 
 ## What it does
 

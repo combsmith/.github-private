@@ -266,6 +266,11 @@ gq_ledger_rows() {
 # rpm / tpm / rpd windows. Prints "unknown<TAB><reason>" instead when there is no
 # matching row or any matching row has an `unknown` (or invalid) limit (reason
 # "limits"), or the ledger is unreadable (reason "ledger: <why>").
+#
+# Without a <model> (the engine-level verdict, gq_engine_headroom) a row with a cap
+# of 0 is left out (#2146). Cap 0 excludes that MODEL on the key and rotation never
+# calls it (#2041); it says nothing about the key's headroom on its other models. A
+# key whose every row is excluded has no model left to run and reads 100.
 gq_key_pct() {
   local idx="$1" model="${2:-}" now day since rows
   now="$(gq_now)"
@@ -299,6 +304,7 @@ gq_key_pct() {
     {
       re = glob2re($2)
       if (model != "" && model !~ re) next
+      if (model == "" && ($4 ~ /^0+$/ || $5 ~ /^0+$/ || $6 ~ /^0+$/)) { excluded++; next }
       rows++
       r1 = 0; t1 = 0; rd = 0
       for (i = 1; i <= n; i++) if (cm[i] ~ re) {
@@ -311,7 +317,11 @@ gq_key_pct() {
         else if (p[j] > best) best = p[j]
       }
     }
-    END { if (rows == 0 || unknown) print "unknown"; else print best + 0 }
+    END {
+      if (rows == 0 && excluded) print 100
+      else if (rows == 0 || unknown) print "unknown"
+      else print best + 0
+    }
   ' - "$GEMINI_QUOTA_CAPS" 2>/dev/null)"
   if [ -z "$result" ] || [ "$result" = "unknown" ]; then
     printf 'unknown\tlimits'

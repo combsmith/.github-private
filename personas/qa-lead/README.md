@@ -139,10 +139,10 @@ The whole framework is safe because **the agent cannot post**:
 
 - The **agent** runs with `github.token`. On the router-served path that token
   reads **public** source repos and this repo only (it is scoped to *this* repo).
-  For other private source repos it has no read access, so the pull_request
+  For private source repos it has no read access, so the pull_request
   pre-gate fails closed (`skip:signal-unavailable`, which the runner reports as a
-  retryable workflow failure). **Private source repositories other than
-  `.github-private`** are out of scope for the router-served pull_request surface
+  retryable workflow failure). **Private source repositories**
+  are out of scope for the router-served pull_request surface
   today. The agent only *prints* its advisory between sentinels; it never posts.
 - The **workflow** is the only writer. It extracts the advisory, mechanically
   guarantees the `<!-- persona:qa-lead -->` recursion marker, and posts with the
