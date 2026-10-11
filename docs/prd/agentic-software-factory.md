@@ -810,7 +810,9 @@ From the competitive analysis ([market research](../research/market-agentic-soft
    options and suggests moving the eval lane to metered access first. Decided by the Maintainer on
    2026-10-10: the Factory starts on the existing subscription credential, stored as an environment
    secret in the Factory's repo and restricted to its default branch. The capacity signal therefore
-   stays an estimate, shared with interactive use and with the POC while both run.
+   stays an estimate, shared with interactive use and with the POC while both run. One observed
+   signal is added: a Run that ends because the window ran out says so, and Admission defers every
+   model Run until the window is expected to reset.
 4. **OQ-4. Should code-owner review stay required with one human in the org?** It is the reason the
    reviewer must be a machine user and not an App.
 5. **OQ-5. Should the Factory have its own repo?** Decided by the Maintainer on 2026-10-10: yes. It

@@ -179,12 +179,14 @@ sequenceDiagram
   P->>Ac: list recent run records
   P->>K: decide(facts, runs, capacity, now)
   K-->>P: Decision: admit(role, intent)
-  P->>Ac: start a Run, named for its item
+  P->>Ac: upload the pass record: facts read, Decisions made
+  P->>Ac: start a Run from that Decision, named for its item
   R->>R: Engine turns, pre-flight, bounded repair
   R-->>V: Result and commit bundle, as an artifact with a digest
   V->>V: run the same checks where the author controls nothing
   V-->>A: verdict and digests
   A->>A: validate Result, re-derive digests
+  A->>G: re-read the item, refuse if held, paused, closed or changed
   A->>G: apply Effects as the Role's App
   A->>G: read each Effect back
   A->>Ac: upload what was applied
@@ -192,6 +194,11 @@ sequenceDiagram
   P->>CR: write the view
   P->>G: update the status on the item if the decision changed
 ```
+
+`verify` is a filter, not the verdict. It saves a push by catching failures first, but the code
+under test runs inside it and could forge a pass, and the hub's environment is not the Consumer's.
+The Consumer repo's own required checks, run on what was pushed, remain the verdict. How often the
+two disagree is measured per Consumer, and `verify` is dropped where it is often.
 
 The `verify` steps are skipped for an Intent that changes no code. The Result artifact exists
 before `apply` starts, so it is the record of what was intended (§3.6).
@@ -222,6 +229,7 @@ A reader rejects a major version it does not know. Messages are JSON. Files a pe
 |---|---|---|---|
 | Facts | Facts port | Kernel | What GitHub holds about one Work item, as data |
 | Decision | Kernel | Controller | Nothing, defer, hold, transition or admit, with a reason |
+| Pass record | Controller | Runs, replay | The facts one pass read and the Decisions it made |
 | Task | Harness | Engine | Everything one Run needs |
 | Result | Engine | Harness | Status, requested Effects, Findings, Dispositions, usage |
 | Effect | Result | `apply` | One requested change to the outside world |
@@ -259,6 +267,11 @@ for contract tests, so one schema has three uses.
 | `queue` | Merge-queue membership |
 | `actors_since_human` | Count of automated actions since the last human one, from GitHub's timeline |
 | `read_at`, `quota_remaining` | When it was read, and what the installation has left |
+| `complete` | For each list above, whether every page was read; and whether the diff behind `content_id` was whole |
+
+An incomplete read is an unreadable one. A list cut off at a page limit must never be taken to mean
+"nothing more": the Kernel defers on any fact marked incomplete, and a truncated diff means a
+review, never "unchanged".
 
 No field holds prose. Thread and comment bodies are read by the port into a separate `texts` set,
 keyed by id and labelled with a trust class. The Harness may put them in a Task. The Kernel never
@@ -280,6 +293,10 @@ receives them.
 
 `outcome` is one of `nothing`, `defer`, `hold`, `transition`, `admit`. `reason` is an enumerated
 code, never a sentence; the sentence a person reads is rendered from it.
+
+Every pass uploads a **pass record**: the facts it read and the Decisions it made. It serves three
+purposes. Any decision can be replayed on a laptop from exactly what the Kernel saw. A Run is
+started from a Decision in it, and from nothing else (§3.5). And the control room is built from it.
 
 ### 3.5 Task and Result
 
@@ -303,6 +320,10 @@ code, never a sentence; the sentence a person reads is rendered from it.
 }
 ```
 
+A Run is started with one input: a pointer to the Decision that admitted it, in a pass record. The
+Harness builds the Task from that Decision. A Run started any other way finds no Decision and does
+nothing, so nothing that can merely start a workflow can choose what a Run does.
+
 Trust classes are `maintainer`, `role`, `advisory` and `outside`. Text of any class is data: it
 cannot change the Task's permissions, limits or result schema.
 
@@ -323,7 +344,7 @@ cannot change the Task's permissions, limits or result schema.
 }
 ```
 
-`status` is `completed`, `incomplete`, `failed` or `refused`. A Result has no field for a commit
+`status` is `completed`, `incomplete`, `failed`, `refused` or `superseded`. A Result has no field for a commit
 hash: code changes are local commits handed over as a bundle, and `apply` writes the hash after it
 has pushed and read back. `usage` is filled by the Harness from the CLI's own output, including for
 a Run that failed.
@@ -348,6 +369,11 @@ For `comment`, the Result artifact is the intent record: it lists the Effect bef
 starts. `apply` uploads the comment's node id after it posts. On recovery an intended comment with
 no node id is resolved by listing that App's comments since the Run began, never by matching body
 text. Prefer a check run to a comment wherever a person does not need to reply.
+
+Before any Effect, `apply` reads the item again. If it is held, paused, closed, or its `content_id`
+is no longer the one the Run was admitted for, `apply` writes nothing and the Run ends as
+`superseded`. A Run can wait minutes for a runner, and a hold label added in that time must still
+bind.
 
 There is no Effect that starts a Run. Only Admission does that.
 
@@ -413,7 +439,8 @@ only go stale, which is how the POC's markers came to outlive the objects they d
 | The Lifecycle state and its reason | Facts |
 | Whether the item is held, and by whom | A label, and who applied it |
 | Whether a Run holds the item now | A run record in progress |
-| How many attempts an Intent has had, and how many Runs the item has had | Run records |
+| How many attempts an Intent has had, and how many Runs the item has had | Run records, counting item faults only (§3.10) |
+| Whether the Factory itself is failing | The outcome of its most recent failed Runs, across items |
 | Whose turn it is | The Role of the last completed Run on this content |
 | Whether a Finding is open | Its thread, alert or tool report |
 | Whether an owner accepted or rejected a proposal | The thread, and whether the owner's Run on this content has completed |
@@ -445,11 +472,26 @@ conclusion, start and end times and the attempt number come from Actions.
 
 **The artifacts.** `result.json` is the Result of §3.5, uploaded by `run` with its digest. The
 commit bundle travels beside it. `applied.json` is uploaded by `apply` and lists each Effect with
-what was read back. Nothing is handed from job to job through the log: the log is shared with
+what was read back. `outcome.json` is a few bytes written by a final step: how the Run ended and
+whose fault it was. Nothing is handed from job to job through the log: the log is shared with
 whatever the model prints, and Actions rewrites it when it masks secrets.
 
 A Run that dies before it uploads anything still has a run record, and counts as an attempt. Its
 cost is not known exactly; its duration is the estimate.
+
+**Whose fault a failure was.** A failed Run is one of four kinds, and only the first is an attempt.
+
+| Outcome | Example | Counts as an attempt | Then |
+|---|---|---|---|
+| `item` | The Engine produced an invalid Result; the fix did not pass | Yes | The item's attempt ceiling applies |
+| `capacity` | The model window ran out mid-Run | No | Every model Run is deferred until the window is expected to reset |
+| `environment` | A token expired; an App was uninstalled; GitHub was unavailable | No | Several in a row pause Admission automatically, raise one alert, and clear when a probe Run succeeds |
+| `superseded` | The item was held or changed before `apply` | No | The next pass decides afresh |
+
+A pass reads `outcome.json` only for Runs that did not succeed, which are few. A killed Run has no
+outcome file; it is treated as `item` unless other Runs are failing as `environment` at the same
+time. The `capacity` outcome is the capacity signal the PRD has lacked (OQ-3): observed, not
+estimated. One cause must never become fifty Holds.
 
 Run records and artifacts are kept for 90 days, which is the Factory's history (PRD FR-40).
 
@@ -651,6 +693,10 @@ These are the properties the simulator asserts. Each is a sentence a test can fa
 | I-17 | The status on an item changes only when the decision changes | ADR-0013 §2 |
 | I-18 | A Run that ends with no Result counts as an attempt, and its item is re-evaluated | ADR-0013 §4 |
 | I-19 | No decision reads the control room: the same facts and run records give the same Decision whatever the view holds | §3.9 |
+| I-20 | Incomplete facts never converge and never admit | §3.3 |
+| I-21 | No Effect is applied to an item that is held, paused, closed or changed at the moment of applying | §3.6 |
+| I-22 | A Run does only what a recorded Decision admitted | §3.5 |
+| I-23 | A capacity or environment fault is never counted as an attempt, and one cause raises one alert | §3.10 |
 
 ### 4.5 The simulator
 
@@ -669,10 +715,16 @@ decision logic against a fake world, quickly, thousands of times.
   every step boundary, including between two Effects and before any artifact is uploaded. The
   control room unwritable, or holding nonsense. A facts read that fails or is stale. A missing capacity reading.
   A Result that fails validation. An Engine that times out. A human acting mid-Run.
-- **Properties.** I-2 to I-17 are checked after every step, as is I-19. I-1 and I-18 are checked once faults
+- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-23. I-1 and I-18 are checked once faults
   stop and the world is left to settle.
 - **Reproduction.** Each run has a seed from the standard library's generator. A failure prints the
   seed and the trace, and the trace renders as a sequence diagram.
+- **Determinism.** The required check runs a fixed list of seeds, so it cannot fail at random and
+  stall every merge. Exploratory seeds run on a schedule and update one tracking item. A seed that
+  finds a fault is added to the fixed list with its fix.
+- **Further faults,** from the failure-mode pass: a facts read cut off at a page limit; a hold added
+  between Admission and `apply`; a Run started with no Decision behind it; every Run failing at
+  once for one outside cause.
 
 - **Grounding.** The fake GitHub is only as good as what it assumes. Each rule it applies cites a
   response recorded from the real platform in a trial of §6. A rule with no recording is listed as
@@ -809,6 +861,8 @@ it observed as a recorded fixture, which is what the simulator's fake GitHub is 
 | P-18 | Does a final step still run, and upload partial usage, when a job times out or is cancelled? | Yes, or duration is the only estimate |
 | P-19 | Can a static page in a separate public repo be published from files the Controller writes? | Yes |
 | P-20 | Can a credential held outside GitHub start the poller and do nothing else of consequence? | Yes: it can start and cancel workflow runs in one repo, and cannot write code, secrets or settings |
+| P-21 | How often may the control room's page be rebuilt, and can a page read the feed files directly from a browser? | The page reads the feed directly and rebuilds only when its own code changes |
+| P-22 | How soon after it is started does a Run appear in the list of run records? | Soon enough that a pass never admits the same Run twice; the item's lane and I-21 cover the gap |
 
 ## 7. State, records and noticing work
 
@@ -849,6 +903,9 @@ What this costs:
 - **A killed Run's cost is unknown.** The vendor CLI reports usage when an invocation ends.
   Duration is the estimate, and a final step uploads whatever partial usage exists.
 - **History is 90 days.** The Maintainer accepted this in place of the PRD's 180.
+- **Deleted run records undercount attempts.** A Run that wrote nothing leaves no other trace.
+  Deleting them needs write access to the Factory repo, and the count of automated actions on the
+  item catches every case where a Run did write. This is accepted and not designed for.
 - **Money does not gate.** No decision reads the control room, and cost is known only there. The
   ceiling that places a Hold is a number of Runs per Work item; the Hold states the amount spent.
 - **An issue with no pull request has no Run on it yet,** so there is nothing to record until the
@@ -899,6 +956,8 @@ late or not at all.
   It is the one permitted exception to "no always-on service", and it is optional. Which service,
   and where its credential is kept, are open.
 - The Factory's own repo carries the nudge file from the first day.
+- Only the poller can be started from outside the Factory, and it takes no inputs. A Run starts
+  from a recorded Decision (§3.5), so a credential that can start workflows cannot direct one.
 - Option 3 is held until GitHub's terms are answered. Option 1 is held unless a requirement appears
   for a response in seconds; none is in the PRD.
 
@@ -972,6 +1031,7 @@ board. It is also not where a chat session's output is made terser; that is a se
 | `view/findings.json` | Open Findings with category, severity, owner and Disposition |
 | `view/scorecard.json` | The success metrics of PRD §9 and the adoption and use measures of §9.2 |
 | `view/capacity.json` | Usage per window, the estimate of what is left, and the degradation stage |
+| `view/health.json` | Whether Admission is paused and why, when the last pass ran, and recent capacity and environment faults |
 
 ```json
 {
@@ -995,6 +1055,8 @@ board. It is also not where a chat session's output is made terser; that is a se
   "url": "https://github.com/petry-projects/software-factory/pull/42"
 }
 ```
+
+The page reads these files directly and is rebuilt only when its own code changes.
 
 `question` and `choices` are enumerated codes. The sentence a person reads is rendered from them.
 
@@ -1061,6 +1123,9 @@ Until the first `stable` Release the Maintainer's attention is the line's capaci
 slice 1 is cut this narrowly, and why §9.2 counts the approvals it takes. The self-hosting rule
 holds throughout: a candidate Release never reviews the change that produces it.
 
+One rule protects recovery. The Maintainer's own approval and the hermetic required check never
+depend on the Factory running. When a `stable` Release is broken, that is the way out.
+
 Using the POC's reviewer for the bootstrap was considered. Its comment gate can be satisfied only
 by the POC's author Role and has no switch, so it would need a change to the POC first. It remains
 the fallback if the count in §9.2 is passed.
@@ -1125,6 +1190,27 @@ simulator, a separate control-room repo, and both channels with their rings. The
 stay in place from the first commit and are simply not used until there is a Consumer to put on
 `next`, because the entry shim is frozen and should have its final shape from the start.
 
+### 9.5 What a failure-mode pass added
+
+A third pass on 2026-10-10 went component by component: how each fails, how anyone would know, and
+what it takes down.
+
+| Component | Failure | Change made |
+|---|---|---|
+| Facts port | A partial read taken as "nothing open", giving a false approval | Completeness flags; incomplete is unreadable (§3.3, I-20) |
+| `apply` | Writing on an item held or changed while the Run waited | `apply` re-reads the item first (§3.6, I-21) |
+| Run start | Anything able to start a workflow directing a Run | A Run starts only from a recorded Decision (§3.5, I-22) |
+| Whole Factory | One outside cause counted as an attempt on every item | Faults classed; environment faults pause Admission once (§3.10, I-23) |
+| Engine | The model window running out mid-Run | A `capacity` outcome defers model Runs and is the capacity signal (§3.10) |
+| Kernel | A wrong decision nobody can reproduce | Every pass records what it read and decided (§3.4) |
+| Required check | A random seed blocking every merge | A fixed seed list gates; exploration is scheduled (§4.5) |
+| `verify` | A forged or unrepresentative pass read as the verdict | `verify` is a filter; the Consumer's checks are the verdict (§2.3) |
+| Control room | The page lagging the feed | The page reads the feed directly (§8.4, P-21) |
+
+Found sound as designed: a partial `apply` heals at the next pass, because State is derived from
+what was actually written; a lost nudge, a dropped tick or a dead timer costs latency only; and a
+wrong control room changes no decision.
+
 ## 10. What this design changes elsewhere
 
 Recorded in the same change as this document.
@@ -1132,8 +1218,8 @@ Recorded in the same change as this document.
 | Document | Change |
 |---|---|
 | ADR-0013, decision 2 | State is derived and never stored. The record of a Run is its Actions run record and its artifact. The control room is a rebuildable view that no decision reads |
-| ADR-0013, decision 3 | The Controller is a poller. An event may only ask for a pass. The Consumer file is optional |
-| ADR-0013, decision 4 | The Result artifact is the intent record |
+| ADR-0013, decision 3 | The Controller is a poller. An event may only ask for a pass. The Consumer file is optional. A Run starts only from a recorded Decision. An automatic pause is derived from recent faults |
+| ADR-0013, decision 4 | The Result artifact is the intent record. `apply` re-reads the item before any Effect. `verify` is a filter |
 | ADR-0013, decision 5 | One App per Role, registered when the Role first writes; one shared reader App |
 | ADR-0013, decision 7 | An owning Role resolving a thread is a declared Role transition, beside the human one. An owning Role starts in shadow |
 | ADR-0013, decision 10 | The review Intent on the Factory's own repo is the first component. The comparison with the POC is a measure, not a gate. Stopping is the Maintainer's decision, on adoption and use |

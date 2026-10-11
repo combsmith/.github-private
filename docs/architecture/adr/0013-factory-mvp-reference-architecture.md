@@ -148,6 +148,10 @@ means the factory's run records and artifacts in GitHub Actions, as indexed in t
   from job to job through a log.
 - **Reviews, checks, labels, merges and thread resolution are read as facts at each evaluation**
   and are never trusted from a copy.
+- **Facts say whether they are complete.** A list cut off at a page limit, or a truncated diff, is
+  unreadable. Unreadable facts never converge and never admit.
+- **Every pass records the facts it read and the decisions it made,** as an artifact, so that any
+  decision can be replayed.
 - **The control room is a materialized view.** `petry-projects/software-factory-control-room` holds
   an index of the run records and artifacts and every item's computed State. Only the Controller
   writes it. It is public, reaches back 90 days, and can be deleted and rebuilt from GitHub. A view
@@ -167,6 +171,12 @@ run, one lane per work item, held from `run` to applied Effects. The first draft
 Controller once per event; the maintainer replaced that on 2026-10-10 (decision 11).
 
 - **A nudge carries nothing.** The Kernel's admission function takes no event payload.
+- **A Run is started only from a decision a pass recorded.** Only the poller can be started from
+  outside the factory, and it takes no inputs, so a credential that can start workflows cannot
+  direct a Run.
+- **A fault in the environment is not an attempt.** A failed Run is classed as a fault of the item,
+  of capacity or of the environment. Only the first counts against the item. Several environment
+  faults in a row pause Admission, raise one alert, and clear when a probe Run succeeds.
 - **An external timer may also start a pass.** It holds one credential that can start the poller,
   keeps no state and decides nothing. Correctness never depends on it. It is optional, and it is
   the one permitted exception to "no always-on component".
@@ -177,8 +187,8 @@ Controller once per event; the maintainer replaced that on 2026-10-10 (decision 
 - **Passes do not overlap, and at most one waits.** A pass starts its successor when something is
   due before the next scheduled tick.
 - **Hold, budget, duplication and concurrency are evaluated in the admission function and nowhere
-  else.** A human Pause and an automatic pause are different stores, so automation cannot clear the
-  human one.
+  else.** A human Pause is a variable. An automatic pause is derived at each pass from recent
+  faults, so automation cannot clear the human one.
 - **A missing or failed capacity reading admits nothing.** It yields a deferral with a reason.
 
 Three brakes sit outside the Kernel, so that a defect in the Kernel cannot disable them:
@@ -223,6 +233,10 @@ with every side effect expressed as a requested Effect. Three jobs carry it: `ru
   starts. If it is missing or its digest does not match, nothing is applied.
 - **A Run that ends with no Result is still a run record.** It counts as an attempt, and the
   Lifecycle declares what follows it.
+- **`apply` re-reads the work item before any Effect,** and writes nothing if the item is held,
+  paused, closed or no longer the content the Run was admitted for.
+- **`verify` never replaces the consumer's own required checks.** Its result counts in place of the
+  author's, and the consumer's checks on what was pushed remain the verdict.
 - **Feedback moves left; the verdict does not.** `run` executes the pre-flight checks and returns
   their Findings to the author for a bounded number of repair turns. `verify` executes the same
   checks, at the same pinned versions and configuration, and only its result counts toward a Gate.
@@ -313,6 +327,10 @@ We will make the factory's own verification a required check from the first comm
 - **`factory / verify` is a required check on the factory repo's protected branch.** It runs on
   every pull request and on `merge_group`, with no path filter.
 - **A required check is hermetic:** it reads nothing outside the merge commit.
+- **A required check is deterministic.** Randomised exploration runs on a schedule and blocks
+  nothing.
+- **The maintainer's own approval never depends on the factory running.** It is the way out when a
+  `stable` Release is broken.
 - **The declared Lifecycle is checked mechanically** for termination, undeclared cycles, and Hold
   and Pause semantics.
 
