@@ -38,6 +38,8 @@ Made by the Maintainer on 2026-10-10, in addition to ADR-0013's twelve decisions
 | Stopping is the Maintainer's decision, on adoption and use | §9.2 |
 | The Factory's Apps share the prefix `combsmith-sf-` | §5.1 |
 | Every panel of the control room is public | §8.6 |
+| Only required Lenses gate, and domain owners start in shadow (from the pre-mortem, §9.3) | §4.2, §5.2 |
+| The Maintainer records continue or stop at two decision points | §9.2 |
 | Each Lens has a declared scope of paths | Role manifests (§5.3) |
 | A Consumer repo's setup and test commands are part of its onboarding contract | The Consumer entry (§3.12) |
 | Design by simulation first, with a formal model held in reserve | §4.5 |
@@ -482,18 +484,22 @@ intents:
 ```yaml
 schema: authority/1
 max_rounds: 3
+shadow_sample: 0.25     # example: the share of items a shadow Role is run on
 categories:
-  functional:    { owner: qa-lead,            may_accept: [fixed, declined, deferred, not_applicable] }
-  security:      { owner: security-lead,      may_accept: [fixed, not_applicable] }
-  architecture:  { owner: solution-architect, may_accept: [fixed, declined, deferred, not_applicable] }
-  delivery:      { owner: devops-lead,        may_accept: [fixed, declined, deferred, not_applicable] }
-  reliability:   { owner: sre-lead,           may_accept: [fixed, declined, deferred, not_applicable] }
-  requirements:  { owner: pr-review,          may_accept: [fixed, declined, deferred, not_applicable] }
-  uncategorised: { owner: pr-review,          may_accept: [fixed, declined, deferred, not_applicable] }
+  functional:    { owner: pr-review, shadow: qa-lead,            may_accept: [fixed, declined, deferred, not_applicable] }
+  security:      { owner: pr-review, shadow: security-lead,      may_accept: [fixed, not_applicable] }
+  architecture:  { owner: pr-review, shadow: solution-architect, may_accept: [fixed, declined, deferred, not_applicable] }
+  delivery:      { owner: pr-review, shadow: devops-lead,        may_accept: [fixed, declined, deferred, not_applicable] }
+  reliability:   { owner: pr-review, shadow: sre-lead,           may_accept: [fixed, declined, deferred, not_applicable] }
+  requirements:  { owner: pr-review,                             may_accept: [fixed, declined, deferred, not_applicable] }
+  uncategorised: { owner: pr-review,                             may_accept: [fixed, declined, deferred, not_applicable] }
   mechanical:    { owner: none }      # closes only when the tool stops reporting it
   human:         { owner: human }     # closes only when that person resolves it
 escalation: hold_for_maintainer
 ```
+
+This is the starting table. A domain Role is promoted by moving it from `shadow` to `owner` for its
+category, in one pull request (§5.2).
 
 ```yaml
 schema: consumer/1
@@ -565,12 +571,20 @@ The issue Lifecycle is sketched only, because the review Intent is built first: 
 
 ### 4.2 Convergence and the gate
 
-Convergence is one Kernel function of facts and State:
+Convergence is one Kernel function of facts, run records and the view:
 
-1. every Lens required for this class of item, this stage and these changed paths has reported on
-   the current `content_id`, or its deadline has passed and it is not one that must report;
-2. no Finding of severity `blocking` or `major` is open or proposed;
+1. every Lens **required** for this class of item, this stage and these changed paths has reported
+   on the current `content_id`;
+2. no Finding of severity `blocking` or `major` raised by a required Lens is open or proposed;
 3. no `human` Finding is open.
+
+Which Lenses are required is data. The starting set is the deterministic checks, `pr-review` and
+humans. A Lens joins it only with a measured contribution (ADR-0013, decision 12).
+
+A Finding from a Lens that is not required is recorded, shown and measured. It is given to
+`pr-review` as input, and `pr-review` records for each one whether it adopts it as its own. Only an
+adopted Finding gates. An Advisory reviewer that posts twenty threads therefore costs the reviewer
+some reading and cannot hold a pull request by volume, which is how the POC's comment gate failed.
 
 The approval is issued only in `converged`, by the reviewer identity, for that `content_id`. If a
 push changes the head and not the `content_id`, the approval is re-issued with no Run.
@@ -602,6 +616,10 @@ sequenceDiagram
 - Lenses never address each other. Every arrow passes through the Kernel.
 - An owner decides in one batched Run per content version, so the number of Runs does not grow with
   the number of threads.
+- A shadow Role is given the same Findings on a sample of items. Its decisions are recorded beside
+  the owner's and compared. They move nothing.
+- The intake step is needed only for Findings from Lenses that carry severity as prose. It arrives
+  with the control room, after the first slice (§9.1).
 - A rejected proposal returns the item to `addressing`. After `max_rounds` the item is placed on
   Hold with the open Findings listed.
 - A `security` Finding cannot be accepted as `declined` or `deferred` by any Role. Only an Override
@@ -659,6 +677,11 @@ decision logic against a fake world, quickly, thousands of times.
 - **Reproduction.** Each run has a seed from the standard library's generator. A failure prints the
   seed and the trace, and the trace renders as a sequence diagram.
 
+- **Grounding.** The fake GitHub is only as good as what it assumes. Each rule it applies cites a
+  response recorded from the real platform in a trial of §6. A rule with no recording is listed as
+  unverified, and `factory / verify` prints that list. The POC's tests passed against a stub that
+  accepted calls the real interface rejects; this is the guard against repeating it.
+
 Two things are checked exhaustively rather than sampled, because they are small and finite: the
 Lifecycle graph (every state reaches a terminal one, every non-terminal state has a timer, I-14)
 and the authority data (§5.4).
@@ -696,13 +719,23 @@ A token is still narrowed at mint time to the Effects one Result requests.
 
 ### 5.2 Who decides what
 
-The authority table of §3.12 is the whole rule. Three points follow from it.
+The authority table of §3.12 is the whole rule. Five points follow from it.
 
 - **Ownership is by category, not by path.** A security defect can sit in any file.
 - **An owner judges; it does not rewrite.** There is one author per change.
-- **An owner becomes a gate.** Its adjudicating Intent therefore needs an eval set before it is
-  allowed to close anything (FR-55), and its record is measured like any other Lens (FR-69): the
-  share of its acceptances later reverted or reopened is the number to watch.
+- **A domain Role starts in shadow.** `pr-review` owns every model-judged category at first. A
+  domain Role adjudicates a sample of the same Findings, and its decisions are recorded and bind
+  nothing.
+- **A domain Role is promoted on evidence, one Role at a time.** It needs an eval set for its
+  adjudicating Intent (FR-55) and a record in shadow that shows it adds something: agreement with
+  the owner where the owner was later proved right, and disagreement where the owner was later
+  proved wrong. The research is plain that a reviewer no stronger than the author makes the result
+  worse, so promotion is never by default.
+- **The security rule holds from the first day.** Whoever owns the category, a `security` Finding
+  is never accepted as declined or deferred without an Override.
+
+Once promoted, an owner is measured like any other Lens (FR-69): the share of its acceptances later
+reverted or reopened is the number to watch.
 
 ### 5.3 What each Role watches
 
@@ -741,6 +774,8 @@ Run by `factory / verify` over the manifests and the authority table.
 - The graph "a Run of X can lead the Kernel to admit a Run of Y" has no cycle that does not pass
   through `max_rounds` or a human transition.
 - Every Intent in budget class `gate` has an eval set.
+- A Role named `owner` of a category has a promotion record. A `shadow` Role's decision is never
+  read by the gate.
 - Every Consumer entry names an owner Role, a setup command, a test command and protected paths.
 
 The interaction matrix in §5.1 is generated from this data in the Factory repo. A stale copy fails
@@ -748,7 +783,8 @@ the check.
 
 ## 6. Platform facts to settle by trial
 
-None of these can be modelled. Each is one trial on a canary repo, with the result recorded.
+None of these can be modelled. Each is one trial on a canary repo. Each leaves the real response
+it observed as a recorded fixture, which is what the simulator's fake GitHub is grounded in (§4.5).
 
 | # | Question | Pass |
 |---|---|---|
@@ -853,6 +889,10 @@ late or not at all.
 - One pass is the only decider, so an org-wide limit is a decision inside one process. No lease and
   no race.
 - A Run is still its own workflow run, holding its item's lane from `run` to `apply`.
+- A watchdog stands outside the poller: a second, small scheduled workflow on a different schedule
+  that restarts the chain when the last pass is too old. The poller cannot be the only thing that
+  notices the poller has stopped.
+- The Factory's own repo carries the nudge file from the first day.
 - Option 3 is held until GitHub's terms are answered. Option 1 is held unless a requirement appears
   for a response in seconds; none is in the PRD.
 
@@ -887,7 +927,7 @@ this design changes.
 |---|---|---|
 | CR-1 | Answers "what needs me?" first. Items are ordered by the human action they need, and each states the decision, the evidence and the choices | UJ-2, FR-27 |
 | CR-2 | Shows one definition of State. Every status is computed by the Kernel, the same function that decides. The page computes nothing | FR-2 |
-| CR-3 | Is never a source of truth. It is rebuilt from GitHub, says when it was last written, and says so plainly when it is stale | FR-43 |
+| CR-3 | Is never a source of truth. It is rebuilt from GitHub, and the page computes the view's age in the browser, so a stalled Factory shows as stale without anything having to run | FR-43 |
 | CR-4 | Is read-only. A person acts in GitHub, through a declared human transition, and the page links there | FR-22 |
 | CR-5 | Covers every Consumer repo on one page | PRD §1 |
 | CR-6 | Shows cost and capacity: a budget gauge, cost per change, the share that was rework, cost by Role | UJ-8, UJ-9, FR-38 |
@@ -921,7 +961,7 @@ board. It is also not where a chat session's output is made terser; that is a se
 | File | Holds |
 |---|---|
 | `view/meta.json` | When the view was written, by which pass and Release, and how far back it reaches |
-| `view/items.json` | Every open Work item: computed State, reason, attention class, next actor, the decision required, age, attempts, cost, links |
+| `view/items.json` | Every open Work item: computed State, reason, attention class, next actor, the decision required, age, attempts, Runs so far against the budget of 10 a merge, cost, links |
 | `view/runs/<date>.jsonl` | One line per Run: the run record and the usage and outcome from its artifact |
 | `view/findings.json` | Open Findings with category, severity, owner and Disposition |
 | `view/scorecard.json` | The success metrics of PRD §9 and the adoption and use measures of §9.2 |
@@ -943,6 +983,7 @@ board. It is also not where a chat session's output is made terser; that is a se
   "content_id": "sha256:5d0c",
   "age_hours": 19.5,
   "attempts": { "fix-review-findings": 3, "adjudicate-findings": 3 },
+  "runs": 9,
   "cost_usd": 4.8,
   "sources": ["run:r_01JA6Z", "run:r_01JA7Q"],
   "url": "https://github.com/petry-projects/software-factory/pull/42"
@@ -994,23 +1035,29 @@ Decided on 2026-10-10: every panel is public, the budget gauge included.
 ### 9.1 Order
 
 The review Intent comes first, so that the Factory reviews itself and everything built after it.
+The first slice is defined by one event: **the Factory approves one of its own pull requests.**
+Anything not needed for that event is in a later slice.
 
 | Slice | Delivers | Who approves Factory changes |
 |---|---|---|
-| 0. Foundations | The repo, its ruleset and `factory / verify`. Every schema of §3 with golden examples. The Lifecycle and authority data. The simulator with a skeleton Kernel. The Apps. The trials of §6 | The Maintainer |
-| 1. Review, end to end | The facts and records ports, the Kernel's Lifecycle, Convergence and gate, the poller, `run` and `apply` for the review Intent, Finding intake from threads, checks and alerts, the status on the item, and the control room's feed with a first page. Serving the Factory's own repo | The Maintainer, until the first `stable` Release; then the Factory's reviewer, with the Maintainer able to block |
-| 2. Domain owners | The adjudicating Intents of `qa-lead`, `security-lead`, `solution-architect` and `devops-lead`, each with its eval set | The Factory |
-| 3. Fix Intents | Fix CI and fix review findings under the run contract, with `verify` | The Factory |
-| 4. A Consumer repo | One low-risk Consumer on the `next` ring | The Factory |
-| 5. Onward | Implementation, the initiative driver, the remaining personas, as in the review's migration shape | The Factory |
+| 0. Foundations | The repo, its ruleset and `factory / verify`. The schemas the first slice uses, with golden examples. The pull-request Lifecycle. The simulator with a skeleton Kernel. Two Apps: the Controller's and the reviewer's. The trials of §6 that the first slice rests on, each leaving a fixture | The Maintainer |
+| 1. First approval | The facts and records ports. The Kernel's Lifecycle, Convergence and gate. The poller, its watchdog and the nudge file on the Factory's own repo. `run` and `apply` for the review Intent. Deterministic checks read as Findings. The status on the item. A feed of two files, `meta` and `items` | The Maintainer, until the first `stable` Release; then the Factory's reviewer, with the Maintainer able to block |
+| 2. Control room and measurement | The rest of the feed and the dashboard page. Finding intake, so that Advisory reviewers' threads are typed and measured. Runs per merge on every item | The Factory |
+| 3. Domain Roles in shadow | The adjudicating Intents of `qa-lead`, `security-lead`, `solution-architect` and `devops-lead`, each with its App and its eval set, deciding on a sample and binding nothing. Promotion follows, one Role at a time | The Factory |
+| 4. Fix Intents | Fix CI and fix review findings under the run contract, with `verify` | The Factory |
+| 5. A Consumer repo | One low-risk Consumer on the `next` ring | The Factory |
+| 6. Onward | Implementation, the initiative driver, the remaining personas, as in the review's migration shape | The Factory |
 
-Two consequences are worth stating. Until the first `stable` Release the Maintainer's attention is
-the line's capacity, which argues for keeping slice 0 and slice 1 small. And the self-hosting rule
+**Not in slice 1:** Finding intake, domain Roles, path scopes, the dashboard page, the private
+Artifact board, the comparator against the POC, any App beyond the two named, any Consumer repo.
+
+Until the first `stable` Release the Maintainer's attention is the line's capacity. That is why
+slice 1 is cut this narrowly, and why §9.2 counts the approvals it takes. The self-hosting rule
 holds throughout: a candidate Release never reviews the change that produces it.
 
 Using the POC's reviewer for the bootstrap was considered. Its comment gate can be satisfied only
 by the POC's author Role and has no switch, so it would need a change to the POC first. It remains
-the fallback if slices 0 and 1 turn out to need more approvals than the Maintainer can give.
+the fallback if the count in §9.2 is passed.
 
 ### 9.2 Stopping
 
@@ -1029,6 +1076,31 @@ The control room exists to make that an informed decision. It shows:
 
 None of these stops anything by itself.
 
+With no period set, the decision needs a moment at which it is made. Two events serve:
+
+| Decision point | The Maintainer records | Shown beforehand |
+|---|---|---|
+| The first `stable` Release | Continue or stop | How many Factory pull requests the Maintainer has approved, against a starting figure of 40 |
+| The first Consumer repo served | Continue or stop | The adoption and use measures above |
+
+The record is a file in the Factory repo. Passing 40 approvals before the first `stable` Release
+stops nothing; it is the signal to shrink the slice further or to fall back on the POC's reviewer.
+
+### 9.3 What a pre-mortem changed
+
+A pre-mortem on 2026-10-10 assumed the Factory had been abandoned and asked why. Seven causes were
+ranked, and each changed this document.
+
+| Likely cause of failure | Change made |
+|---|---|
+| The bootstrap starves on the Maintainer's attention | Slice 1 cut to one event, with a written list of what is out (§9.1); approvals counted (§9.2) |
+| Domain owners make it slower and no better | Owners start in shadow and are promoted on evidence (§5.2) |
+| Third-party threads become the new comment gate | Only required Lenses gate; other Findings gate only when the reviewer adopts them (§4.2) |
+| The simulator passes and GitHub disagrees | The fake GitHub is grounded in recorded responses (§4.5, §6) |
+| The poller goes quiet | A watchdog outside the poller; staleness computed in the browser (§7.3, §8.2) |
+| Two systems run forever | Decision points keyed to events (§9.2) |
+| The model window runs out | Shadow Roles run on a sample; Runs per merge shown on every item (§3.12, §8.4) |
+
 ## 10. What this design changes elsewhere
 
 Recorded in the same change as this document.
@@ -1039,10 +1111,10 @@ Recorded in the same change as this document.
 | ADR-0013, decision 3 | The Controller is a poller. An event may only ask for a pass. The Consumer file is optional |
 | ADR-0013, decision 4 | The Result artifact is the intent record |
 | ADR-0013, decision 5 | One App per Role |
-| ADR-0013, decision 7 | An owning Role resolving a thread is a declared Role transition, beside the human one |
+| ADR-0013, decision 7 | An owning Role resolving a thread is a declared Role transition, beside the human one. An owning Role starts in shadow |
 | ADR-0013, decision 10 | The review Intent on the Factory's own repo is the first component. The comparison with the POC is a measure, not a gate. Stopping is the Maintainer's decision, on adoption and use |
 | ADR-0013, decision 11 | No longer two provisional mechanisms. The poller's latency and cost are measured against the same thresholds |
-| ADR-0013, decision 12 | A listed intake Role may read a thread's prose to type a Finding; the gate reads only the typed record |
+| ADR-0013, decision 12 | A listed intake Role may read a thread's prose to type a Finding; the gate reads only the typed record. The starting required set is named, and other Findings gate only when adopted |
 | PRD, FR-40 and the glossary | History is 90 days. The State record is computed; the Ledger is the run records and artifacts, indexed in the control room |
 | PRD, OQ-2, OQ-3, OQ-8, OQ-9 | Recorded as decided, with what remains open |
 | PRD, NFR-11 | A new Role is one pull request plus one App registration |

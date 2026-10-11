@@ -82,6 +82,7 @@ The ones that shape structure:
 Decided on 2026-10-10 and carried into the design:
 
 - A Finding is decided by the Role that owns its domain, under an authority table held as data.
+  Domain Roles start in shadow and are promoted on evidence. Only required Lenses gate.
 - One GitHub App per Role, sharing the name prefix `combsmith-sf-`.
 - The review Intent is built first and serves the Factory's own repo. The Maintainer approves
   until the first `stable` Release.
@@ -121,6 +122,7 @@ Decided on 2026-10-10 and carried into the design:
 - **Brakes outside the Kernel.** The pause variable, the Run ceiling, the actor-based loop count
   and the monthly spend cap live where a Kernel defect cannot reach them.
 - **Bootstrap.** Until the first `stable` Release the Maintainer's attention is the line's
-  capacity.
+  capacity. The first slice is cut to one event, the Factory approving one of its own pull
+  requests, and the approvals it takes are counted.
 - **Trust classes for text.** Text from the Maintainer, a Role, an Advisory reviewer or an Outside
   contributor reaches a Task as labelled data.

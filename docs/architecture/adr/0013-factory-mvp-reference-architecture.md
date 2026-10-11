@@ -296,6 +296,9 @@ of the pull request's own diff against its merge base), and decide approval in o
   data. The author proposes a Disposition and the owner accepts or rejects it. An owner resolving
   a thread it has accepted is a declared Role transition. No Role decides on its own work, and a
   security Finding is never declined without an Override.
+- **A domain Role starts in shadow.** It decides on a sample, its decisions are recorded and bind
+  nothing, and the reviewer owns the category meanwhile. It is promoted to a gate on an eval set
+  and a measured record, one Role at a time.
 
 ### 8. Verification binds
 
@@ -347,6 +350,9 @@ We will make the factory's own verification a required check from the first comm
     measure stops it automatically. The control room shows adoption, use and the factory's results
     against the POC's baseline so that the decision is informed. If the migration stops, the
     identity change and the configuration fixes are kept and unused factory code is deleted.
+  - **Decision points.** At the first `stable` Release and at the first consumer repo served, the
+    maintainer records continue or stop. Before the first, the control room shows how many factory
+    pull requests the maintainer has approved, against a starting figure of 40.
 - **Escaped defects (PRD SM-C1) are baselined before any step that raises the autonomy rate.**
 - **Three assumptions are settled on a canary repo before any cutover:** that a pull request
   authored by the App needs no extra approval under the live ruleset, which sets
@@ -398,7 +404,9 @@ the Kernel.
 - **Convergence is a Kernel function:** every Lens required for the item's class and stage has
   reported on the current content version, and no blocking Finding is open. An item that has not
   converged within its declared bound is placed on Hold.
-- **The required Lenses are declared per class of work item and stage, as data.**
+- **The required Lenses are declared per class of work item and stage, as data.** The starting set
+  is the deterministic checks, the in-house reviewer and humans. A Finding from a Lens outside the
+  required set gates only when a required Lens adopts it as its own.
 - **A Lens earns its place.** The Ledger records each Lens's Findings, the share acted on, the share
   no other Lens raised, and its cost. A Lens joins a required set only with a measured marginal
   contribution.
