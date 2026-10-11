@@ -795,6 +795,12 @@ export_stale_dispositions() {
   if comments=$(bcr_fetch_pr_comments "$REPO" "$PR_NUMBER" 2>/dev/null) \
      && facts=$(maintainer_gate_stale_disposition_facts "$comments" "${BOT_USER:-donpetry-bot}"); then
     if [ -n "$facts" ]; then
+      # Linux caps one environment string at 128 KiB (MAX_ARG_STRLEN); an oversized
+      # value would stop envsubst and the agent subprocess from starting.
+      if [ "${#facts}" -gt 30000 ]; then
+        facts="${facts:0:30000}
+... (list truncated; read the PR's comments and apply the edit rule to the rest)"
+      fi
       STALE_DISPOSITIONS="These registered reviewer-bot comments were edited AFTER the newest disposition reply covering them. Each old disposition judged an older body and no longer covers the comment, and the maintainer-comment gate blocks the PR until each has a fresh one:
 
 ${facts}

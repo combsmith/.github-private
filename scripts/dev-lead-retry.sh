@@ -483,7 +483,7 @@ fetch_pr_comment_nodes() {
 #   fresh disposition, and that marker stopped every later dispatch.
 #   Run markers only BOUND the retry. A successful fix-reviews pass for THIS PR
 #   (`<!-- dev-lead-fix-reviews pr=<N> … intent=fix-reviews
-#   status=applied|no-changes`) that started at/after the latest such edit counts
+#   status=<any>`) that started at/after the latest such edit counts
 #   as one attempt. After STALE_DISPOSITION_MAX_PASSES (default 2) it returns 3:
 #   hold for a human rather than spend a model run on every sweep. A new edit
 #   starts a new count. A pass counts from when it STARTED (the marker's
@@ -749,8 +749,9 @@ scan_pr_for_rate_limits() {
         post_dispatch_guard "$repo" "$pr_number" "$head_sha"
         guard_posted=1
       fi
-      dispatch_reviews_retry "$repo" "$pr_number" "$head_sha" "fix-reviews"
-      dispatched=$(( dispatched + 1 ))
+      if dispatch_reviews_retry "$repo" "$pr_number" "$head_sha" "fix-reviews"; then
+        dispatched=$(( dispatched + 1 ))
+      fi
     elif [ "$stale_rc" -eq 3 ]; then
       echo "::warning::PR ${pr_number} in ${repo}: a bot comment edited after its dev-lead disposition still has no fresh disposition after ${STALE_DISPOSITION_MAX_PASSES:-2} fix-reviews pass(es) since the edit — not re-dispatching; needs a human (#2166)" >&2
       local max_passes="${STALE_DISPOSITION_MAX_PASSES:-2}"
