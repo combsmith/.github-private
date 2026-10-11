@@ -131,6 +131,8 @@ readonly _MAINTAINER_GATE_SCOPE_JQ_DEFS='
 _MAINTAINER_GATE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 readonly _MAINTAINER_GATE_LIB_DIR
 
+# log_info <message>
+#   Log an informational message to stderr with the maintainer-gate prefix.
 log_info() {
   echo "[maintainer-gate] $*" >&2
 }
@@ -293,6 +295,8 @@ readonly _MAINTAINER_GATE_DISP_JQ_DEFS='
       else "clear" end;
 '
 
+# log_warn <message>
+#   Log a warning message to stderr with the maintainer-gate prefix.
 log_warn() {
   echo "[maintainer-gate] WARNING: $*" >&2
 }

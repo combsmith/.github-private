@@ -50,6 +50,8 @@ emit_hold_skip() {
   emit_intent "skip" "$reason" "$context"
 }
 
+# emit_intent <intent_type> [reason] [context_json]
+#   Write intent classification to GITHUB_ENV and GITHUB_OUTPUT.
 emit_intent() {
   local intent="$1" reason="${2:-}" context="${3:-}"
   echo "INTENT_TYPE=${intent}" >> "$GITHUB_ENV"
@@ -76,6 +78,8 @@ emit_intent() {
   echo "  [intent] type=${intent} reason=${reason} context=${context}"
 }
 
+# emit_skip [reason]
+#   Emit a skip intent with optional reason.
 emit_skip() {
   local reason="${1:-not-implemented}"
   emit_intent "skip" "$reason" ""
