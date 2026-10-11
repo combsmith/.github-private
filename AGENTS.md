@@ -241,7 +241,9 @@ calling it a regression, and treat CI as authoritative.**
 - **Exception:** `test-deletion-guard.yml` (#823) is a documented repo-specific workflow with no org template.
   It is one half of the #655 **stale-base / semantic-revert** guard: it fails a PR that deletes any file under
   `tests/` unless a maintainer adds the `ack-test-deletion` label, so a silent test removal becomes a deliberate,
-  reviewable decision. The other half is the **"require branches up to date before merging"** ruleset on `main`
+  reviewable decision. Deletions are measured from the merge base of the PR, so a test file `main` gained after
+  the branch point is not read as deleted by a PR that is behind (#2254; logic in `scripts/test-deletion-guard.sh`).
+  The other half is the **"require branches up to date before merging"** ruleset on `main`
   (already enabled). Together they close the gap behind #655, where a PR merged from a stale base reverted a
   shipped fix and deleted its regression test in the same green-CI diff. Do not remove either guard.
   Because this is a **gate** workflow whose `failure` conclusion is intentional enforcement (it blocks a

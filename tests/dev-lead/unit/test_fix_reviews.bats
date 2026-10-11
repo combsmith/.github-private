@@ -6337,6 +6337,47 @@ _run_2013() {
   [[ "$output" == *"needs-human-review"* ]]
 }
 
+# #2254 (PR #2252): main changed an existing test after the branch point, and a
+# review-changes pass rebased onto it. The rebase brought main's test change in;
+# the guard read it as the pass's, refused the push, labelled the PR and disabled
+# auto-merge. _move_main_2254 advances origin/main past the PR's merge base with a
+# change to tests/existing.bats; the engine body then rebases onto it.
+_move_main_2254() {
+  local br
+  br=$(git -C "$T2013_DIR" rev-parse --abbrev-ref HEAD)
+  git -C "$T2013_DIR" checkout -q --detach refs/remotes/origin/main
+  sed -i 's/\[ ok = ok \]/[ OK = OK ]/' "$T2013_DIR/tests/existing.bats"
+  git -C "$T2013_DIR" -c user.email="t@test" -c user.name="T" commit -q -am "main: revise existing test"
+  git -C "$T2013_DIR" push -q origin HEAD:refs/heads/main
+  git -C "$T2013_DIR" checkout -q "$br"
+}
+
+_REBASE_2254="git fetch -q origin main && git -c user.email=t@t -c user.name=T rebase -q origin/main"
+
+@test "#2254: a review-changes pass that only rebases onto a main with changed tests is pushed, not held" {
+  T2013_PR_SETUP="printf '@test \"pr\" {\n  true\n}\n' > tests/pr.bats" \
+    _setup_2013 HEAD "$_REBASE_2254"
+  _move_main_2254
+  _run_2013 review-changes
+
+  [ -s "$T2013_PUSH" ]
+  [[ "$output" != *"Test-tamper guard"* ]]
+  [[ "$output" != *"Existing test changed without justification"* ]]
+  [ ! -e "$BATS_TEST_TMPDIR/label_posts" ]
+}
+
+@test "#2254: rebasing onto a moved main AND editing an existing test is still refused" {
+  T2013_PR_SETUP="printf '@test \"pr\" {\n  true\n}\n' > tests/pr.bats" \
+    _setup_2013 HEAD "$_REBASE_2254 && sed -i 's/success precedence/failure precedence/' tests/existing.bats"
+  _move_main_2254
+  _run_2013 review-changes
+
+  [ ! -s "$T2013_PUSH" ]
+  [[ "$output" == *"Test-tamper guard"* ]]
+  [[ "$output" == *"tests/existing.bats"* ]]
+  [[ "$output" == *"needs-human-review"* ]]
+}
+
 # ── #2032: earlier passes' claim replies are swept at the start of a pass ─────
 # A run cancelled after its model replied never reached its own sweep (#2080:
 # commit 9313650… never reached the branch, yet its "Fixed" reply stood).
