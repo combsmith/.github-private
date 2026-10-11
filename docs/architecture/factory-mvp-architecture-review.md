@@ -89,11 +89,17 @@ whether agents move off the owner account, whether the POC is frozen for feature
 replaced, and what the migration may cost. A fourth was decided on 2026-10-10: third-party
 reviewers are integrated through a contract, and comment bodies gate nothing. The same day the
 maintainer decided that no agent runs as the owner account, named the new repo
-`petry-projects/software-factory`, set the migration's limit and kill criterion, and chose which
+`petry-projects/software-factory`, settled the migration's governance, and chose which
 reviewers stay (§16.6), and chose one App per Role. The interaction and contract design that
 follows from these is in `software-factory-design.md`. It replaces two recommendations made here:
 the git-backed store of §6.1 gives way to derived state, Actions run records and a rebuildable
 view, and the wake per event of §6.2 gives way to a poller.
+
+The rest of this summary is the review as first written. Where it says the two mechanisms are
+provisional, that step 1 runs read-only on every repo, or that the migration has a limit and a kill
+criterion, ADR-0013 and the design document are current: both mechanisms are settled, the first
+component is the review intent on the factory's own repo, and there is no limit and no kill
+criterion.
 
 **It will be built in a new repo and cut over through the existing channel tags** (§18). Building in
 place would put every factory change through the POC's own line, which is the thing that is
@@ -2112,13 +2118,15 @@ maintainer's rule is different: compatibility with the structured contract decid
   Copilot may be re-enabled; it would then enter as a review-thread Lens under the same measure.
 - **Installed, unfunded, not required: Codex.** Its refusals gate nothing and nothing waits for it.
 - **Kept as review-thread Lenses: CodeAnt and Graphite.** Both open review threads, which decision
-  12 names as a structured surface, so the rule does not remove them. Their gate is a thread's
-  state, open or resolved, and their summary comments gate nothing. CodeAnt is free for this org.
+  12 names as a structured surface, so the rule does not remove them. Their threads are read by
+  state, open or resolved, and their summary comments gate nothing. Later the same day the
+  maintainer decided that only required Lenses gate, so a thread from either gates only when the
+  in-house reviewer adopts it. CodeAnt is free for this org.
   Graphite is a paid subscription and reviewed 22 times in the measured week, which is the figure
   to weigh at its renewal.
 - **Kept and measured, as recommended: CodeRabbit, cubic and Gemini Code Assist.**
 
-That leaves six of the nine that can gate. The per-Lens measure, not this list, decides the
+That leaves six of the nine as Lenses. The per-Lens measure, not this list, decides the
 required set.
 
 ### 16.7 What is not known
@@ -2333,12 +2341,14 @@ how a second system fails.
   recommended here. The limit is four weeks of side-by-side running for each intent family, counted
   from the day the factory's comparable intent is available. POC defects are fixed as needed, with
   no weekly cap. The kill criterion is an intent family that has not reached parity when its four
-  weeks end. Later the same day the maintainer replaced the parity rule with an outcome-based
-  stopping rule and made the review intent on the factory's own repo the first component; ADR-0013,
+  weeks end. Later the same day the maintainer replaced the parity rule, first with an outcome-based
+  rule and then with none: stopping is the maintainer's decision. The review intent on the
+  factory's own repo became the first component; ADR-0013,
   decision 10, and `software-factory-design.md`, §9, are current. Nothing bounds the build before
   the factory first serves a repo, which is where §14.2 expects the migration to starve.
 - No intent is cut over until its disagreement list is within a bound declared beforehand and an
-  eval set exists for it.
+  eval set exists for it. **Replaced on 2026-10-10:** the comparison is a measure and not a gate.
+  An eval set is still required.
 - This repo is not renamed while anything references it.
 
 ADR-0013 carries these as decisions 1 and 10. The new repo is `petry-projects/software-factory`.

@@ -175,13 +175,13 @@ Controller once per event; the maintainer replaced that on 2026-10-10 (decision 
   outside the factory, and it takes no inputs, so a credential that can start workflows cannot
   direct a Run.
 - **A fault in the environment is not an attempt.** A failed Run is classed as a fault of the item,
-  of capacity or of the environment. Only the first counts against the item. Several environment
+  of capacity or of the environment, or as superseded. Only the first counts against the item. Several environment
   faults in a row pause Admission, raise one alert, and clear when a probe Run succeeds.
 - **An external timer may also start a pass.** It holds one credential that can start the poller,
   keeps no state and decides nothing. Correctness never depends on it. It is optional, and it is
   the one permitted exception to "no always-on component".
-- **`factory-controller.yml` is the only workflow that invokes an Engine or references an LLM
-  credential.**
+- **One workflow, the one that carries a Run, is the only one that invokes an Engine or references
+  an LLM credential.** The poller invokes none.
 - **At most one Run that can produce Effects is active per work item,** by the lane. Org-wide
   limits are decided inside the one pass, which is the only decider, so there is no race to lose.
 - **Passes do not overlap, and at most one waits.** A pass starts its successor when something is
@@ -191,7 +191,7 @@ Controller once per event; the maintainer replaced that on 2026-10-10 (decision 
   faults, so automation cannot clear the human one.
 - **A missing or failed capacity reading admits nothing.** It yields a deferral with a reason.
 
-Three brakes sit outside the Kernel, so that a defect in the Kernel cannot disable them:
+These brakes sit outside the Kernel, so that a defect in the Kernel cannot disable them:
 
 - **A human Pause holds when factory code is broken.** The entry shim's caller jobs are conditioned
   on a pause variable that the platform evaluates before any factory code runs.
@@ -199,6 +199,9 @@ Three brakes sit outside the Kernel, so that a defect in the Kernel cannot disab
   `kernel/`,** from a count the Kernel does not write, with its own tests.
 - **The count of automated actions since the last human decision is computed from GitHub's record
   of actors,** not from the Ledger.
+- **On a metered credential, a monthly cap in currency stops Admission.** It is read from the
+  provider's own usage figure. On the subscription there is no currency cap, and the Run ceiling
+  is the brake.
 
 And a nudge is bounded in what it can cost:
 
@@ -231,8 +234,8 @@ with every side effect expressed as a requested Effect. Three jobs carry it: `ru
 - **Every Effect type declares a recovery key that is not text in a body.** For an Effect with no
   natural idempotency key, the Result artifact is the intent record: it exists before `apply`
   starts. If it is missing or its digest does not match, nothing is applied.
-- **A Run that ends with no Result is still a run record.** It counts as an attempt, and the
-  Lifecycle declares what follows it.
+- **A Run that ends with no Result is still a run record.** It counts as an attempt unless its fault is classed
+  as capacity or environment, and the Lifecycle declares what follows it.
 - **`apply` re-reads the work item before any Effect,** and writes nothing if the item is held,
   paused, closed or no longer the content the Run was admitted for.
 - **`verify` never replaces the consumer's own required checks.** Its result counts in place of the
@@ -276,12 +279,12 @@ account, as a person. "The App" in the boundaries below means the App of the Rol
 We will release the factory as one line: immutable `factory/vX.Y.Z` tags and moving
 `factory/v<MAJOR>-next` and `factory/v<MAJOR>-stable` channels, on ADR-0002's mechanism. Workflows,
 Kernel, Harness, prompts, manifests, Lifecycle and configuration all ride it. Ring membership is one
-file in the Release. The factory repo is always served by `stable`.
+file in the Release. The factory repo is served by `next`, and `stable` serves consumers.
 
 - **Every Run records the Release it ran.**
 - **Inside a Release, factory files are read at `github.job_workflow_sha`,** never at a branch.
 - **The only factory files that run from the default branch are the entry shim in the factory repo
-  and the one ingress file in each consumer.** Both are byte-frozen thin callers under ADR-0001:
+  and the nudge file in a consumer that carries one.** Both are byte-frozen thin callers under ADR-0001:
   every job `uses:` a pinned factory reusable and declares no `steps:` or `run:`. The shim has one
   static caller job per channel and selects between them with a job-level `if:` on the output of a
   pinned ring-resolution job and on the pause variable. Those two non-event predicates are the only
@@ -329,8 +332,8 @@ We will make the factory's own verification a required check from the first comm
 - **A required check is hermetic:** it reads nothing outside the merge commit.
 - **A required check is deterministic.** Randomised exploration runs on a schedule and blocks
   nothing.
-- **The maintainer's own approval never depends on the factory running.** It is the way out when a
-  `stable` Release is broken.
+- **The maintainer's own approval never depends on the factory running.** It is the way out when the
+  Release that serves the factory is broken.
 - **The declared Lifecycle is checked mechanically** for termination, undeclared cycles, and Hold
   and Pause semantics.
 
@@ -343,11 +346,13 @@ We will make the factory's own verification a required check from the first comm
 ### 10. Migration: built greenfield, cut over as a strangler
 
 - **Factory code is written in the factory repo.** This repo receives defect fixes, configuration
-  fixes and forwarders, and nothing else.
-- **Cutover happens at this repo's channel tags.** A reusable workflow here is replaced by a
-  forwarder: a thin caller under ADR-0001 whose only job calls the factory's pinned wake reusable.
-  Moving one of this repo's channel tags onto that commit switches one intent family for one ring.
-  Moving the tag back is the rollback. No consumer file changes during cutover.
+  fixes and the do-nothing commits that cutover needs, and nothing else.
+- **Cutover is pause, then repoint.** With a poller there is nothing in the factory for a consumer's
+  workflow to call. First, this repo's channel tag for an intent family moves onto a commit where
+  that family does nothing. Then the factory's ring file lists the repo for that family, and takes
+  effect at the factory's next Release. Between the two, nobody serves that family on that repo;
+  both serving it is what never happens. The maintainer accepted the gap on 2026-10-10. Reversing
+  the two switches is the rollback. No consumer file changes during cutover.
 - **This repo is not renamed, and its name is not reused, while any caller references it.** GitHub
   Actions does not redirect reusable-workflow references.
 - **Consumers are re-pinned to the factory repo last,** through the standards sweep, after every
@@ -356,11 +361,11 @@ We will make the factory's own verification a required check from the first comm
 - **For any repo and intent family, exactly one line serves it,** the POC or the factory, as
   recorded in the ring file. A check derives this and fails on dual serving.
 - **The first factory component is the review intent, running end to end on the factory repo
-  itself,** so that the factory reviews everything built after it. Until the first `stable` Release
-  exists, the Maintainer approves factory changes. This replaces the first draft's read-only
+  itself,** so that the factory reviews everything built after it. Until the first Release on `next`
+  serves the factory repo, the Maintainer approves factory changes. This replaces the first draft's read-only
   observer as the first component (maintainer, 2026-10-10).
-- **An intent family is cut over for a consumer only after it has run at `stable` on the factory
-  repo and its eval set exists** (decision 6). The comparison of the factory's decisions with the
+- **An intent family is cut over for a consumer only after it has run at `next` on the factory
+  repo, its Release has been promoted to `stable`, and its eval set exists** (decision 6). The comparison of the factory's decisions with the
   POC's on live traffic is still made and reported. It is a measure, not a gate.
 - **From that point the POC takes defect fixes only.**
 - **A compensating workflow is retired in the change that makes it unnecessary, or keeps a recorded
@@ -374,14 +379,14 @@ We will make the factory's own verification a required check from the first comm
     measure stops it automatically. The control room shows adoption, use and the factory's results
     against the POC's baseline so that the decision is informed. If the migration stops, the
     identity change and the configuration fixes are kept and unused factory code is deleted.
-  - **Decision points.** At the first `stable` Release and at the first consumer repo served, the
-    maintainer records continue or stop. Before the first, the control room shows how many factory
+  - **Decision points.** At the first Release on `next` that serves the factory repo, and at the
+    first consumer repo served, the maintainer records continue or stop. Before the first, the control room shows how many factory
     pull requests the maintainer has approved, against a starting figure of 40.
 - **Escaped defects (PRD SM-C1) are baselined before any step that raises the autonomy rate.**
 - **Three assumptions are settled on a canary repo before any cutover:** that a pull request
   authored by the App needs no extra approval under the live ruleset, which sets
   `require_extra_approval_for_unattributed_changes`; that the App can enable auto-merge and enter
-  the merge queue; and whether sending a wake counts against GitHub's content-creation limit.
+  the merge queue; and whether sending a nudge counts against GitHub's content-creation limit.
 
 ### 11. The poller and the view are measured
 
@@ -411,12 +416,12 @@ tool or a human, as a Lens that reports Findings in one schema, and we will deci
 the Kernel.
 
 - **A Finding is a structured record:** its source, an identity that is not text, a location, a
-  severity, the content version it applies to, and its status.
+  severity and the content version it applies to. Whether it is open is read from its surface.
 - **A third-party reviewer is integrated through a declared contract.** Its entry in the reviewer
   registry names the structured surface its Findings are read from: a check run and its
   annotations, code-scanning alerts, or review threads. A comment body is presentation for people.
   Nothing parses one to decide, waits for one, or is gated by one. A reviewer with no structured
-  surface gates nothing and is not awaited.
+  surface gates nothing.
 - **A third-party Finding whose category and severity are prose is typed by adoption.** The
   in-house reviewer is given it as input and, if it agrees, raises a Finding of its own that
   carries those fields. No code parses the prose, and no separate Role exists to type it.
@@ -443,14 +448,14 @@ Numbers are assigned when each is written. Each lands with the migration step th
 
 | Follow-on | Must decide | Effect on the log |
 |---|---|---|
-| **Agent identity** | Each Role's App and its permissions (the shared name prefix is `combsmith-sf-`); how tokens are narrowed per Role; the dispatch-only credential a consumer uses to send a wake; the reviewer credential's confinement; what interaction model §12.2 says afterwards. | Supersedes ADR-0008. |
+| **Agent identity** | Each Role's App and its permissions (the shared name prefix is `combsmith-sf-`); how tokens are narrowed per Role; the credential that a consumer's nudge file and the external timer use; the reviewer credential's confinement; what interaction model §12.2 says afterwards. | Supersedes ADR-0008. |
 | **Records and the control room** | Run naming; the artifact and view schemas; where held-out eval sets live; how legacy markers are read during migration. | New. No ADR governs this today. |
-| **Admission** | The wake schema; the one-job ingress; the sweep; Pause and Hold stores; the LLM capacity signal and its credential (PRD OQ-3); priority order. | Extends ADR-0007, including a `pull_request_target` subscription that ADR-0007 excludes and that is safe only because the ingress checks out nothing and forwards a wake that carries identifiers only. Admission treats the wake as untrusted: an Outside contributor's pull request produces no Run that holds secrets or writes without a Maintainer decision (PRD FR-63). ADR-0010's job-level concurrency key stays in use for the per-item group. Supersedes ADR-0009 when the router it names is retired. |
+| **Admission** | The poller and its schedule; the nudge file; the external timer; the pass record; how a human Pause and a Hold are read; the LLM capacity signal and its credential (PRD OQ-3); priority order. | Extends ADR-0007, including a `pull_request_target` subscription that ADR-0007 excludes and that is safe only because the nudge file checks out nothing and sends a nudge that carries nothing. Admission trusts no event: an Outside contributor's pull request produces no Run that holds secrets or writes without a Maintainer decision (PRD FR-63). ADR-0010's job-level concurrency key stays in use for the per-item group. Supersedes ADR-0009 when the router it names is retired. |
 | **Run contract** | Task, Result and Effect schemas; the sandbox; resume; whether an adopted runtime fills the inner half. | Extends ADR-0005. Supersedes ADR-0011, which should be accepted now as the interim rule. |
 | **Release unit and promotion** | The eval gate and its cost budget; ring membership; rollback; retirement of per-agent names. | Supersedes ADR-0002 and ADR-0006, restating what survives of each. |
 | **Kernel language and verification** | Type checking; size and complexity budgets; recorded-interface tests; when the legacy suite becomes required. | Supersedes ADR-0004, restating its principle. |
-| **Merge integrity** | The content identity; the gate function's inputs; advisory-reviewer deadlines; the Override record; merge-queue settings. | New. No ADR governs this today. |
-| **Factory repository** | The ruleset of `petry-projects/software-factory`; how the forwarders in this repo are tested and frozen; the final re-pin of consumers; what this repo keeps afterwards; where these three documents and the ADR log live once the factory repo exists. | New. Decision 1 fixes that there is one. |
+| **Merge integrity** | The content identity; the gate function's inputs; which Lenses are required; the Override record; merge-queue settings. | New. No ADR governs this today. |
+| **Factory repository** | The ruleset of `petry-projects/software-factory`; how the do-nothing commits in this repo are tested; the final re-pin of consumers; what this repo keeps afterwards; where these three documents and the ADR log live once the factory repo exists. | New. Decision 1 fixes that there is one. |
 | **Council composition** | Which Lenses are required for each class of work item and stage (PRD OQ-12); how their Findings are aggregated; what counts as independent; the cost each stage may spend on its council. Decided from the Ledger's measure of each Lens, not in advance; review §16.6 proposes the set to start measuring from. | New. Extends ADR-0003, whose registry binds a review target to a rubric and is the nearest existing form of a Lens declaration. |
 
 ADR-0001 and ADR-0003 are kept without change. ADR-0012 governs the POC's comment gate until the
@@ -469,12 +474,12 @@ extension remains a separate decision.
   the maintainer's load rises before it falls. The builders are largely the agents being replaced.
 
 - **Incident knowledge will be lost in translation.** The bats suite encodes years of specific
-  failures; one script cites 48 issues. Recorded-fixture replay recovers some of it. The read-only
-  comparison in §10 is the only measure of how much.
+  failures; one script cites 48 issues. Recorded-fixture replay recovers some of it. The comparison with
+  the POC's decisions in decision 10 is the only measure of how much.
 
 - **GitHub Actions stays the queue and the timer.** This decision bets that reconciling from
   recorded state makes dropped ticks and evicted runs harmless. It does not make them rare. Every
-  wake costs a runner start, and a lost wake waits for the next event or sweep. If the bet fails,
+  pass costs a runner start, and a change with no nudge waits for the next pass. If the bet fails,
   the off-Actions control plane ADR-0007 rejected is still to be built. The Kernel's lack of I/O is
   what keeps that move cheap.
 
@@ -482,11 +487,11 @@ extension remains a separate decision.
   stops every repo at once. ADR-0007 accepted that per repo; this accepts it per org. The shim's
   byte freeze and the promotion gate are correspondingly load-bearing.
 
-- **Three repos for a while.** The standards repo, this repo and the factory repo coexist until the
+- **Four repos for a while.** The standards repo, this repo, the factory repo and the control room coexist until the
   last consumer is re-pinned. The split this review criticised gets wider before it gets narrower.
 
 - **Nothing limits the build, or the period in which two systems run.** Stopping is a judgement
-  the maintainer makes, the POC has no cap on fixes, and until the first `stable` Release
+  the maintainer makes, the POC has no cap on fixes, and until a Release on `next` serves the factory repo
   every factory change needs the Maintainer's approval. The review ranks a starved migration as the
   likeliest failure (§14.2), and the period in which that would happen is the one these leave open.
   The signal to watch is the weekly share of merged pull requests that land in the factory repo.
@@ -500,14 +505,19 @@ extension remains a separate decision.
   and a manual registration when a Role first writes.
 
 - **A greenfield build can fail to reach parity.** The POC's tests encode incident history that a
-  new codebase does not have. The read-only comparison in decision 10 is the only measure of how
+  new codebase does not have. The comparison in decision 10 is the only measure of how
   much was lost, and it measures decisions, not every effect.
 
-- **The forwarder adds a hop.** A consumer's call passes through this repo to the factory repo, one
-  more nested workflow and one more thing that can break, for as long as the migration lasts.
+- **Cutover leaves a gap.** An intent family is unserved on a repo from the moment the POC stops
+  serving it until the factory's next Release, which the PRD bounds at 48 hours.
+
+- **The factory's own changes are gated by a Release that has not been promoted.** The factory repo
+  is served by `next`, because its own pull requests are the best evidence a Release can have. A
+  bad Release reaches the factory repo at once, and only that repo. The deterministic required
+  check, the brakes and the Maintainer's ability to block are what stand behind it.
 
 - **A consumer's work runs in the hub.** Runs for a consumer's work items execute and log in the
-  factory repo; the consumer's own Actions tab shows only the wake. `verify` runs the consumer's
+  factory repo; the consumer's own Actions tab shows nothing of them, or only a nudge. `verify` runs the consumer's
   tests on a hub runner, so each consumer must declare its setup and test commands, which the POC
   infers.
 
@@ -520,9 +530,9 @@ extension remains a separate decision.
   the subscription window. Candidates must be batched and results cached, so "merged" and "live"
   stay hours apart by design.
 
-- **The factory can wake itself.** Events authored by an App start workflows; events authored by
+- **The factory can trigger itself.** Events authored by an App start workflows; events authored by
   the default workflow token mostly do not, which ADR-0007 called a free brake. The POC's main
-  writer never had that brake, and after this decision nothing does. The three brakes outside the
+  writer never had that brake, and after this decision nothing does. The brakes outside the
   Kernel (decision 3) replace it. They are small, and they are all that stands between a Kernel
   defect and an org-wide loop that could spend a week's model budget in hours.
 
@@ -549,7 +559,7 @@ extension remains a separate decision.
   events costs at most back-to-back passes, one runner slot of twenty. Decision 11 measures the
   delay.
 
-- **The App's private key is a high-value secret,** and the reviewer remains a user account with a
+- **Each App's private key is a high-value secret,** and the reviewer remains a user account with a
   long-lived token. The second is a standing exception to least privilege, confined to one job.
 
 - **Re-issuing an approval for unchanged content approves a commit no reviewer read.** A defect in
@@ -560,7 +570,7 @@ extension remains a separate decision.
 
 - **Money does not gate.** No decision reads the control room, and what a Run cost is known only
   there. The ceiling that places a Hold is a number of Runs per work item; the Hold states the
-  amount spent.
+  amount spent. On a metered credential the monthly cap of decision 3 is read from the provider.
 
 - **A killed Run's cost is not known exactly.** The model CLI reports usage when an invocation
   ends, so a Run that dies mid-turn has only its duration.
@@ -591,7 +601,7 @@ extension remains a separate decision.
 - **Reopen an off-Actions control plane** when a threshold in decision 11 fails; or, later, when
   more than 5% of admitted Runs are lost or start later than the liveness limit for four weeks; or
   the hub's run queue is the measured bottleneck on lead time; or API quota cannot be held under
-  the PRD's headroom target; or a timer finer than the sweep is required.
+  the PRD's headroom target; or a timer finer than a pass is required.
 - **Reopen the worker runtime, the capacity model and eval-gated promotion** when the model CLI's
   headless default stops reading subscription credentials, which its documentation says will
   happen.
@@ -613,7 +623,7 @@ extension remains a separate decision.
   evidence on councils and convergence (§15), reviewer surfaces and a starting council (§16), where
   a Lens runs (§17), building in place against building greenfield (§18).
 - ADR-0000 (process) — immutability and supersede-not-edit, which the precedence rule above follows.
-- ADR-0001 (thin caller / reusable) — the boundary the entry shim and the ingress file keep.
+- ADR-0001 (thin caller / reusable) — the boundary the entry shim and the nudge file keep.
 - ADR-0003 (review artifact contract and rubric registry) — the existing data contract that
   decision 12 generalizes from review targets to Lenses.
 - ADR-0002 (channel tags and rings) — the mechanism decision 6 reuses with one name.

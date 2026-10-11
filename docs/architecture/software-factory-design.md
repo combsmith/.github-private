@@ -32,7 +32,7 @@ Made by the Maintainer on 2026-10-10, in addition to ADR-0013's twelve decisions
 | The repo is `petry-projects/software-factory` | Named throughout |
 | A Finding is decided by the Role that owns its domain | The authority table (§5.2) and the Finding lifecycle (§4.3) |
 | One GitHub App per Role | Each Role's permissions are a ceiling GitHub enforces (§5.1) |
-| The LLM credential is the existing subscription, stored as an environment secret in the Factory repo | The engine port (§2.2); no new capacity signal |
+| The LLM credential is the existing subscription, stored as an environment secret in the Factory repo | The engine port (§2.2); the capacity signal is observed, not read (§3.10) |
 | The review Intent is built first and reviews everything after it | The build order (§9) |
 | The comparison with the POC is a measure, not a gate | The comparator is a later, non-gating component |
 | Stopping is the Maintainer's decision, on adoption and use | §9.2 |
@@ -147,7 +147,7 @@ flowchart TB
 | Component | Responsibility | May not |
 |---|---|---|
 | Entry shim | Run from the default branch and call the pinned Release | Contain a step or a `run:` block |
-| Brakes | Human Pause, Run ceiling, loop count, monthly spend cap | Import from `kernel/` or read the control room for the loop count |
+| Brakes | Human Pause, Run ceiling, loop count, and on a metered credential a monthly cap read from the provider | Import from `kernel/` or read the control room |
 | Controller | One pass: read facts and run records; call the Kernel; start Runs; write the view | Decide anything itself, or read the view |
 | Kernel | Every decision: Lifecycle, Admission, Convergence, the gate, content identity, what the item shows and how urgently it needs a person | Open a file, a socket, a process or the environment; read the clock except as an argument; take a comment body |
 | Facts port | One snapshot of a Work item from GitHub | Return text to the Kernel |
@@ -222,7 +222,8 @@ on that log surviving.
 
 ### 3.1 The catalogue
 
-Every message carries `schema` (name and major version), `id`, and the `release` that produced it.
+Every message carries `schema` (name and major version), an identifier, and the `release` that
+produced it.
 A reader rejects a major version it does not know. Messages are JSON. Files a person edits are YAML.
 
 | Contract | From | To | Carries |
@@ -282,6 +283,8 @@ receives them.
 ```json
 {
   "schema": "decision/1",
+  "id": "d_01JA7P",
+  "release": "factory/v0.3.1",
   "item": { "repo": "petry-projects/software-factory", "type": "pull_request", "number": 42 },
   "outcome": "admit",
   "reason": "blocking_findings_proposed",
@@ -304,7 +307,8 @@ started from a Decision in it, and from nothing else (§3.5). And the control ro
 {
   "schema": "task/1",
   "run": "r_01JA7Q",
-  "role": "qa-lead",
+  "release": "factory/v0.3.1",
+  "role": "pr-review",
   "intent": "adjudicate-findings",
   "item": { "repo": "petry-projects/software-factory", "type": "pull_request", "number": 42 },
   "content_id": "sha256:5d0c",
@@ -327,14 +331,18 @@ nothing, so nothing that can merely start a workflow can choose what a Run does.
 Trust classes are `maintainer`, `role`, `advisory` and `outside`. Text of any class is data: it
 cannot change the Task's permissions, limits or result schema.
 
+`cost_ceiling_usd` limits this one Run. The Harness enforces it, because it knows what its own Run
+has spent. It is not an input to Admission.
+
 ```json
 {
   "schema": "result/1",
   "run": "r_01JA7Q",
+  "release": "factory/v0.3.1",
   "status": "completed",
   "dispositions": [
-    { "finding": "f_9c1e", "decision": "accepted" },
-    { "finding": "f_22ab", "decision": "rejected", "reason": "fix_incomplete" }
+    { "finding": "f_9c1e", "decision": { "result": "accepted" } },
+    { "finding": "f_22ab", "decision": { "result": "rejected", "reason": "fix_incomplete" } }
   ],
   "findings": [],
   "effects": [ { "type": "resolve_thread", "thread": "PRRT_kw1" } ],
@@ -383,6 +391,7 @@ There is no Effect that starts a Run. Only Admission does that.
 {
   "schema": "finding/1",
   "id": "f_9c1e",
+  "release": "factory/v0.3.1",
   "source": { "lens": "pr-review", "kind": "role", "actor": "combsmith-sf-pr-review[bot]" },
   "surface": { "type": "thread", "key": "PRRT_kw7" },
   "location": { "path": "kernel/admission.py", "start_line": 88, "end_line": 94 },
@@ -476,7 +485,8 @@ what was read back. `outcome.json` is a few bytes written by a final step: how t
 whose fault it was. Nothing is handed from job to job through the log: the log is shared with
 whatever the model prints, and Actions rewrites it when it masks secrets.
 
-A Run that dies before it uploads anything still has a run record, and counts as an attempt. Its
+A Run that dies before it uploads anything still has a run record, and counts as an attempt
+subject to the fault classes below. Its
 cost is not known exactly; its duration is the estimate.
 
 **Whose fault a failure was.** A failed Run is one of four kinds, and only the first is an attempt.
@@ -497,30 +507,30 @@ Run records and artifacts are kept for 90 days, which is the Factory's history (
 
 ### 3.11 Role manifest
 
+A domain Role as it starts, in shadow:
+
 ```yaml
 schema: role/1
 name: devops-lead
-app: combsmith-sf-devops-lead
-kind: owner                      # author | reviewer | owner | advisor
+kind: shadow                     # author | reviewer | owner | shadow | advisor
+shadows: [delivery]              # becomes `owns` at promotion
 lens:
   scope:
     paths: [".github/**", "**/*.tf", "**/*.bicep", "**/Dockerfile*", "infra/**", "scripts/ci/**"]
     exclude: ["docs/**"]
     always: false
   raises: [delivery]
-owns: [delivery]
 intents:
-  - name: review-change
-    tier: standard
-    permitted_effects: [comment]
-    budget_class: advisory
-    evals: evals/review-change
   - name: adjudicate-findings
     tier: deep
-    permitted_effects: [resolve_thread, comment]
-    budget_class: gate
+    permitted_effects: []        # a shadow Role writes nothing
+    budget_class: shadow
     evals: evals/adjudicate-findings
 ```
+
+Promotion changes three lines in one pull request: `kind: owner`, `owns: [delivery]`, and an `app:`
+entry naming the Role's own App, with `resolve_thread` and `comment` added to its permitted Effects
+and its budget class set to `gate`.
 
 ### 3.12 Authority table and Consumer entry
 
@@ -602,7 +612,8 @@ stateDiagram-v2
 | `held` | A Hold is in place, human or automatic | As the Hold states | 24 h, or the Hold's own time |
 | `merged`, `closed` | Terminal | None | None |
 
-Any state may move to `closed` when a person closes the pull request, and to `held` on a Hold. A
+Any state may move to `closed` when a person closes the pull request, and to `held` on a Hold;
+those arrows are not all drawn. A
 Pause is not a state: it stops Admission for a scope and leaves each item where it is.
 
 Human transitions are declared like any other: marking ready, converting to draft, adding or
@@ -620,6 +631,9 @@ Convergence is one Kernel function of facts and run records:
    on the current `content_id`;
 2. no Finding of severity `blocking` or `major` raised by a required Lens is open or proposed;
 3. no `human` Finding is open.
+
+A *blocking Finding*, here and in the diagram above, is one that gates: severity `blocking` or
+`major`, from a required Lens or a human.
 
 Which Lenses are required is data. The starting set is the deterministic checks, `pr-review` and
 humans. A Lens joins it only with a measured contribution (ADR-0013, decision 12).
@@ -676,8 +690,8 @@ These are the properties the simulator asserts. Each is a sentence a test can fa
 |---|---|---|
 | I-1 | Every open item is evaluated on every pass, and within its state's limit once faults stop; a pass that has not run is itself reported | FR-3, FR-5, FR-43 |
 | I-2 | At most one Run that can produce Effects is active per item | FR-16 |
-| I-3 | Active Runs never exceed the org limit, and spend never exceeds the cap | FR-35, FR-73 |
-| I-4 | No Effect is applied twice | ADR-0013 §4 |
+| I-3 | Active Runs never exceed the org limit, and Runs admitted in a window never exceed the Run ceiling | FR-35 |
+| I-4 | No Effect is applied twice | ADR-0013, decision 4 |
 | I-5 | No Effect is applied from a Result that failed validation, or outside the Role's permitted Effects | FR-9, FR-10 |
 | I-6 | No Run is admitted on a held item, and removing the Hold resumes work with no other event | FR-23 |
 | I-7 | No Run is admitted under a human Pause, and automation never clears one | FR-24 |
@@ -690,8 +704,8 @@ These are the properties the simulator asserts. Each is a sentence a test can fa
 | I-14 | Every cycle in the Lifecycle passes through a bounded counter or a human transition | FR-18, FR-57 |
 | I-15 | Each Finding has exactly one owner and one Disposition per content version | FR-33 |
 | I-16 | A `security` Finding is never closed as declined without an Override record | Maintainer, 2026-10-10 |
-| I-17 | The status on an item changes only when the decision changes | ADR-0013 §2 |
-| I-18 | A Run that ends with no Result counts as an attempt, and its item is re-evaluated | ADR-0013 §4 |
+| I-17 | The status on an item changes only when the decision changes | ADR-0013, decision 2 |
+| I-18 | A Run that ends with no Result counts as an attempt unless its fault is classed as capacity or environment, and its item is re-evaluated | ADR-0013, decision 4 |
 | I-19 | No decision reads the control room: the same facts and run records give the same Decision whatever the view holds | §3.9 |
 | I-20 | Incomplete facts never converge and never admit | §3.3 |
 | I-21 | No Effect is applied to an item that is held, paused, closed or changed at the moment of applying | §3.6 |
@@ -746,18 +760,22 @@ fault there that it cannot pin down.
 Each Role acts through its own GitHub App, so its permissions are a ceiling the platform enforces.
 A token is still narrowed at mint time to the Effects one Result requests.
 
-| Role | Kind | Raises | Owns | App may |
+| Role | At the start | Owns at the start | Owns once promoted | Writes as |
 |---|---|---|---|---|
-| `dev-lead` | Author | None | None | Push to work-item branches, open pull requests, comment |
-| `pr-review` | Reviewer | `requirements` | `requirements`, `uncategorised` | Comment, open and resolve threads. Its approval is submitted by the machine user |
-| `qa-lead` | Owner | `functional` | `functional` | Comment, open and resolve threads |
-| `security-lead` | Owner | `security` | `security` | Comment, open and resolve threads |
-| `solution-architect` | Owner | `architecture` | `architecture` | Comment, open and resolve threads |
-| `devops-lead` | Owner | `delivery` | `delivery`, Consumer entries | Comment, open and resolve threads |
-| `sre-lead` | Owner | `reliability` | `reliability` | Comment, open and resolve threads |
-| `business-analyst` | Advisor | `requirements`, on issues | None | Comment |
-| `scrum-master` | Advisor | None on code | None | Comment |
-| Controller | Not a Role | None | None | Write the control room, the status on the item, labels and the queue |
+| `pr-review` | Reviewer, and owner of every model-judged category | `functional`, `security`, `architecture`, `delivery`, `reliability`, `requirements`, `uncategorised` | `requirements`, `uncategorised` | Its own App: comment, open and resolve threads. Its approval is submitted by the machine user |
+| `dev-lead` | Author, from the fix Intents onward | None | None | Its own App: push to work-item branches, open pull requests, comment |
+| `qa-lead` | Shadow | None | `functional` | Nothing until promoted; then its own App |
+| `security-lead` | Shadow | None | `security` | Nothing until promoted; then its own App |
+| `solution-architect` | Shadow | None | `architecture` | Nothing until promoted; then its own App |
+| `devops-lead` | Shadow | None | `delivery`, and Consumer entries | Nothing until promoted; then its own App |
+| `sre-lead` | Shadow | None | `reliability` | Nothing until promoted; then its own App |
+| `business-analyst` | Advisor on issues | None | None | Its own App when it first comments |
+| `scrum-master` | Advisor on planning | None | None | Its own App when it first comments |
+| Controller | Not a Role | None | None | Its own App: the control room, the status on the item, labels and the queue |
+| Reader | Not a Role | None | None | Nothing. Every `run` job reads through it |
+
+This table is generated from the manifests and the authority table, so it always shows the present
+state. The fourth column is the plan.
 
 - **Reading is shared; writing is not.** Every `run` job reads GitHub through one App,
   `combsmith-sf-reader`, which can write nothing. A Role is given an App of its own when it first
@@ -811,7 +829,7 @@ Four rules keep a scope from becoming a blind spot.
 2. A Lens whose scope does not match is **not required** for Convergence on that content. It is
    never "awaited".
 3. A scope narrows what a Role *raises*. It does not narrow what it *owns*: a `delivery` Finding
-   raised by another Lens on any path still goes to `devops-lead`.
+   raised by another Lens on any path still goes to whoever owns `delivery`.
 4. A scope is measured. A Finding of a Role's category raised by another Lens on a path outside
    that Role's scope is counted as a scope miss.
 
@@ -855,7 +873,7 @@ it observed as a recorded fixture, which is what the simulator's fake GitHub is 
 | P-12 | Does a check run's `external_id` round-trip, so it can serve as a recovery key? | Yes |
 | P-13 | Does the vendor CLI return validated structured output and usage in headless mode on the subscription credential, at a pinned version? | Yes |
 | P-14 | Can a job with no permissions and no cache action write the default-branch cache scope? | Cannot |
-| P-15 | Do the retained Advisory reviewers review a pull request authored by an App? | Each one does, or is dropped from the awaited set |
+| P-15 | Do the retained Advisory reviewers review a pull request authored by an App? | Each one does, or is not counted as a Lens on such pull requests |
 | P-16 | How long are run records, logs and artifacts kept in a public repo? | 90 days |
 | P-17 | Is a run's name set when the run is created, and visible for a run whose job never started? Can recent runs of one workflow be listed and matched by name within the request budget? | Yes to both |
 | P-18 | Does a final step still run, and upload partial usage, when a job times out or is cancelled? | Yes, or duration is the only estimate |
@@ -902,12 +920,14 @@ What this costs:
 
 - **A killed Run's cost is unknown.** The vendor CLI reports usage when an invocation ends.
   Duration is the estimate, and a final step uploads whatever partial usage exists.
-- **History is 90 days.** The Maintainer accepted this in place of the PRD's 180.
+- **History is 90 days.** The Maintainer accepted this in place of the 180 the PRD first asked for.
 - **Deleted run records undercount attempts.** A Run that wrote nothing leaves no other trace.
   Deleting them needs write access to the Factory repo, and the count of automated actions on the
   item catches every case where a Run did write. This is accepted and not designed for.
 - **Money does not gate.** No decision reads the control room, and cost is known only there. The
   ceiling that places a Hold is a number of Runs per Work item; the Hold states the amount spent.
+  A Run still stops itself at its own cost limit. On a metered credential a monthly cap is a brake
+  read from the provider's own usage figure, which is exact and outside the Factory (FR-73).
 - **An issue with no pull request has no Run on it yet,** so there is nothing to record until the
   first Run, which is then a run record like any other.
 
@@ -920,9 +940,9 @@ late or not at all.
 | # | Noticing must | From |
 |---|---|---|
 | W-1 | Be correct whichever single event or tick is lost | FR-5, FR-19 |
-| W-2 | Reach a decision within 15 minutes at the 95th percentile after a change that produces no event | ADR-0013 §11 |
-| W-3 | Use at most 10% of the org's job-minutes, from a pool of 20 slots shared with all CI | NFR-1, C-9 |
-| W-4 | Stay under 3,000 GraphQL points an hour at peak | ADR-0013 §11, NFR-14 |
+| W-2 | Reach a decision within 15 minutes at the 95th percentile after a change that produces no event | ADR-0013, decision 11 |
+| W-3 | Use at most 10% of the org's job-minutes, from a pool of 20 slots shared with all CI | PRD §7, C-9 |
+| W-4 | Stay under 3,000 GraphQL points an hour at peak | ADR-0013, decision 11, NFR-14 |
 | W-5 | Keep one writer per item and coalesce requests that arrive during a Run | FR-16 |
 | W-6 | Put at most one unchanging file, and no write credential, in a Consumer repo | FR-51 |
 | W-7 | Be unable to feed itself without bound | FR-18 |
@@ -1098,7 +1118,7 @@ board private. They are reconciled as follows.
 
 Decided on 2026-10-10: every panel is public, the budget gauge included.
 
-## 9. Build order and the stopping rule
+## 9. Build order and stopping
 
 ### 9.1 Order
 
@@ -1109,22 +1129,24 @@ Anything not needed for that event is in a later slice.
 | Slice | Delivers | Who approves Factory changes |
 |---|---|---|
 | 0. Foundations | The repo, its ruleset and `factory / verify`. The schemas the first slice uses, with golden examples. The pull-request Lifecycle. The simulator with a skeleton Kernel. Three Apps: the Controller's, the reviewer's and the shared reader. The trials of §6 that the first slice rests on, each leaving a fixture | The Maintainer |
-| 1. First approval | The facts and records ports. The Kernel's Lifecycle, Convergence and gate. The poller and the nudge file on the Factory's own repo. `run` and `apply` for the review Intent. Deterministic checks read as Findings. The status on the item. A feed of two files, `meta` and `items` | The Maintainer, until the first `stable` Release; then the Factory's reviewer, with the Maintainer able to block |
+| 1. First approval | The facts and records ports. The Kernel's Lifecycle, Convergence and gate. The poller and the nudge file on the Factory's own repo. `run` and `apply` for the review Intent. Deterministic checks read as Findings. The status on the item. A feed of two files, `meta` and `items` | The Maintainer, until the first Release on `next` serves the Factory's repo; then the Factory's reviewer, with the Maintainer able to block |
 | 2. Control room and measurement | The rest of the feed and the dashboard page. Adoption counted per Advisory reviewer, so that each one's contribution is measured. Runs per merge on every item | The Factory |
-| 3. Domain Roles in shadow | The adjudicating Intents of `qa-lead`, `security-lead`, `solution-architect` and `devops-lead`, each with its eval set, running on the reader App, deciding on a sample and binding nothing. Promotion follows, one Role at a time, and brings that Role its own App | The Factory |
+| 3. Domain Roles in shadow | The adjudicating Intents of `qa-lead`, `security-lead`, `solution-architect`, `devops-lead` and `sre-lead`, each with its eval set, running on the reader App, deciding on a sample and binding nothing. Promotion follows, one Role at a time, and brings that Role its own App | The Factory |
 | 4. Fix Intents | Fix CI and fix review findings under the run contract, with `verify` | The Factory |
-| 5. A Consumer repo | One low-risk Consumer on the `next` ring | The Factory |
+| 5. A Consumer repo | The first `stable` Release, promoted on evidence from `next`. One low-risk Consumer, cut over by pause and repoint (§9.6) | The Factory |
 | 6. Onward | Implementation, the initiative driver, the remaining personas, as in the review's migration shape | The Factory |
 
 **Not in slice 1:** adoption measurement, domain Roles, path scopes, the dashboard page, the private
 Artifact board, the comparator against the POC, any App beyond the three named, any Consumer repo.
 
-Until the first `stable` Release the Maintainer's attention is the line's capacity. That is why
-slice 1 is cut this narrowly, and why §9.2 counts the approvals it takes. The self-hosting rule
-holds throughout: a candidate Release never reviews the change that produces it.
+Until the first Release on `next` serves the Factory's repo, the Maintainer's attention is the
+line's capacity. That is why slice 1 is cut this narrowly, and why §9.2 counts the approvals it
+takes. No change reviews itself: the Release that reviews a pull request was cut before that pull
+request existed.
 
 One rule protects recovery. The Maintainer's own approval and the hermetic required check never
-depend on the Factory running. When a `stable` Release is broken, that is the way out.
+depend on the Factory running. When the Release that serves the Factory is broken, that is the way
+out.
 
 Using the POC's reviewer for the bootstrap was considered. Its comment gate can be satisfied only
 by the POC's author Role and has no switch, so it would need a change to the POC first. It remains
@@ -1151,11 +1173,11 @@ With no period set, the decision needs a moment at which it is made. Two events 
 
 | Decision point | The Maintainer records | Shown beforehand |
 |---|---|---|
-| The first `stable` Release | Continue or stop | How many Factory pull requests the Maintainer has approved, against a starting figure of 40 |
+| The first Release on `next` that serves the Factory's repo | Continue or stop | How many Factory pull requests the Maintainer has approved, against a starting figure of 40 |
 | The first Consumer repo served | Continue or stop | The adoption and use measures above |
 
-The record is a file in the Factory repo. Passing 40 approvals before the first `stable` Release
-stops nothing; it is the signal to shrink the slice further or to fall back on the POC's reviewer.
+The record is a file in the Factory repo. Passing 40 approvals before that Release stops
+nothing; it is the signal to shrink the slice further or to fall back on the POC's reviewer.
 
 ### 9.3 What a pre-mortem changed
 
@@ -1186,9 +1208,10 @@ A second pass on 2026-10-10 asked of each part what requirement would fail witho
 | The Wake contract and a next-evaluation time on every Decision | A nudge that carries nothing; a staleness limit per state (§3.2, §4.1) |
 
 Kept after the same question: the three-job split, content identity, the four brakes, the
-simulator, a separate control-room repo, and both channels with their rings. The channels and rings
-stay in place from the first commit and are simply not used until there is a Consumer to put on
-`next`, because the entry shim is frozen and should have its final shape from the start.
+simulator, a separate control-room repo, and both channels with their rings. Both channels and the
+ring file exist from the first commit, because the entry shim is frozen and should have its final
+shape from the start. The Factory's own repo is served by `next` (§9.6); `stable` is unused until
+there is a Consumer.
 
 ### 9.5 What a failure-mode pass added
 
@@ -1211,6 +1234,49 @@ Found sound as designed: a partial `apply` heals at the next pass, because State
 what was actually written; a lost nudge, a dropped tick or a dead timer costs latency only; and a
 wrong control room changes no decision.
 
+### 9.6 Which channel serves the Factory's own repo, and how a Consumer is cut over
+
+A consistency pass found that the first `stable` Release could not be reached. ADR-0013 promoted a
+Release to `stable` only on verified Effects from the `next` ring, the Factory's own repo was
+always served by `stable`, and nothing was on `next`. Two ways out were compared.
+
+| | A canary repo on `next`, the Factory's repo on `stable` | The Factory's repo on `next` |
+|---|---|---|
+| Evidence for promotion | Synthetic work items someone scripted. They test what was thought of, which the simulator already does | Every real pull request to the Factory: varied, numerous, and unscripted |
+| What gates the Factory's own changes | A Release promoted on that thin evidence | A Release that is cut and tagged but not yet promoted |
+| A bad Release | Reaches the Factory's repo only after promotion | Reaches the Factory's repo at once, and only that repo |
+| Recovery | Move `stable` back | Move `next` back; the Maintainer's approval and the required check do not depend on it |
+| Speed of the loop | A fix to the reviewer waits for promotion | A fix serves the Factory at the next cut |
+| Extra parts | A repo and a library of synthetic items to maintain | None |
+
+**Decided: the Factory's repo is served by `next`.** The canary's apparent safety is thin, because
+the Release it would protect the Factory from is promoted on evidence weaker than the Factory's own
+traffic. Serving the Factory from `next` is ordinary practice: the team that builds a thing runs it
+first. What still protects the Factory's own merges is the deterministic required check, the brakes
+outside the Kernel, and the Maintainer's ability to block.
+
+The self-hosting rule is restated to match. No change reviews itself, because a Release is cut from
+what is already merged. A Release reaches `stable`, and so any Consumer, only on evidence from
+`next`.
+
+**Cutover is pause, then repoint.** With a poller there is nothing in the Factory for a Consumer's
+workflow to call, so cutover is two switches in two repos:
+
+1. The POC's channel tag for that Intent family moves to a commit where the family does nothing.
+2. The Factory's ring file lists the repo for that family, and takes effect at its next Release.
+
+They cannot change together. In this order the gap is "nobody serves that family on that repo for a
+while", and never "both do". The Maintainer accepted the gap on 2026-10-10. Rollback is the same
+two switches reversed.
+
+### 9.7 What a consistency pass found
+
+An independent reader compared the five documents on 2026-10-10 after about ten rounds of edits.
+Every cross-reference resolved. Three findings were design holes and are settled above and in
+§7.2: the unreachable first `stable` Release, a spend cap that survived after money stopped gating,
+and a cutover that still called a mechanism the poller had removed. The rest were statements left
+behind by earlier decisions, and were corrected in the same change.
+
 ## 10. What this design changes elsewhere
 
 Recorded in the same change as this document.
@@ -1222,10 +1288,12 @@ Recorded in the same change as this document.
 | ADR-0013, decision 4 | The Result artifact is the intent record. `apply` re-reads the item before any Effect. `verify` is a filter |
 | ADR-0013, decision 5 | One App per Role, registered when the Role first writes; one shared reader App |
 | ADR-0013, decision 7 | An owning Role resolving a thread is a declared Role transition, beside the human one. An owning Role starts in shadow |
-| ADR-0013, decision 10 | The review Intent on the Factory's own repo is the first component. The comparison with the POC is a measure, not a gate. Stopping is the Maintainer's decision, on adoption and use |
+| ADR-0013, decision 6 | The Factory's own repo is served by `next` |
+| ADR-0013, decision 10 | The review Intent on the Factory's own repo is the first component. The comparison with the POC is a measure, not a gate. Stopping is the Maintainer's decision, on adoption and use. Cutover is pause, then repoint |
 | ADR-0013, decision 11 | No longer two provisional mechanisms. The poller's latency and cost are measured against the same thresholds |
 | ADR-0013, decision 12 | The starting required set is named. A third-party Finding gates only when the reviewer adopts it, and adoption is what gives it typed fields |
 | PRD, FR-40 and the glossary | History is 90 days. The State record is computed; the Ledger is the run records and artifacts, indexed in the control room |
 | PRD, OQ-2, OQ-3, OQ-8, OQ-9 | Recorded as decided, with what remains open |
 | PRD, NFR-11 | A new Role is one pull request plus one App registration |
-| PRD, FR-39, C-4 | The ceiling that gates is Runs per Work item, with the amount shown. An optional external timer is permitted |
+| PRD, FR-39, FR-73, C-4 | The ceiling that gates is Runs per Work item, with the amount shown. The monthly cap applies on a metered credential. An optional external timer is permitted |
+| PRD, FR-2, FR-32, FR-33, FR-50, FR-51 and the glossary | Brought into line: no next-evaluation time, required Lenses in place of awaited reviewers, Dispositions read from the surface, the Factory served by `next`, the Consumer file optional |

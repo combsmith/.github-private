@@ -10,7 +10,7 @@ This document states what the `petry-projects` agentic software factory must do 
 production-grade. It is written for the maintainer, who decides scope and targets, and for whoever
 designs and builds against it, human or agent.
 
-It is one of four documents produced by the October 2026 architecture review:
+It is one of five documents produced by the October 2026 architecture review:
 
 - **This PRD** — the requirements. It says *what* and *how well*, not *how*.
 - [`docs/architecture/factory-mvp-architecture-review.md`](../architecture/factory-mvp-architecture-review.md)
@@ -18,6 +18,8 @@ It is one of four documents produced by the October 2026 architecture review:
   requirements.
 - [`docs/architecture/adr/0013-factory-mvp-reference-architecture.md`](../architecture/adr/0013-factory-mvp-reference-architecture.md)
   — the proposed decision.
+- [`docs/architecture/software-factory-design.md`](../architecture/software-factory-design.md)
+  — the interaction and contract design that follows from the decision.
 - [`docs/research/market-agentic-software-factories-research-2026-10-10.md`](../research/market-agentic-software-factories-research-2026-10-10.md)
   — market research: what the market offers, who the customer is, and where this Factory sits.
   This PRD was revised against it; §7 of that document lists what changed.
@@ -166,7 +168,7 @@ ceiling near eight, and the limit they name is their own attention (§3.1 to §3
   the reason, and the choice required.
 - **UJ-2. The Maintainer asks why a pull request has not merged.**
   The Maintainer opens the pull request. One status block states the current state, the gate holding
-  it, the evidence, the next actor and the next evaluation time. Climax: the answer takes under a
+  it, the evidence and the next actor. Climax: the answer takes under a
   minute and requires no script, log or API call.
 - **UJ-3. The Maintainer stops the factory.**
   The Maintainer sets one switch. No new agent run starts anywhere in the org; runs in flight finish
@@ -183,7 +185,7 @@ ceiling near eight, and the limit they name is their own attention (§3.1 to §3
   a regression; promotion stops, the previous release keeps serving, and one action restores it
   everywhere.
 - **UJ-6. A Repo owner adopts the factory.**
-  The Repo owner adds one file and one registry entry. Within an hour every role serves the repo. No
+  The Repo owner adds one registry entry, and one optional file where low latency matters. Within an hour every role serves the repo. No
   later change to the factory requires an edit in that repo.
 - **UJ-7. A Factory developer adds a role or gives a role a new trigger.**
   One pull request in one repo adds a manifest, a prompt and eval cases. It reaches consumers by the
@@ -217,19 +219,22 @@ ceiling near eight, and the limit they name is their own attention (§3.1 to §3
 - **Task** — the typed input a Run receives.
 - **Result** — the typed output a Run returns.
 - **Effect** — a change to the outside world requested by a Result: a pushed commit, a comment, a
-  review, a label, a resolved thread, a dispatched Run.
+  review, a label, a resolved thread. Starting a Run is not an Effect; only Admission does that.
 - **Engine** — an LLM runtime and model that executes a Run.
 - **Harness** — the component that prepares a Task, runs the Engine in a sandbox, validates the
   Result and applies its Effects.
-- **Controller** — the component that decides, for a Work item, which Run to admit next.
-- **Admission** — the Controller's decision to start, defer or refuse a Run.
+- **Controller** — the component that carries out Admission: it reads the facts, asks the Kernel
+  which Run to admit next, and starts it.
+- **Admission** — the decision to start, defer or refuse a Run, made by the Kernel and carried out
+  by the Controller.
 - **Kernel** — the Factory's deterministic decision logic, independent of GitHub and of any Engine.
 - **Gate** — a condition a Work item must satisfy to make a Transition.
 - **Hold** — a human or automatic stop on one Work item.
 - **Pause** — a stop on all Runs in a scope (org, repo or Role).
 - **Override** — a logged human action that bypasses a Gate.
-- **Disposition** — the recorded outcome for one review finding or human comment: fixed, declined,
-  deferred or not applicable, with evidence.
+- **Disposition** — the outcome for one Finding: fixed, declined, deferred or not applicable,
+  proposed by the author and accepted or rejected by the Role that owns the Finding's category. It
+  is read from the Finding's surface and is not kept as a separate record.
 - **Ledger** — the durable, append-only record of Admissions, Runs and Effects: the Factory's run
   records and artifacts in GitHub Actions, indexed in the control room.
 - **Release** — one immutable version of everything that determines Factory behaviour.
@@ -245,7 +250,8 @@ ceiling near eight, and the limit they name is their own attention (§3.1 to §3
 - **Lens** — any source of judgement on a Work item: a Role, an Advisory reviewer, a tool such as a
   static analyser or a test suite, or a human.
 - **Finding** — one structured record of something a Lens observed: its source, a stable identity,
-  a location, a severity, the content version it applies to and its status.
+  a location, a category, a severity and the content version it applies to. Whether it is open is
+  read from its surface.
 - **Council** — the set of Lenses required for a class of Work item at a stage of its Lifecycle.
 - **Convergence** — the condition in which every Lens in the Council has reported on the current
   content version and no blocking Finding is open.
@@ -267,7 +273,7 @@ These are facts of the environment. A design that ignores one is not viable.
 - **C-4. GitHub-native operation.** The June 2026 release initiative fixed "no new repos, no
   external infrastructure". The Maintainer lifted the first half on 2026-10-10: the Factory is
   built in a new repo (§11, OQ-5). `[ASSUMPTION]` The second half, no always-on infrastructure,
-  still holds (OQ-1).
+  still holds (OQ-1), with one exception: an optional external timer that only starts the poller.
 - **C-5. The platform loses events.** Scheduled ticks are dropped about 60% of the time and always
   run the default branch. A concurrency group holds one running Run and, by default, one pending
   Run; a third arrival evicts the pending one. GitHub now documents `concurrency.queue: max`, which
@@ -310,8 +316,8 @@ Realizes UJ-1, UJ-2.
   - The Lifecycle definition is the source for documentation and tests; it is not restated by hand
     elsewhere.
 - **FR-2. One visible State.** Every Work item under Factory control shows, on the item, its current
-  State, the reason, the Gate it is waiting on with evidence, the next actor, and the next
-  evaluation time.
+  State, the reason, the Gate it is waiting on with evidence, and the next actor. Every open Work
+  item is evaluated on every pass, so there is no next evaluation time to show.
   - "Why is this pull request not approved?" is answerable from the item alone.
   - A disagreement between the visible State and the State record is detected and repaired at the
     next evaluation, and counted.
@@ -449,12 +455,14 @@ each withhold or dismiss the single approval the ruleset needs. Realizes UJ-1, U
   and its annotations, code-scanning alerts, or review threads.
   - A comment body is presentation for people. Nothing parses one to make a decision, waits for
     one, or is blocked by one.
-  - An Advisory reviewer with no structured surface gates nothing and is not awaited.
-  - An Advisory reviewer has a deadline. Its absence, a quota notice or a trial expiry never blocks
-    a Work item beyond a declared wait.
-  - The set of Advisory reviewers a repo waits for is derived from those active on that repo.
+  - An Advisory reviewer with no structured surface gates nothing.
+  - Only a Lens in the required Council gates or is waited for. An Advisory reviewer outside it is
+    never waited for: its absence, a quota notice or a trial expiry blocks nothing.
+  - A Finding from an Advisory reviewer outside the required Council gates only when the in-house
+    reviewer adopts it as its own.
 - **FR-33. One Disposition per Finding per content version.** Every Finding from any Lens is
-  dispositioned exactly once for a given content version, as a record the Gates read.
+  dispositioned exactly once for a given content version. The Gates read the outcome from the
+  Finding's surface: a thread, and which App resolved it.
   - A Finding's identity is a structured key from its surface (a thread, an alert, an annotation),
     never text matched in a body. An edited summary comment is therefore not a new Finding.
   - A human comment or review thread is a Finding from a human Lens and always gates.
@@ -470,7 +478,7 @@ allows. Realizes UJ-8, UJ-9.
 
 - **FR-35. Capacity is checked at Admission.** Before starting a Run the Controller checks remaining
   LLM budget, GitHub API quota and concurrency.
-  - A Run that cannot be afforded is deferred with a visible reason and a re-evaluation time.
+  - A Run that cannot be afforded is deferred with a visible reason.
   - The capacity signal is exact where the platform provides one and a stated estimate where it
     does not (C-3). A missing or failed reading defers the Run and raises an alert; it is never read
     as "plenty".
@@ -532,9 +540,10 @@ trigger surface in up to eight. Realizes UJ-5, UJ-6, UJ-7.
   an alert.
 - **FR-49. Rollback.** One action restores the previous Release for all Consumer repos within 15
   minutes.
-- **FR-50. Self-hosting safety.** The Release that reviews and merges changes to the Factory is a
-  promoted Release, never the candidate under review.
-- **FR-51. Onboarding.** A Consumer repo adopts the Factory with one file and one registry entry and
+- **FR-50. Self-hosting safety.** The Release that reviews and merges a change to the Factory was
+  cut before that change existed, so no change reviews itself. The Factory's own repo is served by
+  `next`. A Release reaches `stable`, and so any Consumer repo, only on evidence from `next`.
+- **FR-51. Onboarding.** A Consumer repo adopts the Factory with one registry entry, and at most one optional file, and
   is served by every Role within an hour. A later Release, new Role or new trigger requires no edit
   in the Consumer repo. Installing Advisory reviewers in vendor consoles is outside this bound.
 - **FR-52. Version-skew safety.** Messages between components running different Releases carry a
@@ -603,7 +612,7 @@ replaces the discussion with a contract. Realizes UJ-1, UJ-2, UJ-9.
   acted on by the Role that authored the change.
 - **FR-67. Convergence is decided.** The Kernel decides Convergence from Findings and their
   Dispositions. It is not inferred from a conversation going quiet.
-  - A Work item that has not converged within its declared bound of rounds or cost is placed on
+  - A Work item that has not converged within its declared bound of rounds or Runs is placed on
     Hold with the open Findings listed.
 - **FR-68. A Council is declared per class of Work item and stage.** Which Lenses are required for
   an idea, a plan, a design, a code change and a Release is data, and is not the same set for each.
@@ -642,7 +651,8 @@ tried to move to metered rates in 2026. Realizes UJ-7, UJ-8.
 - **FR-73. The Factory can run on metered capacity under a hard cap.** Every Role can be served from
   a metered API credential as well as a subscription, and the choice is configuration.
   - A hard monthly cap in currency stops Admission when it is reached. It is a brake outside the
-    Kernel.
+    Kernel. It applies when a metered credential is in use and is read from the provider's own
+    usage figure. On the subscription the brake is a ceiling on Runs.
   - The scorecard reports what each period would have cost at API rates, whichever basis paid for
     it.
 
@@ -653,7 +663,7 @@ and the review document.
 
 | ID | Quality | Target | POC baseline |
 |---|---|---|---|
-| NFR-1 | Flow efficiency | At most 10 Runs per merged pull request; at most 2% of admitted Runs lost or started later than the liveness limit. Wake-ups that admit nothing are reported separately and are not capped `[ASSUMPTION]` | About 1,500 workflow runs per merge including CI; 24% cancelled |
+| NFR-1 | Flow efficiency | At most 10 Runs per merged pull request; at most 2% of admitted Runs lost or started later than the liveness limit. Passes that admit nothing are reported separately and are not capped `[ASSUMPTION]` | About 1,500 workflow runs per merge including CI; 24% cancelled |
 | NFR-2 | Lead time | Issue to merge p50 ≤ 8 h and p90 ≤ 48 h for items needing no human decision `[ASSUMPTION]` | p50 24.5 h, p90 296.5 h |
 | NFR-3 | Autonomy | At least 85% of agent-authored pull requests merge with a standing independent approval and no human action outside declared decision points `[ASSUMPTION]` | At most 40% |
 | NFR-4 | Gate integrity | 100% of merges carry either a standing independent approval or an Override record | 66% approved; no Override record exists |
@@ -672,7 +682,7 @@ NFR-3 and NFR-10 are a pair. On the POC's first-pass correctness they cannot bot
 autonomy the share of merges that carry a defect must roughly halve to keep defects at five a week
 (review document, §14.4). Autonomy is raised only as SM-C1 allows.
 
-NFR-1 counts Runs. The runner pool of C-9 also needs a budget: wake handling takes at most 10% of
+NFR-1 counts Runs. The runner pool of C-9 also needs a budget: passes and nudges take at most 10% of
 the org's job-minutes `[ASSUMPTION]`.
 
 ## 8. Non-goals
@@ -801,7 +811,8 @@ From the competitive analysis ([market research](../research/market-agentic-soft
    the interaction model, §12.2. Decided by the Maintainer on 2026-10-10: yes. No agent runs as the
    owner account. The Maintainer may still author changes to the Factory's repo under that account,
    as a person. Each Role has its own GitHub App, so that its permissions are a ceiling the platform
-   enforces. The review document, §6.4, had recommended one App.
+   enforces. A Role is given its App when it first needs to write; until then it reads through one
+   shared reader App. The review document, §6.4, had recommended one App.
 3. **OQ-3. What supplies the LLM capacity signal, and does the Factory get its own LLM credential?**
    FR-35 has no feed today. An estimate from the Factory's own usage is sound only if interactive
    sessions do not spend from the same window unobserved. The analyst's comment on the idea
@@ -821,8 +832,8 @@ From the competitive analysis ([market research](../research/market-agentic-soft
    `petry-projects/software-factory`. Open: what `.github-private` keeps once every caller is
    re-pinned.
 6. **OQ-6. Which Advisory reviewers are worth waiting for?** Four of seven gated reviewers never
-   participate. The rule was decided on 2026-10-10 (OQ-13): a reviewer is awaited only if it has a
-   structured surface the contract can read.
+   participate. The rule was decided on 2026-10-10 (OQ-13): only a Lens in the required Council is waited
+   for, and a reviewer outside it gates only when the in-house reviewer adopts its Finding.
 7. **OQ-7. Are the `[ASSUMPTION]` targets in §7 the right ones?**
 8. **OQ-8. Where does the Ledger live and who may read it?** Everything in a public repo is public.
    Decided by the Maintainer on 2026-10-10: the Ledger is the Factory's own run records and
@@ -836,7 +847,8 @@ From the competitive analysis ([market research](../research/market-agentic-soft
    spend.
 10. **OQ-10. Should third-party reviewer comments keep gating approvals?** Decided by the Maintainer
     on 2026-10-10: reviewers are integrated through a contract, and structured Findings gate where
-    comment bodies do not (FR-32, FR-33). The nine current reviewers' surfaces are established in the
+    comment bodies do not (FR-32, FR-33). Later the same day: only required Lenses gate, and a
+    reviewer outside the required Council gates by adoption. The nine current reviewers' surfaces are established in the
     review document, §16.2: one has a full contract, one a findings API, one a structured verdict,
     and the rest review threads only or nothing.
 11. **OQ-11. Is it worth trying the three cheapest changes first and re-measuring?** Stopping the
@@ -878,7 +890,7 @@ twelve changes and their reasons are recorded in the review document, §10.
 - §5 C-6 — GitHub's terms allow one machine-user account per person.
 - §7 NFR-1, NFR-2, NFR-3, NFR-7, NFR-9, NFR-10, NFR-14 — numeric targets are proposals.
 - §5 C-9 — the 20-job limit is org-wide. §5 C-10 — the Maintainer-time estimate.
-- §7 — wake handling within 10% of job-minutes.
+- §7 — passes and nudges within 10% of job-minutes.
 - §10.1 — two Consumer repos are enough to prove multi-repo operation for the MVP.
 - §10.2 — the planning Roles can stay on their current implementation during the MVP without
   blocking it.

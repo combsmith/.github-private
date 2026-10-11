@@ -27,7 +27,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 - A declared Lifecycle with one State per Work item, visible on the item (FR-1 to FR-7).
 - One run contract in which a Role requests Effects and a separate job applies them (FR-8 to FR-14).
-- One Admission point that reconciles recorded state, so a lost event delays work and never
+- One Admission point that decides from GitHub's own state, so a lost event delays work and never
   deletes it (FR-15 to FR-21, FR-35 to FR-39).
 - Human control that binds every Role the same way, with agents on their own identity
   (FR-22 to FR-28, FR-60 to FR-63).
@@ -38,7 +38,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 ADR-0013's twelve decisions and the Maintainer's decisions of 2026-10-10 are fixed inputs to this
 design. ADR-0000 to ADR-0012 describe the POC and are not treated as constraints. Four mechanisms
 ADR-0013 takes from them are restated as this design's own rules: the thin caller, channel tags,
-the single Consumer file, and the per-item concurrency key (design document, §2.4).
+the optional Consumer file, and the per-item concurrency key (design document, §2.4).
 
 **Non-Functional Requirements:**
 The ones that shape structure:
@@ -54,8 +54,8 @@ The ones that shape structure:
 
 **Scale & Complexity:**
 
-- Primary domain: a control plane and automation harness on GitHub Actions. No user interface; the
-  interface is text on the Work item, a label vocabulary and a scorecard.
+- Primary domain: a control plane and automation harness on GitHub Actions. No interface of its own
+  to operate: text on the Work item, a label vocabulary, and a read-only dashboard.
 - Complexity level: high. Low data volume and no regulatory load, but very high integration
   complexity, untrusted public input, self-hosting, and three scarce shared resources.
 - Scale: 12 public repos, one Maintainer, about 30 to 36 merges a week in the busiest repo.
@@ -70,7 +70,7 @@ The ones that shape structure:
 - GitHub Actions starts work from events and schedules, and loses both (C-5).
 - Scheduled and dispatched workflows always run the default branch, and a `uses:` reference
   cannot be computed. Hence one frozen entry shim.
-- Reusable-workflow references are not redirected. Cutover is by forwarder and channel tag.
+- Reusable-workflow references are not redirected. Cutover is pause, then repoint.
 - A code owner must be a user, so the approving reviewer stays a machine user with a long-lived
   token (C-6).
 - LLM capacity is the existing subscription window, with no supported usage signal (C-3, C-11).
@@ -85,7 +85,7 @@ Decided on 2026-10-10 and carried into the design:
   Domain Roles start in shadow and are promoted on evidence. Only required Lenses gate.
 - One GitHub App per Role, sharing the name prefix `combsmith-sf-`.
 - The review Intent is built first and serves the Factory's own repo. The Maintainer approves
-  until the first `stable` Release.
+  until the first Release on `next` serves it.
 - The comparison with the POC is a measure and not a gate. Stopping is the Maintainer's decision,
   if the Factory is not adopted and used.
 - Each Lens declares the paths it watches. A Consumer repo's setup and test commands are part of
@@ -124,8 +124,8 @@ Decided on 2026-10-10 and carried into the design:
 - **Typing third-party prose.** Thread reviewers carry category and severity as text. They are
   typed only when the in-house reviewer adopts a Finding and raises its own.
 - **Brakes outside the Kernel.** The pause variable, the Run ceiling, the actor-based loop count
-  and the monthly spend cap live where a Kernel defect cannot reach them.
-- **Bootstrap.** Until the first `stable` Release the Maintainer's attention is the line's
+  and, on a metered credential, a monthly cap read from the provider live where a Kernel defect cannot reach them.
+- **Bootstrap.** Until a Release on `next` serves the Factory's repo, the Maintainer's attention is the line's
   capacity. The first slice is cut to one event, the Factory approving one of its own pull
   requests, and the approvals it takes are counted.
 - **Trust classes for text.** Text from the Maintainer, a Role, an Advisory reviewer or an Outside
