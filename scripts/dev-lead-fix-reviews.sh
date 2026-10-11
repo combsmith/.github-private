@@ -3413,12 +3413,14 @@ If the test really is wrong, a human should make that call, or the fix should ca
   return 0
 }
 
-# flag_sync_stub_drift <intent> <rows> — the sync-stub guard refused the push
-# (#2185). <rows> are `path\ttemplate` lines (empty when the scan was unknown).
+# flag_sync_stub_drift <intent> <rows> [body] — the sync-stub guard refused the
+# push (#2185). <rows> are `path\ttemplate` lines (empty when the scan was unknown).
 # Same escalation as flag_test_tamper; the comment answers the bot suggestion as
-# declined and points at each template in petry-projects/.github.
+# declined and points at each template in petry-projects/.github. [body]
+# replaces that comment (the rebase pass, whose branch was already pushed: #2232).
 flag_sync_stub_drift() {
-  local intent="$1" rows="$2"
+  local intent="$1" rows="$2" body="${3:-}"
+  [ -n "$body" ] || body="$(ssg_declined_body "$intent" "$rows")"
   _AM_NEEDS_RESTORE=0
   if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
     echo "[dry-run] sync-stub guard: would decline on PR #${PR_NUMBER} (${intent}), add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}, disable auto-merge"
@@ -3433,10 +3435,80 @@ flag_sync_stub_drift() {
     post_hold_failure_note "$REPO" "$PR_NUMBER"
   else
     gh pr comment "$PR_NUMBER" --repo "$REPO" --body "${marker}
-$(ssg_declined_body "$intent" "$rows")${HOLD_LABEL_NOTE}" \
+${body}${HOLD_LABEL_NOTE}" \
       || echo "::warning::could not post sync-stub flag comment on PR #${PR_NUMBER}"
   fi
   disable_auto_merge_for_hold "$REPO" "$PR_NUMBER" || true
+  return 0
+}
+
+# rebase_record_synced_stubs — before the rebase engine runs (#2232). On a
+# readable PR labeled standards-sync, records each synced path's blob at the
+# pre-pass head and at the old merge base (ssg_rebase_record) into
+# SSG_REBASE_RECORD and sets SSG_REBASE_ACTIVE=1 (SSG_REBASE_UNKNOWN=1 when the
+# record could not be made). An unlabeled or unreadable PR leaves both 0, and
+# rebase_restore_synced_stubs then does nothing. Never touches the engine's
+# push or PATH.
+rebase_record_synced_stubs() {
+  SSG_REBASE_ACTIVE=0 SSG_REBASE_UNKNOWN=0 SSG_REBASE_RECORD="" SSG_REBASE_PRE="" SSG_REBASE_BASE=""
+  local pr labels mb=""
+  pr=$(ssg_read_pr "${REPO:-}" "${PR_NUMBER:-}")
+  [ -n "$pr" ] || return 0
+  labels=$(jq -r '[.labels[]?.name // empty] | join("\n")' <<<"$pr" 2>/dev/null) || labels=""
+  ssg_has_sync_label "$labels" || return 0
+  SSG_REBASE_ACTIVE=1
+  SSG_REBASE_BASE=$(jq -r '.base.ref // empty' <<<"$pr" 2>/dev/null) || SSG_REBASE_BASE=""
+  [ -n "$SSG_REBASE_BASE" ] || SSG_REBASE_BASE="$BASE_REF"
+  SSG_REBASE_PRE="$(git rev-parse HEAD 2>/dev/null || true)"
+  if [ -n "$SSG_REBASE_PRE" ]; then
+    mb=$(ttg_resolve_merge_base "$SSG_REBASE_BASE" "$SSG_REBASE_PRE" "${HEAD_REF:-}" 2>/dev/null) || mb=""
+  fi
+  SSG_REBASE_RECORD=$(ssg_rebase_record "$SSG_REBASE_PRE" "$mb") || SSG_REBASE_UNKNOWN=1
+  echo "::notice::Sync-stub guard: recorded $(printf '%s' "$SSG_REBASE_RECORD" | grep -c . || true) synced path(s) on standards-sync PR #${PR_NUMBER} before the rebase (#2232)"
+}
+
+# rebase_restore_synced_stubs — after the rebase has been pushed (#2232). Puts
+# each synced path the resolution left in a third state back (base content when
+# the base changed the path, else the pre-pass content), commits the restores as
+# one follow-up commit, pushes it the normal way, and posts one comment naming
+# each restored path. A path that cannot be restored, or a refused push, flags
+# the PR (flag_sync_stub_drift) with a comment that says the branch was pushed.
+rebase_restore_synced_stubs() {
+  [ "${SSG_REBASE_ACTIVE:-0}" = "1" ] || return 0
+  local out="" rc=0 restored failed before
+  git fetch -q origin "$SSG_REBASE_BASE" >/dev/null 2>&1 || true
+  if [ "${SSG_REBASE_UNKNOWN:-0}" = "1" ]; then
+    rc=2
+  else
+    out=$(ssg_rebase_restore "$SSG_REBASE_RECORD" "$SSG_REBASE_PRE" "origin/${SSG_REBASE_BASE}" HEAD) || rc=$?
+  fi
+  if [ "$rc" -ne 0 ]; then
+    echo "::error::Sync-stub guard: could not check the synced paths on standards-sync PR #${PR_NUMBER} after the rebase — flagging (#2232)"
+    flag_sync_stub_drift "rebase" "" "$(ssg_rebase_unrestored_body "")"
+    return 0
+  fi
+  restored=$(printf '%s\n' "$out" | awk -F'\t' '$1 == "restored"')
+  failed=$(printf '%s\n' "$out" | awk -F'\t' '$1 == "failed" { print $2 "\t" $4 }')
+  if [ -n "$restored" ]; then
+    setup_git_identity
+    before="$(git rev-parse HEAD)"
+    if git commit -q -m "chore: restore synced stubs after rebase [skip ci-relay]" \
+       && push_no_clobber && verify_push_landed; then
+      echo "::notice::Sync-stub guard: restored $(printf '%s\n' "$restored" | grep -c .) synced path(s) on PR #${PR_NUMBER} after the rebase (#2232)"
+      gh pr comment "$PR_NUMBER" --repo "$REPO" --body "<!-- dev-lead-sync-stub-restore pr=${PR_NUMBER} -->
+$(ssg_rebase_restored_body "$restored")" \
+        || echo "::warning::could not post sync-stub restore comment on PR #${PR_NUMBER}"
+    else
+      echo "::error::Sync-stub guard: the restore commit for PR #${PR_NUMBER} could not be pushed (#2232)"
+      # Back to the pushed rebase, so the checks below see what the PR carries.
+      git reset -q --hard "$before" 2>/dev/null || true
+      failed+="${failed:+$'\n'}$(printf '%s\n' "$restored" | awk -F'\t' '{ print $2 "\t" $4 }')"
+    fi
+  fi
+  if [ -n "$failed" ]; then
+    echo "::error::Sync-stub guard: the rebase left synced path(s) on PR #${PR_NUMBER} that could not be restored — flagging (#2232)"
+    flag_sync_stub_drift "rebase" "$failed" "$(ssg_rebase_unrestored_body "$failed")"
+  fi
   return 0
 }
 
@@ -4107,6 +4179,9 @@ case "$INTENT_TYPE" in
     # use it as one parent (the base ref is the other) when scanning the resolved
     # tree for introduced duplicate declarations (#1482).
     PRE_RESOLVE_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
+    # Sync-stub guard (#2232): on a standards-sync PR, record each synced path
+    # now; the engine still resolves and pushes exactly as before.
+    rebase_record_synced_stubs
     rc=0
     build_and_run "rebase" || rc=$?
     [ "$rc" -eq 2 ] && handle_rate_limit "rebase"
@@ -4142,6 +4217,9 @@ case "$INTENT_TYPE" in
         echo "::notice::rebase: no-op guard aborted the push for PR #${PR_NUMBER} — flagged for human, not merged (#1786)"
         exit "$rc"
       fi
+      # Sync-stub guard (#2232): the rebase is pushed; restore any synced path it
+      # left equal to neither the PR's nor the base branch's content.
+      rebase_restore_synced_stubs
       # Post-resolution integrity gate (#1890 AC #7): a corrupted resolution
       # (#1482/#1485) must never be reported applied and allowed to merge. Escalate
       # to a human immediately — corruption is not something to retry.
