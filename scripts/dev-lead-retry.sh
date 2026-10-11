@@ -55,7 +55,13 @@ set -euo pipefail
 #                         created (default: the claim settle above), so the run
 #                         is visible to the Actions listing (#2262)
 #   BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES — how many times to look for that run
-#                         before recording none (default: 3)
+#                         before recording none (default: 3). A run is recorded
+#                         only when two looks in a row show it as the single
+#                         candidate, so fewer than 2 records none
+#   BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC — once this process has run this
+#                         many seconds, stop looking for dispatched runs
+#                         (default: 1200), so the lookup waits cannot use up
+#                         the workflow's time limit on a busy scan
 #
 # Retryable intents: fix-reviews, review-changes, rebase
 #   These intents fetch all needed context (open threads, PR metadata) fresh
@@ -145,6 +151,10 @@ BOT_COMMENT_RETRY_RUN_LOOKUP_WAIT_SEC="${BOT_COMMENT_RETRY_RUN_LOOKUP_WAIT_SEC:-
   || BOT_COMMENT_RETRY_RUN_LOOKUP_WAIT_SEC="$BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC"
 BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES="${BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES:-3}"
 [[ "$BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES" =~ ^[0-9]+$ ]] || BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES=3
+# Each lookup waits up to TRIES x WAIT seconds. The retry workflow has a 30-minute
+# limit, so past 20 minutes a dispatch records no run instead of waiting.
+BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC="${BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC:-1200}"
+[[ "$BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC" =~ ^[0-9]+$ ]] || BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC=1200
 
 # CI_MARKER_PREFIX / REVIEWS_MARKER_PREFIX / ISSUE_MARKER_PREFIX: one definition
 # shared with the budget breaker's marker reader (#2221), values unchanged.
@@ -863,9 +873,14 @@ dispatch_bot_comment_retry() {
 # no payload, so the run is paired by what the API does expose: the dev-lead
 # caller stub's repository_dispatch runs, titled with the retry's event type,
 # created at/after <since_iso> (bcr_pick_dispatched_run). It is recorded ONLY when
-# exactly one such run exists. None after the tries, more than one (another retry
-# reached this repo in the same seconds) or any API failure records nothing, and
-# the marker keeps the time-based behaviour.
+# two looks in a row show the same single such run: another PR's retry can be
+# listed before this dispatch's own run is, and one look would record that run.
+# None after the tries, a candidate seen only on the last look, more than one
+# (another retry reached this repo in the same seconds) or any API failure
+# records nothing, and the marker keeps the time-based behaviour. The second
+# look narrows that race, it does not close it: a run of ours that is listed
+# later than both looks, or never, still leaves the other run as the only one.
+# Past BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC it does not look at all.
 # The marker is EDITED, never re-posted: the caller stub subscribes to
 # issue_comment `created` only, so an edit starts no run in the PR's lane. A new
 # comment would, and that run would cancel the retry just dispatched.
@@ -873,8 +888,12 @@ dispatch_bot_comment_retry() {
 record_bot_comment_retry_run() {
   local repo="$1" pr_number="$2" marker_id="$3" cid="$4" version="$5" attempt="$6"
   local marker_at="$7" since="$8"
-  local try listing pick count run_id=""
+  local try listing pick count run_id="" candidate="" seen=""
   [[ "$marker_id" =~ ^[0-9]+$ ]] || return 0
+  if [ "$SECONDS" -ge "$BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC" ]; then
+    echo "  [warn] bot-comment retry: this scan has run ${SECONDS}s, past the ${BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC}s limit for run lookups — not waiting for PR ${pr_number}'s retry run in ${repo}, so the retry marker records none" >&2
+    return 0
+  fi
   for (( try = 1; try <= BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES; try++ )); do
     if [ "$BOT_COMMENT_RETRY_RUN_LOOKUP_WAIT_SEC" -gt 0 ]; then
       sleep "$BOT_COMMENT_RETRY_RUN_LOOKUP_WAIT_SEC"
@@ -887,15 +906,25 @@ record_bot_comment_retry_run() {
       echo "  ::warning::bot-comment retry: could not read the Actions runs of ${repo} to find the run dispatched for PR ${pr_number} — the retry marker records no run and keeps the time-based pending window" >&2
       return 0
     fi
-    if [ "$count" -eq 1 ]; then
-      run_id=$(jq -r '.id // empty' <<< "$pick" 2>/dev/null || true)
-      break
-    fi
     if [ "$count" -gt 1 ]; then
       echo "  [warn] bot-comment retry: ${count} ${BCR_RETRY_EVENT_TYPE} runs started in ${repo} since ${since} — cannot tell which is PR ${pr_number}'s, so the retry marker records none" >&2
       return 0
     fi
+    candidate=""
+    if [ "$count" -eq 1 ]; then
+      candidate=$(jq -r '.id // empty' <<< "$pick" 2>/dev/null || true)
+    fi
+    # The same single candidate on two looks in a row is the run to record.
+    if [ -n "$candidate" ] && [ "$candidate" = "$seen" ]; then
+      run_id="$candidate"
+      break
+    fi
+    seen="$candidate"
   done
+  if [[ ! "$run_id" =~ ^[0-9]+$ ]] && [ -n "$seen" ]; then
+    echo "  [warn] bot-comment retry: ${BCR_RETRY_EVENT_TYPE} run ${seen} in ${repo} was the only candidate for PR ${pr_number} on the last of ${BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES} look(s) and could not be confirmed by a second — the retry marker records none" >&2
+    return 0
+  fi
   if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
     echo "  [warn] bot-comment retry: no ${BCR_RETRY_EVENT_TYPE} run appeared in ${repo} for PR ${pr_number} after ${BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES} look(s) — the retry marker records no run" >&2
     return 0

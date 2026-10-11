@@ -142,7 +142,9 @@ bcr_retry_decisions() {
 #   PURE. Echoes a compact JSON array of the run ids (strings) whose state could
 #   change a decision, so the sweep reads only those from the Actions API:
 #     • every trusted retry marker on the PR still inside the pending window (its
-#       run may be lost, or live and holding the lane), and
+#       run may be lost, or live and holding the lane) or inside the lost-retry
+#       backoff when that is longer (a lost run there still holds the backoff),
+#       and
 #     • the markers of a comment version that is out of MAX_ATTEMPTS but under
 #       MAX_TOTAL (a lost one gives an attempt back).
 #   Same arguments and failure behaviour as bcr_retry_decisions.
@@ -312,7 +314,10 @@ _bcr_evaluate() {
       ]
     | sort_by(.created)
     | if $mode == "run-ids"
-      then ([ $all_retries[] | select(.run != null and ($now - .t) < $pending) | .run ]
+      # The longer of the two windows a run state is read in: a live run holds
+      # for $pending, and a lost one starts a backoff of $lost_backoff.
+      then ([ $all_retries[]
+              | select(.run != null and ($now - .t) < ([$pending, $lost_backoff] | max)) | .run ]
             + [ .[].runs[] ] | unique)
       else map(del(.created, .runs))
       end
@@ -327,7 +332,9 @@ _bcr_evaluate() {
 #                  cancelled run; pass "" when it was not (or could not be) read
 #   `started` is false only when the job list is complete and no job ran a step
 #   or ended any way but cancelled/skipped, true when one did, and null when the
-#   job list is missing, unreadable or truncated. Returns non-zero (echoing
+#   job list is missing, unreadable or truncated. A step whose conclusion is
+#   `skipped` did not run; any other listed step counts as run, a cancelled one
+#   included, since it may have begun. Returns non-zero (echoing
 #   nothing) unless <run_json> is the repository_dispatch run <run_id> — the
 #   caller then leaves the run out of the map (unknown).
 bcr_run_state() {
@@ -342,7 +349,12 @@ bcr_run_state() {
                     and ($jobs.total_count | type) == "number"
                     and $jobs.total_count == ($jobs.jobs | length)
                  then any($jobs.jobs[];
-                          ((.steps // []) | length) > 0
+                          ((.steps // [])
+                           | if type == "array"
+                             then any(.[]; if type == "object"
+                                           then (.conclusion // "") != "skipped"
+                                           else true end)
+                             else true end)
                           or ((.conclusion // "cancelled") as $c
                               | ["cancelled", "skipped"] | index($c) == null))
                  else null end)}

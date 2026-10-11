@@ -1461,3 +1461,168 @@ _patches() { grep -c -- '--method PATCH' "$GH_LOG" || true; }
   [[ "$output" == *"bot-comment IC_cr "*"retry-attempts-exhausted"* ]]
   if grep -q -e '/dispatches' -e '--method POST' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
+
+# ── #2262 review: backoff window, skipped steps, pairing race, lookup deadline ─
+
+@test "bcr(#2262): a lost-retry backoff longer than the pending window still has the retry's run read" {
+  export BOT_COMMENT_RETRY_PENDING_SEC=1200 BOT_COMMENT_RETRY_LOST_BACKOFF_SEC=3600
+  cr="$(_bot IC_cr coderabbitai 'Walkthrough')"
+  ca="$(_bot IC_ca codeant-ai 'Nitpicks' 2026-10-01T23:08:08Z)"
+  # Dispatched 30 min ago: past the 20-min pending window, inside the 60-min
+  # backoff. Unread, its run could not be known lost and the backoff would not hold.
+  m="$(_retry IC_cr 1 2026-10-02T00:30:00Z 501)"
+  [ "$(_run_ids "$cr" "$ca" "$m")" = '["501"]' ]
+  out="$(_decide_runs "{\"501\":${RUN_LOST}}" "$cr" "$ca" "$m")"
+  [ "$(_dispatches "$out")" = "0" ]
+  [ "$(_reason_for "$out" IC_cr)" = "retry-cancelled-backoff" ]
+  [ "$(_reason_for "$out" IC_ca)" = "retry-cancelled-backoff" ]
+  # Past both windows the run cannot change a decision, so it is not read.
+  [ "$(_run_ids "$cr" "$ca" "$(_retry IC_cr 1 2026-10-01T23:50:00Z 501)")" = '[]' ]
+}
+
+@test "bcr_run_state(#2262): a job whose only steps were skipped did not start" {
+  run_json='{"id":501,"event":"repository_dispatch","status":"completed","conclusion":"cancelled"}'
+  skipped='{"total_count":1,"jobs":[{"conclusion":"cancelled","steps":[
+    {"name":"Set up job","status":"completed","conclusion":"skipped"},
+    {"name":"Run dev-lead","status":"completed","conclusion":"skipped"}]}]}'
+  [ "$(bcr_run_state 501 "$run_json" "$skipped")" = "$RUN_LOST" ]
+  # One step that ran among skipped ones: it started.
+  mixed='{"total_count":1,"jobs":[{"conclusion":"cancelled","steps":[
+    {"name":"Set up job","conclusion":"success"},{"name":"Run dev-lead","conclusion":"skipped"}]}]}'
+  [ "$(bcr_run_state 501 "$run_json" "$mixed" | jq -r '.started')" = "true" ]
+  # A cancelled step may have begun, and a step with no conclusion is unknown:
+  # neither is read as "did not run".
+  local steps
+  for steps in '[{"name":"Set up job","conclusion":"cancelled"}]' '[{"name":"Set up job"}]' '["Set up job"]' '"not a list"'; do
+    [ "$(bcr_run_state 501 "$run_json" "{\"total_count\":1,\"jobs\":[{\"conclusion\":\"cancelled\",\"steps\":${steps}}]}" | jq -r '.started')" = "true" ] \
+      || { echo "steps <$steps>"; return 1; }
+  done
+}
+
+@test "bcr(#2262): the pairing and the run state hold on the Actions API's own answers for PR #2205's cancelled retry" {
+  # tests/fixtures/bot-comment-retry/ holds what GitHub returned on 2026-10-11
+  # for the retry run of 2026-10-10T17:50:45Z, cut down to the fields read here:
+  # the run listing for event=repository_dispatch around it (the other entry is
+  # pr-review's dispatch nine seconds later), the run, and its jobs.
+  local fx="$SCRIPT_DIR/tests/fixtures/bot-comment-retry"
+  [ "$(bcr_pick_dispatched_run "$(cat "$fx/runs-listing-pr2205.json")" 2026-10-10T17:50:43Z)" \
+    = '{"count":1,"id":"38073395880"}' ]
+  [ "$(bcr_run_state 38073395880 "$(cat "$fx/run-38073395880.json")" "$(cat "$fx/run-38073395880-jobs.json")")" \
+    = "$RUN_LOST" ]
+}
+
+# _listing_sequence <listing>… — call after _run_gh. The Actions run listing
+# answers with each argument in turn, then repeats the last: what a listing that
+# catches up between looks returns.
+_listing_sequence() {
+  local n=0 l
+  for l in "$@"; do
+    n=$((n + 1))
+    printf '%s' "$l" > "$MOCK_BIN/listing_${n}.json"
+  done
+  : > "$MOCK_BIN/listing.calls"
+  cat > "$MOCK_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_LOG"
+dir="$(dirname "$0")"
+args="$*"
+case "$args" in
+  *"/dispatches"*) cat > "$GH_LOG.payload"; exit 0 ;;
+  *"api graphql"*) printf '%s' "$GRAPHQL_RESPONSE" ;;
+  *"/actions/runs -f"*)
+    echo look >> "$dir/listing.calls"
+    n=$(wc -l < "$dir/listing.calls" | tr -d ' ')
+    while [ ! -f "$dir/listing_${n}.json" ] && [ "$n" -gt 1 ]; do n=$((n - 1)); done
+    cat "$dir/listing_${n}.json" ;;
+  *"--method PATCH"*"/issues/comments/"*) exit 0 ;;
+  *"--method POST"*"/comments"*) echo "777" ;;
+  *"comments?per_page"*"dev-lead-bot-comment-retry id="*) echo "777" ;;
+  *"/pulls/"*) printf '%s' "$PR_JSON" ;;
+  *) echo "[]" ;;
+esac
+GHEOF
+  chmod +x "$MOCK_BIN/gh"
+}
+
+@test "sweep(#2262): another PR's retry run listed before ours is not recorded as ours" {
+  _setup_sweep
+  _run_gh
+  export TRUSTED_BOTS="$TRUSTED" GRAPHQL_RESPONSE
+  GRAPHQL_RESPONSE="$(_graphql_page "$(_bot IC_cr coderabbitai 'Walkthrough')")"
+  # First look: only another PR's retry run (9010) is listed. Second look: ours
+  # (9001) has appeared beside it. One look would have recorded 9010.
+  _listing_sequence \
+    "$(_runs_listing "$(_listed_run 9010 2026-10-02T01:00:01Z)")" \
+    "$(_runs_listing "$(_listed_run 9010 2026-10-02T01:00:01Z)" "$(_listed_run 9001 2026-10-02T01:00:02Z)")"
+
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
+  [ "$status" -eq 0 ]
+  [ "${lines[-1]}" = "1" ]
+  [ "$(grep -c 'actions/runs -f' "$GH_LOG")" -eq 2 ]
+  [[ "$output" == *"cannot tell which"* ]]
+  [ "$(_patches)" -eq 0 ]
+}
+
+@test "sweep(#2262): a run is recorded only once a second look shows the same single candidate" {
+  _setup_sweep
+  _run_gh
+  export TRUSTED_BOTS="$TRUSTED" GRAPHQL_RESPONSE
+  GRAPHQL_RESPONSE="$(_graphql_page "$(_bot IC_cr coderabbitai 'Walkthrough')")"
+  local none one
+  none="$(_runs_listing "$(_listed_run 8000 2026-10-02T00:59:40Z)")"
+  one="$(_runs_listing "$(_listed_run 9001 2026-10-02T01:00:02Z)")"
+
+  # Seen on the last look only: nothing confirms it, so nothing is recorded.
+  _listing_sequence "$none" "$one"
+  BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES=2
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
+  [ "${lines[-1]}" = "1" ]
+  [ "$(grep -c 'actions/runs -f' "$GH_LOG")" -eq 2 ]
+  [[ "$output" == *"run 9001"*"could not be confirmed"* ]]
+  [ "$(_patches)" -eq 0 ]
+
+  # With a look to spare the same candidate is confirmed and recorded.
+  : > "$GH_LOG"
+  _listing_sequence "$none" "$one"
+  BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES=3
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
+  [ "${lines[-1]}" = "1" ]
+  [ "$(grep -c 'actions/runs -f' "$GH_LOG")" -eq 3 ]
+  grep -qF -- 'attempt=1 at=2026-10-02T01:00:00Z run=9001 -->' "$GH_LOG"
+  [ "$(_patches)" -eq 1 ]
+}
+
+@test "sweep(#2262): past the lookup deadline a dispatch still counts and records no run" {
+  _setup_sweep
+  _run_gh
+  export TRUSTED_BOTS="$TRUSTED" GRAPHQL_RESPONSE RUNS_LISTING
+  GRAPHQL_RESPONSE="$(_graphql_page "$(_bot IC_cr coderabbitai 'Walkthrough')")"
+  RUNS_LISTING="$(_runs_listing "$(_listed_run 9001 2026-10-02T01:00:02Z)")"
+  # The scan has already run longer than the deadline allows.
+  BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC=0
+
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
+  [ "$status" -eq 0 ]
+  [ "${lines[-1]}" = "1" ]
+  [ "$(grep -c '/dispatches' "$GH_LOG")" -eq 1 ]
+  [[ "$output" == *"limit for run lookups"* ]]
+  if grep -q -e 'actions/runs' -e '--method PATCH' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
+}
+
+@test "sweep(#2262): a retry whose run was cancelled before any job was created is re-dispatched" {
+  _setup_sweep
+  _run_gh
+  export TRUSTED_BOTS="$TRUSTED" GRAPHQL_RESPONSE RUNS_LISTING
+  GRAPHQL_RESPONSE="$(_graphql_page \
+    "$(_bot IC_cr coderabbitai 'Walkthrough')" \
+    "$(_retry IC_cr 1 2026-10-02T00:30:00Z 501)")"
+  _recorded_run 501 completed cancelled
+  printf '%s' '{"total_count":0,"jobs":[]}' > "$MOCK_BIN/jobs_501.json"
+  RUNS_LISTING="$(_runs_listing "$(_listed_run 9001 2026-10-02T01:00:02Z)")"
+
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
+  [ "$status" -eq 0 ]
+  [ "${lines[-1]}" = "1" ]
+  [[ "$output" == *"[lost]"*"run 501"* ]]
+  grep -q 'dev-lead-bot-comment-retry id=IC_cr version=2026-10-01T23:05:43Z attempt=2 ' "$GH_LOG"
+}
