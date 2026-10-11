@@ -72,6 +72,11 @@ _PR_BUDGET_DEPENDABOT_AUTHOR="dependabot[bot]"
 # escalation marker is added, because dev-lead posts it as the owner account.
 # Ensure agent markers are anchored to prevent matching arbitrary text: most need
 # a delimiter (colon, dash, or space) after the keyword (#2224 false-positive fix).
+# The match is not anchored to the start of the body: about a fifth of real agent
+# comments carry their marker further down (a disposition marker closing a
+# reply, for one). So a marker a human quotes is told apart by backticks alone:
+# agent_marked drops `code spans` before testing. A complete marker pasted
+# outside backticks still reads as an agent's.
 PR_BUDGET_AGENT_MARKER_RE='<!-- (pr-review-agent[ ]|pr-review-claim[ ]|persona:|dev-lead[ :-]|dependency-advisory[ ]|auto-rebase-|pr-automation-budget[ ])[^>]*-->'
 
 # The label this breaker adds on exhaustion (and the cycle cap adds on escalation).

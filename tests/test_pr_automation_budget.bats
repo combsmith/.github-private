@@ -715,6 +715,22 @@ JSON
   [ "$(compute_pr_automation_cycles "$j")" = "0" ]
 }
 
+@test "#2224 gather: KNOWN LIMIT — a review-thread reply under a human login still resets the budget" {
+  # A reply in a review thread reaches /pulls/{pr}/reviews as a COMMENTED review
+  # with an empty body. Its text, and any marker in it, is on /pulls/{pr}/comments,
+  # which is not read. So the reply's review is collected, carries no marker, and
+  # reads as a human interaction. This test pins what the docs say; it is not the
+  # behaviour anyone wants.
+  budget_gh_stub; bd176_fixture
+  printf 'don-petry' > "$FIXD/author"
+  local tmp; tmp=$(mktemp)
+  jq '. + [{submitted_at:"2026-10-09T05:00:00Z", state:"COMMENTED", user:{login:"don-petry"}, body:""}]' \
+    "$FIXD/reviews.json" > "$tmp" && mv "$tmp" "$FIXD/reviews.json"
+  local j; j=$(gather_pr_automation_events 176 petry-projects/demo 2>/dev/null)
+  [ "$(jq 'length' <<<"$j")" = "11" ]                  # the reply's review is in the list
+  [ "$(compute_pr_automation_cycles "$j")" = "0" ]     # and it reset the count
+}
+
 @test "#2224 gather: event bodies are not carried in the result" {
   budget_gh_stub; bd176_fixture
   printf 'don-petry' > "$FIXD/author"
