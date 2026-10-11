@@ -536,3 +536,89 @@ _inject_foreign_commit() {
   run acv_latest_nochange_disposition "$comments" "2026-10-10T00:00:00Z"
   [[ "$status" -eq 1 ]]
 }
+
+# ---------------------------------------------------------------------------
+# #2156: issue-comment `fixed` dispositions
+# ---------------------------------------------------------------------------
+
+_ic() {
+  # _ic <id> <login> <created_at> <body> — one REST issue comment.
+  jq -cn --argjson id "$1" --arg l "$2" --arg at "$3" --arg b "$4" \
+    '{id:$id, user:{login:$l}, created_at:$at, body:$b}'
+}
+
+_disp() {
+  printf 'Done.\n\n<!-- dev-lead:comment-disposition id=IC_x disposition=%s%s -->' "$1" "${2:+ $2}"
+}
+
+@test "cl_select_fixed_dispositions: picks only our fixed replies in the window, with their sha" {
+  local comments
+  comments=$(printf '%s\n' \
+    "$(_ic 1 donpetry-bot 2026-10-09T02:00:00Z "$(_disp fixed "sha=$A40")")" \
+    "$(_ic 2 donpetry-bot 2026-10-09T04:00:00Z "$(_disp fixed "sha=$B40")")" \
+    "$(_ic 3 someone-else 2026-10-09T02:00:00Z "$(_disp fixed "sha=$C40")")" \
+    "$(_ic 4 donpetry-bot 2026-10-09T02:00:00Z "$(_disp invalid)")" \
+    "$(_ic 5 donpetry-bot 2026-10-09T02:00:00Z "$(_disp answered)")" \
+    "$(_ic 6 donpetry-bot 2026-10-09T02:00:00Z "$(_disp informational)")" \
+    "$(_ic 7 donpetry-bot 2026-10-09T02:00:00Z "$(_disp out-of-scope "ref=#12")")" \
+    "$(_ic 8 'donpetry-bot[bot]' 2026-10-09T02:00:00Z "$(_disp fixed "sha=$C40")")" \
+    | jq -sc .)
+
+  run cl_select_fixed_dispositions "$comments" donpetry-bot 2026-10-09T03:00:00Z earlier
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "$(printf '1\t%s\n8\t%s' "$A40" "$C40")" ]]
+
+  run cl_select_fixed_dispositions "$comments" donpetry-bot 2026-10-09T03:00:00Z pass
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "$(printf '2\t%s' "$B40")" ]]
+}
+
+@test "cl_select_fixed_dispositions: a fixed marker with a malformed sha is selected with an empty sha" {
+  local comments
+  comments=$(_ic 9 donpetry-bot 2026-10-09T02:00:00Z "$(_disp fixed "sha=9313650")" | jq -sc .)
+  run cl_select_fixed_dispositions "$comments" donpetry-bot 2026-10-09T03:00:00Z earlier
+  [[ "$output" == "$(printf '9\t')" ]]
+}
+
+@test "cl_select_fixed_dispositions: no pass boundary or a bad payload selects nothing" {
+  local comments
+  comments=$(_ic 1 donpetry-bot 2026-10-09T02:00:00Z "$(_disp fixed "sha=$A40")" | jq -sc .)
+  run cl_select_fixed_dispositions "$comments" donpetry-bot "" earlier
+  [[ -z "$output" ]]
+  run cl_select_fixed_dispositions '{"message":"Not Found"}' donpetry-bot 2026-10-09T03:00:00Z earlier
+  [[ -z "$output" ]]
+}
+
+@test "cl_retract_disposition_body: strips the marker, adds a notice, quotes the original" {
+  local body new
+  body=$(_disp fixed "sha=$A40")
+  new=$(cl_retract_disposition_body "$body" not-on-ref)
+  [[ "$new" == *"Retracted by the dev-lead harness"* ]]
+  [[ "$new" == *"> Done."* ]]
+  [[ "$new" != *"dev-lead:comment-disposition"* ]]
+  [[ "$new" == *"<!-- dev-lead:retracted reason=not-on-ref -->"* ]]
+  # Still recognised as ours by the maintainer-gate agent-marker discriminator.
+  [[ "$new" =~ \<!--\ dev-lead[^\>]*--\> ]]
+  # Idempotent: the retracted reply is never selected again.
+  local comments
+  comments=$(_ic 1 donpetry-bot 2026-10-09T02:00:00Z "$new" | jq -sc .)
+  run cl_select_fixed_dispositions "$comments" donpetry-bot 2026-10-09T03:00:00Z earlier
+  [[ -z "$output" ]]
+}
+
+@test "cl_retract_disposition_body: an unsafe reason becomes unknown" {
+  run cl_retract_disposition_body "$(_disp fixed "sha=$A40")" 'x --> <b>'
+  [[ "$output" == *"<!-- dev-lead:retracted reason=unknown -->"* ]]
+}
+
+@test "cl_rewrite_disposition_sha: re-points the fixed marker at a new sha, keeping the rest" {
+  run cl_rewrite_disposition_sha "$(_disp fixed "sha=$A40")" "$B40"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"Done."* ]]
+  [[ "$output" == *"<!-- dev-lead:comment-disposition id=IC_x disposition=fixed sha=$B40 -->"* ]]
+  [[ "$output" != *"$A40"* ]]
+  run cl_rewrite_disposition_sha "$(_disp fixed "sha=$A40")" "abc"
+  [[ "$status" -eq 1 ]]
+  run cl_rewrite_disposition_sha "$(_disp invalid)" "$B40"
+  [[ "$status" -eq 1 ]]
+}

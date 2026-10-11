@@ -17,6 +17,12 @@ source "$(dirname "$0")/lib/review-change-evidence.sh"
 source "$(dirname "$0")/lib/open-review-threads.sh"
 source "$(dirname "$0")/lib/resolution-integrity.sh"
 source "$(dirname "$0")/lib/addressed-claim-verify.sh"
+# PR issue-comment disposition verifier (#1813): the issue-comment sibling of
+# addressed-claim-verify.sh. Turns a dev-lead comment-disposition reply into a
+# machine-checkable claim the harness verifies before minimizing the original
+# comment RESOLVED. Sourced before claim-landing.sh, whose `fixed`-disposition
+# sweep (#2156) reuses its parser.
+source "$(dirname "$0")/lib/comment-disposition-verify.sh"
 # Claim landing (#2013): "did the push land?" as a pure verdict, and retraction of
 # this pass's claim replies whose commit did not land on the remote head.
 source "$(dirname "$0")/lib/claim-landing.sh"
@@ -26,11 +32,6 @@ source "$(dirname "$0")/lib/test-tamper-guard.sh"
 source "$(dirname "$0")/lib/sync-stub-guard.sh"
 # Test-regression guard (#2013): a pass may not push with the suite newly red.
 source "$(dirname "$0")/lib/test-regression-guard.sh"
-# PR issue-comment disposition verifier (#1813): the issue-comment sibling of
-# addressed-claim-verify.sh. Turns a dev-lead comment-disposition reply into a
-# machine-checkable claim the harness verifies before minimizing the original
-# comment RESOLVED.
-source "$(dirname "$0")/lib/comment-disposition-verify.sh"
 # Review-thread deferral verifier (#2045): the thread-side sibling of the
 # `out-of-scope` disposition. A bot thread deferred to an open tracking issue that
 # links it is resolved by resolve_deferred_bot_threads.
@@ -128,6 +129,93 @@ github_knows_commit() {
   return 2
 }
 
+# sweep_fixed_dispositions <ref> <pass|earlier> — the issue-comment half of both
+# claim sweeps (#2156). A `disposition=fixed` reply posted as a PR issue comment
+# cites a commit just like a review-thread claim, but the sweeps listed only
+# `pulls/{pr}/comments`, so a "fixed" reply whose commit never landed stayed up.
+# Every such reply OUR account posted in the window (`pass`: since PASS_START_ISO,
+# `earlier`: before it) whose cited commit is not on <ref> is rewritten with
+# cl_retract_disposition_body. As for review-thread claims:
+#   - pass:    a commit the push guard rebased onto a foreign commit is re-pointed
+#              at its landed successor instead (cl_map_sha, #2032);
+#   - earlier: a commit missing from a still-shallow checkout, one GitHub knows
+#              (pushed, then rewritten), or one GitHub cannot be asked about is
+#              left as is.
+# Best-effort: returns 1 on a listing/PATCH failure; the caller folds it in.
+sweep_fixed_dispositions() {
+  local ref="${1:-}" window="${2:-pass}"
+  local bot_user="${BOT_USER:-donpetry-bot}" comments rows
+  comments=$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" 2>/dev/null | jq -s 'add // []' 2>/dev/null) || {
+    echo "::warning::sweep_fixed_dispositions: could not list issue comments on PR #${PR_NUMBER} — its ${window} \`fixed\` disposition replies were NOT verified (#2156)"
+    return 1
+  }
+  rows=$(cl_select_fixed_dispositions "$comments" "$bot_user" "${PASS_START_ISO:-}" "$window") || {
+    echo "::warning::sweep_fixed_dispositions: could not parse the issue comments on PR #${PR_NUMBER} — its ${window} \`fixed\` disposition replies were NOT verified (#2156)"
+    return 1
+  }
+  [ -z "$rows" ] && return 0
+
+  local id sha reason body new_body rebased known_rc deepened=false
+  local retracted=0 remapped=0 failed=0
+  while IFS=$'\t' read -r id sha; do
+    [ -z "$id" ] && continue
+    reason="unverifiable"
+    if [ -n "$sha" ]; then
+      if [ "$window" = "earlier" ] && ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then
+        if [ "$deepened" = false ]; then
+          git_history_deepen "${BASE_REF:-main}"
+          deepened=true
+        fi
+        if ! git cat-file -e "${sha}^{commit}" 2>/dev/null \
+           && [ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo true)" != "false" ]; then
+          echo "::notice::sweep_fixed_dispositions: commit ${sha} of reply ${id} is not in this shallow checkout — left as is (#2156)"
+          continue
+        fi
+      fi
+      if [ -n "$ref" ] && git merge-base --is-ancestor "$sha" "$ref" 2>/dev/null; then
+        continue
+      fi
+      reason="not-on-ref"
+      if [ "$window" = "earlier" ]; then
+        known_rc=0
+        github_knows_commit "$sha" || known_rc=$?
+        if [ "$known_rc" -eq 0 ]; then
+          echo "::notice::sweep_fixed_dispositions: commit ${sha} of reply ${id} is known to GitHub but not on the remote head (pushed, then rewritten) — left as is (#2156)"
+          continue
+        elif [ "$known_rc" -ne 1 ]; then
+          echo "::notice::sweep_fixed_dispositions: could not ask GitHub about commit ${sha} of reply ${id} — left as is (#2156)"
+          continue
+        fi
+      fi
+    fi
+
+    body=$(printf '%s' "$comments" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
+    rebased=""
+    if [ "$window" = "pass" ] && [ "$reason" = "not-on-ref" ] && [ -n "$ref" ]; then
+      rebased=$(cl_map_sha "$sha" "${_PUSH_GUARD_REWRITES:-}") || rebased=""
+    fi
+    if [ -n "$rebased" ] && git merge-base --is-ancestor "$rebased" "$ref" 2>/dev/null \
+       && new_body=$(cl_rewrite_disposition_sha "$body" "$rebased"); then
+      if gh api -X PATCH "repos/${REPO}/issues/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+        remapped=$((remapped + 1))
+        echo "::notice::\`fixed\` reply ${id} on PR #${PR_NUMBER}: ${sha} was rebased onto a foreign commit and landed as ${rebased} — disposition updated, not retracted (#2156)"
+        continue
+      fi
+      echo "::warning::could not update \`fixed\` reply ${id} on PR #${PR_NUMBER} to the rebased commit ${rebased} — retracting it instead (#2156)"
+    fi
+    new_body=$(cl_retract_disposition_body "$body" "$reason")
+    if gh api -X PATCH "repos/${REPO}/issues/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+      retracted=$((retracted + 1))
+      echo "::warning::retracted \`fixed\` disposition reply ${id} on PR #${PR_NUMBER} (${reason}; cited ${sha:-<none>}, remote head ${ref:-<unknown>}) (#2156)"
+    else
+      echo "::error::could not retract \`fixed\` disposition reply ${id} on PR #${PR_NUMBER} (${reason}) — a false 'fixed' reply may remain (#2156)"
+      failed=1
+    fi
+  done <<< "$rows"
+  echo "::notice::sweep_fixed_dispositions: retracted ${retracted} ${window} \`fixed\` disposition reply(ies) on PR #${PR_NUMBER} (${remapped} re-pointed at rebased commits) (#2156)"
+  [ "$failed" -eq 0 ]
+}
+
 # sweep_earlier_claims — the start-of-pass sweep over EARLIER passes' claim replies
 # (#2032). retract_unlanded_claims runs only inside the pass that posted a reply, so
 # a run cancelled or killed after its model replied (a concurrency cancel, a lost
@@ -138,6 +226,8 @@ github_knows_commit() {
 #     claimed files, or was committed before the comment it answers is retracted;
 #   - a retracted reply whose claim now passes is restored (cl_restore_body), so a
 #     wrongly retracted fix recovers without a new commit.
+# Earlier `fixed` disposition replies on issue comments are swept too
+# (sweep_fixed_dispositions, #2156).
 # It never retracts on an unknown reference: when the remote head cannot be read,
 # or a cited commit is missing from a checkout that is still shallow, it skips.
 # Best-effort: returns 1 on a listing/PATCH failure; the caller does not stop.
@@ -161,6 +251,10 @@ sweep_earlier_claims() {
     return 0
   fi
 
+  # Earlier `fixed` disposition replies on the PR's issue comments (#2156).
+  local failed=0
+  sweep_fixed_dispositions "$ref" earlier || failed=1
+
   local bot_user="${BOT_USER:-donpetry-bot}" comments rows
   comments=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" 2>/dev/null | jq -s 'add // []' 2>/dev/null) || {
     echo "::warning::sweep_earlier_claims: could not list review comments on PR #${PR_NUMBER} — earlier claim replies were NOT verified (#2032)"
@@ -170,10 +264,10 @@ sweep_earlier_claims() {
     echo "::warning::sweep_earlier_claims: could not parse the review comments on PR #${PR_NUMBER} — earlier claim replies were NOT verified (#2032)"
     return 1
   }
-  [ -z "$rows" ] && return 0
+  [ -z "$rows" ] && return "$failed"
 
   local id state claim finding_at sha files facts on_ref touches commit_date own cumulative verdict
-  local body new_body deepened=false retracted=0 restored=0 failed=0 known_rc
+  local body new_body deepened=false retracted=0 restored=0 known_rc
   while IFS=$'\x1f' read -r id state claim finding_at; do
     [ -z "$id" ] && continue
     sha=""
@@ -3288,6 +3382,8 @@ stamp_pass_replies() {
 # posted since PASS_START_ISO, verify its commit is one this pass produced AND is
 # on the REMOTE head (acv_claim_in_pass); otherwise rewrite it with
 # cl_retract_body, which strips both markers so it can never resolve a thread.
+# This pass's `fixed` disposition replies on issue comments are swept against the
+# same reference head (sweep_fixed_dispositions, #2156).
 #
 # The reference head is the remote head. When there is no upstream (rc 1) on an
 # `ok` outcome, the local HEAD is what was pushed; in every other case — including
@@ -3317,13 +3413,17 @@ retract_unlanded_claims() {
     fi
   fi
 
+  # This pass's `fixed` disposition replies on the PR's issue comments (#2156).
+  local failed=0
+  sweep_fixed_dispositions "$ref" pass || failed=1
+
   local comments
   comments=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/comments?per_page=100" 2>/dev/null | jq -s 'add // []' 2>/dev/null) || {
     echo "::warning::retract_unlanded_claims: could not list review comments on PR #${PR_NUMBER} — this pass's claim replies were NOT verified (#2013)"
     return 1
   }
 
-  local rows retracted=0 failed=0 id sha facts on_ref in_base reason body new_body
+  local rows retracted=0 id sha facts on_ref in_base reason body new_body
   rows=$(cl_select_pass_claims "$comments" "$bot_user" "$PASS_START_ISO") || {
     echo "::warning::retract_unlanded_claims: could not parse the review comments on PR #${PR_NUMBER} — this pass's claim replies were NOT verified (#2013)"
     return 1
