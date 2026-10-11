@@ -327,12 +327,12 @@ cl_escape_dashes() {
 #   <body> without its addressed-marker and claim comment, and without trailing
 #   whitespace. The claim comment ends at its FIRST `-->` (as acv_parse_claim reads
 #   it), so a different marker later on the same line, such as a
-#   comment-disposition, is kept (#2261). Returns 1 when the body cannot be
-#   processed. Pure.
+#   comment-disposition, is kept, and a claim whose JSON spans lines is removed
+#   whole (#2261). Returns 1 when the body cannot be processed. Pure.
 cl_strip_claim_markers() {
   jq -Rsr --arg marker "$_DEV_LEAD_ADDRESSED_MARKER" '
       gsub($marker; "")
-      | gsub("<!--[[:space:]]*dev-lead:claim[^\\n]*?-->"; "")
+      | gsub("<!--[[:space:]]*dev-lead:claim(?:.|\\n)*?-->"; "")
       | sub("\\s+$"; "")
     ' <<<"${1:-}" 2>/dev/null
 }

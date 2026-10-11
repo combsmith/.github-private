@@ -695,3 +695,24 @@ $(_pr_comment 483 "$PASS_AT" "x <!-- dev-lead:comment-disposition id=IC_B dispos
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }
+
+@test "#2261: a claim whose JSON spans lines is removed whole, so the retracted reply is not selected again" {
+  # acv_parse_claim reads through the first ` -->` across lines; the retraction
+  # must remove the same span.
+  local body
+  body=$(printf 'Fixed in f.\n\n<!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\n  "v": 1,\n  "sha": "%s",\n  "files": ["f"]\n} --> <!-- reviewer-note keep -->' "$GHOST_2261")
+  run acv_parse_claim "$body"
+  [ "$status" -eq 0 ]
+  _serve "$(_reply 491 "2026-10-09T03:01:00Z" "$body")"
+
+  run retract_unlanded_claims fix-reviews ok
+  [ -f "$PATCHES/491" ]
+  ! grep -q "<!-- dev-lead:claim " "$PATCHES/491" || false
+  ! grep -q "dev-lead:addressed" "$PATCHES/491" || false
+  grep -q "<!-- reviewer-note keep -->" "$PATCHES/491"
+  # Idempotent: the next sweep finds nothing to select in the retracted reply.
+  run cl_select_pass_claims "$(jq -c -n --arg b "$(cat "$PATCHES/491")" \
+    '[{id: 491, user: {login: "donpetry-bot"}, created_at: "2026-10-09T03:01:00Z", body: $b}]')" "donpetry-bot" "$PASS_AT"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
