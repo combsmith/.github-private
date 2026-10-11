@@ -171,6 +171,9 @@ run, one lane per work item, held from `run` to applied Effects. The first draft
 Controller once per event; the maintainer replaced that on 2026-10-10 (decision 11).
 
 - **A nudge carries nothing.** The Kernel's admission function takes no event payload.
+- **When a work item needs the maintainer, the factory assigns it to them or requests their
+  review,** so that GitHub's own notifications carry it. A fault of the whole factory goes to one
+  tracking issue.
 - **A work item has a class:** agent, maintainer, dependency or outside. An outside item gets no
   Run until the maintainer admits it (PRD FR-63).
 - **Attempts are counted since the last human action on the work item.** A person acting on it
@@ -265,6 +268,7 @@ account, as a person. "The App" in the boundaries below means the App of the Rol
 - **The factory's Apps share the name prefix `combsmith-sf-`,** and the consumer file drops
   factory-authored events by that prefix. Adding a Role changes no consumer file.
 - **Registering an App is a manual step.** A new Role is one pull request and one registration.
+- **Apps are installed across the org, and each token is minted for one repo.**
 - **The machine user approves and does nothing else.** It never pushes and never opens a pull
   request, because GitHub does not count an approval from an author or a last pusher.
 - **The Maintainer is the only code owner for the factory's own rules** in the factory repo: the
@@ -320,9 +324,11 @@ of the pull request's own diff against its merge base), and decide approval in o
   merge queue. No Role dismisses its own approval.
 - **The factory updates a pull request's branch only when it conflicts with its base.**
 - **A merge without a standing independent approval has an Override record.**
-- **An approval is decided from Findings and human transitions** (decision 12). A human comment or
-  review thread is a Finding from a human Lens and always gates. This replaces the POC's rule that
-  every comment body needs a verified disposition.
+- **An approval is decided from Findings and human transitions** (decision 12). A review thread, or a
+  review that requests changes, from a person with write access is a Finding from a human Lens and
+  always gates. A plain comment steers: it reaches the next Run's Task and is acknowledged, and it
+  gates nothing. A thread from anyone without write access is handled as a third-party reviewer's
+  would be. This replaces the POC's rule that every comment body needs a verified disposition.
 - **A human resolving a review thread in GitHub's interface is a declared human transition.**
 - **A Finding is decided by the Role that owns its category,** under an authority table held as
   data. The author proposes a Disposition and the owner accepts or rejects it. An owner resolving

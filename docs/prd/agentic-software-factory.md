@@ -423,7 +423,8 @@ Factory's loop bound cannot tell them apart. Realizes UJ-2, UJ-3, UJ-4.
     cleared by automation.
 - **FR-25. Steering reaches the Role.** Human input on a Work item, whether a body edit, a comment
   or a review, is part of the next Run's Task.
-  - Every human comment on a Work item under Factory control receives a Disposition.
+  - Every human comment on a Work item under Factory control is acknowledged by the Role that
+    read it. A plain comment steers and gates nothing; a review gates (FR-33).
 - **FR-26. A human is never mistaken for an agent.** Every agent action is attributable to an agent
   identity by actor alone. The Role that acted is recorded in the Ledger and shown in the output;
   it need not be a separate actor.
@@ -466,7 +467,9 @@ each withhold or dismiss the single approval the ruleset needs. Realizes UJ-1, U
   Finding's surface: a thread, and which App resolved it.
   - A Finding's identity is a structured key from its surface (a thread, an alert, an annotation),
     never text matched in a body. An edited summary comment is therefore not a new Finding.
-  - A human comment or review thread is a Finding from a human Lens and always gates.
+  - A review thread, or a review that requests changes, from a person with write access is a
+    Finding from a human Lens and always gates. A thread from anyone else is handled as an Advisory
+    reviewer's would be.
 - **FR-34. Serialized merges.** Merges to a protected branch are serialized and tested against the
   actual merge result.
 

@@ -54,7 +54,18 @@ Made by the Maintainer on 2026-10-10, in addition to ADR-0013's twelve decisions
 ADR-0000 to ADR-0012 describe the POC and are not constraints here. Four mechanisms that ADR-0013
 takes from them are restated in §2.4 as this design's own rules.
 
-### 1.2 Still open
+### 1.2 How to read this document
+
+Some of it is rule and some of it is record. An implementer builds from the rules.
+
+| Rules | Record of how the rules were reached |
+|---|---|
+| §2.4, the four rules; §3, the contracts; §4, behaviour and invariants; §5, Roles and authority; §8.4, the feed; §9.1, the build order; §9.6, the serving channel and cutover | §7, options weighed; §8.3, what came from another analysis; §9.3 to §9.5 and §9.7, the review passes; §10, edits made to other documents |
+
+The architecture review in `factory-mvp-architecture-review.md` is history. It records
+recommendations that were later replaced, and nothing should be built from it.
+
+### 1.3 Still open
 
 - Where held-out eval sets live. The control room is public, so it is not there.
 
@@ -267,7 +278,7 @@ for contract tests, so one schema has three uses.
 | `changed_paths` | Paths in that diff |
 | `labels` | Names |
 | `reviews` | Actor, state, commit, time |
-| `threads` | Thread id, path, line, resolved, outdated, opening actor, resolving actor |
+| `threads` | Thread id, path, line, resolved, outdated, opening actor and whether that actor has write access, resolving actor |
 | `checks` | Name, App, conclusion, completion time, annotation count |
 | `alerts` | Tool, rule, alert number, state, severity, path |
 | `queue` | Merge-queue membership |
@@ -376,6 +387,8 @@ that it has already happened.
 | `add_label`, `remove_label` | The label's presence | Yes |
 | `create_check_run` | `external_id` set to the Effect's id | Yes |
 | `enqueue_merge`, `dequeue_merge` | Queue membership | Yes |
+| `assign`, `request_review` | The assignee or requested reviewer being present | Yes |
+| `add_reaction` | The reaction by this App on that comment | Yes |
 | `comment` | None | **No** |
 
 For `comment`, the Result artifact is the intent record: it lists the Effect before `apply`
@@ -526,9 +539,14 @@ lens:
     always: false
   raises: [delivery]
 intents:
-  - name: adjudicate-findings
+  - name: review-change           # would it have found something the reviewer missed?
+    tier: standard
+    permitted_effects: []         # a shadow Role writes nothing
+    budget_class: shadow
+    evals: evals/review-change
+  - name: adjudicate-findings     # would it have decided as the owner did?
     tier: deep
-    permitted_effects: []        # a shadow Role writes nothing
+    permitted_effects: []
     budget_class: shadow
     evals: evals/adjudicate-findings
 ```
@@ -572,6 +590,11 @@ verify:
 reviewers: [coderabbit, cubic, gemini-code-assist, sonarqube-cloud]
 nudge_installed: false
 ```
+
+Adopting the Factory is more than this entry. The repo also needs the two scripts, a ruleset that
+matches, the machine user as a code owner, and its Advisory reviewers configured. A **readiness
+check** in each pass compares every Consumer repo with that list and publishes what is missing, so
+a Repo owner is told and does not have to find out (§8.4).
 
 The entry lives in the Factory repo and rides the Release. The scripts it points at live in the
 Consumer repo and are the Consumer's own. `apply` refuses a change to a protected path unless a
@@ -635,7 +658,8 @@ Convergence is one Kernel function of facts and run records:
 1. every Lens **required** for this class of item, this stage and these changed paths has reported
    on the current `content_id`;
 2. no Finding of severity `blocking` or `major` raised by a required Lens is open or proposed;
-3. no `human` Finding is open.
+3. no `human` Finding is open. A `human` Finding is a review thread, or a review that requests
+   changes, from a person with write access.
 
 A *blocking Finding*, here and in the diagram above, is one that gates: severity `blocking` or
 `major`, from a required Lens or a human.
@@ -651,6 +675,11 @@ some reading and cannot hold a pull request by volume, which is how the POC's co
 threads be resolved stays in force, so the platform keeps backing the Factory, and each such thread
 gets one visible outcome. "Resolved by `pr-review`, not adopted" is then a fact on GitHub, from
 which each reviewer's contribution can be counted.
+
+Two rules stop this feeding back into the reviewers themselves. No Factory Finding mentions a
+reviewer by name, so none is drawn into a reply. And any feature by which a reviewer approves once
+its threads are resolved is switched off, in that reviewer's configuration file in the repo;
+otherwise the Factory resolving a thread would hand the reviewer an approval to give.
 
 Model Lenses are admitted only after the deterministic required Lenses have passed on that content.
 A change that fails lint is not worth a model's time, and a branch that is pushed every few minutes
@@ -778,7 +807,7 @@ A sweep on 2026-10-10 ran the Lifecycle against awkward inputs. Each case below 
 
 | Case | Rule |
 |---|---|
-| A pull request from a fork, or from someone who is not a collaborator | Its class is `outside`. It gets no Run, because a Run holds the model credential. It is held as "needs you" until the Maintainer admits it or closes it (I-25) |
+| A pull request from a fork, or from someone who is not a collaborator | Its class is `outside`. It gets no Run, because a Run holds the model credential. It is held as "needs you" until the Maintainer admits it or closes it (I-25). Its status is written for a stranger: what is happening, and that a maintainer has to admit it |
 | A dependency update | Its class is `dependency`. Its required Lenses are deterministic ones. The POC's automerge serves it until that Intent is cut over |
 | The approver is the author or the last pusher | GitHub rejects or discards the approval. The Kernel reads `author` and `last_pusher`, attempts no approval, and holds the item with that reason (I-26). The machine user therefore never pushes (§5.1) |
 | A branch pushed every few minutes | Deterministic Lenses first; a model review starts only on content they have passed (I-27) |
@@ -789,10 +818,36 @@ A sweep on 2026-10-10 ran the Lifecycle against awkward inputs. Each case below 
 | A pull request that targets another feature branch, as stacked pull requests do | The Factory serves pull requests that target a protected branch. Others are shown as not served |
 | The poller was down for hours | An item is stale only if it went unevaluated while passes were running. A missing pass is one health alert, not one alert per item |
 | A third-party thread the reviewer does not adopt | The reviewer resolves it (§4.2), so the ruleset does not block the merge on it |
+| A review thread from someone without write access | On a public repo anyone can open one. It is treated as a third-party reviewer's: `pr-review` adopts it or resolves it. Only a person with write access can hold a pull request with a thread |
+| A plain comment from the Maintainer | It steers and gates nothing. It goes into the next Run's Task, and the Role's App reacts to it to show it was read. A plain comment has no resolved state, so it could never be closed. To block, use a review |
 
 Already handled with no special rule, because State is derived: a draft, a conversion back to
 draft, a reopened pull request, a force-push during a Run (`apply` re-reads the item), ejection
 from the merge queue, and an early approval by a person.
+
+### 4.7 The control vocabulary
+
+Every human control is one ordinary GitHub action, the same for every Role and every item.
+
+| Control | What the Maintainer does | Effect |
+|---|---|---|
+| Hold | Add the label `factory:hold` | No Run is admitted on the item; an in-flight Run writes nothing (I-6, I-21) |
+| Release | Remove the label | The next pass resumes, with a fresh allowance of attempts (I-28) |
+| Hands-off | Add the label `factory:hands-off` | The Factory watches the item and never acts on it |
+| Admit an outside item | Add the label `factory:admit` | The item is served like any other (I-25) |
+| Steer | Write a plain comment | It reaches the next Run's Task and is acknowledged with a reaction |
+| Block | Open a review thread, or request changes | A `human` Finding, which gates until that person resolves it |
+| Approve | Approve the pull request | A human approval stands as an independent approval |
+| Override | Merge through GitHub's own bypass | The merge is recorded as an Override and a reason is asked for on the item |
+| Pause | Set the variable `FACTORY_PAUSED` for the org or a repo | No Run is admitted in that scope; only a person clears it |
+| Re-evaluate | Nothing | Every pass evaluates every open item |
+
+How work on an issue is started is defined with the issue Lifecycle, which is not yet written.
+
+The Factory reaches the Maintainer the same way, through GitHub. When an item becomes "needs you",
+the Controller assigns it to the Maintainer, or requests their review on a pull request, and
+GitHub's own notifications carry it to email and phone. A fault of the whole Factory goes to one
+tracking issue, never to one per item.
 
 ## 5. Team interactions
 
@@ -818,6 +873,8 @@ A token is still narrowed at mint time to the Effects one Result requests.
 This table is generated from the manifests and the authority table, so it always shows the present
 state. The fourth column is the plan.
 
+- **Apps are installed across the org, and tokens are minted for one repo.** A new Consumer repo
+  then needs no installation step, and a token cannot reach a repo its Run is not about.
 - **Reading is shared; writing is not.** Every `run` job reads GitHub through one App,
   `combsmith-sf-reader`, which can write nothing. A Role is given an App of its own when it first
   needs to write, and `apply` mints that App's token. A Role in shadow writes nothing, so it runs
@@ -841,9 +898,9 @@ The authority table of §3.12 is the whole rule. Five points follow from it.
 
 - **Ownership is by category, not by path.** A security defect can sit in any file.
 - **An owner judges; it does not rewrite.** There is one author per change.
-- **A domain Role starts in shadow.** `pr-review` owns every model-judged category at first. A
-  domain Role adjudicates a sample of the same Findings on the reader App, and its decisions are
-  recorded and bind nothing.
+- **A domain Role starts in shadow.** `pr-review` owns every model-judged category at first. On a
+  sample of items a domain Role both reviews the change and adjudicates the same Findings, on the
+  reader App. What it would have raised and decided is recorded, and binds nothing.
 - **A domain Role is promoted on evidence, one Role at a time.** It needs an eval set for its
   adjudicating Intent (FR-55) and a record in shadow that shows it adds something: agreement with
   the owner where the owner was later proved right, and disagreement where the owner was later
@@ -929,6 +986,7 @@ it observed as a recorded fixture, which is what the simulator's fake GitHub is 
 | P-21 | How often may the control room's page be rebuilt, and can a page read the feed files directly from a browser? | The page reads the feed directly and rebuilds only when its own code changes |
 | P-23 | How many threads may one App resolve in an hour before GitHub's secondary limits apply? | Enough for about 22 threads a pull request at the Factory's merge rate |
 | P-24 | With the Maintainer as the only code owner of a path, does the machine user's approval fail to satisfy code-owner review there? | It fails to satisfy it |
+| P-25 | Does resolving a reviewer's thread cause that reviewer to re-post it, reply, or approve? | No, with the configuration of §4.2 |
 | P-22 | How soon after it is started does a Run appear in the list of run records? | Soon enough that a pass never admits the same Run twice; the item's lane and I-21 cover the gap |
 
 ## 7. State, records and noticing work
@@ -1101,6 +1159,7 @@ board. It is also not where a chat session's output is made terser; that is a se
 | `view/scorecard.json` | The success metrics of PRD §9 and the adoption and use measures of §9.2 |
 | `view/capacity.json` | Usage per window, the estimate of what is left, and the degradation stage |
 | `view/health.json` | Whether Admission is paused and why, when the last pass ran, and recent capacity and environment faults |
+| `view/consumers.json` | Each Consumer repo's ring, and what its readiness check finds missing |
 
 ```json
 {
@@ -1185,6 +1244,15 @@ Anything not needed for that event is in a later slice.
 | 4. Fix Intents | Fix CI and fix review findings under the run contract, with `verify` | The Factory |
 | 5. A Consumer repo | The first `stable` Release, promoted on evidence from `next`. One low-risk Consumer, cut over by pause and repoint (§9.6) | The Factory |
 | 6. Onward | Implementation, the initiative driver, the remaining personas, as in the review's migration shape | The Factory |
+
+**Slice 0 is done when** `factory / verify` is a required check and passes; every schema the first
+slice uses has an example that validates; the Lifecycle passes its exhaustive checks; the simulator
+runs its fixed seeds against a skeleton Kernel; the three Apps exist; and each platform trial the
+first slice rests on has a recorded fixture.
+
+**Slice 1 is done when** a Release on `next` has reviewed a pull request to the Factory's repo, the
+machine user's approval of it stands, the pull request has merged through the queue, and its status
+block said why at each step.
 
 **Not in slice 1:** adoption measurement, domain Roles, path scopes, the dashboard page, the private
 Artifact board, the comparator against the POC, any App beyond the three named, any Consumer repo.
@@ -1337,7 +1405,7 @@ Recorded in the same change as this document.
 | ADR-0013, decision 3 | The Controller is a poller. An event may only ask for a pass. The Consumer file is optional. A Run starts only from a recorded Decision. An automatic pause is derived from recent faults |
 | ADR-0013, decision 4 | The Result artifact is the intent record. `apply` re-reads the item before any Effect. `verify` is a filter |
 | ADR-0013, decision 5 | One App per Role, registered when the Role first writes; one shared reader App. The machine user never pushes. The Maintainer alone owns the Factory's own rules |
-| ADR-0013, decision 7 | An owning Role resolving a thread is a declared Role transition, beside the human one. An owning Role starts in shadow. The reviewer resolves third-party threads it does not adopt |
+| ADR-0013, decision 7 | An owning Role resolving a thread is a declared Role transition, beside the human one. An owning Role starts in shadow. The reviewer resolves third-party threads it does not adopt. A plain comment steers; a review from a person with write access gates |
 | ADR-0013, decision 6 | The Factory's own repo is served by `next` |
 | ADR-0013, decision 10 | The review Intent on the Factory's own repo is the first component. The comparison with the POC is a measure, not a gate. Stopping is the Maintainer's decision, on adoption and use. Cutover is pause, then repoint |
 | ADR-0013, decision 11 | No longer two provisional mechanisms. The poller's latency and cost are measured against the same thresholds |

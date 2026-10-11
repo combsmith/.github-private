@@ -1,6 +1,8 @@
 # Architecture review: the agentic factory, POC to MVP
 
-**Status:** Draft — for maintainer review
+**Status:** Draft — for maintainer review. **This is a historical analysis, not a specification.**
+Several of its recommendations were replaced on the day it was written. Build from
+[`software-factory-design.md`](./software-factory-design.md) and ADR-0013, never from this.
 **Date:** 2026-10-10
 **Reviewed at:** commit `aef61164` (`main`)
 **Lens:** Solution Architect persona (`personas/solution-architect/`), run locally for a whole-system review
