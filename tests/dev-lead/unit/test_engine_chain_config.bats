@@ -97,6 +97,7 @@ setup() {
 
 # ── Rubber-duck selection ─────────────────────────────────────────────────────
 
+# Invoke select_duck_engine in an isolated bash subprocess and return the result.
 _duck() {
   bash -c "source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1; select_duck_engine" 2>/dev/null
 }
@@ -144,6 +145,7 @@ _duck() {
   [ "$output" = "copilot o4-mini" ]
 }
 
+# List all duck engine candidates in evaluation order via duck_engine_candidates.
 _candidates() {
   bash -c "source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1; duck_engine_candidates"
 }
@@ -357,6 +359,7 @@ _verdict() {
 
 # ── validate-engines.sh probes ────────────────────────────────────────────────
 
+# Create a mock bin directory (in VBIN) with claude, gemini, gh, curl CLIs for testing validate_engines probes.
 _setup_validate_bin() {
   VBIN="$(mktemp -d)"
   printf '#!/bin/bash\nexit 0\n' > "$VBIN/claude"
@@ -375,6 +378,7 @@ EOF
   chmod +x "$VBIN"/*
 }
 
+# Run validate_engines with the mock bin and print the availability flags.
 _validate() {
   bash -c "export PATH='$VBIN':\$PATH GEMINI_CLI_TRUST_WORKSPACE=true CLAUDE_CODE_OAUTH_TOKEN=x; unset GITHUB_STEP_SUMMARY; source '$SCRIPT_DIR/scripts/validate-engines.sh'; validate_engines; echo \"C=\$CLAUDE_AVAILABLE G=\$GEMINI_AVAILABLE P=\$COPILOT_AVAILABLE\""
 }
@@ -429,6 +433,7 @@ _validate() {
 
 # ── review-batch.sh walks the configured chain ────────────────────────────────
 
+# Set up a temporary batch test directory (in BDIR) with review-batch.sh and mocked dependencies.
 _setup_batch() {
   BDIR="$(mktemp -d)"
   mkdir -p "$BDIR/scripts/lib" "$BDIR/bin"
@@ -510,6 +515,7 @@ _batch() {
 
 # ── dev-lead-preflight.sh: Claude token required only when AI_ENGINES enables claude ──
 
+# Run dev-lead-preflight.sh without CLAUDE_CODE_OAUTH_TOKEN set.
 _preflight() {
   bash -c "unset GITHUB_STEP_SUMMARY CLAUDE_CODE_OAUTH_TOKEN; bash '$SCRIPT_DIR/scripts/dev-lead-preflight.sh'"
 }
@@ -602,6 +608,7 @@ _preflight() {
   rm -rf "$BDIR"
 }
 
+# Run run_duck with <prompt_file> and engine <name> to test key scrubbing and credential isolation.
 _run_duck_probe() {
   local p; p="$(mktemp)"; echo "duck prompt" > "$p"
   bash -c "source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1

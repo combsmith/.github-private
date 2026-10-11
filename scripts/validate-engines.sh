@@ -148,6 +148,8 @@ _gemini_billing_probe() {
   [ "$_ok" -eq 1 ]
 }
 
+# Probe and export CLAUDE_AVAILABLE, GEMINI_AVAILABLE, and COPILOT_AVAILABLE.
+# Emits ::notice:: and ::warning:: annotations; appends summary to GITHUB_STEP_SUMMARY.
 validate_engines() {
   local claude_ok=false gemini_ok=false copilot_ok=false
 
@@ -185,6 +187,7 @@ validate_engines() {
   # Collect every reason the engine is unavailable so the warning is precise.
   local gemini_reasons=""
 
+  # Append <reason> to the semicolon-joined gemini_reasons list.
   append_gemini_reason() {
     if [ -n "$gemini_reasons" ]; then
       gemini_reasons="$gemini_reasons; $1"
