@@ -7002,11 +7002,11 @@ _run_2004() {
 
 # ── #2269: an additive fix to a finding that names a token ───────────────────
 # The PR #2205 shape: the fix adds one guard to the file the finding names and
-# removes nothing, so the removed-token rule alone could never verify it. The
-# finding here has that comment's form but names a script, since a pass that
-# edits a test file also needs the test-tamper guard's PR lookup, which this
-# stub does not serve. The real comment and diff are tested against the pure
-# verdict in test_comment_disposition_verify.bats.
+# removes nothing, so the removed-token rule alone could never verify it. Most
+# cases here use a finding of that comment's form that names a script. One runs
+# the real comment against its test file, which also takes the pass through the
+# test-tamper guard. The real diff is tested against the pure verdict in
+# test_comment_disposition_verify.bats.
 
 _2269_FINDING='## CodeAnt Nitpicks
 
@@ -7108,6 +7108,36 @@ CLAUDEEOF
   _run_2004
 
   [ "$status" -eq 0 ]
+  [[ "$output" == *"(this-pass-touches-named-file)"* ]]
+  grep -Eq 'classifier:RESOLVED.*id=IC_FIND' "$MINLOG"
+}
+
+@test "#2269: the real PR #2205 comment through the full script — a test added to the TEST file it names verifies" {
+  # A pass that edits a test file also runs the test-tamper guard, which asks the
+  # API for the PR's base branch and fetches it. Serve that lookup, give the repo
+  # an origin holding main, and leave the rest to the stub.
+  _2269_setup
+  /usr/bin/git init -q --bare "$BATS_TEST_TMPDIR/origin2269.git"
+  /usr/bin/git -C "$T2004_REPO" remote add origin "$BATS_TEST_TMPDIR/origin2269.git"
+  /usr/bin/git -C "$T2004_REPO" push -q origin refs/remotes/origin/main:refs/heads/main
+  _2004_commit "test: offline-mode guard" "2026-10-01T11:30:00Z" \
+    "mkdir -p tests && printf '@test \"no-ADR bullet\" {\n  true\n}\n' > tests/test_advisory_offline_mode.bats" >/dev/null
+  mv "$STUB_BIN_DIR/gh" "$STUB_BIN_DIR/gh-2004"
+  cat > "$STUB_BIN_DIR/gh" <<GHEOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"pulls/54"*".base.ref"*) echo main; exit 0 ;;
+esac
+exec "$STUB_BIN_DIR/gh-2004" "\$@"
+GHEOF
+  chmod +x "$STUB_BIN_DIR/gh"
+  # A new test appended to the file: an addition the guard lets through.
+  _2269_engine_fixes tests/test_advisory_offline_mode.bats '@test "no-ADR bullet does not escalate" { true; }'
+  _2004_nodes "$(cat "$SCRIPT_DIR/tests/fixtures/comment-disposition/pr2205-codeant-nitpick.md")"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Test-tamper guard"* ]]
   [[ "$output" == *"(this-pass-touches-named-file)"* ]]
   grep -Eq 'classifier:RESOLVED.*id=IC_FIND' "$MINLOG"
 }
