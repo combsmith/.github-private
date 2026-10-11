@@ -22,7 +22,7 @@ mktemp_assignments() {
 # Prints the line number of the first non-comment line referencing $NAME, or nothing.
 first_reference() {
   local name="$1"
-  grep -nE "\\\$(${name}([^A-Za-z0-9_]|\$)|\\{${name}[}:#%/])" "$MONITOR" \
+  grep -nE "\\\$(${name}([^A-Za-z0-9_]|\$)|\\{${name}[}:#%/?+=-])" "$MONITOR" \
     | grep -vE '^[0-9]+:[[:space:]]*#' \
     | head -n1 | cut -d: -f1
 }
@@ -45,6 +45,6 @@ first_reference() {
   done < <(mktemp_assignments)
   if [ -n "$bad" ]; then
     printf '%s' "$bad" >&2
-    return 1
   fi
+  [ -z "$bad" ]
 }

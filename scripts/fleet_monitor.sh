@@ -173,7 +173,7 @@ failed_file=$(mktemp)
 schedule_metrics_file=$(mktemp)
 # Normalized legacy runs for role parity (2e). Created here, not beside
 # ingress_attr_file, because the per-repo loop below already appends to it (#2277).
-legacy_attr_file=$(mktemp)
+legacy_attr_file=$(mktemp) || { echo "::error::Failed to create legacy_attr_file" >&2; exit 1; }
 any_failures=0
 total_workflows=0
 
