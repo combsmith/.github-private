@@ -123,6 +123,14 @@ detail_row() {
     "${WORK}/fleet_monitor_report.md"
 }
 
+# attribution_row <role> — that role's row of the per-role attribution table.
+attribution_row() {
+  awk -v h="## Run attribution (by role, across collapse)" -v role="| \`$1\` |" '
+    $0 == h { f = 1; next }
+    f && index($0, role) == 1 { print; exit }
+  ' "${WORK}/fleet_monitor_report.md"
+}
+
 # ---------------------------------------------------------------------------
 # The metrics loop runs to completion on an ordinary workflow
 # ---------------------------------------------------------------------------
@@ -143,4 +151,36 @@ detail_row() {
 
   # The loop's own numbers reached the report: 3 runs, 2 green, 1 red.
   [ "$(detail_row ".github/workflows/ci.yml")" = " 3 | 2 | 1 | 0 | 33.3% " ]
+}
+
+# ---------------------------------------------------------------------------
+# Per-role run attribution (#1727): every collected run is in the table
+# ---------------------------------------------------------------------------
+
+@test "fleet_monitor: every run the loop collects reaches the per-role attribution table" {
+  # The loop writes one {role,conclusion} record per run and the report section
+  # reads them back ~450 lines later. The section used to combine its two JSONL
+  # inputs with `jq -s add`, which MERGES objects: three runs became one record,
+  # the last one, so this row read `| 1 | 0 | 1 | 0 |`.
+  printf 'name: CI\non:\n  push:\njobs:\n  test:\n    runs-on: ubuntu-latest\n' \
+    | put_workflow 11 ".github/workflows/ci.yml"
+  put_runs 11 success success failure
+
+  run_monitor
+  [ "$status" -eq 0 ]
+  [ "$(attribution_row ci)" = '| `ci` | 3 | 2 | 1 | 0 |' ]
+}
+
+@test "fleet_monitor: two workflows get one attribution row each, not one row for the fleet" {
+  printf 'name: CI\non:\n  push:\njobs:\n  test:\n    runs-on: ubuntu-latest\n' \
+    | put_workflow 11 ".github/workflows/ci.yml"
+  put_runs 11 success success failure
+  printf 'name: Lint\non:\n  push:\njobs:\n  lint:\n    runs-on: ubuntu-latest\n' \
+    | put_workflow 12 ".github/workflows/lint.yml"
+  put_runs 12 success cancelled
+
+  run_monitor
+  [ "$status" -eq 0 ]
+  [ "$(attribution_row ci)" = '| `ci` | 3 | 2 | 1 | 0 |' ]
+  [ "$(attribution_row lint)" = '| `lint` | 2 | 1 | 0 | 1 |' ]
 }

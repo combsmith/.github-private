@@ -671,8 +671,11 @@ ingress_attribution_section() {
   # ran on both sides of the collapse shares the required bucket (#1727 AC #4).
   local combined_attr_file attr_tsv
   combined_attr_file=$(mktemp)
+  # Both accumulators are JSONL: one {role,conclusion} OBJECT per line. They are
+  # concatenated, not `jq -s add`-ed: adding objects merges them key by key, which
+  # left ONE record (the last) for the whole fleet instead of one per run.
   if [ -s "$legacy_attr_file" ] || [ -s "$ingress_attr_file" ]; then
-    jq -s 'add // []' "$legacy_attr_file" "$ingress_attr_file" > "$combined_attr_file"
+    cat "$legacy_attr_file" "$ingress_attr_file" > "$combined_attr_file"
   fi
   [ -s "$combined_attr_file" ] || { rm -f "$combined_attr_file"; return 0; }
   attr_tsv=$(mktemp)
