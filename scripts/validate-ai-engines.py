@@ -148,7 +148,7 @@ def check_references(config, globs) -> list:
             continue
         # Only the Copilot path strips a vendor prefix before pricing a run.
         bare = model.split("/", 1)[1] if entry["provider"] == "copilot" and "/" in model else model
-        if not any(glob_matches(g, model) or glob_matches(g, bare) for g in globs):
+        if not any(glob_matches(g, bare) for g in globs):
             problems.append(
                 f"models.{model}: provider {entry['provider']} is enabled but the model has "
                 f"no price row in scripts/lib/model-pricing.tsv")

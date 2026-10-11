@@ -42,6 +42,16 @@ _step() {
   grep -q "npm install -g @google/gemini-cli" "$CALLS"
 }
 
+@test "pr-review install step resolves the enabled primary when REVIEW_ENGINE names a disabled engine" {
+  _step pr-review.yml "Install review engine CLIs"
+  cd "$SCRIPT_DIR"
+  AI_ENGINES="claude,gemini" REVIEW_ENGINE="copilot" CLAUDE_CODE_VERSION=latest \
+    COPILOT_GITHUB_TOKEN=x run bash "$BATS_TEST_TMPDIR/step.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"claude-code cache hit"* ]]
+  ! grep -q "gh extension install github/gh-copilot" "$CALLS"
+}
+
 @test "pr-review install step falls back to claude when the config is unreadable" {
   _step pr-review.yml "Install review engine CLIs"
   cd "$SCRIPT_DIR"
