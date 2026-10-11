@@ -300,6 +300,25 @@ _with_nodes() {
   [ "$status" -eq 3 ]
 }
 
+@test "sweep(#2247): millisecond-precision read_at is parsed, deduped across start+terminal, and compared to the edit" {
+  local nodes
+  # Start (createdAt ...01Z) and terminal (...45Z) markers share read_at=...:00.123Z: one pass.
+  nodes=$(_with_nodes "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:45:00Z OWNER 2026-10-01T20:40:00.123Z)" \
+    "$(_start_node IC_s1 2026-10-01T20:40:01Z 2026-10-01T20:40:00.123Z)")
+  run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 0 ]
+  STALE_DISPOSITION_MAX_PASSES=1 run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 3 ]
+  # A pass that read at 20:30:00.500Z (before the edit) posted after it: not counted.
+  nodes=$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z OWNER 2026-10-01T20:30:00.500Z)
+  STALE_DISPOSITION_MAX_PASSES=1 run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 0 ]
+  # read_at 20:35:00.000Z equals the edit second: counted (fraction must not sort it below).
+  nodes=$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z OWNER 2026-10-01T20:35:00.000Z)
+  STALE_DISPOSITION_MAX_PASSES=1 run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 3 ]
+}
+
 @test "sweep(#2247): a start marker before the edit, for another PR, or from an untrusted author does not count" {
   export STALE_DISPOSITION_MAX_PASSES=1  # one counted pass reaches the cap
   local base

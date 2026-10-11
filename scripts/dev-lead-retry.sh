@@ -513,8 +513,8 @@ stale_disposition_needs_dispatch() {
         | select((.authorAssociation // "") as $a | ["OWNER","MEMBER","COLLABORATOR"] | index($a) != null)
         | select((.body // "") | test($re) or test($start))
         | (.createdAt // "") as $posted
-        | ([(.body // "") | capture("read_at=(?<r>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)") | .r] | first // $posted) as $seen
-        | select($seen >= $e) | $seen ] | unique | length' <<< "$nodes" 2>/dev/null) || return 1
+        | ([(.body // "") | capture("read_at=(?<r>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z)") | .r] | first // $posted) as $seen
+        | select(def n: sub("Z$"; "") | split(".") as $p | $p[0] + "." + (($p[1] // "") + "000000000")[0:9]; ($seen | n) >= ($e | n)) | $seen ] | unique | length' <<< "$nodes" 2>/dev/null) || return 1
   [[ "$later_runs" =~ ^[0-9]+$ ]] || return 1
   [ "$later_runs" -lt "$max_passes" ] || return 3
   return 0
