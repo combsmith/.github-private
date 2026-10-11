@@ -651,8 +651,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
           ORG: ${{ env.ORG }}
           LOOKBACK_DAYS: ${{ env.LOOKBACK_DAYS }}
-          # Collected Gemini ledger records for the per-tier availability report (#2041).
+          # Collected Gemini ledger records for the per-tier availability report (#2041):
+          # only those traceable to a trusted run (#2147), with a report of what was
+          # ignored and what could not be read.
           GEMINI_RECORDS_OUT: ${{ runner.temp }}/gemini-records.jsonl
+          GEMINI_COLLECTION_OUT: ${{ runner.temp }}/gemini-collection.json
         run: bash scripts/token_report.sh >> "$GITHUB_STEP_SUMMARY"
 
       # Gemini availability per task tier (#2041). The per-day history store survives
@@ -662,18 +665,21 @@ jobs:
       # it, and every step is non-blocking. The cache and artifact steps use
       # continue-on-error (a storage hiccup must not fail the fleet monitor); the
       # report step warns on failure instead.
+      # The cache name carries `v2` (#2147): the store now holds only records from
+      # trusted runs, so a store filled before that filter existed is not restored.
       - name: Restore Gemini tier history
         continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .gemini-tier-state
-          key: gemini-tier-history-${{ env.ORG }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: gemini-tier-history-v2-${{ env.ORG }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            gemini-tier-history-${{ env.ORG }}-
+            gemini-tier-history-v2-${{ env.ORG }}-
 
       - name: Gemini availability per task tier
         env:
           GEMINI_RECORDS_IN: ${{ runner.temp }}/gemini-records.jsonl
+          GEMINI_COLLECTION_IN: ${{ runner.temp }}/gemini-collection.json
           GEMINI_TIER_STATE_DIR: .gemini-tier-state
           # The tier chains come from ai_models_gemini_chain: the same variables the
           # engine callers export (dev-lead-reusable.yml, pr-review.yml).
@@ -692,7 +698,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .gemini-tier-state
-          key: gemini-tier-history-${{ env.ORG }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: gemini-tier-history-v2-${{ env.ORG }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload Gemini tier snapshot
         if: always()

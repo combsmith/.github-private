@@ -9,7 +9,10 @@
 #   2. writes the per-tier snapshot (snapshot.json, schema:
 #      scripts/lib/gemini-tier-snapshot.schema.json) — uploaded as the
 #      gemini-tier-snapshot artifact so the dry-run poller (#2029) can ask "can tier T
-#      run on Gemini now?" (gq_tier_can_run). Nothing gates or defers dispatch on it;
+#      run on Gemini now?" (gq_tier_can_run). Nothing gates or defers dispatch on it.
+#      The snapshot also records what it was built from (`collection`, #2147): whether
+#      the records come only from trusted runs and whether the collection was complete,
+#      which is what gq_tier_decision refuses to answer without;
 #   3. emits one ::warning:: per degraded/unavailable tier per reset day (stderr, so
 #      it is an annotation, not summary text);
 #   4. prints the Markdown report (stdout → the job summary).
@@ -20,7 +23,12 @@
 # Environment (all optional):
 #   GEMINI_TIER_STATE_DIR  history store + snapshot directory (default .gemini-tier-state)
 #   GEMINI_RECORDS_IN      JSONL of newly collected records (token_report.sh
-#                          GEMINI_RECORDS_OUT); absent → nothing new to merge
+#                          GEMINI_RECORDS_OUT); absent → nothing new to merge.
+#                          That hand-off is where untrusted records are dropped
+#                          (#2147): this script believes its input file.
+#   GEMINI_COLLECTION_IN   the collection report (token_report.sh
+#                          GEMINI_COLLECTION_OUT); absent or malformed → the snapshot
+#                          says its records are unverified and the collection incomplete
 #   GEMINI_HISTORY_DAYS    previous days shown and retained (default: caps setting
 #                          history_days, else 7)
 #   GEMINI_QUOTA_CAPS / GEMINI_QUOTA_NOW / AI_MODELS_GEMINI / GEMINI_*_MODEL[_CHAIN]
@@ -76,6 +84,49 @@ gtr_merge_store() {
   mv "$tmp" "$store"
 }
 
+# gtr_collection_block [collection_report_file]
+# The snapshot's `collection` object (#2147), from token_report.sh's collection
+# report. `records` is "trusted-runs-only" only when the report says the filtered
+# hand-off was written; `complete` only when, in addition, every repository listing
+# and every listed artifact was read (a failed read is usage that is not counted)
+# and no handed-over record is for a key index and model the caps file does not
+# list (`gemini_records_unlisted`: a ledger that tests also wrote to).
+# No report, an unreadable one, or one with a field of the wrong type gives
+# "unverified" / not complete: the snapshot is still written and shown, and
+# gq_tier_decision answers `unknown` on it. Pure. Always prints one JSON object.
+gtr_collection_block() {
+  local f="${1:-}" out=""
+  if [ -n "$f" ] && [ -r "$f" ] && [ -f "$f" ]; then
+    out="$(jq -c '
+      def n: if type == "number" and . >= 0 and . == floor then . else null end;
+      if type != "object" then error("not an object") else . end
+      | (.handed_over == true) as $h
+      | (.repo_listings_failed | n) as $lf | (.artifacts_failed | n) as $af
+      | (.gemini_records_unlisted | n) as $ul
+      | (if ($h | not) then "the trusted records were not handed over"
+         elif $lf == null or $af == null then "the collection report does not say what could not be read"
+         elif $lf > 0 or $af > 0 then "\($lf) repository listing(s) and \($af) artifact(s) could not be read"
+         elif $ul == null then "the collection report does not say whether the ledger holds unlisted records"
+         elif $ul > 0 then "\($ul) record(s) are for a key index and model the caps file does not list, so the ledger holds records that are not real calls"
+         else "" end) as $why
+      | { complete: ($why == ""),
+          records: (if $h then "trusted-runs-only" else "unverified" end),
+          reason: $why,
+          collected_at: (.collected_at
+            | if type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
+              then . else null end),
+          repo_listings_failed: $lf, artifacts_failed: $af,
+          gemini_records_trusted: (.gemini_records_trusted | n),
+          gemini_records_ignored: (.gemini_records_ignored | n),
+          artifacts_ignored: (.artifacts_ignored | n),
+          gemini_records_unlisted: $ul }' "$f" 2>/dev/null | head -1)" || out=""
+  fi
+  if [ -z "$out" ]; then
+    out='{"complete":false,"records":"unverified","reason":"no collection report","collected_at":null,"repo_listings_failed":null,"artifacts_failed":null,"gemini_records_trusted":null,"gemini_records_ignored":null,"artifacts_ignored":null,"gemini_records_unlisted":null}'
+  fi
+  printf '%s\n' "$out"
+}
+
 # _gtr_md <text> — text safe inside a Markdown table cell.
 _gtr_md() {
   local s="${1//\\/\\\\}"
@@ -99,6 +150,15 @@ gtr_render() {
       + (if .window.rolling then " (daily reset not configured: rolling 24h)"
          else " (\(.window.daily_reset_time) \(.window.daily_reset_tz) reset)" end)
       + " · key indexes: \(.key_indexes | join(", ") | if . == "" then "none" else . end)_\n"' "$snap"
+  jq -r '(.collection // { complete: false, records: "unverified", reason: "no collection report" })
+      | def c: if . == null then "?" else tostring end;
+        "_Records: "
+        + (if .records == "trusted-runs-only"
+           then "only from trusted runs (\(.gemini_records_trusted | c) handed over, \(.gemini_records_ignored | c) ignored in \(.artifacts_ignored | c) artifact(s))"
+           else "provenance not verified" end)
+        + " · collection "
+        + (if .complete == true then "complete" else "INCOMPLETE (\(.reason // "no reason given")): usage may be missing, so this is not a basis for a dispatch decision" end)
+        + "_\n"' "$snap"
   printf '> **Ledger only — compare with the AI Studio viewer.** Everything here is metered from the fleet'"'"'s own ledger '
   printf '(successful calls plus the rejected attempts the engine recorded). It cannot see usage of the same Google project '
   printf 'by anything else (manual use, AI Studio, other tools), and a rejection the ledger missed is not counted, so Google'"'"'s '
@@ -176,7 +236,10 @@ main() {
   [ -f "$store" ] || : > "$store"
   gtr_merge_store "$store" "${GEMINI_RECORDS_IN:-}"
   export GEMINI_LEDGER_FILE="$store"
-  gq_tier_snapshot > "$snap"
+  gq_tier_snapshot > "$snap.tmp"
+  jq -c --argjson c "$(gtr_collection_block "${GEMINI_COLLECTION_IN:-}")" '. + { collection: $c }' \
+    "$snap.tmp" > "$snap"
+  rm -f "$snap.tmp"
   gq_tier_notices "$snap" "$store" >&2
   gq_day_history "$(gq_history_days)" > "$hist"
   gtr_render "$snap" "$hist" "$store"
