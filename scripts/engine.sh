@@ -1842,7 +1842,8 @@ run_agentic() {
 run_persona() {
   # The live persona runtime is Claude Opus with `--allowedTools Bash` only
   # (persona-runner-reusable.yml). Only the claude engine honors that Bash-only
-  # allowlist: gemini uses gemini-2.5-pro and ignores --allowed-tools, copilot
+  # allowlist: gemini uses its pro model (gemini-3.1-pro-preview by default,
+  # scripts/lib/engine-models.sh) and ignores --allowed-tools, copilot
   # runs o4-mini with --yolo — either would score a differently-modelled, more
   # tool-capable artifact than production ships. A persona parity score under a
   # non-claude engine is meaningless, so fail fast rather than silently gate the
@@ -2348,7 +2349,7 @@ run_duck_chain() {
   else
     candidates="$(duck_engine_candidates)"
   fi
-  rm -f "${OUTPUT_FILE}.engine"
+  rm -f "${OUTPUT_FILE}.engine" "${OUTPUT_FILE}.skip"
   total="$(printf '%s\n' "$candidates" | grep -c '[^[:space:]]' || true)"
   while read -r e m; do
     [ -n "$e" ] && [ "$e" != none ] || continue
@@ -2377,6 +2378,7 @@ run_duck_chain() {
     if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
       rm -f "$out_tmp" "$err_tmp"
       echo "::warning::[duck] $e ($m) timed out — not trying another duck engine" >&2
+      printf '%s\n' "$e ($m) timed out" > "${OUTPUT_FILE}.skip"
       return "$rc"
     fi
     # Phrasing avoids _rate_limit_pattern tokens, as in the chain walkers.
@@ -2390,8 +2392,30 @@ run_duck_chain() {
   done <<< "$candidates"
   if [ -n "$tried" ]; then
     echo "::notice::[duck] no duck engine produced a verdict (tried: $tried) — continuing with the deep review only" >&2
+    printf '%s\n' "no duck engine produced a verdict (tried: $tried)" > "${OUTPUT_FILE}.skip"
   fi
   return "$rc"
+}
+
+# duck_skip_note <verdict_json> <reason>
+# Adds one line to the posted review body saying the rubber-duck second opinion
+# was skipped and why (#1960), so a deep-only review is visible as such. Placed
+# before "### Findings" (appended when the body has no such heading), so the
+# pr-review-agent marker stays on the first line. No-op when <reason> is empty
+# (the duck ran), the file is not a verdict with a body, or jq fails. Returns 0.
+duck_skip_note() {
+  local verdict="$1" reason="$2" tmp
+  [ -n "$reason" ] && [ -s "$verdict" ] || return 0
+  tmp="$(mktemp)" || return 0
+  if jq --arg line "_Second opinion skipped: no rubber-duck verdict — ${reason}._" '
+      if ((.body // "") | type) == "string" and (.body // "") != "" then
+        .body |= (if test("\n### Findings") then sub("\n### Findings"; "\n" + $line + "\n\n### Findings")
+                  else . + "\n\n" + $line end)
+      else . end' "$verdict" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+    cat "$tmp" > "$verdict"
+  fi
+  rm -f "$tmp"
+  return 0
 }
 
 # run_duck <prompt_file> <model>

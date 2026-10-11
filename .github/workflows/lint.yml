@@ -104,7 +104,10 @@ jobs:
             tests/fleet_stub_drift.bats \
             tests/fleet_stub_remediate.bats \
             tests/fleet_stub_registry.bats \
+            tests/fleet_monitor_tempfile_order.bats \
             tests/fleet_remediate_gate.bats \
+            tests/fleet_monitor_run.bats \
+            tests/test_fleet_paused_run.bats \
             tests/template_stub_drift.bats \
             tests/canary_rollout.bats \
             tests/test_initiative_canary.bats \
@@ -128,6 +131,7 @@ jobs:
             tests/test_model_pin_token_log.bats \
             tests/dev-lead/unit/test_engine_chain_config.bats \
             tests/dev-lead/unit/test_engine_models.bats \
+            tests/test_validate_engines.bats \
             tests/test_review_cycle.bats \
             tests/test_pr_automation_budget.bats \
             tests/test_pr_runaway_regression.bats \

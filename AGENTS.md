@@ -847,6 +847,17 @@ gated (with the one upstream exception above), and a test keeps it that way.
   notice would count as a healthy sample of a release that did nothing. Do not add a
   `fleet-paused` job to a reusable the gate samples; the test fails a `job-gate-silent` workflow
   that has one.
+- **How the monitors read a paused run (#2266).** The variable's value when a run started is not
+  in the Actions API afterwards, so a monitor reads what the run recorded: the `fleet-paused` job
+  concluded `success` (`scripts/lib/fleet-pause.sh`). The Fleet Monitor takes such runs out of
+  every total, success count, failure rate and duration and lists them under "Fleet-paused
+  runs"; it asks only about green runs of workflows that carry the notice job, 100 runs per
+  request. The initiative-planner canary reports `PAUSED` instead of a pass. A run that ended
+  `skipped` is **not** read as paused on that evidence alone, because an event filter ends a run
+  the same way: the Fleet Monitor leaves the four workflows above as they were, and the pr-review
+  canary reports `PAUSED` only when its dispatched run ended `skipped` **and** its own
+  `vars.AGENTS_PAUSED` is `true`. `PAUSED` never raises a canary alert and is never announced as
+  a pass.
 - **The notice can never reach a model.** It runs while the fleet is paused, so the test requires
   every `fleet-paused` job and pause-notice step to hold no model credential, no AI CLI or
   action, no `secrets:` and no `secrets.*` or `github.token` reference, and to blank (`NAME: ''`)

@@ -97,6 +97,7 @@ setup() {
 
 # ── Rubber-duck selection ─────────────────────────────────────────────────────
 
+# Invoke select_duck_engine in an isolated bash subprocess and return the result.
 _duck() {
   bash -c "source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1; select_duck_engine" 2>/dev/null
 }
@@ -144,6 +145,7 @@ _duck() {
   [ "$output" = "copilot o4-mini" ]
 }
 
+# List all duck engine candidates in evaluation order via duck_engine_candidates.
 _candidates() {
   bash -c "source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1; duck_engine_candidates"
 }
@@ -289,8 +291,75 @@ _duck_chain() {
   grep -q 'read -r DUCK_ENGINE DUCK_MODEL < "${DUCK_OUTPUT}.engine"' "$SCRIPT_DIR/scripts/review-one-pr.sh"
 }
 
+# ── A skipped duck is visible in the review body (#1960) ─────────────────────
+
+# _verdict <file> — a cascade-action verdict with the usual body layout.
+_verdict() {
+  jq -n --arg body $'<!-- pr-review-agent v1 sha=abc123 decision=approved risk=LOW -->\n\n## Automated review — APPROVED ✓\n\n### Summary\nLooks fine.\n\n### Findings\n- **INFO**: none\n\n---\n_Reviewed by the PR-review cascade._' \
+    '{decision: "approve", risk: "LOW", body: $body}' > "$1"
+}
+
+@test "duck skip note: a duck skipped for an unavailable engine adds one line to the review body" {
+  f="$(mktemp)"; _verdict "$f"
+  run bash -c "source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1
+    duck_skip_note '$f' 'no enabled, available engine for it (Gemini unavailable per the pre-flight probe)'"
+  [ "$status" -eq 0 ]
+  body="$(jq -r '.body' "$f")"
+  [ "$(grep -c 'Second opinion skipped' <<< "$body")" -eq 1 ]
+  [[ "$body" == *"Second opinion skipped"*"Gemini unavailable per the pre-flight probe"* ]]
+  # The marker stays on the first line and the note sits before the findings.
+  [[ "$(head -n 1 <<< "$body")" == "<!-- pr-review-agent v1 sha=abc123 "* ]]
+  [ "$(grep -n 'Second opinion skipped' <<< "$body" | cut -d: -f1)" -lt "$(grep -n '^### Findings' <<< "$body" | cut -d: -f1)" ]
+  [ "$(jq -r '.decision' "$f")" = "approve" ]
+  rm -f "$f"
+}
+
+@test "duck skip note: a duck that ran (no skip reason) leaves the review body unchanged" {
+  f="$(mktemp)"; _verdict "$f"
+  before="$(cat "$f")"
+  run bash -c "source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1; duck_skip_note '$f' ''"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$f")" = "$before" ]
+  rm -f "$f"
+}
+
+@test "duck skip note: a body without a Findings heading gets the line appended" {
+  f="$(mktemp)"
+  jq -n '{decision: "escalate", body: "<!-- pr-review-agent v1 sha=abc -->\nbody"}' > "$f"
+  run bash -c "source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1; duck_skip_note '$f' 'reason x'"
+  [ "$status" -eq 0 ]
+  [[ "$(jq -r '.body' "$f")" == $'<!-- pr-review-agent v1 sha=abc -->\nbody\n\n'*"Second opinion skipped"*"reason x"* ]]
+  rm -f "$f"
+}
+
+@test "duck chain: no verdict from any engine records why, for the review body" {
+  DC="$(mktemp -d)"
+  run _duck_chain $'gemini gemini-3.8-flash'
+  [[ "$(cat "$DC/duck.json.skip")" == "no duck engine produced a verdict (tried: gemini)" ]]
+  run _duck_chain $'copilot o4-mini'
+  [[ "$(cat "$DC/duck.json.skip")" == *"copilot (o4-mini) timed out"* ]]
+  rm -rf "$DC"
+}
+
+@test "duck chain: a duck that ran leaves no skip reason" {
+  DC="$(mktemp -d)"
+  echo stale > "$DC/duck.json.skip"
+  run _duck_chain $'gemini gemini-3.8-flash\nclaude claude-sonnet-4-6'
+  [[ "$output" == *"rc=0"* ]]
+  [ ! -e "$DC/duck.json.skip" ]
+  rm -rf "$DC"
+}
+
+@test "review-one-pr.sh puts the duck skip note on both posted verdicts (tier 2 and audit)" {
+  s="$SCRIPT_DIR/scripts/review-one-pr.sh"
+  [ "$(grep -c 'duck_skip_note "$VERDICT_JSON" "$DUCK_SKIP_REASON"' "$s")" -eq 2 ]
+  grep -q 'DUCK_SKIP_REASON="no enabled, available engine for it' "$s"
+  grep -q '"${DUCK_OUTPUT}.skip"' "$s"
+}
+
 # ── validate-engines.sh probes ────────────────────────────────────────────────
 
+# Create a mock bin directory (in VBIN) with claude, gemini, gh, curl CLIs for testing validate_engines probes.
 _setup_validate_bin() {
   VBIN="$(mktemp -d)"
   printf '#!/bin/bash\nexit 0\n' > "$VBIN/claude"
@@ -309,6 +378,7 @@ EOF
   chmod +x "$VBIN"/*
 }
 
+# Run validate_engines with the mock bin and print the availability flags.
 _validate() {
   bash -c "export PATH='$VBIN':\$PATH GEMINI_CLI_TRUST_WORKSPACE=true CLAUDE_CODE_OAUTH_TOKEN=x; unset GITHUB_STEP_SUMMARY; source '$SCRIPT_DIR/scripts/validate-engines.sh'; validate_engines; echo \"C=\$CLAUDE_AVAILABLE G=\$GEMINI_AVAILABLE P=\$COPILOT_AVAILABLE\""
 }
@@ -363,6 +433,7 @@ _validate() {
 
 # ── review-batch.sh walks the configured chain ────────────────────────────────
 
+# Set up a temporary batch test directory (in BDIR) with review-batch.sh and mocked dependencies.
 _setup_batch() {
   BDIR="$(mktemp -d)"
   mkdir -p "$BDIR/scripts/lib" "$BDIR/bin"
@@ -444,6 +515,7 @@ _batch() {
 
 # ── dev-lead-preflight.sh: Claude token required only when AI_ENGINES enables claude ──
 
+# Run dev-lead-preflight.sh without CLAUDE_CODE_OAUTH_TOKEN set.
 _preflight() {
   bash -c "unset GITHUB_STEP_SUMMARY CLAUDE_CODE_OAUTH_TOKEN; bash '$SCRIPT_DIR/scripts/dev-lead-preflight.sh'"
 }
@@ -536,6 +608,7 @@ _preflight() {
   rm -rf "$BDIR"
 }
 
+# Run run_duck with <prompt_file> and engine <name> to test key scrubbing and credential isolation.
 _run_duck_probe() {
   local p; p="$(mktemp)"; echo "duck prompt" > "$p"
   bash -c "source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1

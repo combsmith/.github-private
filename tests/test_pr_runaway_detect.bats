@@ -57,18 +57,18 @@ teardown() {
 }
 
 # ---------------------------------------------------------------------------
-# pr_runaway_reasons — automated cycles threshold (default > 10)
+# pr_runaway_reasons — automated cycles threshold (default > 25)
 # ---------------------------------------------------------------------------
 
 @test "cycles at the threshold do NOT fire" {
-  run pr_runaway_reasons 0 0 10 0
+  run pr_runaway_reasons 0 0 25 0
   [ -z "$output" ]
 }
 
 @test "cycles over the threshold fire and name the metric" {
-  run pr_runaway_reasons 0 0 11 0
+  run pr_runaway_reasons 0 0 26 0
   [[ "$output" == *cycle* ]]
-  [[ "$output" == *11* ]]
+  [[ "$output" == *26* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -115,8 +115,8 @@ teardown() {
 # ---------------------------------------------------------------------------
 
 @test "a PR over several thresholds reports each triggering metric" {
-  # commits=100 (>50), comments=300 (>200), cycles=20 (>10), age=60h+churn
-  run pr_runaway_reasons 100 300 20 60
+  # commits=100 (>50), comments=300 (>200), cycles=30 (>25), age=60h+churn
+  run pr_runaway_reasons 100 300 30 60
   [[ "$output" == *commits* ]]
   [[ "$output" == *comments* ]]
   [[ "$output" == *cycle* ]]
