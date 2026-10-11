@@ -31,6 +31,9 @@ REPO = Path(__file__).resolve().parent.parent
 SINGLE_MODEL_TASKS = ("duck",)
 SINGLE_MODEL_PROVIDERS = ("copilot",)
 PROVIDERS = ("claude", "gemini", "copilot")
+# ai_model_for_family (scripts/lib/engine-models.sh) returns the first Claude model
+# of these tasks, so that model must be of the family the task stands for.
+FAMILY_TASKS = {"deep": "opus", "action": "sonnet", "triage": "haiku"}
 
 
 def error(msg: str) -> None:
@@ -131,6 +134,12 @@ def check_references(config, globs) -> list:
                     problems.append(
                         f"tasks.{task}.{provider}: '{model}' belongs to provider "
                         f"{entry['provider']}, not {provider}")
+            if provider == "claude" and task in FAMILY_TASKS and chain:
+                family = FAMILY_TASKS[task]
+                if not re.match(rf"claude-{family}-", str(chain[0])):
+                    problems.append(
+                        f"tasks.{task}.claude: first model '{chain[0]}' is not a {family} model "
+                        f"(ai_model_for_family {family} returns it)")
             if len(chain) > 1 and (task in SINGLE_MODEL_TASKS or provider in SINGLE_MODEL_PROVIDERS):
                 why = "the duck runs one model" if task in SINGLE_MODEL_TASKS else "Copilot has no in-engine chain"
                 problems.append(f"tasks.{task}.{provider}: takes one model ({why}), got {len(chain)}")

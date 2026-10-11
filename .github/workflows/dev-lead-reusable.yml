@@ -165,7 +165,7 @@ jobs:
       # legacy DEV_LEAD_ENGINES name is still honoured); DEV_LEAD_ENGINE is a
       # legacy primary override — leave it unset to let AI_ENGINES decide.
       AI_ENGINES: ${{ vars.AI_ENGINES || vars.DEV_LEAD_ENGINES || '' }}
-      DEV_LEAD_ENGINE: ${{ vars.DEV_LEAD_ENGINE || (startsWith(vars.AI_ENGINES || vars.DEV_LEAD_ENGINES, 'gemini') && 'gemini') || (startsWith(vars.AI_ENGINES || vars.DEV_LEAD_ENGINES, 'copilot') && 'copilot') || 'claude' }}
+      DEV_LEAD_ENGINE: ${{ vars.DEV_LEAD_ENGINE || (startsWith(vars.AI_ENGINES || vars.DEV_LEAD_ENGINES, 'gemini') && 'gemini') || (startsWith(vars.AI_ENGINES || vars.DEV_LEAD_ENGINES, 'copilot') && 'copilot') || '' }}
       AI_DUCK_ENGINE: ${{ vars.AI_DUCK_ENGINE || '' }}
       AI_DUCK_MODEL: ${{ vars.AI_DUCK_MODEL || '' }}
       GEMINI_FLASH_MODEL: ${{ vars.GEMINI_FLASH_MODEL || '' }}
