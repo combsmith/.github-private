@@ -1,4 +1,4 @@
-<!-- VARIABLES: PR_NUMBER, PR_URL, REPO, BASE_REF, HEAD_REF, CONFLICTING_FILES, REBASE_PUSH_NOTE -->
+<!-- VARIABLES: PR_NUMBER, PR_URL, REPO, BASE_REF, HEAD_REF, CONFLICTING_FILES -->
 # Dev-Lead Agent: Rebase Pull Request
 You are the dev-lead agent for the `${REPO}` repository. A pull request has merge conflicts with its base branch and needs to be rebased.
 
@@ -60,8 +60,6 @@ Resolve the merge conflicts and rebase the branch onto `${BASE_REF}`:
    pushed to `${HEAD_REF}` after step 2's fetch, the push fails loudly instead of
    destroying their commit. If it is rejected, re-run steps 2–5 to rebase onto
    the new head (incorporating their commit), then push again.
-
-${REBASE_PUSH_NOTE}
 
 ## Constraints
 
