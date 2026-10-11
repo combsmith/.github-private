@@ -459,7 +459,8 @@ each withhold or dismiss the single approval the ruleset needs. Realizes UJ-1, U
   - Only a Lens in the required Council gates or is waited for. An Advisory reviewer outside it is
     never waited for: its absence, a quota notice or a trial expiry blocks nothing.
   - A Finding from an Advisory reviewer outside the required Council gates only when the in-house
-    reviewer adopts it as its own.
+    reviewer adopts it as its own. The in-house reviewer resolves each thread it does not adopt, so
+    that a platform rule requiring resolved threads stays in force.
 - **FR-33. One Disposition per Finding per content version.** Every Finding from any Lens is
   dispositioned exactly once for a given content version. The Gates read the outcome from the
   Finding's surface: a thread, and which App resolved it.

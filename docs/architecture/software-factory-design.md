@@ -257,6 +257,11 @@ for contract tests, so one schema has three uses.
 | Field | Content |
 |---|---|
 | `item`, `state`, `is_draft`, `author` | Identity, open/closed/merged, draft flag, authoring actor |
+| `class` | `agent`, `maintainer`, `dependency` or `outside`, worked out by the port from the author and from whether the head is in another repo |
+| `last_pusher` | The actor who pushed the head commit |
+| `targets_protected` | Whether the base branch is a protected one |
+| `mergeable` | Whether the head merges cleanly into the base |
+| `diff_size` | Files and lines changed |
 | `head`, `base`, `merge_base` | Commit hashes |
 | `content_id` | Hash of the pull request's own diff against its merge base, computed by the port |
 | `changed_paths` | Paths in that diff |
@@ -448,7 +453,7 @@ only go stale, which is how the POC's markers came to outlive the objects they d
 | The Lifecycle state and its reason | Facts |
 | Whether the item is held, and by whom | A label, and who applied it |
 | Whether a Run holds the item now | A run record in progress |
-| How many attempts an Intent has had, and how many Runs the item has had | Run records, counting item faults only (§3.10) |
+| How many attempts an Intent has had, and how many Runs the item has had | Run records since the last human action on the item, counting item faults only (§3.10) |
 | Whether the Factory itself is failing | The outcome of its most recent failed Runs, across items |
 | Whose turn it is | The Role of the last completed Run on this content |
 | Whether a Finding is open | Its thread, alert or tool report |
@@ -642,6 +647,15 @@ A Finding from a Lens that is not required is shown and measured. It is given to
 input. If `pr-review` adopts it, it raises a Finding of its own (§3.7), and that one gates. An Advisory reviewer that posts twenty threads therefore costs the reviewer
 some reading and cannot hold a pull request by volume, which is how the POC's comment gate failed.
 
+`pr-review` resolves every third-party thread it does not adopt. The ruleset's requirement that
+threads be resolved stays in force, so the platform keeps backing the Factory, and each such thread
+gets one visible outcome. "Resolved by `pr-review`, not adopted" is then a fact on GitHub, from
+which each reviewer's contribution can be counted.
+
+Model Lenses are admitted only after the deterministic required Lenses have passed on that content.
+A change that fails lint is not worth a model's time, and a branch that is pushed every few minutes
+settles before a review starts.
+
 The approval is issued only in `converged`, by the reviewer identity, for that `content_id`. If a
 push changes the head and not the `content_id`, the approval is re-issued with no Run.
 
@@ -711,6 +725,11 @@ These are the properties the simulator asserts. Each is a sentence a test can fa
 | I-21 | No Effect is applied to an item that is held, paused, closed or changed at the moment of applying | §3.6 |
 | I-22 | A Run does only what a recorded Decision admitted | §3.5 |
 | I-23 | A capacity or environment fault is never counted as an attempt, and one cause raises one alert | §3.10 |
+| I-24 | An empty diff never converges | FR-4 |
+| I-25 | An `outside` item gets no Run until the Maintainer has admitted it | FR-63 |
+| I-26 | No approval is attempted where the approver is the author or the last pusher; the item is held instead | C-6 |
+| I-27 | No model Lens runs on content that has not passed the deterministic required Lenses | §4.2 |
+| I-28 | Attempts are reset only by a human action on the item | FR-17 |
 
 ### 4.5 The simulator
 
@@ -729,7 +748,7 @@ decision logic against a fake world, quickly, thousands of times.
   every step boundary, including between two Effects and before any artifact is uploaded. The
   control room unwritable, or holding nonsense. A facts read that fails or is stale. A missing capacity reading.
   A Result that fails validation. An Engine that times out. A human acting mid-Run.
-- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-23. I-1 and I-18 are checked once faults
+- **Properties.** I-2 to I-17 are checked after every step, as are I-19 to I-28. I-1 and I-18 are checked once faults
   stop and the world is left to settle.
 - **Reproduction.** Each run has a seed from the standard library's generator. A failure prints the
   seed and the trace, and the trace renders as a sequence diagram.
@@ -752,6 +771,28 @@ and the authority data (§5.4).
 The simulator samples interleavings. It does not prove their absence. A formal model in TLA+ would,
 for a small model, and is held in reserve for crash recovery if the simulator finds a
 fault there that it cannot pin down.
+
+### 4.6 Boundary cases
+
+A sweep on 2026-10-10 ran the Lifecycle against awkward inputs. Each case below now has a rule.
+
+| Case | Rule |
+|---|---|
+| A pull request from a fork, or from someone who is not a collaborator | Its class is `outside`. It gets no Run, because a Run holds the model credential. It is held as "needs you" until the Maintainer admits it or closes it (I-25) |
+| A dependency update | Its class is `dependency`. Its required Lenses are deterministic ones. The POC's automerge serves it until that Intent is cut over |
+| The approver is the author or the last pusher | GitHub rejects or discards the approval. The Kernel reads `author` and `last_pusher`, attempts no approval, and holds the item with that reason (I-26). The machine user therefore never pushes (§5.1) |
+| A branch pushed every few minutes | Deterministic Lenses first; a model review starts only on content they have passed (I-27) |
+| A Hold released, or a pull request reopened, after attempts ran out | Attempts count since the last human action, so a person acting on the item grants a fresh allowance. No agent action does (I-28) |
+| An empty diff | Never converges (I-24). The POC merged ten |
+| A diff too large to hash or to review | Each class has a size limit. Over it, one Hold, with the choices: split it, or review it by hand. No Run is spent finding out |
+| A conflict with the base | `mergeable` is false. It is the author's turn; in the first slice it is the Maintainer's |
+| A pull request that targets another feature branch, as stacked pull requests do | The Factory serves pull requests that target a protected branch. Others are shown as not served |
+| The poller was down for hours | An item is stale only if it went unevaluated while passes were running. A missing pass is one health alert, not one alert per item |
+| A third-party thread the reviewer does not adopt | The reviewer resolves it (§4.2), so the ruleset does not block the merge on it |
+
+Already handled with no special rule, because State is derived: a draft, a conversion back to
+draft, a reopened pull request, a force-push during a Run (`apply` re-reads the item), ejection
+from the merge queue, and an early approval by a person.
 
 ## 5. Team interactions
 
@@ -782,6 +823,12 @@ state. The fourth column is the plan.
   needs to write, and `apply` mints that App's token. A Role in shadow writes nothing, so it runs
   on the reader alone until it is promoted.
 - The approving review stays with the existing machine user, because a code owner must be a user.
+  It approves and does nothing else. It never pushes and never opens a pull request, because GitHub
+  will not count an approval from an author or a last pusher.
+- **The Maintainer is the only code owner for the Factory's own rules** in the Factory repo:
+  `lifecycle/`, the authority table, the gate function, the brakes and `.github/`. GitHub then
+  enforces that the Factory cannot approve a change to what governs it, whichever Release is
+  serving.
 - The Apps share the name prefix `combsmith-sf-`, so `qa-lead` acts as `combsmith-sf-qa-lead[bot]`. The frozen Consumer file drops
   Factory-authored events by that prefix, so adding a Role never changes a Consumer file.
 - Registering an App is a manual step. "A new Role in one pull request" (NFR-11, UJ-7) becomes one
@@ -880,6 +927,8 @@ it observed as a recorded fixture, which is what the simulator's fake GitHub is 
 | P-19 | Can a static page in a separate public repo be published from files the Controller writes? | Yes |
 | P-20 | Can a credential held outside GitHub start the poller and do nothing else of consequence? | Yes: it can start and cancel workflow runs in one repo, and cannot write code, secrets or settings |
 | P-21 | How often may the control room's page be rebuilt, and can a page read the feed files directly from a browser? | The page reads the feed directly and rebuilds only when its own code changes |
+| P-23 | How many threads may one App resolve in an hour before GitHub's secondary limits apply? | Enough for about 22 threads a pull request at the Factory's merge rate |
+| P-24 | With the Maintainer as the only code owner of a path, does the machine user's approval fail to satisfy code-owner review there? | It fails to satisfy it |
 | P-22 | How soon after it is started does a Run appear in the list of run records? | Soon enough that a pass never admits the same Run twice; the item's lane and I-21 cover the gap |
 
 ## 7. State, records and noticing work
@@ -1084,12 +1133,13 @@ Attention classes, in the order the page lists them:
 
 | Class | Meaning | From |
 |---|---|---|
-| `needs_you` | A decision, an approval or an answer is required of the Maintainer | A Hold that needs a decision; an open `human` Finding; a `security` Finding awaiting Override |
+| `needs_you` | A decision, an approval or an answer is required of the Maintainer | A Hold that needs a decision; an open `human` Finding; a `security` Finding awaiting Override; an `outside` item awaiting admission |
 | `failed` | Verification failed and no Run is addressing it | `addressing` with attempts exhausted, or a required check red |
 | `review` | Waiting on Lenses or owners | `verifying`, `adjudicating` |
 | `ready` | Converged and approved, or in the queue | `converged`, `queued` |
 | `working` | A Run holds the item | A run record in progress |
-| `stale` | Past its state's limit with no evaluation | I-1 breached |
+| `stale` | Unevaluated past its state's limit while passes were running | I-1 breached |
+| `not_served` | Outside what the Factory serves | A pull request that does not target a protected branch |
 
 The class is computed by the Kernel beside the State, so the status on the item and the row on the
 page are always the same answer.
@@ -1286,8 +1336,8 @@ Recorded in the same change as this document.
 | ADR-0013, decision 2 | State is derived and never stored. The record of a Run is its Actions run record and its artifact. The control room is a rebuildable view that no decision reads |
 | ADR-0013, decision 3 | The Controller is a poller. An event may only ask for a pass. The Consumer file is optional. A Run starts only from a recorded Decision. An automatic pause is derived from recent faults |
 | ADR-0013, decision 4 | The Result artifact is the intent record. `apply` re-reads the item before any Effect. `verify` is a filter |
-| ADR-0013, decision 5 | One App per Role, registered when the Role first writes; one shared reader App |
-| ADR-0013, decision 7 | An owning Role resolving a thread is a declared Role transition, beside the human one. An owning Role starts in shadow |
+| ADR-0013, decision 5 | One App per Role, registered when the Role first writes; one shared reader App. The machine user never pushes. The Maintainer alone owns the Factory's own rules |
+| ADR-0013, decision 7 | An owning Role resolving a thread is a declared Role transition, beside the human one. An owning Role starts in shadow. The reviewer resolves third-party threads it does not adopt |
 | ADR-0013, decision 6 | The Factory's own repo is served by `next` |
 | ADR-0013, decision 10 | The review Intent on the Factory's own repo is the first component. The comparison with the POC is a measure, not a gate. Stopping is the Maintainer's decision, on adoption and use. Cutover is pause, then repoint |
 | ADR-0013, decision 11 | No longer two provisional mechanisms. The poller's latency and cost are measured against the same thresholds |

@@ -171,6 +171,10 @@ run, one lane per work item, held from `run` to applied Effects. The first draft
 Controller once per event; the maintainer replaced that on 2026-10-10 (decision 11).
 
 - **A nudge carries nothing.** The Kernel's admission function takes no event payload.
+- **A work item has a class:** agent, maintainer, dependency or outside. An outside item gets no
+  Run until the maintainer admits it (PRD FR-63).
+- **Attempts are counted since the last human action on the work item.** A person acting on it
+  grants a fresh allowance; no agent action does.
 - **A Run is started only from a decision a pass recorded.** Only the poller can be started from
   outside the factory, and it takes no inputs, so a credential that can start workflows cannot
   direct a Run.
@@ -261,6 +265,11 @@ account, as a person. "The App" in the boundaries below means the App of the Rol
 - **The factory's Apps share the name prefix `combsmith-sf-`,** and the consumer file drops
   factory-authored events by that prefix. Adding a Role changes no consumer file.
 - **Registering an App is a manual step.** A new Role is one pull request and one registration.
+- **The machine user approves and does nothing else.** It never pushes and never opens a pull
+  request, because GitHub does not count an approval from an author or a last pusher.
+- **The Maintainer is the only code owner for the factory's own rules** in the factory repo: the
+  Lifecycle, the authority table, the gate function, the brakes and `.github/`. The factory cannot
+  approve a change to what governs it, whichever Release is serving.
 - **Reading is shared; writing is not.** Every `run` job reads GitHub through one reader App that
   can write nothing. A Role is given its own App when it first needs to write, so a Role in shadow
   has none.
@@ -319,6 +328,8 @@ of the pull request's own diff against its merge base), and decide approval in o
   data. The author proposes a Disposition and the owner accepts or rejects it. An owner resolving
   a thread it has accepted is a declared Role transition. No Role decides on its own work, and a
   security Finding is never declined without an Override.
+- **The reviewer resolves every third-party thread it does not adopt.** The ruleset's requirement
+  that threads be resolved stays in force, and each such thread gets one visible outcome.
 - **A domain Role starts in shadow.** It decides on a sample, its decisions are recorded and bind
   nothing, and the reviewer owns the category meanwhile. It is promoted to a gate on an eval set
   and a measured record, one Role at a time.
@@ -435,7 +446,8 @@ the Kernel.
   converged within its declared bound is placed on Hold.
 - **The required Lenses are declared per class of work item and stage, as data.** The starting set
   is the deterministic checks, the in-house reviewer and humans. A Finding from a Lens outside the
-  required set gates only when a required Lens adopts it as its own.
+  required set gates only when a required Lens adopts it as its own. Model Lenses are admitted only
+  after the deterministic required Lenses have passed on that content.
 - **A Lens earns its place.** The Ledger records each Lens's Findings, the share acted on, the share
   no other Lens raised, and its cost. A Lens joins a required set only with a measured marginal
   contribution.
