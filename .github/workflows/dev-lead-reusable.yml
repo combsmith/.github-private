@@ -789,8 +789,10 @@ jobs:
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
 
       - name: Validate dev-lead scripts ref
+        env:
+          INPUT_AGENT_REF: ${{ inputs.agent_ref }}
         run: |
-          ref="${{ inputs.agent_ref }}"
+          ref="$INPUT_AGENT_REF"
           if [ -z "$ref" ]; then
             echo "::error::inputs.agent_ref must be provided as a pinned commit SHA."
             exit 1
