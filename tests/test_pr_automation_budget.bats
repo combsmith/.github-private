@@ -276,6 +276,19 @@ mk_bot_events() {  # mk_bot_events <count>
   [ "$status" -ne 0 ]
 }
 
+@test "pr_resume_suppressed(#2297): a quota-refused label read suppresses with the quota error line" {
+  pr_budget_exhausted() { return 1; }
+  gh() {
+    echo '{"message":"API rate limit exceeded for user ID 12345.","status":"403"}'
+    echo 'gh: API rate limit exceeded for user ID 12345. (HTTP 403)' >&2
+    return 1
+  }
+  run pr_resume_suppressed 2085 petry-projects/demo '' '[]'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::error::"*"GitHub API quota exhausted"*"gh api repos/petry-projects/demo/pulls/2085"* ]]
+  [[ "$output" != *"labels unavailable"* ]]
+}
+
 @test "pr_resume_suppressed(#2089): dev-lead:needs-human → suppress" {
   run pr_resume_suppressed 2085 petry-projects/demo '["dev-lead:needs-human"]' "$(mk_bot_events 1)"
   [ "$status" -eq 0 ]
