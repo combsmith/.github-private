@@ -238,9 +238,22 @@ failed_jobs_fixture() {
 @test "workflow_run: an embedded PR that has since closed is not reported" {
   workflow_run_event '[{"number": 99, "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
   fixture "repos/$REPO/pulls/99" '{"state": "closed"}'
+  fixture "repos/$REPO/commits/$SHA/pulls" '[]'
   run bash "$SCRIPT" resolve
   [ "$status" -eq 0 ]
   [ "$(out skip)" = "true" ]
+}
+
+@test "workflow_run: a closed first embedded PR does not hide a later open one" {
+  workflow_run_event '[{"number": 98, "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}},
+                       {"number": 99, "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
+  fixture "repos/$REPO/pulls/98" '{"state": "closed"}'
+  fixture "repos/$REPO/pulls/99" '{"state": "open"}'
+  failed_jobs_fixture
+  run bash "$SCRIPT" resolve
+  [ "$status" -eq 0 ]
+  [ "$(out skip)" = "false" ]
+  [ "$(out pr_number)" = "99" ]
 }
 
 @test "workflow_run: a failed PR-state lookup fails loudly instead of skipping" {

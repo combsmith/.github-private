@@ -47,7 +47,7 @@ failed_jobs() {
 }
 
 resolve() {
-  local event key head_sha pr_number pr_state pulls name details_url run_id="" check_run_id=""
+  local event key head_sha pr_number pr_state pulls candidates candidate name details_url run_id="" check_run_id=""
   event="$(payload_field 'if (.check_run | type) == "object" then "check_run"
                           elif (.workflow_run | type) == "object" then "workflow_run"
                           else null end')"
@@ -72,16 +72,24 @@ resolve() {
   # non-fork PRs (head repo must equal base repo). The embedded entries are
   # minimal objects with no `state` field, so openness is re-checked against
   # the API: the run may finish after its PR merged or closed.
-  pr_number="$(payload_field '[(.'"$key"'.pull_requests // [])[]
-                               | select(.head.repo.id == .base.repo.id) | .number][0]')"
-  if [ -n "$pr_number" ]; then
+  # A head SHA can belong to several PRs, so every candidate is checked and the
+  # first open one wins; with none open, the commits-to-pulls lookup below runs.
+  candidates="$(payload_field '(.'"$key"'.pull_requests // [])[]
+                               | select(.head.repo.id == .base.repo.id) | .number')"
+  pr_number=""
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
     # A failed lookup is not "closed": it fails the step rather than skipping.
-    if ! pr_state="$(gh api "repos/$REPO/pulls/$pr_number" --jq '.state')"; then
-      echo "::error::Could not look up the state of PR #$pr_number"
+    if ! pr_state="$(gh api "repos/$REPO/pulls/$candidate" --jq '.state')"; then
+      echo "::error::Could not look up the state of PR #$candidate"
       return 1
     fi
-    [ "$pr_state" = open ] || pr_number=""
-  else
+    if [ "$pr_state" = open ]; then
+      pr_number="$candidate"
+      break
+    fi
+  done <<< "$candidates"
+  if [ -z "$pr_number" ]; then
     # Fallback: the commits-to-pulls API covers a second push that arrived
     # before this event, and a workflow_run whose payload omits the PR. Only
     # an open PR counts, so a failure on the default branch is not reported
