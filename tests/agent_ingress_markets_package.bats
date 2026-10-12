@@ -147,6 +147,8 @@ teardown() {
   # old 'CI Failure Analyst' prefix never matched it (#2175), so the analyst
   # could re-trigger on its own failure.
   local job_id check_name prefix
+  # Exactly one job, so `.[0]` cannot silently pick a different one.
+  [ "$(yq -r '.jobs | keys | length' "$SNAPSHOTS/ci-failure-analyst-reusable.yml")" = "1" ]
   job_id="$(yq -r '.jobs | keys | .[0]' "$SNAPSHOTS/ci-failure-analyst-reusable.yml")"
   [ "$job_id" = "analyze" ]
   check_name="ci-failure-analyst / ${job_id}"
@@ -154,6 +156,10 @@ teardown() {
     sed -n "s/.*!startsWith(github\.event\.check_run\.name, '\([^']*\)').*/\1/p")"
   [ -n "$prefix" ]
   [[ "$check_name" == "$prefix"* ]]
+  # The dead display-name prefix (#2175) must not come back.
+  run grep -c "check_run.name, 'CI Failure Analyst'" "$INGRESS"
+  [ "$status" -eq 1 ]
+  [ "$output" -eq 0 ]
 
   local fixture="$SCRIPT_DIR/tests/fixtures/agent-ingress/markets-agent-ingress.yml"
   [ -s "$fixture" ]
@@ -164,4 +170,11 @@ teardown() {
   run grep -c 'DEFECTIVE PIN' "$INGRESS"
   [ "$status" -eq 1 ]
   [ "$output" -eq 0 ]
+}
+
+@test "markets §3: the extracted ingress is byte-identical to the markets fixture" {
+  # tests/fleet_stub_registry.bats reads the fixture and this suite reads §3, so
+  # pin the two together: both are markets main's agent-ingress.yml verbatim.
+  run diff "$SCRIPT_DIR/tests/fixtures/agent-ingress/markets-agent-ingress.yml" "$INGRESS"
+  [ "$status" -eq 0 ]
 }
