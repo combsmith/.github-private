@@ -130,6 +130,7 @@ failed_jobs_fixture() {
 
 @test "check_run: PR, SHA, name and details URL come from the check_run payload" {
   check_run_event
+  fixture "repos/$REPO/pulls/42" '{"state": "open"}'
   run bash "$SCRIPT" resolve
   [ "$status" -eq 0 ]
   [ "$(out skip)" = "false" ]
@@ -149,6 +150,7 @@ failed_jobs_fixture() {
 
 @test "check_run: an Actions details URL yields the run id and its failed jobs" {
   check_run_event
+  fixture "repos/$REPO/pulls/42" '{"state": "open"}'
   jq '.check_run.details_url = "https://github.com/petry-projects/.github-private/actions/runs/777/job/9"' \
     "$GITHUB_EVENT_PATH" > "$TMP/e" && mv "$TMP/e" "$GITHUB_EVENT_PATH"
   failed_jobs_fixture
@@ -174,6 +176,7 @@ failed_jobs_fixture() {
 
 @test "workflow_run: SHA, PR, run id and failed jobs come from the workflow_run payload" {
   workflow_run_event '[{"number": 99, "state": "open", "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
+  fixture "repos/$REPO/pulls/99" '{"state": "open"}'
   failed_jobs_fixture
   run bash "$SCRIPT" resolve
   [ "$status" -eq 0 ]
@@ -225,10 +228,33 @@ failed_jobs_fixture() {
 
 @test "workflow_run with null pull_requests never reaches a jq iteration error" {
   workflow_run_event 'null'
+  fixture "repos/$REPO/commits/$SHA/pulls" '[]'
   run bash "$SCRIPT" resolve
   [ "$status" -eq 0 ]
   [ "$(out skip)" = "true" ]
   [[ "$output" != *"Cannot iterate"* ]]
+}
+
+@test "workflow_run: an embedded PR that has since closed is not reported" {
+  workflow_run_event '[{"number": 99, "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
+  fixture "repos/$REPO/pulls/99" '{"state": "closed"}'
+  run bash "$SCRIPT" resolve
+  [ "$status" -eq 0 ]
+  [ "$(out skip)" = "true" ]
+}
+
+@test "workflow_run: a failed PR-state lookup fails loudly instead of skipping" {
+  workflow_run_event '[{"number": 99, "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
+  run bash "$SCRIPT" resolve
+  [ "$status" -ne 0 ]
+  [ "$(out skip)" = "" ]
+}
+
+@test "workflow_run: a failed commits-to-pulls lookup fails loudly instead of skipping" {
+  workflow_run_event '[]'
+  run bash "$SCRIPT" resolve
+  [ "$status" -ne 0 ]
+  [ "$(out skip)" = "" ]
 }
 
 # ── unusable payloads ────────────────────────────────────────────────────────
@@ -277,6 +303,7 @@ failed_jobs_fixture() {
 
   # First failure: a workflow_run for Lint.
   workflow_run_event '[{"number": 99, "state": "open", "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
+  fixture "repos/$REPO/pulls/99" '{"state": "open"}'
   run bash "$SCRIPT" resolve
   [ "$status" -eq 0 ]
   first_sha="$(out head_sha)"
@@ -291,6 +318,7 @@ failed_jobs_fixture() {
   # third-party check_run, both resolve to the same SHA and so the same marker.
   : > "$GITHUB_OUTPUT"
   workflow_run_event '[{"number": 99, "state": "open", "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
+  fixture "repos/$REPO/pulls/99" '{"state": "open"}'
   jq '.workflow_run.name = "Tests" | .workflow_run.id = 778' "$GITHUB_EVENT_PATH" > "$TMP/e" && mv "$TMP/e" "$GITHUB_EVENT_PATH"
   run bash "$SCRIPT" resolve
   [ "$(out head_sha)" = "$first_sha" ]

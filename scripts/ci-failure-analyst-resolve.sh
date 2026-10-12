@@ -47,7 +47,7 @@ failed_jobs() {
 }
 
 resolve() {
-  local event key head_sha pr_number name details_url run_id="" check_run_id=""
+  local event key head_sha pr_number pr_state pulls name details_url run_id="" check_run_id=""
   event="$(payload_field 'if (.check_run | type) == "object" then "check_run"
                           elif (.workflow_run | type) == "object" then "workflow_run"
                           else null end')"
@@ -70,19 +70,30 @@ resolve() {
 
   # Prefer the pull_requests array embedded in the payload, filtered to
   # non-fork PRs (head repo must equal base repo). The embedded entries are
-  # minimal objects with no `state` field, so openness is only checked on the
-  # API fallback below.
+  # minimal objects with no `state` field, so openness is re-checked against
+  # the API: the run may finish after its PR merged or closed.
   pr_number="$(payload_field '[(.'"$key"'.pull_requests // [])[]
                                | select(.head.repo.id == .base.repo.id) | .number][0]')"
-  if [ -z "$pr_number" ]; then
+  if [ -n "$pr_number" ]; then
+    # A failed lookup is not "closed": it fails the step rather than skipping.
+    if ! pr_state="$(gh api "repos/$REPO/pulls/$pr_number" --jq '.state')"; then
+      echo "::error::Could not look up the state of PR #$pr_number"
+      return 1
+    fi
+    [ "$pr_state" = open ] || pr_number=""
+  else
     # Fallback: the commits-to-pulls API covers a second push that arrived
     # before this event, and a workflow_run whose payload omits the PR. Only
     # an open PR counts, so a failure on the default branch is not reported
-    # on the PR that was already merged into it.
+    # on the PR that was already merged into it. A failed lookup fails the step
+    # rather than reading as "no PR".
     # shellcheck disable=SC2016  # $ENV.REPO is jq built-in syntax, not a shell variable
-    pr_number="$(gh api "repos/$REPO/commits/$head_sha/pulls" \
-      --jq '.[] | select(.state == "open" and .head.repo.full_name == $ENV.REPO) | .number' \
-      2>/dev/null | head -n 1 || true)"
+    if ! pulls="$(gh api "repos/$REPO/commits/$head_sha/pulls" \
+      --jq '.[] | select(.state == "open" and .head.repo.full_name == $ENV.REPO) | .number')"; then
+      echo "::error::Could not look up the PRs for SHA $head_sha"
+      return 1
+    fi
+    pr_number="$(printf '%s\n' "$pulls" | sed -n '1p')"
   fi
   if [ -z "$pr_number" ]; then
     echo "::notice::No non-fork PR for SHA $head_sha — skipping"
