@@ -846,6 +846,50 @@ only an **organisation** variable pauses every repository, and a repository vari
 same name overrides the organisation's for that repository. GitHub compares the value without
 regard to case, so `TRUE` pauses too.
 
+#### Setting a pause by hand: three calls, in this order (#2251)
+
+A pause set by hand is one that carries no `AGENTS_PAUSE_SOURCE`. The budget breaker lifts only
+a pause that carries its own source, so a hand pause is always **delete the source, set the
+pause, delete the source again**, in that order, whether or not the breaker is armed:
+
+```bash
+gh api -X DELETE orgs/petry-projects/actions/variables/AGENTS_PAUSE_SOURCE
+```
+
+```bash
+gh api -X PATCH orgs/petry-projects/actions/variables/AGENTS_PAUSED -f value=true
+```
+
+```bash
+gh api -X DELETE orgs/petry-projects/actions/variables/AGENTS_PAUSE_SOURCE
+```
+
+- A `DELETE` answers 404 when there is no source to delete. That is the normal case and it is
+  fine; run the next call anyway.
+- The `PATCH` answers 404 when the variable does not exist yet. Create it instead, visible to
+  every repository:
+  `gh api -X POST orgs/petry-projects/actions/variables -f name=AGENTS_PAUSED -f value=true -f visibility=all`.
+- **Do not use `gh variable set --org` for this without `--visibility all`.** Its default
+  visibility is `private`, and it sends that on an update as well as on a create. Every
+  repository in this organisation is public, so a `private` variable reaches none of them and
+  the fleet keeps running while the variable reads `true`. A value-only `PATCH` leaves the
+  visibility alone.
+- Why three calls. Ownership of a pause is the source and nothing else, and the breaker can
+  run between any two of these calls.
+  - The first delete removes a source left over from an earlier failed trip. Without it, a
+    breaker run that lands just after the pause is set would read the pause as its own and,
+    if the leftover end time has passed, lift it.
+  - The last delete covers a trip in progress. A trip writes its source before its final
+    check; if the pause is set in the one call between that check and the trip's own write
+    of the pause, the trip's source is still there, and this delete removes it. If the pause
+    is set any earlier, the trip's check sees it and the trip takes back what it wrote.
+  - After the last delete the pause has no source, and nothing the breaker does afterwards
+    adds one to a fleet that is already paused.
+- This is why no drill of those races is required before arming. What it rests on is that a
+  read of the variable list sees a write made just before it, which is one of the live checks
+  under "Arming preconditions".
+- To lift a hand pause, set `AGENTS_PAUSED` to `false` the same way (or delete the variable).
+
 #### Which workflows honour the pause (#2249)
 
 Until #2249 only dev-lead read the variable, so a pause stopped one agent while pr-review, the
@@ -1154,9 +1198,11 @@ as soon as the workflow is on `main`.
   first), sets nothing else, and raises a `::warning::` in a green run. This roll-back is the
   only write a run makes outside its plan, and it removes only what the same run wrote and
   that still holds the value it wrote. Two limits to know:
-  - The window is narrowed, not closed: a pause set by hand in the one API call between that
-    second read and the write of `AGENTS_PAUSED` is still claimed. To be sure a pause set by
-    hand stays, check afterwards that `AGENTS_PAUSE_SOURCE` is absent, and delete it if not.
+  - The window is narrowed, not closed, by the breaker alone: a pause set by hand in the one
+    API call between that second read and the write of `AGENTS_PAUSED` would still be
+    claimed. The hand-pause procedure closes it from the other side: delete
+    `AGENTS_PAUSE_SOURCE` before and after setting the pause, every time ("Setting a pause by
+    hand: three calls, in this order").
   - If the roll-back itself fails, the run is red with one `::error::` that says what is
     left. A failed delete of the source leaves `AGENTS_PAUSE_SOURCE=rate-limit-observed`
     **and** `AGENTS_PAUSE_UNTIL` in place on purpose (a pause carrying the breaker's source
@@ -1191,7 +1237,7 @@ as soon as the workflow is on `main`.
   1. "Budget breaker: close the gaps found in review before it is armed" (#2251) is closed.
   2. "AGENTS_PAUSED stops only dev-lead" (#2249) has landed: until then a pause set by the
      breaker stops dev-lead's dispatch, relay and resume jobs and nothing else.
-  3. The five live checks below are recorded on "Auto-pause companion" (#1565), each with
+  3. The six live checks below are recorded on "Auto-pause companion" (#1565), each with
      the date and what was observed. They are mocked in the tests and must be confirmed
      against the real API by the maintainer, with a **throwaway organisation variable**
      (for example `BUDGET_BREAKER_PROBE`), **never** with `AGENTS_PAUSED`,
@@ -1201,6 +1247,12 @@ as soon as the workflow is on `main`.
      - the variable list paginates as the code expects: `gh api --paginate` on
        `orgs/petry-projects/actions/variables?per_page=30` with a `--jq` filter returns every
        variable when there are more than 30 (the filter runs once per page);
+     - a read of the variable list sees a write made just before it. The pause guard and the
+       hand-pause procedure both rest on this, and it replaces a drill of the two hand-pause
+       races (there is no test organisation to run one in). Twenty times: `PATCH` the
+       throwaway variable to a new value, then read
+       `orgs/petry-projects/actions/variables?per_page=30` and compare; one stale read fails
+       the check, and a drill is then needed after all;
      - the dedicated write credential can read, create, update and delete an organisation
        variable, and nothing else;
      - with the read credential the workflow uses, dev-lead's quota markers read as trusted:
