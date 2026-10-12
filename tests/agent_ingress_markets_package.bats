@@ -160,6 +160,8 @@ teardown() {
   # A mid-test `! cmd` does not trip errexit, so check each status explicitly.
   run grep -c 'DEFECTIVE PIN' "$fixture"
   [ "$status" -eq 1 ]
+  [ "$output" -eq 0 ]
   run grep -c 'DEFECTIVE PIN' "$INGRESS"
   [ "$status" -eq 1 ]
+  [ "$output" -eq 0 ]
 }
