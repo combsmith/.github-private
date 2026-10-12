@@ -106,7 +106,7 @@
 #                                 the decision's settings (scripts/lib/budget-breaker.sh)
 #   BUDGET_BREAKER_MIN_INTERVAL_MIN
 #                                 length of the early exit's clock slot, minutes
-#                                 (default 2; 0 switches the early exit off)
+#                                 (default 10; 0 switches the early exit off)
 #   GITHUB_EVENT_NAME             what woke the run (set by the runner; the name
 #                                 only, see "THE WAKE-UP IS NOT AN INPUT")
 #   GITHUB_WORKFLOW_REF / GITHUB_RUN_ID
@@ -240,12 +240,12 @@ report_previous_run() {
 # be read means "decide": the lookup of the earlier runs, the slot, the listing
 # of this repository's markers.
 exit_early_if_covered() {
-  local interval="${BUDGET_BREAKER_MIN_INTERVAL_MIN:-2}" slot earlier recent fresh
+  local interval="${BUDGET_BREAKER_MIN_INTERVAL_MIN:-10}" slot earlier recent fresh
   # A scheduled run is the backstop and always decides.
   [ "$EVENT" = "workflow_run" ] || return 0
   if ! [[ "$interval" =~ ^[0-9]{1,4}$ ]]; then
-    bbw_warn "BUDGET_BREAKER_MIN_INTERVAL_MIN is not a whole number of minutes; using 2"
-    interval=2
+    bbw_warn "BUDGET_BREAKER_MIN_INTERVAL_MIN is not a whole number of minutes; using 10"
+    interval=10
   fi
   interval="$((10#$interval))"
   [ "$interval" -gt 0 ] || return 0
