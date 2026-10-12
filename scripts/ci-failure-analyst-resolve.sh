@@ -117,7 +117,7 @@ idempotency() {
   existing="$(gh api "repos/$REPO/issues/${PR_NUMBER:?PR_NUMBER is required}/comments" \
     --paginate \
     --jq ".[] | select(.body | startswith(\"<!-- ci-analyst sha=${HEAD_SHA:?HEAD_SHA is required} -->\")) | .id" \
-    2>/dev/null | head -n 1)" || return
+    2>/dev/null | sed -n '1p')" || true
   if [ -n "$existing" ]; then
     echo "::notice::Diagnostic comment already posted (id=$existing) — idempotency skip"
     emit exists true
