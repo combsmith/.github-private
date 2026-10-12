@@ -33,6 +33,7 @@ set -euo pipefail
 #   TOKEN_WORKFLOW — workflow label for records (default: "unknown").
 #   Records are written via scripts/lib/token-metrics.sh (estimate-based).
 #   Unset → zero overhead, zero behaviour change.
+#   The path stays in this shell: a model CLI is started without it (_engine_child).
 
 # Sidecar directory (#2271). The writer tier leaves one-value files here for the
 # dev-lead handlers that source this file to read back: the parsed rate-limit
@@ -811,6 +812,20 @@ is_transient_failure() {
   esac
 }
 
+# _engine_child <command> [args...]
+# Starts a model CLI (behind its `timeout` wrapper) with the token ledger taken
+# out of ITS environment (#2304). Records are written by this shell around the
+# call (_record_engine_tokens, the gq_* ledger writers); the CLI never needs the
+# path. An agent session that inherited it handed it to everything the model ran
+# — this repository's own bats suites included, whose fixture calls, rejections
+# and cooldowns then landed in the run's real ledger. Removed with it:
+# GEMINI_LEDGER_FILE (gemini-quota.sh's override for the same file) and
+# _ENGINE_USAGE_OUT (this call's usage sidecar, which nested engine code would
+# overwrite). TOKEN_WORKFLOW stays: a label, it writes nothing without a path.
+_engine_child() {
+  env -u TOKEN_LOG_FILE -u GEMINI_LEDGER_FILE -u _ENGINE_USAGE_OUT "$@"
+}
+
 # copilot_chat <prompt_file> [timeout_sec] [extra_flags...]
 # Calls the GitHub Copilot CLI for completions and agentic actions.
 #
@@ -840,7 +855,7 @@ copilot_chat() {
 
   # We use -p for the prompt. Redirect /dev/null to stdin to ensure
   # non-interactive mode.
-  timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gh copilot \
+  _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gh copilot \
     --model "$COPILOT_API_MODEL" \
     -p "$prompt_text" \
     -s "$@" < /dev/null
@@ -930,7 +945,7 @@ _gemini_invoke() {
     if [ -n "$_json_tmp" ]; then
       local rc=0
       # stderr intentionally NOT redirected — flows to caller for rate-limit checks.
-      timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gemini --prompt "" --model "$model" "${extra_args[@]}" \
+      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gemini --prompt "" --model "$model" "${extra_args[@]}" \
         --output-format json < "$prompt_file" > "$_json_tmp" || rc=$?
       if [ "$rc" -eq 0 ]; then
         parse_engine_usage gemini "$_json_tmp" || true
@@ -945,7 +960,7 @@ _gemini_invoke() {
   fi
 
   # Estimate path (logging off, or mktemp failed): plain text output.
-  timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gemini --prompt "" --model "$model" "${extra_args[@]}" \
+  _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gemini --prompt "" --model "$model" "${extra_args[@]}" \
     --output-format text < "$prompt_file"
 }
 
@@ -1294,7 +1309,7 @@ _claude_chain_invoke() {
     rc=0
 
     if [ -n "$stdout_tmp" ] && [ -n "$stderr_tmp" ]; then
-      timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
+      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
         < "$prompt_file" > "$stdout_tmp" 2> "$stderr_tmp" || rc=$?
     else
       # mktemp failure (one or both) — clean up the partial tmp before degrading
@@ -1303,7 +1318,7 @@ _claude_chain_invoke() {
       [ -n "$stderr_tmp" ] && rm -f "$stderr_tmp"
       [ -n "$final_stdout" ] && rm -f "$final_stdout"
       [ -n "$final_stderr" ] && rm -f "$final_stderr"
-      timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --model "$model" "${extra_args[@]}" \
+      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --model "$model" "${extra_args[@]}" \
         < "$prompt_file" || rc=$?
       _CLAUDE_CHAIN_MODEL_USED="$model"
       export _CLAUDE_CHAIN_MODEL_USED
