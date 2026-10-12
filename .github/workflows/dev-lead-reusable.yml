@@ -249,8 +249,10 @@ jobs:
 
       - name: Validate dev-lead ref input
         shell: bash
+        env:
+          AGENT_REF: ${{ inputs.agent_ref }}
         run: |
-          ref="${{ inputs.agent_ref }}"
+          ref="$AGENT_REF"
           if [ -z "$ref" ]; then
             ref="main"
           fi
