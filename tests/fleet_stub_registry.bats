@@ -10,7 +10,8 @@
 #   bats tests/fleet_stub_registry.bats
 #
 # tests/fixtures/agent-ingress/markets-agent-ingress.yml is petry-projects/markets
-# .github/workflows/agent-ingress.yml verbatim at 5fe86cbc (the merged collapse).
+# .github/workflows/agent-ingress.yml verbatim at 9310b6e (markets#523; the
+# merged collapse was 5fe86cbc).
 
 MONITOR="${BATS_TEST_DIRNAME}/../scripts/fleet_monitor.sh"
 REMEDIATE="${BATS_TEST_DIRNAME}/../scripts/fleet_stub_remediate.sh"

@@ -38,8 +38,14 @@ of per-role Class-1 caller stubs on `main`, read live on 2026-09-29:
 
 **Later pin bump (#2171):** Dependabot bumped markets `main`'s
 `ci-failure-analyst.yml` stub to `@b58510275dd1cbbd13c0733c15265d51fd63b992`
-(markets `e390f85`, 2026-10-06). §3 carries that pin so the collapse does not
-revert it. See §5b.
+(markets `e390f85`, 2026-10-06). The collapse carried that pin so it did not
+revert the bump. See §5b.
+
+**Later pin change (markets#523):** markets#523 repointed markets `main`'s
+ingress `ci-failure-analyst` job from the bare SHA `@b585102…` to the channel
+`@ci-failure-analyst/v1-stable` (markets `9310b6e`, 2026-10-12), and corrected
+its self-exclusion guard. §3 carries both. The row above still records the
+pre-collapse stub pin. See §5b.
 
 **Later pin change (markets#521):** markets#521 repointed markets `main`'s
 ingress `pr-review` job from `@pr-review/stable` to `@pr-review/v1-stable`
@@ -117,9 +123,9 @@ reconstructs that role's original subscription.
 > **Two pins below were defective and were preserved *as-is for pilot parity* while
 > being NAMED here — see §5 for the follow-up corrections.** A behavior-preserving
 > collapse must not silently "fix" a pin in the same change that moves it; the
-> corrections are separate follow-ups. The `pr-review` pin has since been
-> corrected by markets#521 (§5a). The `ci-failure-analyst` pin is still
-> defective (§5b).
+> corrections are separate follow-ups. Both have since been corrected: the
+> `pr-review` pin by markets#521 (§5a) and the `ci-failure-analyst` pin by
+> markets#523 (§5b).
 >
 > **Job-level `concurrency:` — ruled by ADR-0010, accepted (see §4).** Three
 > source stubs carry a *workflow-level* `concurrency:` block. A single collapsed
@@ -139,6 +145,12 @@ reconstructs that role's original subscription.
 > `main` `.github/workflows/agent-ingress.yml` at `62587ec` (blob `d411cff`). The
 > only change from the #2171 text is the `pr-review` pin, now
 > `pr-review/v1-stable` in both `uses:` and `agent_ref` (§5a).
+>
+> **Synced to markets#523 (#2316).** The YAML below is byte-identical to markets
+> `main` `.github/workflows/agent-ingress.yml` at `9310b6e` (blob `a0c97e1`).
+> Only the `ci-failure-analyst` job changed from the #2206 text: its pin is now
+> `@ci-failure-analyst/v1-stable`, and its self-exclusion guard reads
+> `!startsWith(github.event.check_run.name, 'ci-failure-analyst')` (§3a, §5b).
 
 ```yaml
 # ─────────────────────────────────────────────────────────────────────────────
@@ -312,7 +324,7 @@ jobs:
     if: >-
       github.event_name == 'check_run'
       && github.event.check_run.conclusion == 'failure'
-      && !startsWith(github.event.check_run.name, 'CI Failure Analyst')
+      && !startsWith(github.event.check_run.name, 'ci-failure-analyst')
     concurrency:
       group: "ci-failure-analyst-${{ github.event.check_run.head_sha }}"
       cancel-in-progress: false
@@ -322,7 +334,7 @@ jobs:
       actions: read
       contents: read
       checks: read
-    uses: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@b58510275dd1cbbd13c0733c15265d51fd63b992  # DEFECTIVE PIN — bare SHA, see §5
+    uses: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 ```
@@ -343,6 +355,18 @@ vars/secrets/needs/hashFiles/repo-identity/default_branch/standing-labels.
 | `github.event.sender.type != 'Bot'` | payload field as predicate — PASSES the guard |
 | `github.event.check_run.conclusion` / `.name` | payload field as predicate — PASSES the guard |
 | `github.event.check_suite.pull_requests[0] != null` | event-association null-check on the delivered payload (NOT the standing labels array) — PASSES the guard |
+
+**`ci-failure-analyst` self-exclusion (markets#523, #2175).** The
+`!startsWith(github.event.check_run.name, …)` clause stops the analyst from
+reacting to its own failed check run. That check run is named
+`<caller job key> / <reusable job id>` = `ci-failure-analyst / analyze` (§6).
+The collapse carried the source stub's `'CI Failure Analyst'` prefix, a
+display-name prefix that never matched that check run, so the guard never
+excluded anything (#2175). markets#523 changed the prefix to
+`'ci-failure-analyst'`, the ingress job key, which does match. The clause is
+still a plain read of the delivered `check_run.name`, so its ruling is
+unchanged. `tests/agent_ingress_markets_package.bats` asserts the prefix matches
+`ci-failure-analyst / analyze`, built from the snapshot's job id.
 
 > **Verified empirically.** The exact §3 ingress was run through the frozen #1725
 > guard (`.dev-lead/scripts/validate-ingress-if.sh`, which consumes the rulings
@@ -391,7 +415,7 @@ accepted ADR is immutable. ADR-0010 is the delivered form of that reading.
 | --- | --- | --- | --- | --- |
 | `pr-auto-review` | `pr-auto-review-…` (per-event slot, §4b) | `true` | none (`pr-auto-review-reusable.yml@pr-auto-review/v1-stable`) | none |
 | `pr-review` | `pr-review-…` | `true` | `pr-review-pr-{…}`, `pr-review-batch` (`pr-review.yml@pr-review/v1-stable`) | none (see the `enumerate` note in §4b) |
-| `ci-failure-analyst` | `ci-failure-analyst-…` (unchanged) | `false` (unchanged) | none (`ci-failure-analyst-reusable.yml@b585102…`) | none |
+| `ci-failure-analyst` | `ci-failure-analyst-…` (unchanged) | `false` (unchanged) | none (`ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable`) | none |
 | `dev-lead`, `pr-review-mention` | no caller block | — | — | — |
 
 The `pr-review` repin (markets#521, §5a) does not change the collision result.
@@ -401,6 +425,10 @@ The reusable at `pr-review/v1-stable` (`71920a2`) declares the same
 snapshot. The test snapshot
 `tests/fixtures/agent-ingress/markets-pinned-reusables/pr-review.yml` records the
 new pin.
+
+The `ci-failure-analyst` repin (markets#523, §5b) does not change it either. The
+reusable at `ci-failure-analyst/v1-stable` (`cc0bc61`) still declares no
+`concurrency:` at workflow or job level, and its job id is still `analyze`.
 
 Both guards pass on the §3 ingress as rendered: `scripts/validate-ingress-if.sh`
 (event surface, role prefix, literal boolean) and
@@ -492,8 +520,8 @@ change.
 ## 5. The two defective pins (named, with follow-up corrections)
 
 Both were preserved as-is in §3 for behavior parity in the pilot, and flagged
-inline with `# DEFECTIVE PIN`. Neither is silently carried. §5a has since been
-resolved by markets#521. §5b is still open:
+inline with `# DEFECTIVE PIN`. Neither is silently carried. Both have since
+been resolved: §5a by markets#521 and §5b by markets#523.
 
 ### 5a. `pr-review` → `@pr-review/stable` (stale / non-standard channel) — **resolved by markets#521**
 
@@ -518,7 +546,23 @@ resolved by markets#521. §5b is still open:
   issue against the `pr-review` reusable owner; **do not** bundle into the
   collapse PR.
 
-### 5b. `ci-failure-analyst` → `@b58510275dd1cbbd13c0733c15265d51fd63b992` (bare SHA aliased to `main`)
+### 5b. `ci-failure-analyst` → `@b58510275dd1cbbd13c0733c15265d51fd63b992` (bare SHA aliased to `main`) — **resolved by markets#523**
+
+- **Resolved (markets#523, merged 2026-10-12):** markets repointed the ingress
+  `ci-failure-analyst` job to `@ci-failure-analyst/v1-stable` (tag at
+  `cc0bc61`) and dropped the `# DEFECTIVE PIN` marker for a
+  `# NOSONAR(githubactions:S7637) first-party channel ref` marker. §3 is synced
+  to markets `9310b6e` (#2316). The reusable at `cc0bc61` declares no
+  `concurrency:` and takes only the `CLAUDE_CODE_OAUTH_TOKEN` secret, so the
+  §4a collision result is unchanged. The test snapshot
+  `tests/fixtures/agent-ingress/markets-pinned-reusables/ci-failure-analyst-reusable.yml`
+  records the new pin.
+- **Guard correction (markets#523, #2175):** the same PR changed the job's
+  self-exclusion clause from
+  `!startsWith(github.event.check_run.name, 'CI Failure Analyst')` to
+  `!startsWith(github.event.check_run.name, 'ci-failure-analyst')`. The
+  analyst's check run is `ci-failure-analyst / analyze`, so the old prefix never
+  matched it (§3a). The history below is kept as the record of the defect.
 
 - **Pin bump (#2171):** the first ratified §3 pinned
   `@79747178007d3238bb3afddf7f4d952a293987bd`. Dependabot then bumped markets
@@ -766,8 +810,9 @@ docs/initiatives/agent-ingress-collapse-markets.md
 - Keep the 6 carve-out stubs (§2b) and both required-gate stubs (§2c) untouched.
 
 ## Known follow-ups (do NOT bundle into this PR — §5)
-- ci-failure-analyst pin is a bare SHA (`b585102…` # main) — repoint to a moving
-  `ci-failure-analyst/v<MAJOR>-stable` channel.
+- None open. The ci-failure-analyst bare-SHA pin (`b585102…` # main) was
+  repointed to `ci-failure-analyst/v1-stable` by markets#523, with the
+  self-exclusion guard fix (§5b).
 
 ## Rollback (§8c)
 - Both half-landed states are safe (no required check depends on the 5 roles):
@@ -785,5 +830,5 @@ docs/initiatives/agent-ingress-collapse-markets.md
 | Canonical `agent-ingress.yml` template published | **Deferred (§9b)** | Write to `petry-projects/.github`; cross-repo. |
 | `STUB_REGISTRY` rows activated in fleet_monitor.sh | **Prepared, not applied (§9a)** | Would 404 against an unpublished canonical path and can't be ALIGNED-verified pre-collapse (§9c). |
 | §4 job-level concurrency schema ruling | **Ratified — ADR-0010, accepted** | ADR-0010 admits bounded job-level `concurrency:`. §3 was re-rendered to the bounds (#2038), and §4b states the non-PR-event behavior change. |
-| pin corrections (§5a/§5b) | **§5a resolved by markets#521; §5b named, not applied** | Behavior-preserving collapse must not change pins; separate follow-ups. |
+| pin corrections (§5a/§5b) | **§5a resolved by markets#521; §5b resolved by markets#523** | Behavior-preserving collapse must not change pins; separate follow-ups. |
 | Dedicated baseline doc at the brief's cited path | **Does not exist (§1)** | Not fabricated; real baseline is the reference file + live stubs. |

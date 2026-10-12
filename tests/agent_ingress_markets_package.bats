@@ -141,3 +141,25 @@ teardown() {
   run yq '.jobs["ci-failure-analyst"].concurrency["cancel-in-progress"]' "$INGRESS"
   [ "$output" = "false" ]
 }
+
+@test "markets §3: ci-failure-analyst's self-exclusion prefix matches its real check run, and no DEFECTIVE PIN remains" {
+  # The analyst's own check run is '<caller job key> / <reusable job id>'. The
+  # old 'CI Failure Analyst' prefix never matched it (#2175), so the analyst
+  # could re-trigger on its own failure.
+  local job_id check_name prefix
+  job_id="$(yq -r '.jobs | keys | .[0]' "$SNAPSHOTS/ci-failure-analyst-reusable.yml")"
+  [ "$job_id" = "analyze" ]
+  check_name="ci-failure-analyst / ${job_id}"
+  prefix="$(yq -r '.jobs["ci-failure-analyst"].if' "$INGRESS" |
+    sed -n "s/.*!startsWith(github\.event\.check_run\.name, '\([^']*\)').*/\1/p")"
+  [ -n "$prefix" ]
+  [[ "$check_name" == "$prefix"* ]]
+
+  local fixture="$SCRIPT_DIR/tests/fixtures/agent-ingress/markets-agent-ingress.yml"
+  [ -s "$fixture" ]
+  # A mid-test `! cmd` does not trip errexit, so check each status explicitly.
+  run grep -c 'DEFECTIVE PIN' "$fixture"
+  [ "$status" -eq 1 ]
+  run grep -c 'DEFECTIVE PIN' "$INGRESS"
+  [ "$status" -eq 1 ]
+}
