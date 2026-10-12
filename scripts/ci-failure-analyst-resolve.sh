@@ -86,7 +86,7 @@ resolve() {
       echo "::error::Could not look up the state of PR #$candidate"
       return 1
     fi
-    if [ "$pr_state" = open ]; then
+    if [ "$pr_state" = "open" ]; then
       pr_number="$candidate"
       break
     fi
