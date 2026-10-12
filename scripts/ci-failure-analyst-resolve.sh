@@ -113,11 +113,18 @@ resolve() {
 }
 
 idempotency() {
-  local existing
-  existing="$(gh api "repos/$REPO/issues/${PR_NUMBER:?PR_NUMBER is required}/comments" \
+  local existing ids
+  # Fail closed: a failed lookup must not read as "no marker yet", or a second
+  # diagnostic gets posted for a commit that already has one.
+  if ! ids="$(gh api "repos/$REPO/issues/${PR_NUMBER:?PR_NUMBER is required}/comments" \
     --paginate \
     --jq ".[] | select(.body | startswith(\"<!-- ci-analyst sha=${HEAD_SHA:?HEAD_SHA is required} -->\")) | .id" \
-    2>/dev/null | sed -n '1p')" || true
+    2>/dev/null)"; then
+    echo "::warning::Comment lookup failed — skipping to avoid a duplicate diagnostic"
+    emit exists true
+    return 0
+  fi
+  existing="$(printf '%s\n' "$ids" | sed -n '1p')"
   if [ -n "$existing" ]; then
     echo "::notice::Diagnostic comment already posted (id=$existing) — idempotency skip"
     emit exists true

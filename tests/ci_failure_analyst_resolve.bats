@@ -308,6 +308,15 @@ failed_jobs_fixture() {
   [ "$(out exists)" = "false" ]
 }
 
+@test "idempotency: a failed comment lookup fails closed instead of posting a duplicate" {
+  export PR_NUMBER=99 HEAD_SHA="$SHA"
+  # no fixture for the comments path: the gh stub answers with a 404 failure
+  run bash "$SCRIPT" idempotency
+  [ "$status" -eq 0 ]
+  [ "$(out exists)" = "true" ]
+  [[ "$output" == *"lookup failed"* ]]
+}
+
 @test "unknown subcommand is a usage error" {
   run bash "$SCRIPT" bogus
   [ "$status" -eq 2 ]
