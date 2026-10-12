@@ -160,6 +160,17 @@ failed_jobs_fixture() {
   [ "$(out failed_jobs)" = "shellcheck / Run tests; template-drift" ]
 }
 
+@test "check_run: a failed jobs lookup fails the step instead of emitting empty failed_jobs" {
+  check_run_event
+  fixture "repos/$REPO/pulls/42" '{"state": "open"}'
+  jq '.check_run.details_url = "https://github.com/petry-projects/.github-private/actions/runs/777/job/9"' \
+    "$GITHUB_EVENT_PATH" > "$TMP/e" && mv "$TMP/e" "$GITHUB_EVENT_PATH"
+  run bash "$SCRIPT" resolve
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Could not look up the failed jobs"* ]]
+  [ ! -s "$GITHUB_OUTPUT" ]
+}
+
 @test "check_run: empty pull_requests falls back to the commits-to-pulls lookup" {
   check_run_event
   jq '.check_run.pull_requests = []' "$GITHUB_EVENT_PATH" > "$TMP/e" && mv "$TMP/e" "$GITHUB_EVENT_PATH"
@@ -207,6 +218,7 @@ failed_jobs_fixture() {
   fixture "repos/$REPO/commits/$SHA/pulls" '[
     {"number": 101, "state": "open", "head": {"repo": {"full_name": "petry-projects/.github-private"}}}
   ]'
+  failed_jobs_fixture
   run bash "$SCRIPT" resolve
   [ "$status" -eq 0 ]
   [ "$(out skip)" = "false" ]
@@ -317,6 +329,7 @@ failed_jobs_fixture() {
   # First failure: a workflow_run for Lint.
   workflow_run_event '[{"number": 99, "state": "open", "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
   fixture "repos/$REPO/pulls/99" '{"state": "open"}'
+  failed_jobs_fixture
   run bash "$SCRIPT" resolve
   [ "$status" -eq 0 ]
   first_sha="$(out head_sha)"
@@ -333,6 +346,7 @@ failed_jobs_fixture() {
   workflow_run_event '[{"number": 99, "state": "open", "head": {"repo": {"id": 7}}, "base": {"repo": {"id": 7}}}]'
   fixture "repos/$REPO/pulls/99" '{"state": "open"}'
   jq '.workflow_run.name = "Tests" | .workflow_run.id = 778' "$GITHUB_EVENT_PATH" > "$TMP/e" && mv "$TMP/e" "$GITHUB_EVENT_PATH"
+  fixture "repos/$REPO/actions/runs/778/jobs" '{"jobs": []}'
   run bash "$SCRIPT" resolve
   [ "$(out head_sha)" = "$first_sha" ]
   PR_NUMBER="$(out pr_number)" HEAD_SHA="$(out head_sha)" run bash "$SCRIPT" idempotency

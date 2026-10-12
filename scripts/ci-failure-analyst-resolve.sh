@@ -38,16 +38,18 @@ payload_field() {
 }
 
 # failed_jobs <run_id> — "job / failing step; job; ..." for the run's failed jobs.
+# A failed jobs lookup returns nonzero rather than reading as "no failed jobs".
 failed_jobs() {
   [ -n "$1" ] || return 0
-  gh api "repos/$REPO/actions/runs/$1/jobs" --paginate \
+  local jobs
+  jobs="$(gh api "repos/$REPO/actions/runs/$1/jobs" --paginate \
     --jq '.jobs[]? | select(.conclusion == "failure")
-          | .name + ([(.steps // [])[] | select(.conclusion == "failure") | " / " + .name][0] // "")' \
-    2>/dev/null | paste -sd';' - | sed 's/;/; /g' || true
+          | .name + ([(.steps // [])[] | select(.conclusion == "failure") | " / " + .name][0] // "")')" || return 1
+  printf '%s\n' "$jobs" | paste -sd';' - | sed 's/;/; /g'
 }
 
 resolve() {
-  local event key head_sha pr_number pr_state pulls candidates candidate name details_url run_id="" check_run_id=""
+  local event key head_sha pr_number pr_state pulls candidates candidate name details_url jobs_summary run_id="" check_run_id=""
   event="$(payload_field 'if (.check_run | type) == "object" then "check_run"
                           elif (.workflow_run | type) == "object" then "workflow_run"
                           else null end')"
@@ -120,6 +122,11 @@ resolve() {
     run_id="$(payload_field ".workflow_run.id")"
   fi
 
+  if ! jobs_summary="$(failed_jobs "$run_id")"; then
+    echo "::error::Could not look up the failed jobs for run $run_id"
+    return 1
+  fi
+
   emit skip false
   emit event "$event"
   emit pr_number "$pr_number"
@@ -128,7 +135,7 @@ resolve() {
   emit details_url "$details_url"
   emit run_id "$run_id"
   emit check_run_id "$check_run_id"
-  emit failed_jobs "$(failed_jobs "$run_id")"
+  emit failed_jobs "$jobs_summary"
 }
 
 idempotency() {
