@@ -199,13 +199,19 @@ SIDECARS='dev-lead-(rate-limit-reset|failure-reason|timeout-tier|timeout-budget|
 }
 
 # A writer and a reader that spell the directory differently resolve different
-# files as soon as the variable is set, so every reference must go through it.
-# Comment lines are prose and may keep the historical path.
-@test "sidecars: every script reference is \$DEV_LEAD_SIDECAR_DIR/<file>" {
+# files as soon as the variable is set, so every reference must be the same
+# expression, quotes included. Comment lines are prose and may keep the
+# historical path. ONE other spelling is allowed: the path inside the message
+# of run_writer's warning, where it is text in a longer string, not a file
+# being opened.
+@test "sidecars: every script reference is \"\$DEV_LEAD_SIDECAR_DIR/<file>\"" {
   local refs stray
+  local in_warning='::warning::Failed to redact/persist \$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output\.txt"'
   refs="$(grep -rnE "$SIDECARS" "$REPO_ROOT/scripts" --include='*.sh' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#')"
   [ -n "$refs" ]
-  stray="$(printf '%s\n' "$refs" | sed -E "s#\\\$DEV_LEAD_SIDECAR_DIR/${SIDECARS}##g" | grep -E "$SIDECARS" || true)"
+  # The exception is exactly one line, so it cannot quietly grow.
+  [ "$(printf '%s\n' "$refs" | grep -cE "$in_warning")" = "1" ]
+  stray="$(printf '%s\n' "$refs" | sed -E "s#${in_warning}##g; s#\"\\\$DEV_LEAD_SIDECAR_DIR/${SIDECARS}\"##g" | grep -E "$SIDECARS" || true)"
   echo "$stray"
   [ -z "$stray" ]
 }
