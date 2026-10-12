@@ -636,7 +636,11 @@ PY
 #            the default branch: trusted as it stands
 #   branch   the same repository on another branch (or the default branch is not
 #            known): _collect_one_artifact looks the run up before trusting it
-#   foreign  a fork, or `workflow_run` is missing or incomplete: never trusted
+#   foreign  a fork (the head repository is another repository): never trusted,
+#            and nothing is missing, because a fork's run gets no secrets
+#   unknown  `workflow_run` is missing or incomplete, so where the artifact came
+#            from cannot be told: not trusted, AND counted as a failed read, since
+#            it may hold real usage
 # <run_id> is `workflow_run.id`, or `-`.
 _list_repo_artifacts() {
   local repo="${1%%:*}" default_branch="" arts out
@@ -646,10 +650,11 @@ _list_repo_artifacts() {
     '.artifacts[] | select(.name | startswith("token-usage-")) | select(.expired == false) | select(.created_at >= $cutoff)
      | (.workflow_run // {}) as $w
      | (($w.id | type) == "number" and ($w.repository_id | type) == "number"
-        and ($w.head_repository_id | type) == "number"
-        and $w.head_repository_id == $w.repository_id) as $same
+        and ($w.head_repository_id | type) == "number") as $known
+     | ($known and $w.head_repository_id == $w.repository_id) as $same
      | [ (.id | tostring),
-         (if ($same | not) then "foreign"
+         (if ($known | not) then "unknown"
+          elif ($same | not) then "foreign"
           elif $def != "" and $w.head_branch == $def then "default"
           else "branch" end),
          (if ($w.id | type) == "number" then ($w.id | tostring) else "-" end) ]
@@ -661,6 +666,7 @@ _list_repo_artifacts() {
   [ -n "$arts" ] || return 0
   out="$(mktemp "${COLLECT_LIST_DIR}/list.XXXXXX")" || {
     echo "WARN: failed to create temporary file in ${COLLECT_LIST_DIR} — skipping ${repo}" >&2
+    [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/list.${repo//\//_}" 2>/dev/null
     return 0
   }
   local entry
@@ -751,6 +757,12 @@ _collect_one_artifact() {
   case "$origin" in
     default)
       [ "$prov_run" != null ] && { trusted=true; basis="default-branch"; } ;;
+    unknown)
+      # The listing does not say which run uploaded this. It may be real usage,
+      # so it is a failed read, counted with the look-ups that could not be made.
+      basis="run-unknown"
+      echo "WARN: artifact ${id} from ${repo} — the listing does not say which run uploaded it; its records are not trusted (report may be incomplete)" >&2
+      [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/lookup.${id}" 2>/dev/null ;;
     branch)
       # The verdict collect_org_jsonl stored for this run; asked here when there is
       # none (a caller that runs no look-up pass).

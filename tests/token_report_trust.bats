@@ -209,7 +209,25 @@ _stamp() {
   jq -cn '{artifacts:[{id:106, name:"token-usage-x", expired:false, created_at:"2099-01-01T00:00:00Z"}]}' \
     > "$FIX/artifacts.json"
   _collect
-  [ "$(_stamp a106)" = "false not-this-repository null" ]
+  [ "$(_stamp a106)" = "false run-unknown null" ]
+}
+
+# A fork is known to be a fork: nothing is missing. An artifact whose run the
+# listing does not name may be real usage, so the collection is incomplete.
+@test "hand-off: an artifact the listing names no run for is a failed read; a fork's is not" {
+  _zip 106 "$(_gemini a106)"
+  _zip 103 "$(_gemini a103)"
+  jq -cn --argjson fork "$(_artifact 103 9003 1 2 main)" \
+    '{artifacts:[{id:106, name:"token-usage-x", expired:false, created_at:"2099-01-01T00:00:00Z",
+                  workflow_run:{id:9006, repository_id:1}}, $fork]}' > "$FIX/artifacts.json"
+  export GEMINI_RECORDS_OUT="$BATS_TEST_TMPDIR/gemini-records.jsonl"
+  export GEMINI_COLLECTION_OUT="$BATS_TEST_TMPDIR/collection.json"
+  run bash "$TOKEN_REPORT"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.repo_listings_failed, .artifacts_failed, .run_lookups_failed, .record_files_malformed]' "$GEMINI_COLLECTION_OUT")" = "[0,0,1,0]" ]
+  [[ "$output" == *"artifact 106 from"*"the listing does not say which run uploaded it"* ]]
+  [[ "$output" != *"artifact 103 from"*"does not say which run"* ]]
+  [ ! -s "$GEMINI_RECORDS_OUT" ]
 }
 
 @test "trust: a look-up that answers with another run, another head repository or no actor is not trusted" {
