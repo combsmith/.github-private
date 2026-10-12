@@ -195,6 +195,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hold-gate.sh"
 # the API's message logged on failure, HOLD_LABEL_FAILED set for the run's guard.
 # shellcheck source=scripts/lib/hold-label.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hold-label.sh"
+# The resume gate's label read goes through gh_api_read (#2297), so a GitHub API
+# quota refusal is logged as one rather than as "labels unavailable".
+# shellcheck source=scripts/lib/gh-quota.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gh-quota.sh"
 
 # pr_hold_gate_label <labels_json>
 #   Print the first hold-gate label (hold_gate_labels) present in the JSON array
@@ -288,8 +292,15 @@ pr_resume_suppressed() {
   [ -n "$pr" ] && [ -n "$repo" ] || return 1
 
   if [ -z "$labels_json" ]; then
-    labels_json=$(gh api "repos/${repo}/pulls/${pr}" \
-      --jq '[.labels[]?.name]' 2>/dev/null) || labels_json=''
+    local labels_call=("repos/${repo}/pulls/${pr}" --jq '[.labels[]?.name]') labels_rc=0
+    labels_json=$(gh_api_read "${labels_call[@]}" 2>/dev/null) || labels_rc=$?
+    if [ "$labels_rc" -eq "$GH_QUOTA_EXHAUSTED_RC" ]; then
+      # Quota refused: the labels are unknown, so suppress (fail closed) and say
+      # why. 2>/dev/null dropped the wrapper's copy of the line; print it here.
+      gh_quota_error "${labels_call[@]}"
+      return 0
+    fi
+    [ "$labels_rc" -eq 0 ] || labels_json=''
   fi
   # An unreadable label set may be hiding a hold, so it suppresses (fail closed,
   # #2089 review); `[]` is reserved for a label set that was read and is empty.
