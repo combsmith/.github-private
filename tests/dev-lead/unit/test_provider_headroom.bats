@@ -7,6 +7,8 @@ ENGINE_SCRIPT="$SCRIPT_DIR/scripts/engine.sh"
 setup() {
   export GITHUB_ENV="$(mktemp)"
   export GITHUB_OUTPUT="$(mktemp)"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
   STUB_BIN_DIR="$(mktemp -d)"
   export STUB_BIN_DIR
   export PATH="$STUB_BIN_DIR:$PATH"

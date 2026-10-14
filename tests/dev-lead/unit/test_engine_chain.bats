@@ -12,6 +12,8 @@ STUB_ENGINES_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/engines"
 setup() {
   export GITHUB_ENV="$(mktemp)"
   export GITHUB_OUTPUT="$(mktemp)"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 
   # Clear any pre-set chain vars from the runner environment so engine.sh
   # defaults are evaluated fresh for every test.
@@ -125,27 +127,27 @@ _source_engine() {
 
 # ── End-to-end: writer uses the chain via CLAUDE_ACTION_MODEL_CHAIN ────────────
 
-@test "writer: sonnet rate-limited → opus-4-8 tried via CLAUDE_ACTION_MODEL_CHAIN" {
+@test "writer: sonnet rate-limited → opus-5-5 tried via CLAUDE_ACTION_MODEL_CHAIN" {
   _source_engine "claude"
-  # Defaults from set_engine_config: CLAUDE_ACTION_MODEL_CHAIN=sonnet-5-5,sonnet-5,opus-4-8
+  # Defaults from set_engine_config: CLAUDE_ACTION_MODEL_CHAIN=sonnet-5-5,sonnet-5,opus-5-5
   # (#1978) sonnet-5-5 is the primary; both sonnet hops throttle so the walk
-  # reaches opus-4-8. (#1099) guard: per-model RPM/TPM recovery survives equalization.
-  export STUB_ENGINE_EXIT_BY_MODEL="claude-sonnet-5-5=1|claude-sonnet-5=1|claude-opus-4-8=0"
-  export STUB_ENGINE_RESPONSE_BY_MODEL="claude-sonnet-5-5=too many requests (429)|claude-sonnet-5=too many requests (429)|claude-opus-4-8=opus-4-8 did the work"
+  # reaches opus-5-5 (#1900). (#1099) guard: per-model RPM/TPM recovery survives equalization.
+  export STUB_ENGINE_EXIT_BY_MODEL="claude-sonnet-5-5=1|claude-sonnet-5=1|claude-opus-5-5=0"
+  export STUB_ENGINE_RESPONSE_BY_MODEL="claude-sonnet-5-5=too many requests (429)|claude-sonnet-5=too many requests (429)|claude-opus-5-5=opus-5-5 did the work"
 
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
   grep -q "claude-sonnet-5-5" "$MODEL_RECORD"
-  grep -q "claude-opus-4-8" "$MODEL_RECORD"
+  grep -q "claude-opus-5-5" "$MODEL_RECORD"
 }
 
-@test "writer: sonnet rate-limited and opus-4-8 rate-limited → exit 2 (cross-provider fallback signal)" {
+@test "writer: sonnet rate-limited and opus-5-5 rate-limited → exit 2 (cross-provider fallback signal)" {
   _source_engine "claude"
   # (#1099) guard: the exit-2 contract for daily-cap exhaustion survives the assessment.
-  # (#1978) the whole action chain (sonnet-5-5, sonnet-5, opus-4-8) is exhausted.
-  export STUB_ENGINE_EXIT_BY_MODEL="claude-sonnet-5-5=1|claude-sonnet-5=1|claude-opus-4-8=1"
-  export STUB_ENGINE_RESPONSE_BY_MODEL="claude-sonnet-5-5=quota exceeded|claude-sonnet-5=quota exceeded|claude-opus-4-8=quota exceeded"
+  # (#1978, #1900) the whole action chain (sonnet-5-5, sonnet-5, opus-5-5) is exhausted.
+  export STUB_ENGINE_EXIT_BY_MODEL="claude-sonnet-5-5=1|claude-sonnet-5=1|claude-opus-5-5=1"
+  export STUB_ENGINE_RESPONSE_BY_MODEL="claude-sonnet-5-5=quota exceeded|claude-sonnet-5=quota exceeded|claude-opus-5-5=quota exceeded"
 
   run run_writer "$TEST_PROMPT"
 
@@ -238,12 +240,13 @@ _source_engine() {
   [[ "$output" == *"sonnet 5.5 did the work"* ]]
 }
 
-@test "sonnet-5.5 default: action chain default is sonnet-5-5 → sonnet-5 → opus-4-8 (#1978)" {
+@test "sonnet-5.5 default: action chain default is sonnet-5-5 → sonnet-5 → opus-5-5 (#1978, #1900)" {
   _source_engine "claude"
   # Action tier is now promoted to sonnet-5-5 (#1978); sonnet-5 is the sonnet
-  # safety hop and opus-4-8 the cross-family hop. (#1099) guard: equalization
-  # does not remove the sonnet → opus hop.
-  [ "$CLAUDE_ACTION_MODEL_CHAIN" = "claude-sonnet-5-5,claude-sonnet-5,claude-opus-4-8" ]
+  # safety hop and opus-5-5 the cross-family hop (#1900; opus-4-8 before it).
+  # (#1099) guard: equalization does not remove the sonnet → opus hop.
+  [ "$CLAUDE_ACTION_MODEL_CHAIN" = "claude-sonnet-5-5,claude-sonnet-5,claude-opus-5-5" ]
+  [[ "$CLAUDE_ACTION_MODEL_CHAIN" != *"claude-opus-4-8"* ]]
   [[ "$CLAUDE_ACTION_MODEL_CHAIN" != *"claude-sonnet-4-6"* ]]
 }
 
@@ -252,14 +255,15 @@ _source_engine() {
 # model's RPM/TPM bucket the same SIZE, but does NOT merge them into one shared
 # bucket. The "Rate-limit fallback (two layers)" section in engine.sh depends on
 # buckets being SEPARATE, not on differing sizes — a saturated sonnet-4-6 bucket
-# is still relieved by hopping to opus-4-8's independent bucket. So the hop is
+# is still relieved by hopping to the opus hop's independent bucket (opus-4-8
+# then; opus-5-5 since #1900). So the hop is
 # NOT redundant for RPM/TPM and is retained (no chain edit). The shared daily
 # subscription cap (#206) is a per-account pool that no per-model hop can address;
 # it stays handled by the layer-2 cross-provider fallback via the exit-2 contract.
 # The existing tests below already cover these behaviors and also guard #1099:
 #   • "sonnet-5 candidate: action chain default is NOT touched" — chain unchanged
-#   • "writer: sonnet rate-limited → opus-4-8 tried" — layer-1 RPM/TPM recovery
-#   • "writer: sonnet rate-limited and opus-4-8 rate-limited → exit 2" — layer-2 contract
+#   • "writer: sonnet rate-limited → opus-5-5 tried" — layer-1 RPM/TPM recovery
+#   • "writer: sonnet rate-limited and opus-5-5 rate-limited → exit 2" — layer-2 contract
 
 # ── Gemini/Copilot unchanged: no chain applied ────────────────────────────────
 
@@ -311,12 +315,12 @@ _source_engine() {
   local f
   f="$(mktemp)"
   echo "You've hit your limit · resets 11:20pm (UTC)" > "$f"
-  rm -f /tmp/dev-lead-rate-limit-reset
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
   parse_reset_time_files "$f"
   rm -f "$f"
-  [ -f /tmp/dev-lead-rate-limit-reset ]
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" ]
   # Result should look like an ISO-8601 UTC timestamp ending in Z
-  grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' /tmp/dev-lead-rate-limit-reset
+  grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
 }
 
 @test "parse_reset_time_files: writes empty when no reset time present" {
@@ -326,8 +330,8 @@ _source_engine() {
   echo "ordinary failure with no reset hint" > "$f"
   parse_reset_time_files "$f"
   rm -f "$f"
-  [ -f /tmp/dev-lead-rate-limit-reset ]
-  [ ! -s /tmp/dev-lead-rate-limit-reset ]
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" ]
+  [ ! -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" ]
 }
 
 # ── Codex review findings: warning phrasing + config errors + model pin ─────
@@ -344,15 +348,15 @@ _source_engine() {
 
 @test "chain: writer non-RL failure after RL attempt propagates correctly (not remapped to 2)" {
   # Both sonnet hops rate-limited → warnings emitted → 2>&1 merges into _tmp.
-  # The last model (opus-4-8) fails with a non-rate-limit error. run_writer must
-  # return opus-4-8's exit code, not 2, even though _tmp holds the throttled warnings.
+  # The last model (opus-5-5, #1900) fails with a non-rate-limit error. run_writer must
+  # return opus-5-5's exit code, not 2, even though _tmp holds the throttled warnings.
   _source_engine "claude"
-  export STUB_ENGINE_EXIT_BY_MODEL="claude-sonnet-5-5=1|claude-sonnet-5=1|claude-opus-4-8=1"
-  export STUB_ENGINE_RESPONSE_BY_MODEL="claude-sonnet-5-5=rate limit exceeded|claude-sonnet-5=rate limit exceeded|claude-opus-4-8=segfault in agent runtime"
+  export STUB_ENGINE_EXIT_BY_MODEL="claude-sonnet-5-5=1|claude-sonnet-5=1|claude-opus-5-5=1"
+  export STUB_ENGINE_RESPONSE_BY_MODEL="claude-sonnet-5-5=rate limit exceeded|claude-sonnet-5=rate limit exceeded|claude-opus-5-5=segfault in agent runtime"
 
   run run_writer "$TEST_PROMPT"
 
-  # opus-4-8's non-RL failure → exit 1 (NOT 2). If the throttled-warning text
+  # opus-5-5's non-RL failure → exit 1 (NOT 2). If the throttled-warning text
   # matched is_rate_limited, this would incorrectly return 2.
   [ "$status" -eq 1 ]
 }
@@ -376,7 +380,7 @@ _source_engine() {
   # Only one invocation, and it's the pinned model — not opus-5-5 or sonnet.
   [ "$(wc -l < "$MODEL_RECORD")" -eq 1 ]
   grep -q "claude-haiku-4-5-20251001" "$MODEL_RECORD"
-  ! grep -q "claude-sonnet-5" "$MODEL_RECORD"
+  ! grep -q "claude-sonnet-5" "$MODEL_RECORD" || false
   ! grep -q "claude-opus-5-5" "$MODEL_RECORD"
 }
 
@@ -389,7 +393,7 @@ _source_engine() {
   [ "$status" -eq 0 ]
   [ "$(wc -l < "$MODEL_RECORD")" -eq 1 ]
   grep -q "claude-haiku-4-5-20251001" "$MODEL_RECORD"
-  ! grep -q "claude-sonnet-5" "$MODEL_RECORD"
+  ! grep -q "claude-sonnet-5" "$MODEL_RECORD" || false
   ! grep -q "claude-opus-4-8" "$MODEL_RECORD"
 }
 
@@ -471,7 +475,7 @@ _source_engine() {
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
-  ! grep -q -- "--effort" "$args_rec"
+  ! grep -q -- "--effort" "$args_rec" || false
   rm -f "$args_rec"
 }
 
@@ -486,6 +490,6 @@ _source_engine() {
   run run_triage "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
-  ! grep -q -- "--effort" "$args_rec"
+  ! grep -q -- "--effort" "$args_rec" || false
   rm -f "$args_rec"
 }

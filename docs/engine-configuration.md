@@ -60,7 +60,7 @@ Defaults:
 | `triage` | `claude-haiku-4-5-20251001,claude-sonnet-5-5,claude-sonnet-5` | `gemini-3.8-flash,gemini-3.1-pro-preview` | `openai/o4-mini` |
 | `deep` | `claude-opus-5-5,claude-opus-4-8,claude-sonnet-5-5` | `gemini-3.1-pro-preview,gemini-3.8-flash` | `openai/o4-mini` |
 | `audit` | `claude-opus-5-5,claude-opus-4-8,claude-opus-4-7` | `gemini-3.1-pro-preview,gemini-3.8-flash` | `openai/o4-mini` |
-| `action` | `claude-sonnet-5-5,claude-sonnet-5,claude-opus-4-8` | `gemini-3.8-flash,gemini-3.1-pro-preview` | `openai/o4-mini` |
+| `action` | `claude-sonnet-5-5,claude-sonnet-5,claude-opus-5-5` | `gemini-3.8-flash,gemini-3.1-pro-preview` | `openai/o4-mini` |
 | `single` | `claude-opus-5-5,claude-opus-4-8,claude-opus-4-7` | `gemini-3.1-pro-preview,gemini-3.8-flash` | `openai/o4-mini` |
 | `duck` | `claude-sonnet-5-5` | the first `triage` model | the `triage` model |
 
@@ -101,7 +101,7 @@ example `deep: opus 5.5 [opus 4.8, sonnet 5.5]`.
 ## Model selection — name a family, never pin a version
 
 The org standard (#1979, companion
-[`petry-projects/.github#1199`](https://github.com/petry-projects/.github/issues/1199)):
+[`combsmith/.github#1199`](https://github.com/combsmith/.github/issues/1199)):
 callers name a model **family** — `opus`, `sonnet`, or `haiku` — and let the
 resolver return the current concrete id. A model swap is then one edit to the
 chains above, not a hunt for hard-coded ids across the tree.

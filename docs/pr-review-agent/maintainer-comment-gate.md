@@ -1,7 +1,7 @@
 # Maintainer issue-comment gate (issues #1290, #1813, #1918, #2008)
 
-> **Redesigned in [#1813](https://github.com/petry-projects/.github-private/issues/1813)
-> and [#1918](https://github.com/petry-projects/.github-private/issues/1918).** The
+> **Redesigned in [#1813](https://github.com/combsmith/.github-private/issues/1813)
+> and [#1918](https://github.com/combsmith/.github-private/issues/1918).** The
 > original gate (#1290) judged a comment *addressed* by comparing timestamps — a push
 > at/after the comment cleared it. GitHub now always returns the head push timestamp as
 > `null`, so that model failed closed on every open PR (the #1813 outage), and a push
@@ -31,7 +31,7 @@ The same words, posted two ways, have opposite force. One is a blocking, actiona
 signal; the other was — before this gate — a diary entry. Worse, `gh pr comment` is
 the *ergonomic default*: the obvious verb an agent or human reaches for first. **The
 easy path was the silent one.** This shipped a regression to `main` (the incident in
-[#1290](https://github.com/petry-projects/.github-private/issues/1290)): a maintainer
+[#1290](https://github.com/combsmith/.github-private/issues/1290)): a maintainer
 posted a "fails open" finding as a PR comment, dev-lead never saw it, pr-review
 approved, and the PR auto-merged eight minutes later with the defect intact.
 
@@ -112,10 +112,22 @@ minimized with classifier `RESOLVED`. In practice:
   The commit must be on the PR's pushed head and not on the base branch, and not
   dated before the finding. Its diff must remove at least one token the finding names (a
   backticked span, quoted identifier or `--flag`) and must not re-add it. A finding
-  with no distinctive token (generic spans like `local` or `true` do not count) fails closed unless the cited commit was produced by this pass (`tokenless-not-this-pass`). A failure logs
+  with no distinctive token (generic spans like `local` or `true` do not count) fails closed unless the cited commit was produced by this pass (`tokenless-not-this-pass`).
+  A fix that only adds lines (a missing assertion, a missing guard) removes no
+  token, so it has its own rule (#2269): the commit verifies when this pass
+  produced it, its diff changes a file the finding names by its full repo
+  path, and it adds no token the finding names
+  (`this-pass-touches-named-file`). A commit from an earlier pass, or one
+  outside the files the finding names, still needs a removed token. A diff
+  that adds a named token never verifies (`content-adds-token`): for a
+  finding like "remove `eval` from `x.sh`" that is the defect again. A failure logs
   `::warning::… fixed-unverified:<reason>`. The harness then re-answers with the
   branch commit whose diff removes the token, when one exists. Otherwise the next
   pass re-answers the disposition, which is not settled.
+  When the push guard rebased the cited commit during the pass, that sha never
+  reaches the branch. The harness first edits the reply so its marker cites the
+  rebased successor that landed (#2156), then judges that commit by the same
+  rules.
 - **A maintainer clears it without dev-lead (#1910/#1918).** When dev-lead is
   suppressed, rate-limited, cancelled, or never dispatched, a maintainer can run
   [`scripts/maintainer-resolve-comment.sh`](../../scripts/maintainer-resolve-comment.sh)
@@ -163,8 +175,8 @@ minimized with classifier `RESOLVED`. In practice:
 
 ### Fails closed
 
-The [#1290](https://github.com/petry-projects/.github-private/issues/1290) /
-[#1813](https://github.com/petry-projects/.github-private/issues/1813) acceptance
+The [#1290](https://github.com/combsmith/.github-private/issues/1290) /
+[#1813](https://github.com/combsmith/.github-private/issues/1813) acceptance
 criterion is that an inability to determine whether a finding was addressed must
 **not** read as "no findings" — that is exactly the bug that shipped the regression.
 So:
@@ -208,7 +220,7 @@ shared identity removes *both* of the owner's mechanically-blocking review paths
    can *resolve the maintainer's own threads*. Observed on PR #1413: four maintainer
    threads, all `resolvedBy: don-petry`, gate cleared, auto-merge enabled.
 
-This is [#860](https://github.com/petry-projects/.github-private/issues/860)
+This is [#860](https://github.com/combsmith/.github-private/issues/860)
 normative rule 2 applied to review gates: **a gate whose reset is reachable by the
 agent is not a gate** (`docs/agentic-interaction-model.md` §7 rule 2, extended in
 §12 to review/merge gates).

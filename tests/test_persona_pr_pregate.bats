@@ -5,14 +5,15 @@
 # The router-served pull_request surface reaches persona-runner-reusable.yml with
 # client_payload.surface=pull_request. Before #1905 the runner ignored `surface`
 # and ran the engine + posted on EVERY trusted PR — losing the persona-specific
-# suppressors the local qa-lead-pr-advisory.yml gate enforces (no-test-surface,
-# budget-exhausted, already-advised) on top of the router's generic brakes.
+# suppressors qa-lead's gate enforces (no-test-surface, budget-exhausted,
+# already-advised) on top of the router's generic brakes. Since #2243 the router
+# is the ONLY path serving qa-lead's pull_request advisory.
 #
 # `persona_event_pregate` is what the runner now calls before the engine:
 #   * surface != pull_request (mention/absent) -> "run", no gate (mention path
 #     unchanged, AC #1).
 #   * surface == pull_request, persona qa-lead -> qa_lead_pr_gather_and_decide,
-#     the ONE gathering+decision shared with the local workflow (AC #2).
+#     the ONE gathering+decision (AC #2).
 #   * surface == pull_request, no registered gate -> skip + a logged notice (AC #3).
 #   * any unreadable signal -> fail closed (skip) with a ::error naming it (AC #3).
 #
@@ -84,13 +85,13 @@ STUB
 # ---------------------------------------------------------------------------
 
 @test "AC#1: surface=mention -> run without gating (mention path unchanged)" {
-  run persona_event_pregate qa-lead mention petry-projects/.github-private 5 ""
+  run persona_event_pregate qa-lead mention combsmith/.github-private 5 ""
   [ "$status" -eq 0 ]
   [ "$output" = "run" ]
 }
 
 @test "AC#1: surface absent defaults to mention -> run without gating" {
-  run persona_event_pregate qa-lead "" petry-projects/.github-private 5 ""
+  run persona_event_pregate qa-lead "" combsmith/.github-private 5 ""
   [ "$status" -eq 0 ]
   [ "$output" = "run" ]
 }
@@ -99,7 +100,7 @@ STUB
   # Even with a docs-only PR and an unreadable file list, the mention path runs:
   # the pre-gate is a pull_request-only concern.
   STUB_FILES='["README.md"]' STUB_FILES_RC=1 \
-    run persona_event_pregate qa-lead mention petry-projects/.github-private 5 ""
+    run persona_event_pregate qa-lead mention combsmith/.github-private 5 ""
   [ "$status" -eq 0 ]
   [ "$output" = "run" ]
 }
@@ -110,7 +111,7 @@ STUB
 # ---------------------------------------------------------------------------
 
 @test "fail-closed: an unrecognized surface skips with a ::error (not run as mention)" {
-  run persona_event_pregate qa-lead bogus-surface petry-projects/.github-private 5 opened
+  run persona_event_pregate qa-lead bogus-surface combsmith/.github-private 5 opened
   [ "$status" -eq 1 ]
   [[ "$output" == *"::error::"* ]]
   [[ "$output" == *skip:unknown-surface* ]]
@@ -121,37 +122,37 @@ STUB
 # ---------------------------------------------------------------------------
 
 @test "run: real test surface and no suppressor" {
-  run persona_event_pregate qa-lead pull_request petry-projects/.github-private 5 opened
+  run persona_event_pregate qa-lead pull_request combsmith/.github-private 5 opened
   [ "$status" -eq 0 ]
   [ "$output" = "run" ]
 }
 
 @test "skip: no-test-surface (docs-only PR)" {
   STUB_FILES='["README.md"]' \
-    run persona_event_pregate qa-lead pull_request petry-projects/.github-private 5 opened
+    run persona_event_pregate qa-lead pull_request combsmith/.github-private 5 opened
   [ "$status" -eq 1 ]
   [[ "$output" == skip:no-test-surface* ]]
 }
 
 @test "skip: opt-out (qa-lead:hands-off label)" {
   STUB_LABELS='["qa-lead:hands-off"]' \
-    run persona_event_pregate qa-lead pull_request petry-projects/.github-private 5 opened
+    run persona_event_pregate qa-lead pull_request combsmith/.github-private 5 opened
   [ "$status" -eq 1 ]
   [[ "$output" == skip:opt-out* ]]
 }
 
 @test "skip: human-gated (needs-human-review label)" {
   STUB_LABELS='["needs-human-review"]' \
-    run persona_event_pregate qa-lead pull_request petry-projects/.github-private 5 opened
+    run persona_event_pregate qa-lead pull_request combsmith/.github-private 5 opened
   [ "$status" -eq 1 ]
   [[ "$output" == skip:human-gated* ]]
 }
 
 @test "skip: budget-exhausted (>= MAX automated actions since last human)" {
-  # 10 bot comments, no human -> compute_pr_automation_cycles >= MAX (10).
-  bots="$(jq -n '[range(10) | {created_at: "2026-09-20T00:00:0\(.)Z", user: {login: "github-actions[bot]"}}]')"
+  # 50 bot comments, no human -> compute_pr_automation_cycles >= MAX (50, #2224).
+  bots="$(jq -n '[range(50) | {created_at: "2026-09-20T00:00:\(. + 100 | tostring | .[1:])Z", user: {login: "github-actions[bot]"}}]')"
   STUB_RAW_COMMENTS="$bots" \
-    run persona_event_pregate qa-lead pull_request petry-projects/.github-private 5 opened
+    run persona_event_pregate qa-lead pull_request combsmith/.github-private 5 opened
   [ "$status" -eq 1 ]
   [[ "$output" == skip:budget-exhausted* ]]
 }
@@ -159,7 +160,7 @@ STUB
 @test "skip: already-advised (a qa-lead marker is already present)" {
   STUB_COMMENT_BODIES='<!-- persona:qa-lead -->
 prior advisory' \
-    run persona_event_pregate qa-lead pull_request petry-projects/.github-private 5 opened
+    run persona_event_pregate qa-lead pull_request combsmith/.github-private 5 opened
   [ "$status" -eq 1 ]
   [[ "$output" == skip:already-advised* ]]
 }
@@ -170,7 +171,7 @@ prior advisory' \
 
 @test "fail-closed: unreadable changed-file list skips with a ::error" {
   STUB_FILES_RC=1 \
-    run persona_event_pregate qa-lead pull_request petry-projects/.github-private 5 opened
+    run persona_event_pregate qa-lead pull_request combsmith/.github-private 5 opened
   [ "$status" -eq 1 ]
   [[ "$output" == *skip:* ]]
   [[ "$output" == *"::error::"* ]]
@@ -179,7 +180,7 @@ prior advisory' \
 
 @test "fail-closed: unreadable labels skips with a ::error" {
   STUB_LABELS_RC=1 \
-    run persona_event_pregate qa-lead pull_request petry-projects/.github-private 5 opened
+    run persona_event_pregate qa-lead pull_request combsmith/.github-private 5 opened
   [ "$status" -eq 1 ]
   [[ "$output" == *"::error::"* ]]
   [[ "$output" == *"labels unavailable"* ]]
@@ -187,7 +188,7 @@ prior advisory' \
 
 @test "fail-closed: unreadable budget events skips with a ::error" {
   STUB_GATHER_RC=1 \
-    run persona_event_pregate qa-lead pull_request petry-projects/.github-private 5 opened
+    run persona_event_pregate qa-lead pull_request combsmith/.github-private 5 opened
   [ "$status" -eq 1 ]
   [[ "$output" == *"::error::"* ]]
   [[ "$output" == *"automation-budget events unavailable"* ]]
@@ -196,7 +197,7 @@ prior advisory' \
 @test "fail-closed: an incomplete (truncated) changed-file list skips" {
   # Received 1 file, PR declares 5000 -> truncated -> never advise off partial data.
   STUB_CHANGED='5000' \
-    run persona_event_pregate qa-lead pull_request petry-projects/.github-private 5 opened
+    run persona_event_pregate qa-lead pull_request combsmith/.github-private 5 opened
   [ "$status" -eq 1 ]
   [[ "$output" == *"::error::"* ]]
   [[ "$output" == *"incomplete"* ]]
@@ -209,7 +210,7 @@ prior advisory' \
 
 @test "no-registered-gate: skips, makes no gh call, logs a notice" {
   printf '#!/usr/bin/env bash\necho called >> "%s/gh-called"\nexit 42\n' "$BATS_TEST_TMPDIR" > "$STUB_BIN/gh"
-  run persona_event_pregate scrum-master pull_request petry-projects/.github-private 5 opened
+  run persona_event_pregate scrum-master pull_request combsmith/.github-private 5 opened
   [ "$status" -eq 1 ]
   [[ "$output" == *"skip:no-registered-pregate"* ]]
   [[ "$output" == *"::notice::"* ]]
@@ -219,18 +220,18 @@ prior advisory' \
 
 @test "no-registered-gate: dev-lead and pr-review also skip" {
   for p in dev-lead pr-review; do
-    run persona_event_pregate "$p" pull_request petry-projects/.github-private 5 opened
+    run persona_event_pregate "$p" pull_request combsmith/.github-private 5 opened
     [ "$status" -eq 1 ]
     [[ "$output" == *"skip:no-registered-pregate"* ]]
   done
 }
 
 # ---------------------------------------------------------------------------
-# qa_lead_pr_gather_and_decide is the ONE implementation both callers use.
+# qa_lead_pr_gather_and_decide is the ONE implementation the pre-gate uses.
 # ---------------------------------------------------------------------------
 
 @test "qa_lead_pr_gather_and_decide is defined and usable directly" {
-  run qa_lead_pr_gather_and_decide petry-projects/.github-private 5
+  run qa_lead_pr_gather_and_decide combsmith/.github-private 5
   [ "$status" -eq 0 ]
   [ "$output" = "run" ]
 }

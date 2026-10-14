@@ -10,7 +10,7 @@ on:
         # pinned version, not the caller's branch — closing the reusable
         # self-ref gap (#506). Empty (the default) preserves the historical
         # behaviour exactly: actions/checkout treats an empty ref as "default".
-        description: "Ref of petry-projects/.github-private to check out for agent scripts"
+        description: "Ref of combsmith/.github-private to check out for agent scripts"
         type: string
         required: false
         default: ""
@@ -162,7 +162,17 @@ jobs:
     #   pull_request_review — skip COMMENTED reviews; they don't change merge-readiness.
     #                         CHANGES_REQUESTED reviews are also skipped because the PR
     #                         is now blocked; review-one-pr.sh would skip it anyway.
+    #
+    # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
+    # (neutral, not red). A job condition, not the AGENTS_PAUSED branch of
+    # validate-engines.sh: with every engine marked unavailable review-batch.sh
+    # still continues on Claude.
+    # No `fleet-paused` notice job here: the canary promotion gate counts every
+    # run of this reusable that ends success or failure as a health sample, and a
+    # run whose only work was the notice would end success. With every job
+    # skipped the run ends skipped, which the gate does not count.
     if: >-
+      vars.AGENTS_PAUSED != 'true' &&
       (github.event_name != 'check_suite' ||
        (github.event.check_suite.conclusion == 'success' &&
         github.event.check_suite.pull_requests[0] != null))
@@ -182,7 +192,7 @@ jobs:
       # candidate queue (it can't approve its own PRs). Human reviewers are
       # routed via CODEOWNERS at escalation time, not pinned via env.
       BOT_USER: ${{ vars.BOT_USER || 'donpetry-bot' }}
-      TARGET_ORG: ${{ vars.TARGET_ORG || 'petry-projects' }}
+      TARGET_ORG: ${{ vars.TARGET_ORG || 'combsmith' }}
       AGENT_REPO: ${{ github.repository }}
       # Engine configuration — switch providers with Actions variables, no code
       # change (scripts/lib/engine-chain.sh, docs/engine-configuration.md):
@@ -358,7 +368,7 @@ jobs:
           # has no such ref → failure. .github-private is public, so the default
           # token can read it. `agent_ref` (e.g. pr-review/stable) pins the
           # scripts to the known-good channel; empty defaults to main (#506/#536).
-          repository: petry-projects/.github-private
+          repository: combsmith/.github-private
           ref: ${{ inputs.agent_ref || 'main' }}
 
       - name: Resolve persona identity

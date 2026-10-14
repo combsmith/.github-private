@@ -4,44 +4,41 @@
 # file per the §8.2 location decision (option b). Story 2 / #1404.
 #
 # qa-lead is an advisory persona served on two surfaces:
-#   1. Mention-routed: a human @petry-projects/qa-lead mention is parsed by the
+#   1. Mention-routed: a human @combsmith/qa-lead mention is parsed by the
 #      shared router .github/workflows/persona-mention.yml and bridged
 #      (repository_dispatch:persona-mention) to persona-runner.
-#   2. Event-driven PR advisory (#1646 — [qa-lead S3]): served by BOTH
-#      qa-lead-pr-advisory.yml (local, self-contained — gates on real test
-#      surface via scripts/qa-lead-advisory-gate.sh) AND, since #2187, the shared
-#      persona-mention.yml router, which subscribes pull_request and dispatches
-#      qa-lead per its declared [opened, ready_for_review] (ADR-0009, #1869).
-#      Both reuse the SAME persona-runner-reusable.yml with surface=pull_request,
-#      so they share one per-(persona, repo, PR) concurrency group and the same
-#      already-advised marker check — a PR gets ONE advisory. `synchronize` is
-#      deliberately NOT wired. The local workflow is retired (a separate issue)
-#      only after the router path is verified on real PRs, including the #1745
-#      stop markers on a pull_request-sourced dispatch.
+#   2. Event-driven PR advisory (#1646 — [qa-lead S3]): served by the shared
+#      persona-mention.yml router ALONE, which subscribes pull_request and
+#      dispatches qa-lead per its declared [opened, ready_for_review] (ADR-0009,
+#      #1869, #2187) with surface=pull_request. The runner's event pre-gate
+#      (scripts/persona-pr-pregate.sh -> scripts/qa-lead-pr-gate.sh) applies
+#      qa-lead's suppressors — test surface, opt-out, human hold, budget,
+#      already-advised marker — so a PR gets ONE advisory. `synchronize` is
+#      deliberately NOT wired. The local, self-contained workflow that served this
+#      surface alongside the router was retired 2026-10-11 (#2243) once the
+#      router path was verified on real PRs, including the #1745 stop markers on
+#      a pull_request-sourced dispatch.
 #      NOTE: Private source repositories other than .github-private are out of
 #      scope for the router-served pull_request path: its pre-gate runs with
 #      github.token scoped to .github-private and fails closed when it cannot
 #      read them (the runner exits non-zero, a retryable workflow failure).
-# Both paths post a single advisory comment as the persona's runtime.identity and
-# write nothing else. The workflow's read/write split mechanically stamps the
+# Both surfaces post a single advisory comment as the persona's runtime.identity
+# and write nothing else. The workflow's read/write split mechanically stamps the
 # <!-- persona:qa-lead --> recursion marker; the prompt is not trusted to.
 #
-# triggers.events mirror the DEPLOYED on: blocks (AC #3/#8) — the union across
-# both workflows: persona-mention.yml's issue_comment / pull_request_review_comment
-# / discussion_comment / pull_request PLUS qa-lead-pr-advisory.yml's pull_request
-# (the same event, served by both until the local workflow is retired). As of #1647
-# persona.yml now AGREES with this contract: the surfaces nothing here serves
+# triggers.events mirror the DEPLOYED on: block (AC #3/#8) of persona-mention.yml:
+# issue_comment / pull_request_review_comment / discussion_comment / pull_request.
+# As of #1647 persona.yml now AGREES with this contract: the surfaces nothing here serves
 # (pull_request_review, issues, discussion, check_run) are `enabled: false` there,
 # kept with notes as intended-future surfaces. The contract records what is
 # actually deployed, not the aspiration (persona-standards finding 10 /
-# petry-projects/.github#755); the validator's surface-liveness invariant (#1647)
+# combsmith/.github#755); the validator's surface-liveness invariant (#1647)
 # now makes the two files unable to silently diverge again.
 schema_version: 1
 role: qa-lead
 kind: persona
 workflows:
   - .github/workflows/persona-mention.yml
-  - .github/workflows/qa-lead-pr-advisory.yml
 interaction:
   triggers:
     events:
@@ -53,7 +50,7 @@ interaction:
   emits:
     - "comment:advisory-response"
   idempotency_key: "one advisory per PR (marker scan) for the event path; one run per mention (source_repo + item_number + comment_url) for the mention path"
-  concurrency_lane: "persona-runner-qa-lead-<source_repo>-<pr>- shared by the local and router-served event paths (local caller also serializes on qa-lead-pr-advisory-<pr>); persona-runner-qa-lead-<source_repo>-<item_number>-<comment_url> (mention path)"
+  concurrency_lane: "persona-runner-qa-lead-<source_repo>-<pr>- (router-served event path); persona-runner-qa-lead-<source_repo>-<item_number>-<comment_url> (mention path)"
   stop_markers:
     - qa-lead:hands-off
     - needs-human-review

@@ -58,3 +58,9 @@ beddd2cfaa173b620df231e9be476131100738e3:tests/dev-lead/unit/test_engine_error_c
 19314f96201a376f37619565ed42ed7f2e7aa5e7:tests/dev-lead/unit/test_gemini_tier_view.bats:gcp-api-key:289
 f0978d814b7149848e4f39e2739ed4ad3b0233fd:tests/dev-lead/unit/test_gemini_tier_view.bats:generic-api-key:289
 46f2971cc48fcbfa1327de69234f66059e2d3291:tests/dev-lead/unit/test_gemini_tier_view.bats:generic-api-key:289
+
+# commit 3f1d6d7 (#2263 bats negation fix): appending `|| false` to the
+# "GitHub tokens redacted" assertion in test_engine_writer.bats put a long-standing
+# fake ghp_ fixture literal on a changed line. The next commit writes that token as
+# two adjacent strings, so only this commit carries the literal. Not a real credential.
+3f1d6d7059cd773a18671512daebb34a1025ae37:tests/dev-lead/unit/test_engine_writer.bats:github-pat:731

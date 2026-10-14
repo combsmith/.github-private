@@ -21,34 +21,51 @@
 #   * main() does the network I/O: dispatch, poll.
 #
 # Env vars consumed:
-#   REPO                 owner/repo hosting the trigger (default petry-projects/.github-private)
+#   REPO                 owner/repo hosting the trigger (default combsmith/.github-private)
 #   WORKFLOW_FILE        trigger workflow to dispatch (default pr-review-trigger.yml)
 #   GH_TOKEN             a PAT with workflow scope (a workflow_dispatch fired with
 #                        GITHUB_TOKEN is accepted but never starts a run)
 #   CANARY_POLL_TIMEOUT  seconds to wait for the run to complete (default 600)
 #   CANARY_POLL_INTERVAL seconds between polls (default 15)
 #   CANARY_OUT           optional path; the report is written there in addition to stdout
+#   AGENTS_PAUSED        the fleet pause switch as this canary's own run sees it
+#                        (`vars.AGENTS_PAUSED`); "true" turns a dispatched run that
+#                        ended `skipped` into PAUSED instead of FAILED (#2266)
 #   GITHUB_ENV           written by the Actions runner (CANARY_STATUS / CANARY_FAILED)
 
 set -euo pipefail
 
-REPO="${REPO:-petry-projects/.github-private}"
+REPO="${REPO:-combsmith/.github-private}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-pr-review-trigger.yml}"
 
 # ---------------------------------------------------------------------------
 # Pure helpers (unit-tested; no network)
 # ---------------------------------------------------------------------------
 
-# classify_canary_run <conclusion>
+# classify_canary_run <conclusion> [fleet_paused]
 # Maps a completed run's conclusion to a canary status:
 #   STARTUP_FAILURE — conclusion == startup_failure (the #1034 channel-skew
 #                     fingerprint: the reusable call failed at startup because
 #                     the caller forwarded an input the pinned channel lacks)
 #   OK              — conclusion == success
 #   NO_RUN          — empty/null conclusion (no completed run was found)
-#   FAILED          — any other conclusion (failure/timed_out/cancelled/…)
+#   PAUSED          — conclusion == skipped AND <fleet_paused> is "true" (#2266).
+#                     pr-review.yml has no `fleet-paused` notice job (the canary
+#                     promotion gate samples its runs, so a paused run must not
+#                     end green), which leaves a paused run with every job
+#                     skipped and nothing else on record. An event filter ends a
+#                     run the same way, so `skipped` alone is NOT read as a
+#                     pause: the canary's own view of AGENTS_PAUSED has to agree
+#   FAILED          — any other conclusion (failure/timed_out/cancelled/…),
+#                     including `skipped` while the fleet is not paused
 classify_canary_run() {
-  local conclusion="${1:-}"
+  local conclusion="${1:-}" fleet_paused="${2:-}"
+  if [ "$conclusion" = "skipped" ]; then
+    # GitHub compares the variable without regard to case, so `TRUE` pauses too.
+    case "$fleet_paused" in
+      [Tt][Rr][Uu][Ee]) echo "PAUSED"; return 0 ;;
+    esac
+  fi
   case "$conclusion" in
     startup_failure) echo "STARTUP_FAILURE" ;;
     success)         echo "OK" ;;
@@ -80,6 +97,7 @@ canary_report() {
     OK)              icon='✅'; headline='canary passed' ;;
     STARTUP_FAILURE) icon='🔴'; headline='STARTUP FAILURE — the reusable call failed at startup (channel skew)' ;;
     NO_RUN)          icon='🟠'; headline='no pr-review-trigger run observed within the poll window' ;;
+    PAUSED)          icon='⏸️'; headline='agent fleet paused — the review did not run' ;;
     FAILED)          icon='🟡'; headline='run concluded FAILED — not the startup_failure channel-skew fingerprint' ;;
     *)               icon='🟡'; headline='run concluded non-success — not the startup_failure channel-skew fingerprint' ;;
   esac
@@ -102,6 +120,11 @@ canary_report() {
     printf '> No `workflow_dispatch` pr-review-trigger run completed within the poll window. '
     printf 'The dispatch may have been rejected (PAT missing/expired) or the run is still queued. '
     printf 'This is not the channel-skew signal (no `startup_failure` observed), so it does not fail the canary.\n'
+  elif [ "$st" = "PAUSED" ]; then
+    printf '> The dispatched run ended `skipped` (every job skipped) while the fleet pause switch '
+    printf '(`AGENTS_PAUSED=true`) is set. `pr-review.yml` has no pause notice job, so that is all a paused '
+    printf 'run records. This is neither a pass nor a failure of the review. The run did get past startup, '
+    printf 'so it is not the `startup_failure` channel-skew signal either.\n'
   elif [ "$st" != "OK" ]; then
     printf '> The dry-run pr-review-trigger dispatch concluded non-success, but NOT with `startup_failure` — '
     printf 'the sole fingerprint of the #1034 channel-skew defect. Because a `cancelled` or `timed_out` run '
@@ -159,7 +182,7 @@ main() {
   done
 
   local result
-  result="$(classify_canary_run "$conclusion")"
+  result="$(classify_canary_run "$conclusion" "${AGENTS_PAUSED:-}")"
 
   local run_url=""
   [ -n "$run_id" ] && run_url="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs/${run_id}"
@@ -183,11 +206,13 @@ main() {
     echo "::error::PR-review-trigger canary result: ${result}" >&2
     exit 1
   fi
-  # Keep the green exit for OK/FAILED/NO_RUN (only startup_failure gates this
+  # Keep the green exit for OK/FAILED/NO_RUN/PAUSED (only startup_failure gates this
   # canary, per #1612), but do not announce non-OK results as a successful
   # dispatch — that would report a downstream failure or missing run as healthy.
   if [ "$result" = "OK" ]; then
     echo "::notice::PR-review-trigger canary passed (dry-run dispatch concluded success)." >&2
+  elif [ "$result" = "PAUSED" ]; then
+    echo "::notice title=Agent fleet paused::PR-review-trigger canary: the dispatched run skipped every job and the agent fleet is paused (AGENTS_PAUSED=true). Not a pass and not a failure." >&2
   fi
 }
 

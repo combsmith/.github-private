@@ -7,6 +7,6 @@ name: Demo
 on: [pull_request]
 jobs:
   demo:
-    uses: petry-projects/.github/.github/workflows/demo-reusable.yml@demo/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/demo-reusable.yml@demo/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     with:
       agent_ref: demo/v1-stable

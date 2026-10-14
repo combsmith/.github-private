@@ -10,6 +10,8 @@ setup() {
   export GITHUB_OUTPUT="$BATS_TEST_TMPDIR/github_output"
   : > "$GITHUB_ENV"
   : > "$GITHUB_OUTPUT"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 
   STUB_BIN_DIR="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$STUB_BIN_DIR"
@@ -34,11 +36,6 @@ setup() {
   # path and eliminates the CI environment-variable leak without disabling any
   # real production behaviour.
   unset TOKEN_LOG_FILE ENGINE_USAGE_JSON
-}
-
-teardown() {
-  rm -f /tmp/dev-lead-failure-reason /tmp/dev-lead-session-output.txt /tmp/dev-lead-rate-limit-reset
-  rm -f /tmp/dev-lead-timeout-tier /tmp/dev-lead-timeout-budget /tmp/dev-lead-timeout-elapsed
 }
 
 # Helper: source engine with a given engine type (suppresses info line)
@@ -314,7 +311,7 @@ GHEOF
   run run_writer_with_fallback "$TEST_PROMPT"
 
   [ "$status" -eq 2 ]
-  [ "$(cat /tmp/dev-lead-failure-reason)" = "rate-limited" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")" = "rate-limited" ]
 }
 
 @test "sidecar: missing binary (127) → reason=missing-binary" {
@@ -327,7 +324,7 @@ GHEOF
   run run_writer_with_fallback "$TEST_PROMPT"
 
   [ "$status" -eq 1 ]
-  [ "$(cat /tmp/dev-lead-failure-reason)" = "missing-binary" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")" = "missing-binary" ]
 }
 
 @test "sidecar: generic engine error (exit 1) → reason=engine-error" {
@@ -337,7 +334,7 @@ GHEOF
   run run_writer_with_fallback "$TEST_PROMPT"
 
   [ "$status" -eq 1 ]
-  [ "$(cat /tmp/dev-lead-failure-reason)" = "engine-error" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")" = "engine-error" ]
 }
 
 # ── Copilot license/policy denial (#1546) ─────────────────────────────────────
@@ -387,7 +384,7 @@ GHEOF
 
   [ "$status" -eq 0 ]
   # success clears the sidecar → the run did not hard-fail as engine-error
-  [ ! -f /tmp/dev-lead-failure-reason ]
+  [ ! -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason" ]
 }
 
 @test "license: copilot denial with all engines exhausted → reason=rate-limited (never engine-error)" {
@@ -415,7 +412,7 @@ GHEOF
   run run_writer_with_fallback "$TEST_PROMPT"
 
   [ "$status" -eq 2 ]
-  [ "$(cat /tmp/dev-lead-failure-reason)" = "rate-limited" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")" = "rate-limited" ]
 }
 
 # ── DEV_LEAD_ENGINES kill-switch (#1546) ──────────────────────────────────────
@@ -504,7 +501,7 @@ GHEOF
   # rate-limited (exit 2 would send the retry cron back at an unchangeable state).
   [ "$status" -ne 2 ]
   [ "$status" -eq 1 ]
-  [ "$(cat /tmp/dev-lead-failure-reason)" = "unconfigured" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")" = "unconfigured" ]
   unset DEV_LEAD_ENGINES
 }
 
@@ -519,7 +516,7 @@ GHEOF
   run run_writer_with_fallback "$TEST_PROMPT"
 
   [ "$status" -eq 1 ]
-  [ "$(cat /tmp/dev-lead-failure-reason)" = "unconfigured" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")" = "unconfigured" ]
   unset DEV_LEAD_ENGINES COPILOT_GITHUB_TOKEN
 }
 
@@ -533,7 +530,7 @@ GHEOF
   run run_writer_with_fallback "$TEST_PROMPT"
 
   [ "$status" -eq 1 ]
-  [ "$(cat /tmp/dev-lead-failure-reason)" = "unconfigured" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")" = "unconfigured" ]
   unset DEV_LEAD_ENGINES COPILOT_GITHUB_TOKEN
 }
 
@@ -550,7 +547,7 @@ GHEOF
   run run_writer_with_fallback "$TEST_PROMPT"
 
   [ "$status" -eq 1 ]
-  [ "$(cat /tmp/dev-lead-failure-reason)" = "unconfigured" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")" = "unconfigured" ]
   unset DEV_LEAD_ENGINES
 }
 
@@ -568,7 +565,7 @@ GHEOF
   run run_writer_with_fallback "$TEST_PROMPT"
 
   [ "$status" -eq 2 ]
-  [ "$(cat /tmp/dev-lead-failure-reason)" = "rate-limited" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")" = "rate-limited" ]
   unset GEMINI_API_KEY
 }
 
@@ -587,10 +584,10 @@ GHEOF
 
   # 124 propagates immediately (distinct from engine-error)
   [ "$status" -eq 124 ]
-  [ "$(cat /tmp/dev-lead-failure-reason)" = "timeout" ]
-  [ "$(cat /tmp/dev-lead-timeout-tier)" = "action" ]
-  [ "$(cat /tmp/dev-lead-timeout-budget)" = "2100" ]
-  [ -f /tmp/dev-lead-timeout-elapsed ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")" = "timeout" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-tier")" = "action" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-budget")" = "2100" ]
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-elapsed" ]
 }
 
 @test "sidecar: timeout (124) does NOT fall through to another engine (no same-budget retry)" {
@@ -616,7 +613,7 @@ GHEOF
   run run_writer_with_fallback "$TEST_PROMPT"
 
   [ "$status" -eq 124 ]
-  [ "$(cat /tmp/dev-lead-failure-reason)" = "timeout" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")" = "timeout" ]
   # Same-budget retry on ANY fallback engine must NOT happen.
   [ ! -s "$copilot_record" ]
   [ ! -s "$gemini_record" ]
@@ -712,7 +709,7 @@ STUBEOF
 }
 
 @test "sidecar: stale reason cleared on success" {
-  printf 'engine-error\n' > /tmp/dev-lead-failure-reason
+  printf 'engine-error\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
   _make_stub "claude" 0
   _source_engine "claude"
 
@@ -720,7 +717,7 @@ STUBEOF
 
   [ "$status" -eq 0 ]
   # The sidecar is removed at the start of every call → no stale reason survives.
-  [ ! -f /tmp/dev-lead-failure-reason ]
+  [ ! -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason" ]
 }
 
 # ── session-output persistence on the rate-limit path (#781, Phase 1A.2) ──────
@@ -747,8 +744,8 @@ STUB
 
   [ "$status" -eq 2 ]
   # Persisted session output exists and contains the engine output
-  [ -s /tmp/dev-lead-session-output.txt ]
-  grep -q "RLPROBE" /tmp/dev-lead-session-output.txt
+  [ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" ]
+  grep -q "RLPROBE" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   # Step summary received the session-output block even on the rate-limit path
   grep -q "Dev-Lead session output" "$GITHUB_STEP_SUMMARY"
 
@@ -824,7 +821,7 @@ GHEOF
 
   [ "$rc1" -eq 2 ]
   [ "$rc2" -eq 2 ]
-  [ "$(cat /tmp/dev-lead-failure-reason)" = "rate-limited" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")" = "rate-limited" ]
 }
 
 @test "exhaustion: reset_engine_exhaustion clears the registry" {

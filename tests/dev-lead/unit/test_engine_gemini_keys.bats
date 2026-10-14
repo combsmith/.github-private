@@ -15,6 +15,8 @@ setup() {
   export GITHUB_OUTPUT="$BATS_TEST_TMPDIR/github_output"
   : > "$GITHUB_ENV"
   : > "$GITHUB_OUTPUT"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 
   unset GEMINI_FLASH_MODEL GEMINI_PRO_MODEL
   unset GEMINI_FLASH_MODEL_CHAIN GEMINI_PRO_MODEL_CHAIN
@@ -43,7 +45,6 @@ setup() {
 }
 
 teardown() {
-  rm -f /tmp/dev-lead-failure-reason
   unset GEMINI_API_KEY GOOGLE_API_KEY GOOGLE_API_KEY_2 GOOGLE_API_KEY_3 GOOGLE_API_KEY_4
   unset STUB_ENGINE_EXIT_BY_MODEL STUB_ENGINE_RESPONSE_BY_MODEL
   unset STUB_ENGINE_EXIT_BY_KEY STUB_ENGINE_RESPONSE_BY_KEY

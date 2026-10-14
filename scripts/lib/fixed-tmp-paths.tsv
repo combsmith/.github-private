@@ -1,0 +1,24 @@
+# Fixed paths under /tmp that scripts/check-fixed-tmp-paths.sh accepts (#2271).
+#
+# Data, not code. One row per path and file: path <TAB> file <TAB> reason.
+# A path also covers everything beneath it (/tmp/cascade covers
+# /tmp/cascade/deep.json). A row that matches nothing fails the check.
+#
+# Add a row only for a path that cannot collide: one that is never opened, or
+# one that a single job owns by design. A path a test reads or writes belongs
+# under "$BATS_TEST_TMPDIR", not here.
+
+# NOT isolated yet. review-one-pr.sh keeps its working files in /tmp/cascade,
+# which pr-review.yml uploads as the run artifact and prompts/cascade-action.md
+# names to the model, so a variable in the script alone cannot move it. Every
+# test that runs the script shares the directory. It needs its own change.
+/tmp/cascade	scripts/review-one-pr.sh	pr-review working directory; named by pr-review.yml (artifact upload) and prompts/cascade-action.md
+
+# Strings, never opened: a label or a path handed to a pure path check.
+/tmp/candidate.diff	tests/test_skill_review.bats	content_ref label passed to post-skill-score.sh; echoed, never opened
+/tmp/plan.json	tests/test_plan_review.bats	content_ref label passed to post-plan-findings.sh; logged, never opened
+/tmp/somewhere/cases.jsonl	tests/test_miss_harvest.bats	input to the mh_assert_dev_path path check; never opened
+
+# Helpers that no test sources. Give them a per-test directory before using them.
+$BATS_TMPDIR/stub-bins	tests/dev-lead/helpers/stub-engine.bash	helper sourced by no test; the engine suites build their own stub directory
+$BATS_TMPDIR/mock-gh-bins	tests/dev-lead/helpers/mock-gh.bash	helper sourced by no test; the suites copy the gh stub themselves

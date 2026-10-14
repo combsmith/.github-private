@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/lib/claim-landing.sh (#2013).
 #
-# On petry-projects/.github#1220 dev-lead posted "Fixed in …" replies for changes
+# On combsmith/.github#1220 dev-lead posted "Fixed in …" replies for changes
 # that never reached the branch: the model posts its addressed/claim reply from
 # its own shell BEFORE the harness commits and pushes, so a rejected push, a
 # no-op-guard abort, an engine failure, or a claim citing the pre-pass head left a
@@ -535,4 +535,236 @@ _inject_foreign_commit() {
   comments=$(jq -cn --arg b "$stamped" '[{author:{login:"don-petry",__typename:"User"},authorAssociation:"MEMBER",body:$b,createdAt:"2026-10-11T08:00:00Z"}]')
   run acv_latest_nochange_disposition "$comments" "2026-10-10T00:00:00Z"
   [[ "$status" -eq 1 ]]
+}
+
+# ---------------------------------------------------------------------------
+# #2156: issue-comment `fixed` dispositions
+# ---------------------------------------------------------------------------
+
+_ic() {
+  # _ic <id> <login> <created_at> <body> — one REST issue comment.
+  jq -cn --argjson id "$1" --arg l "$2" --arg at "$3" --arg b "$4" \
+    '{id:$id, user:{login:$l}, created_at:$at, body:$b}'
+}
+
+_disp() {
+  printf 'Done.\n\n<!-- dev-lead:comment-disposition id=IC_x disposition=%s%s -->' "$1" "${2:+ $2}"
+}
+
+@test "cl_select_fixed_dispositions: picks only our fixed replies in the window, with their sha" {
+  local comments
+  comments=$(printf '%s\n' \
+    "$(_ic 1 donpetry-bot 2026-10-09T02:00:00Z "$(_disp fixed "sha=$A40")")" \
+    "$(_ic 2 donpetry-bot 2026-10-09T04:00:00Z "$(_disp fixed "sha=$B40")")" \
+    "$(_ic 3 someone-else 2026-10-09T02:00:00Z "$(_disp fixed "sha=$C40")")" \
+    "$(_ic 4 donpetry-bot 2026-10-09T02:00:00Z "$(_disp invalid)")" \
+    "$(_ic 5 donpetry-bot 2026-10-09T02:00:00Z "$(_disp answered)")" \
+    "$(_ic 6 donpetry-bot 2026-10-09T02:00:00Z "$(_disp informational)")" \
+    "$(_ic 7 donpetry-bot 2026-10-09T02:00:00Z "$(_disp out-of-scope "ref=#12")")" \
+    "$(_ic 8 'donpetry-bot[bot]' 2026-10-09T02:00:00Z "$(_disp fixed "sha=$C40")")" \
+    | jq -sc .)
+
+  run cl_select_fixed_dispositions "$comments" donpetry-bot 2026-10-09T03:00:00Z earlier
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "$(printf '1\t%s\n8\t%s' "$A40" "$C40")" ]]
+
+  run cl_select_fixed_dispositions "$comments" donpetry-bot 2026-10-09T03:00:00Z pass
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "$(printf '2\t%s' "$B40")" ]]
+}
+
+@test "cl_select_fixed_dispositions: a fixed marker with a malformed sha is selected with an empty sha" {
+  local comments
+  comments=$(_ic 9 donpetry-bot 2026-10-09T02:00:00Z "$(_disp fixed "sha=9313650")" | jq -sc .)
+  run cl_select_fixed_dispositions "$comments" donpetry-bot 2026-10-09T03:00:00Z earlier
+  [[ "$output" == "$(printf '9\t')" ]]
+}
+
+@test "cl_select_fixed_dispositions: no pass boundary or a bad payload selects nothing" {
+  local comments
+  comments=$(_ic 1 donpetry-bot 2026-10-09T02:00:00Z "$(_disp fixed "sha=$A40")" | jq -sc .)
+  run cl_select_fixed_dispositions "$comments" donpetry-bot "" earlier
+  [[ -z "$output" ]]
+  run cl_select_fixed_dispositions '{"message":"Not Found"}' donpetry-bot 2026-10-09T03:00:00Z earlier
+  [[ -z "$output" ]]
+}
+
+@test "cl_retract_disposition_body: strips the marker, adds a notice, quotes the original" {
+  local body new
+  body=$(_disp fixed "sha=$A40")
+  new=$(cl_retract_disposition_body "$body" not-on-ref)
+  [[ "$new" == *"Retracted by the dev-lead harness"* ]]
+  [[ "$new" == *"> Done."* ]]
+  [[ "$new" != *"dev-lead:comment-disposition"* ]]
+  [[ "$new" == *"<!-- dev-lead:retracted reason=not-on-ref -->"* ]]
+  # Still recognised as ours by the maintainer-gate agent-marker discriminator.
+  [[ "$new" =~ \<!--\ dev-lead[^\>]*--\> ]]
+  # Idempotent: the retracted reply is never selected again.
+  local comments
+  comments=$(_ic 1 donpetry-bot 2026-10-09T02:00:00Z "$new" | jq -sc .)
+  run cl_select_fixed_dispositions "$comments" donpetry-bot 2026-10-09T03:00:00Z earlier
+  [[ -z "$output" ]]
+}
+
+@test "cl_retract_disposition_body: an unsafe reason becomes unknown" {
+  run cl_retract_disposition_body "$(_disp fixed "sha=$A40")" 'x --> <b>'
+  [[ "$output" == *"<!-- dev-lead:retracted reason=unknown -->"* ]]
+}
+
+@test "cl_rewrite_disposition_sha: re-points the fixed marker at a new sha, keeping the rest" {
+  run cl_rewrite_disposition_sha "$(_disp fixed "sha=$A40")" "$B40"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"Done."* ]]
+  [[ "$output" == *"<!-- dev-lead:comment-disposition id=IC_x disposition=fixed sha=$B40 -->"* ]]
+  [[ "$output" != *"$A40"* ]]
+  run cl_rewrite_disposition_sha "$(_disp fixed "sha=$A40")" "abc"
+  [[ "$status" -eq 1 ]]
+  run cl_rewrite_disposition_sha "$(_disp invalid)" "$B40"
+  [[ "$status" -eq 1 ]]
+}
+
+# ── #2161: recorder matching is narrowed; unattributable replies are not forgotten ──
+
+_2161_real_gh() {
+  # A real-gh stand-in that answers every call with an id-less, non-JSON line, so
+  # any call the recorder flags is recorded as UNATTRIBUTED.
+  local real="$BATS_TEST_TMPDIR/real-gh"
+  printf '#!/usr/bin/env bash\necho "ok"\n' > "$real"
+  chmod +x "$real"
+  printf '%s' "$real"
+}
+
+@test "cl_install_reply_recorder (#2161): a raw -f body starting with @coderabbitai is an ordinary comment, not a reply" {
+  local rec="$BATS_TEST_TMPDIR/rec" dir
+  dir=$(cl_install_reply_recorder "$rec" "$(_2161_real_gh)")
+  run "$dir/gh" api repos/o/r/issues/5/comments -f body='@coderabbitai please re-review'
+  [[ "$status" -eq 0 ]]
+  [[ ! -s "$rec" ]]
+  run cl_recorded_reply_ids "$rec"
+  [[ "$status" -eq 0 ]]
+}
+
+@test "cl_install_reply_recorder (#2161): gh pr comment with a body starting with @ is not a reply" {
+  local rec="$BATS_TEST_TMPDIR/rec" dir
+  dir=$(cl_install_reply_recorder "$rec" "$(_2161_real_gh)")
+  run "$dir/gh" pr comment 5 --body "@coderabbitai resolve"
+  [[ "$status" -eq 0 ]]
+  run "$dir/gh" pr comment 5 --body "key=@value and see in_reply_to /replies"
+  [[ "$status" -eq 0 ]]
+  [[ ! -s "$rec" ]]
+}
+
+@test "cl_install_reply_recorder (#2161): a typed -F field whose @file cannot be read still fails closed" {
+  local rec="$BATS_TEST_TMPDIR/rec" dir
+  dir=$(cl_install_reply_recorder "$rec" "$(_2161_real_gh)")
+  run "$dir/gh" api graphql -F query=@"$BATS_TEST_TMPDIR/missing.graphql"
+  run cl_recorded_reply_ids "$rec"
+  [[ "$status" -eq 1 ]]
+  grep -qx UNATTRIBUTED "$rec"
+}
+
+@test "cl_install_reply_recorder (#2161): --field=key=@file and -Fkey=@file payloads are read" {
+  local rec="$BATS_TEST_TMPDIR/rec" real="$BATS_TEST_TMPDIR/real-gh" dir q="$BATS_TEST_TMPDIR/q.graphql"
+  printf '#!/usr/bin/env bash\necho "{\\"data\\":{\\"addPullRequestReviewThreadReply\\":{\\"comment\\":{\\"id\\":\\"PRRC_f1\\"}}}}"\n' > "$real"
+  chmod +x "$real"
+  printf 'mutation { addPullRequestReviewThreadReply(input:{}) { comment { id } } }' > "$q"
+  dir=$(cl_install_reply_recorder "$rec" "$real")
+  run "$dir/gh" api graphql --field=query=@"$q"
+  run "$dir/gh" api graphql -Fquery=@"$q"
+  run cl_recorded_reply_ids "$rec"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "PRRC_f1" ]]
+  [[ "$(grep -c PRRC_f1 "$rec")" -eq 2 ]]
+}
+
+@test "cl_install_reply_recorder (#2161): a literal value containing =@ (key=note=@text) is not a file reference" {
+  local rec="$BATS_TEST_TMPDIR/rec" real="$BATS_TEST_TMPDIR/real-gh" dir
+  printf '#!/usr/bin/env bash\necho "{}"\n' > "$real"
+  chmod +x "$real"
+  dir=$(cl_install_reply_recorder "$rec" "$real")
+  run "$dir/gh" api repos/o/r/issues/5/comments -F body=note=@text
+  run "$dir/gh" api repos/o/r/issues/5/comments --field=body=note=@text
+  run "$dir/gh" api repos/o/r/issues/5/comments -Fbody=note=@text
+  [[ ! -s "$rec" ]]
+}
+
+@test "cl_install_reply_recorder (#2161): an --input path that cannot be read still fails closed" {
+  local rec="$BATS_TEST_TMPDIR/rec" dir
+  dir=$(cl_install_reply_recorder "$rec" "$(_2161_real_gh)")
+  run "$dir/gh" api repos/o/r/pulls/5/comments --input "$BATS_TEST_TMPDIR/missing.json"
+  grep -qx UNATTRIBUTED "$rec"
+  : > "$rec"
+  run "$dir/gh" api repos/o/r/pulls/5/comments --input="$BATS_TEST_TMPDIR/missing.json"
+  grep -qx UNATTRIBUTED "$rec"
+}
+
+@test "cl_install_reply_recorder (#2161): a REST reply posted via --input - (stdin) is recorded" {
+  local rec="$BATS_TEST_TMPDIR/rec" real="$BATS_TEST_TMPDIR/real-gh" dir
+  printf '#!/usr/bin/env bash\ncat >/dev/null\necho "{\\"node_id\\":\\"PRRC_in1\\"}"\n' > "$real"
+  chmod +x "$real"
+  dir=$(cl_install_reply_recorder "$rec" "$real")
+  run bash -c "printf '{\"body\":\"x\",\"in_reply_to\":1}' | '$dir/gh' api repos/o/r/pulls/5/comments --input -"
+  run cl_recorded_reply_ids "$rec"
+  [[ "$output" == "PRRC_in1" ]]
+}
+
+@test "cl_recorded_reply_ids (#2161): ids captured alongside an UNATTRIBUTED entry are still emitted (rc 1)" {
+  local rec="$BATS_TEST_TMPDIR/rec"
+  printf 'PRRC_a\nUNATTRIBUTED\nPRRC_b\nPRRC_a\n' > "$rec"
+  run cl_recorded_reply_ids "$rec"
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == $'PRRC_a\nPRRC_b' ]]
+  run cl_record_unattributed "$rec"
+  [[ "$status" -eq 0 ]]
+  printf 'PRRC_a\n' > "$rec"
+  run cl_record_unattributed "$rec"
+  [[ "$status" -eq 1 ]]
+}
+
+@test "cl_pending_marker_body / cl_pending_marker_ids (#2161): round-trip, an agent marker, and malformed ids dropped" {
+  local body
+  body=$(cl_pending_marker_body $'PRRC_x\nUNATTRIBUTED\nPRRC_x\n')
+  review_thread_is_agent_authored "$body"
+  [[ "$body" == *"<!-- dev-lead:unstamped-replies ids=PRRC_x,UNATTRIBUTED -->"* ]]
+  run cl_pending_marker_ids "$body"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == $'PRRC_x\nUNATTRIBUTED' ]]
+  run cl_pending_marker_ids "no marker here"
+  [[ "$status" -eq 1 ]]
+  run cl_pending_marker_ids '<!-- dev-lead:unstamped-replies ids=PRRC_ok,bad id,<x> -->'
+  [[ "$output" == "PRRC_ok" ]]
+}
+
+# ── recorder false positives: --jq projections and reads that mention in_reply_to ──
+
+@test "cl_install_reply_recorder: the reply mutation with a --jq projection records the bare id" {
+  local rec="$BATS_TEST_TMPDIR/rec" real="$BATS_TEST_TMPDIR/real-gh" dir
+  printf '#!/usr/bin/env bash\necho "PRRC_jq1"\n' > "$real"
+  chmod +x "$real"
+  dir=$(cl_install_reply_recorder "$rec" "$real")
+  run "$dir/gh" api graphql -f query='mutation { addPullRequestReviewThreadReply(input:{}) { comment { id } } }' --jq '.data.addPullRequestReviewThreadReply.comment.id'
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "PRRC_jq1" ]]
+  run cl_recorded_reply_ids "$rec"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "PRRC_jq1" ]]
+}
+
+@test "cl_install_reply_recorder: a read whose --jq filter mentions in_reply_to_id is not recorded" {
+  local rec="$BATS_TEST_TMPDIR/rec" dir
+  dir=$(cl_install_reply_recorder "$rec" "$(_2161_real_gh)")
+  run "$dir/gh" api repos/o/r/pulls/7/comments --jq '.[] | select(.in_reply_to_id == 1) | .body'
+  [[ "$status" -eq 0 ]]
+  run "$dir/gh" api repos/o/r/pulls/7/comments/1/replies -X GET
+  run "$dir/gh" api repos/o/r/pulls/7/comments
+  [[ ! -s "$rec" ]]
+}
+
+@test "cl_install_reply_recorder: a genuine REST reply (in_reply_to field) with no id is UNATTRIBUTED" {
+  local rec="$BATS_TEST_TMPDIR/rec" dir
+  dir=$(cl_install_reply_recorder "$rec" "$(_2161_real_gh)")
+  run "$dir/gh" api repos/o/r/pulls/7/comments -f body=x -F in_reply_to=1
+  run cl_recorded_reply_ids "$rec"
+  [[ "$status" -eq 1 ]]
+  grep -qx UNATTRIBUTED "$rec"
 }

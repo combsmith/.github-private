@@ -26,8 +26,8 @@ setup() {
   run compute_downstream_impact ".github/workflows/pr-review.yml" "$MANIFEST"
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | jq -e '.impacted_surfaces == [".github/workflows/pr-review.yml"]'
-  printf '%s\n' "$output" | jq -e '[.impacted_consumers[].repo] == ["petry-projects/alpha", "petry-projects/bravo"]'
-  printf '%s\n' "$output" | jq -e '.impacted_consumers[] | select(.repo == "petry-projects/alpha") | .via == [".github/workflows/pr-review.yml"]'
+  printf '%s\n' "$output" | jq -e '[.impacted_consumers[].repo] == ["combsmith/alpha", "combsmith/bravo"]'
+  printf '%s\n' "$output" | jq -e '.impacted_consumers[] | select(.repo == "combsmith/alpha") | .via == [".github/workflows/pr-review.yml"]'
   printf '%s\n' "$output" | jq -e '.unmatched == []'
 }
 
@@ -35,7 +35,7 @@ setup() {
   run compute_downstream_impact ".github/workflows/dev-lead-reusable.yml" "$MANIFEST"
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | jq -e '.impacted_surfaces == [".github/workflows/dev-lead-reusable.yml"]'
-  printf '%s\n' "$output" | jq -e '[.impacted_consumers[].repo] == ["petry-projects/alpha", "petry-projects/charlie"]'
+  printf '%s\n' "$output" | jq -e '[.impacted_consumers[].repo] == ["combsmith/alpha", "combsmith/charlie"]'
 }
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ setup() {
   run compute_downstream_impact "scripts/lib/ci-status.sh" "$MANIFEST"
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | jq -e '.impacted_surfaces == [".github/workflows/pr-review.yml"]'
-  printf '%s\n' "$output" | jq -e '[.impacted_consumers[].repo] == ["petry-projects/alpha", "petry-projects/bravo"]'
+  printf '%s\n' "$output" | jq -e '[.impacted_consumers[].repo] == ["combsmith/alpha", "combsmith/bravo"]'
   printf '%s\n' "$output" | jq -e '.unmatched == []'
 }
 
@@ -58,7 +58,7 @@ setup() {
   run compute_downstream_impact "prompts/dev-lead/fix-ci.md" "$MANIFEST"
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | jq -e '.impacted_surfaces == [".github/workflows/dev-lead-reusable.yml"]'
-  printf '%s\n' "$output" | jq -e '[.impacted_consumers[].repo] == ["petry-projects/alpha", "petry-projects/charlie"]'
+  printf '%s\n' "$output" | jq -e '[.impacted_consumers[].repo] == ["combsmith/alpha", "combsmith/charlie"]'
 }
 
 # ---------------------------------------------------------------------------
@@ -91,13 +91,13 @@ docs/architecture.md" "$MANIFEST"
   run compute_downstream_impact "scripts/lib/review-cycle.sh" "$MANIFEST"
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | jq -e '.impacted_surfaces == [".github/workflows/dev-lead-reusable.yml", ".github/workflows/pr-review.yml"]'
-  printf '%s\n' "$output" | jq -e '[.impacted_consumers[].repo] == ["petry-projects/alpha", "petry-projects/bravo", "petry-projects/charlie"]'
+  printf '%s\n' "$output" | jq -e '[.impacted_consumers[].repo] == ["combsmith/alpha", "combsmith/bravo", "combsmith/charlie"]'
   # alpha pins both reusables -> via lists both surfaces.
-  printf '%s\n' "$output" | jq -e '.impacted_consumers[] | select(.repo == "petry-projects/alpha") | .via == [".github/workflows/dev-lead-reusable.yml", ".github/workflows/pr-review.yml"]'
+  printf '%s\n' "$output" | jq -e '.impacted_consumers[] | select(.repo == "combsmith/alpha") | .via == [".github/workflows/dev-lead-reusable.yml", ".github/workflows/pr-review.yml"]'
   # bravo only pins pr-review.yml.
-  printf '%s\n' "$output" | jq -e '.impacted_consumers[] | select(.repo == "petry-projects/bravo") | .via == [".github/workflows/pr-review.yml"]'
+  printf '%s\n' "$output" | jq -e '.impacted_consumers[] | select(.repo == "combsmith/bravo") | .via == [".github/workflows/pr-review.yml"]'
   # charlie only pins dev-lead-reusable.yml.
-  printf '%s\n' "$output" | jq -e '.impacted_consumers[] | select(.repo == "petry-projects/charlie") | .via == [".github/workflows/dev-lead-reusable.yml"]'
+  printf '%s\n' "$output" | jq -e '.impacted_consumers[] | select(.repo == "combsmith/charlie") | .via == [".github/workflows/dev-lead-reusable.yml"]'
 }
 
 @test "changed list mixing an impacting and a non-impacting path reports both correctly" {

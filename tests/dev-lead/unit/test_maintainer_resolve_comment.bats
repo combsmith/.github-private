@@ -76,7 +76,7 @@ teardown() {
 }
 
 @test "ref-kind: a PR comment URL is recognised as a url ref" {
-  run bash -c "source '$MRC'; mrc_ref_kind 'https://github.com/petry-projects/.github-private/pull/42#issuecomment-999'"
+  run bash -c "source '$MRC'; mrc_ref_kind 'https://github.com/combsmith/.github-private/pull/42#issuecomment-999'"
   [ "$status" -eq 0 ]
   [ "$output" = "url" ]
 }
@@ -89,7 +89,7 @@ teardown() {
 # PR-only: a bare /issues/ comment URL must NOT be accepted — this path may only
 # target a pull-request comment (#1910 self-scope hardening).
 @test "ref-kind: a non-PR /issues/ comment URL is rejected (fail closed)" {
-  run bash -c "source '$MRC'; mrc_ref_kind 'https://github.com/petry-projects/.github-private/issues/42#issuecomment-999'"
+  run bash -c "source '$MRC'; mrc_ref_kind 'https://github.com/combsmith/.github-private/issues/42#issuecomment-999'"
   [ "$status" -eq 1 ]
 }
 
@@ -111,9 +111,9 @@ teardown() {
 }
 
 @test "url-parse: owner/repo extracted from URL" {
-  run bash -c "source '$MRC'; mrc_repo_from_url 'https://github.com/petry-projects/.github-private/pull/42#issuecomment-1'"
+  run bash -c "source '$MRC'; mrc_repo_from_url 'https://github.com/combsmith/.github-private/pull/42#issuecomment-1'"
   [ "$status" -eq 0 ]
-  [ "$output" = "petry-projects/.github-private" ]
+  [ "$output" = "combsmith/.github-private" ]
 }
 
 # AC #1 / self-scope — only the invoking user's OWN comment may be resolved here.
@@ -194,6 +194,28 @@ teardown() {
   echo "$output" | grep -q "<!-- maintainer-resolve"
   echo "$output" | grep -q "sonarqubecloud"
   echo "$output" | grep -q "quality gate passed"
+}
+
+# #2255: an @-mention in the reply pings the bot, and Codex answers every mention
+# with a fresh comment, which blocks the PR again. Neither account may be mentioned;
+# both are still named (in backticks) and the marker is unchanged.
+@test "#2255: reply body mentions neither the bot nor the maintainer" {
+  run bash -c "source '$MRC'; mrc_build_reply_body 'chatgpt-codex-connector' 'a-maintainer' 'usage notice' 'IC_node1'"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"@chatgpt-codex-connector"* ]]
+  [[ "$output" != *"@a-maintainer"* ]]
+  printf '%s' "$output" | grep -qF '`chatgpt-codex-connector`'
+  printf '%s' "$output" | grep -qF '`a-maintainer`'
+  printf '%s' "$output" | grep -qxF '<!-- maintainer-resolve author=chatgpt-codex-connector by=a-maintainer id=IC_node1 -->'
+}
+
+# A @-mention inside the maintainer-supplied reason must be defanged too.
+@test "#2255: an @-mention in the reason is defanged" {
+  run bash -c "source '$MRC'; mrc_build_reply_body 'chatgpt-codex-connector' 'a-maintainer' 'ping @chatgpt-codex-connector and @other' 'IC_node1'"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"@chatgpt-codex-connector"* ]]
+  [[ "$output" != *"@other"* ]]
+  printf '%s' "$output" | grep -qF 'chatgpt-codex-connector and'
 }
 
 # Round-trip: the reply the bot path posts is IGNORED by the maintainer-comment
@@ -398,7 +420,7 @@ SHIM
   run bash "$MRC" "IC_kwDOfake1" --reason "status only"
   unset COMMENTS_JSON
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qi "already exists"
+  ! echo "$output" | grep -qi "already exists" || false
   [ -s "$BATS_TEST_TMPDIR/gh-reply.log" ]
   [ -s "$BATS_TEST_TMPDIR/gh-min.log" ]
 }
@@ -423,7 +445,7 @@ SHIM
   run bash "$MRC" "IC_kwDOfake1" --reason "status only"
   unset COMMENTS_JSON
   [ "$status" -eq 0 ]
-  ! echo "$output" | grep -qi "already exists"
+  ! echo "$output" | grep -qi "already exists" || false
   [ -s "$BATS_TEST_TMPDIR/gh-reply.log" ]
   [ -s "$BATS_TEST_TMPDIR/gh-min.log" ]
 }

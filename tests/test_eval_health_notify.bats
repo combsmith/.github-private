@@ -64,7 +64,7 @@ for a in "$@"; do
 done
 case "$1 $2" in
   "issue list")   printf '%s' "${GH_LIST_JSON:-[]}" ;;
-  "issue create") echo "https://github.com/petry-projects/.github-private/issues/123" ;;
+  "issue create") echo "https://github.com/combsmith/.github-private/issues/123" ;;
 esac
 exit 0
 SH
@@ -78,7 +78,7 @@ teardown() { rm -rf "$TMP"; }
 # through `env` so they take effect even though they are runtime-expanded args.
 run_notify() {
   run env "PATH=$BIN:$PATH" "GH_LOG=$GH_LOG" \
-    "REPO=petry-projects/.github-private" "SKILL=triage" \
+    "REPO=combsmith/.github-private" "SKILL=triage" \
     "REPORT_PATH=$REPORT" "RUN_URL=https://github.com/o/r/actions/runs/999" \
     "$@" bash "$NOTIFY"
 }
@@ -150,8 +150,8 @@ mklist_infra() { jq -nc --arg t "$TITLE_INFRA" --argjson n "$1" '[{number:$n,tit
   # and instead open its own infra tracker.
   run_notify OUTCOME="error" "GH_LIST_JSON=$(mklist 99)"
   [ "$status" -eq 0 ]
-  ! grep -q "ARGS: issue edit 99" "$GH_LOG"
-  ! grep -q "ARGS: issue close 99" "$GH_LOG"
+  ! grep -q "ARGS: issue edit 99" "$GH_LOG" || false
+  ! grep -q "ARGS: issue close 99" "$GH_LOG" || false
   grep -q "ARGS: issue create" "$GH_LOG"
 }
 
@@ -174,8 +174,8 @@ mklist_infra() { jq -nc --arg t "$TITLE_INFRA" --argjson n "$1" '[{number:$n,tit
 @test "pass with no existing issue makes zero noise (no create/comment/close)" {
   run_notify OUTCOME="pass"
   [ "$status" -eq 0 ]
-  ! grep -q "ARGS: issue create" "$GH_LOG"
-  ! grep -q "ARGS: issue comment" "$GH_LOG"
+  ! grep -q "ARGS: issue create" "$GH_LOG" || false
+  ! grep -q "ARGS: issue comment" "$GH_LOG" || false
   ! grep -q "ARGS: issue close" "$GH_LOG"
 }
 
@@ -202,6 +202,6 @@ mklist_infra() { jq -nc --arg t "$TITLE_INFRA" --argjson n "$1" '[{number:$n,tit
 @test "DRY_RUN never invokes gh mutations" {
   run_notify OUTCOME="regression" DRY_RUN=1
   [ "$status" -eq 0 ]
-  ! grep -q "ARGS: issue create" "$GH_LOG"
+  ! grep -q "ARGS: issue create" "$GH_LOG" || false
   ! grep -q "ARGS: issue edit" "$GH_LOG"
 }

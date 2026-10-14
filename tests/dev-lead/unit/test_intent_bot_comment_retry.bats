@@ -15,7 +15,7 @@ setup() {
   export BOT_USER="don-petry"
   export TRUSTED_BOTS="coderabbitai[bot],codeant-ai[bot],chatgpt-codex-connector[bot]"
   export TRIGGER_PHRASES="@dev-lead"
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
   export GITHUB_EVENT_NAME="repository_dispatch"
   MOCK_BIN="$(mktemp -d)"
   export PATH="$MOCK_BIN:$PATH"
@@ -64,7 +64,7 @@ _ctx() { _get_env INTENT_CONTEXT | jq -r ".$1 // empty"; }
 _event() {
   jq -nc --arg id "${1-IC_cr}" --arg b "${2:-}" '
     {action:"dev-lead-reviews-retry",
-     client_payload:({pr_number:2009, repo:"petry-projects/.github-private",
+     client_payload:({pr_number:2009, repo:"combsmith/.github-private",
                       intent_type:"fix-bot-comment"}
                      + (if $id == "" then {} else {comment_node_id:$id} end)
                      + (if $b == "" then {} else {body:$b} end))}' > "$EVENT_FILE"
@@ -76,7 +76,7 @@ _node() {
   NODE_JSON="$(jq -nc --arg l "$1" --arg b "$2" --arg m "${3:-}" \
     --argjson pr "${4:-2009}" --arg pa "${5:-don-petry}" --arg st "${6:-OPEN}" \
     --arg e "${7:-}" --arg ty "${8-Bot}" --argjson cross "${9:-false}" \
-    --arg repo "${10:-petry-projects/.github-private}" '
+    --arg repo "${10:-combsmith/.github-private}" '
     {data:{node:{id:"IC_cr", author:({login:$l} + (if $ty == "" then {} else {__typename:$ty} end)), body:$b,
       createdAt:"2026-10-01T23:05:43Z", lastEditedAt:(if $e == "" then null else $e end),
       isMinimized:($m != ""), minimizedReason:(if $m == "" then null else $m end),
@@ -138,6 +138,40 @@ CR_NODE='{"id":"IC_cr","author":{"login":"coderabbitai","__typename":"Bot"},"aut
 @test "bot-comment retry: comment already minimized RESOLVED → skip" {
   _event IC_cr
   _node coderabbitai "Walkthrough" RESOLVED
+
+  run bash "$INTENT_SCRIPT"
+  [ "$(_get_env INTENT_TYPE)" = "skip" ]
+  [ "$(_get_env INTENT_REASON)" = "bot-comment-already-resolved" ]
+}
+
+# #2166: a RESOLVED comment edited after its newest disposition is re-blocked by
+# the gate, so the retry must run a pass for it rather than skip it as resolved.
+# _resolved_comments <lastEditedAt> <disposition createdAt>
+_resolved_comments() {
+  jq -nc --arg e "$1" --arg d "$2" '
+    [{id:"IC_cr", author:{login:"coderabbitai", __typename:"Bot"}, authorAssociation:"NONE",
+      body:"Review limit reached", createdAt:"2026-10-01T23:05:43Z", lastEditedAt:$e,
+      isMinimized:true, minimizedReason:"RESOLVED"},
+     {id:"IC_d", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+      body:"<!-- dev-lead:comment-disposition id=IC_cr disposition=informational -->\nok",
+      createdAt:$d, lastEditedAt:null, isMinimized:false, minimizedReason:null}]'
+}
+
+@test "bot-comment retry(#2166): RESOLVED but edited after its disposition → routes to fix-bot-comment" {
+  _event IC_cr
+  _node coderabbitai "Review limit reached" RESOLVED 2009 don-petry OPEN 2026-10-01T23:40:00Z
+  export COMMENTS_JSON="$(_resolved_comments 2026-10-01T23:40:00Z 2026-10-01T23:30:00Z)"
+
+  run bash "$INTENT_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(_get_env INTENT_TYPE)" = "fix-bot-comment" ]
+  [ "$(_ctx comment_version)" = "2026-10-01T23:40:00Z" ]
+}
+
+@test "bot-comment retry(#2166): RESOLVED and edited BEFORE its newest disposition → skip as resolved" {
+  _event IC_cr
+  _node coderabbitai "Review limit reached" RESOLVED 2009 don-petry OPEN 2026-10-01T23:20:00Z
+  export COMMENTS_JSON="$(_resolved_comments 2026-10-01T23:20:00Z 2026-10-01T23:30:00Z)"
 
   run bash "$INTENT_SCRIPT"
   [ "$(_get_env INTENT_TYPE)" = "skip" ]
@@ -293,4 +327,41 @@ CR_NODE='{"id":"IC_cr","author":{"login":"coderabbitai","__typename":"Bot"},"aut
 
   run bash "$INTENT_SCRIPT"
   [ "$(_get_env INTENT_TYPE)" = "fix-bot-comment" ]
+}
+
+# _marker_comment <body> — a retry marker comment as the sweep leaves it: posted
+# by dev-lead's identity, then edited to record the run it dispatched (#2262).
+_marker_comment() {
+  jq -nc --arg b "$1" '{id:"IC_m", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+    body:$b, createdAt:"2026-10-02T00:30:00Z", lastEditedAt:"2026-10-02T00:30:09Z",
+    isMinimized:false, minimizedReason:null}'
+}
+
+@test "bot-comment retry(#2262): a retry marker that records its run changes nothing for the dispatched pass" {
+  # The marker exactly as the sweep writes it once the dispatched run is known.
+  local marker
+  marker="$(source "$SCRIPT_DIR/scripts/lib/bot-comment-retry.sh" \
+    && bcr_retry_marker IC_cr 2026-10-01T23:05:43Z 1 2026-10-02T00:30:00Z 501)"
+  [[ "$marker" == *" at=2026-10-02T00:30:00Z run=501 -->" ]]
+
+  # The pass this very marker's dispatch started still routes to fix-bot-comment…
+  _event IC_cr
+  _node coderabbitai "Walkthrough"
+  export COMMENTS_JSON="[${CR_NODE},$(_marker_comment "$marker")]"
+  run bash "$INTENT_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(_get_env INTENT_TYPE)" = "fix-bot-comment" ]
+  [ "$(_get_env INTENT_REASON)" = "bot-comment-retry-dispatch" ]
+  # …and the classifier reads no Actions run: only the sweep does.
+  if grep -q 'actions/runs' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
+
+  # A disposition still covers the comment with the marker present.
+  : > "$GITHUB_ENV"
+  export COMMENTS_JSON="[${CR_NODE},$(_marker_comment "$marker"),
+    {\"id\":\"IC_d\",\"author\":{\"login\":\"don-petry\",\"__typename\":\"User\"},\"authorAssociation\":\"OWNER\",
+    \"body\":\"<!-- dev-lead:comment-disposition id=IC_cr disposition=informational -->\",
+    \"createdAt\":\"2026-10-02T00:45:00Z\",\"lastEditedAt\":null,\"isMinimized\":false,\"minimizedReason\":null}]"
+  run bash "$INTENT_SCRIPT"
+  [ "$(_get_env INTENT_TYPE)" = "skip" ]
+  [ "$(_get_env INTENT_REASON)" = "bot-comment-already-dispositioned" ]
 }

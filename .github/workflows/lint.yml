@@ -75,9 +75,26 @@ jobs:
       - name: check retry payload fields against the intent parser at every channel of the pinned major
         run: bash scripts/check-retry-payload-fields.sh
 
+  # A `!`-negated command is exempt from errexit, so mid-test it can never fail a
+  # bats test: the assertion reads as a guard and checks nothing (#2263). Fail on
+  # any negation that is not the last command of its test and has no `|| false`.
+  bats-negation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: check bats files for negated commands that cannot fail their test
+        run: bash scripts/check-bats-negation.sh
+
   bats:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 20, not 10: the suite list has grown until the job routinely takes 7 to 9
+    # minutes (405 to 562 seconds across recent runs), so any change that adds a
+    # suite was being cancelled at the limit rather than failing on a test.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -94,6 +111,7 @@ jobs:
         run: |
           scripts/run-bats.sh \
             tests/test_duplicate_decl_gate.bats \
+            tests/test_check_fixed_tmp_paths.bats \
             tests/agent_ingress_markets_package.bats \
             tests/test_vendored_installed_tools.bats \
             tests/fleet_report.bats \
@@ -101,7 +119,10 @@ jobs:
             tests/fleet_stub_drift.bats \
             tests/fleet_stub_remediate.bats \
             tests/fleet_stub_registry.bats \
+            tests/fleet_monitor_tempfile_order.bats \
             tests/fleet_remediate_gate.bats \
+            tests/fleet_monitor_run.bats \
+            tests/test_fleet_paused_run.bats \
             tests/template_stub_drift.bats \
             tests/canary_rollout.bats \
             tests/test_initiative_canary.bats \
@@ -110,6 +131,7 @@ jobs:
             tests/test_spec_drift.bats \
             tests/test_spec_drift_eval.bats \
             tests/token_report.bats \
+            tests/token_report_trust.bats \
             tests/canary_report.bats \
             tests/reviewer_report.bats \
             tests/test_pr_review_miss_rate.bats \
@@ -121,16 +143,19 @@ jobs:
             tests/pr_review_sweep_metrics.bats \
             tests/model_pricing.bats \
             tests/test_check_model_pins.bats \
+            tests/test_check_bats_negation.bats \
             tests/test_retry_payload_fields.bats \
             tests/test_model_pin_token_log.bats \
             tests/dev-lead/unit/test_engine_chain_config.bats \
             tests/dev-lead/unit/test_engine_models.bats \
+            tests/test_validate_engines.bats \
             tests/test_review_cycle.bats \
             tests/test_pr_automation_budget.bats \
             tests/test_pr_runaway_regression.bats \
             tests/test_pr_runaway_detect.bats \
             tests/test_sync_scope_check.bats \
             tests/test_sync_scope_guard.bats \
+            tests/test_deletion_guard.bats \
             tests/test_pr_stall_detect.bats \
             tests/test_pr_stall_regression.bats \
             tests/test_pr_mergeready_detect.bats \
@@ -248,6 +273,7 @@ jobs:
             tests/dev-lead/unit/test_claim_landing.bats \
             tests/dev-lead/unit/test_test_tamper_guard.bats \
             tests/dev-lead/unit/test_test_regression_guard.bats \
+            tests/dev-lead/unit/test_test_job_handoff.bats \
             tests/dev-lead/unit/test_deferred_thread_verify.bats \
             tests/dev-lead/unit/test_fewshot_assemble.bats \
             tests/dev-lead/unit/test_net_diff_guard.bats \
@@ -257,6 +283,7 @@ jobs:
             tests/dev-lead/integration/test_usage_telemetry_roundtrip.bats \
             tests/dev-lead/unit/test_gemini_quota.bats \
             tests/dev-lead/unit/test_budget_poller.bats \
+            tests/dev-lead/unit/test_budget_breaker_writer.bats \
             tests/dev-lead/unit/test_gemini_tier_view.bats \
             tests/test_qa_lead_test_surface.bats \
             tests/test_qa_lead_advisory_gate.bats \
@@ -268,7 +295,8 @@ jobs:
             tests/test_validate_ingress_if.bats \
             tests/run_attribution.bats \
             tests/test_carry_forward.bats \
-            tests/test_review_one_pr_carry_forward.bats
+            tests/test_review_one_pr_carry_forward.bats \
+            tests/test_fleet_pause_coverage.bats
 
   actionlint:
     # General workflow linting (#1256, epic #1052 Part D): actionlint validates
@@ -392,7 +420,7 @@ jobs:
         run: bash scripts/validate-ingress-if.sh
 
   template-drift:
-    # Drift guard (#969): fail when a file committed in petry-projects/repo-template
+    # Drift guard (#969): fail when a file committed in combsmith/repo-template
     # has diverged from its standards-derived baseline, so the template stays a thin
     # distribution layer of standards/ and never becomes a competing fork. Reuses the
     # byte-identity (blob-SHA) model from scripts/fleet_stub_drift.sh. PR-triggered via
@@ -608,7 +636,7 @@ jobs:
     # suite (tests/persona_reach_check.bats, run by the `bats` job) unit-tests the pure
     # predicates; this job runs the guard END-TO-END against the real personas/ tree,
     # passing --registry with the cross-repo canary-rings.json snapshot fetched from the
-    # PUBLIC petry-projects/.github standards (the same registry validate-personas reads).
+    # PUBLIC combsmith/.github standards (the same registry validate-personas reads).
     # Without this, a status advanced past `draft` with no matching cross-repo
     # registration only surfaces post-merge (the #1052 hollow-green skew) — this catches
     # it at PR time. The fetch soft-fails to a warning (registration UNVERIFIED) so a
@@ -623,7 +651,7 @@ jobs:
       - name: Run persona reach check (solution-architect)
         run: |
           curl -fsSL --retry 3 \
-            https://raw.githubusercontent.com/petry-projects/.github/main/standards/canary-rings.json \
+            https://raw.githubusercontent.com/combsmith/.github/main/standards/canary-rings.json \
             -o canary-rings.json \
             || echo "::warning::could not fetch cross-repo canary-rings.json; running reach check without --registry (registration UNVERIFIED)"
           if [ -f canary-rings.json ]; then

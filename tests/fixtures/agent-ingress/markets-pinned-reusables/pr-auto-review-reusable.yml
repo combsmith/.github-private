@@ -1,5 +1,5 @@
-# PINNED-USES: petry-projects/.github/.github/workflows/pr-auto-review-reusable.yml@pr-auto-review/v1-stable
-# SNAPSHOT (trimmed) of petry-projects/.github
+# PINNED-USES: combsmith/.github/.github/workflows/pr-auto-review-reusable.yml@pr-auto-review/v1-stable
+# SNAPSHOT (trimmed) of combsmith/.github
 # .github/workflows/pr-auto-review-reusable.yml @ pr-auto-review/v1-stable,
 # read 2026-10-02 for #2038. The reusable declares NO concurrency group at
 # workflow or job level; the markets caller forwards no with: inputs.

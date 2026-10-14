@@ -16,7 +16,7 @@ jobs:
     if: >-
       github.event_name == 'pull_request'
       && vars.DEV_LEAD_ENGINE == 'claude'
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable
     with:
       agent_ref: dev-lead/v139-stable
     permissions:
@@ -24,6 +24,6 @@ jobs:
 
   pr-review-mention:
     if: github.event.action == 'review_requested'
-    uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-next
+    uses: combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-next
     permissions:
       pull-requests: write

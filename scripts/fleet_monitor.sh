@@ -12,11 +12,13 @@
 #                     intentionally a PAT (not GITHUB_TOKEN) because the default
 #                     Actions token lacks cross-org actions:read
 #   GH_PAT_FALLBACK — optional secondary token if primary lacks org-level access
-#   ORG             — GitHub org to scan (default: petry-projects)
+#   ORG             — GitHub org to scan (default: combsmith)
 #   LOOKBACK_DAYS   — days of history to consider (default: 1)
 #   BUDGET_POLLER_REPO        — repo whose budget-poller-log artifact is read
-#                               (default: petry-projects/.github-private, #2029)
+#                               (default: combsmith/.github-private, #2029)
 #   BUDGET_POLLER_STALE_HOURS — warn when the last OK poll is older (default: 6)
+#   FLEET_PAUSE_BATCH — runs per jobs read when looking for fleet-paused runs
+#                       (default: 100, #2266)
 #   GITHUB_ENV      — written by Actions runner
 #   GITHUB_STEP_SUMMARY — written by Actions runner (1 MB hard limit per job)
 
@@ -31,8 +33,10 @@ source "${SCRIPT_DIR}/fleet_stub_drift.sh"
 source "${SCRIPT_DIR}/lib/run-attribution.sh"
 # shellcheck source=scripts/lib/budget-poller.sh
 source "${SCRIPT_DIR}/lib/budget-poller.sh"
+# shellcheck source=scripts/lib/fleet-pause.sh
+source "${SCRIPT_DIR}/lib/fleet-pause.sh"
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-1}"
 REPORT_FILE="fleet_monitor_report.md"
 TODAY=$(date -u +%Y-%m-%d)
@@ -61,21 +65,21 @@ TODAY=$(date -u +%Y-%m-%d)
 #                       collapsed repo IGNORES it so a deleted per-role stub is never
 #                       resurrected (AC #4). Whole-file compared against ...
 #     legacy_canonical_path — ... this org-template per-role canonical path.
-CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-petry-projects/.github}"
+CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-combsmith/.github}"
 STUB_REGISTRY=(
   $'initiative-planner\tInitiative-planner\t.github/workflows/initiative-planner.yml\tstandards/workflows/initiative-planner.yml\t\t\t'
   $'initiative-driver\tInitiative-driver\t.github/workflows/initiative-driver.yml\tstandards/workflows/initiative-driver.yml\t\t\t'
   # Collapsed agent-ingress.yml roles (#1729 AC11): one row per job in the
-  # petry-projects/markets ingress. These entries register for future drift
+  # combsmith/markets ingress. These entries register for future drift
   # coverage once the canonical standards/workflows/agent-ingress.yml is
-  # published to petry-projects/.github (#1729 AC11). Until then, a canonical
+  # published to combsmith/.github (#1729 AC11). Until then, a canonical
   # 404 gracefully skips these rows with a warning, leaving them without
   # coverage. The monitor and remediation helpers handle this degradation
   # automatically (see the @test "fleet_monitor: a 404 canonical
   # agent-ingress skips every role row with a warning and stays green" in
   # tests/fleet_stub_registry.bats).
   # legacy_canonical_path is empty for pr-review and ci-failure-analyst because
-  # petry-projects/.github publishes no standards/workflows/<role>.yml for them
+  # combsmith/.github publishes no standards/workflows/<role>.yml for them
   # (checked 2026-10-10), so a repo that has not collapsed classifies MISSING
   # for those two roles.
   $'dev-lead\tDev-lead\t.github/workflows/agent-ingress.yml\tstandards/workflows/agent-ingress.yml\tdev-lead\t.github/workflows/dev-lead.yml\tstandards/workflows/dev-lead.yml'
@@ -110,6 +114,49 @@ fetch_raw_content() {
   cat "$errf" >&2
   rm -f "$errf"
   return 1
+}
+
+# One GraphQL request reads the jobs (check runs, latest attempt only) of up to
+# FLEET_PAUSE_BATCH workflow runs, where the REST jobs API costs one call per run.
+FLEET_PAUSE_BATCH="${FLEET_PAUSE_BATCH:-100}"
+# A zero or non-numeric batch size would make the range generator fail or stall.
+case "$FLEET_PAUSE_BATCH" in
+  ''|*[!0-9]*|0)
+    echo "::warning::FLEET_PAUSE_BATCH='${FLEET_PAUSE_BATCH}' is not a positive integer — using 100" >&2
+    FLEET_PAUSE_BATCH=100 ;;
+esac
+# shellcheck disable=SC2016  # $ids is a GraphQL variable, not a shell expansion
+FLEET_PAUSE_RUNS_QUERY='query($ids:[ID!]!){nodes(ids:$ids){... on WorkflowRun{id checkSuite{checkRuns(first:100,filterBy:{checkType:LATEST}){nodes{name conclusion}}}}}}'
+
+# fetch_paused_run_nodes <runs_json> — of the given runs, print the node id of
+# each one whose `fleet-paused` notice job concluded success (#2266), one per line.
+# Only runs that ended `success` are asked about: a paused run of a workflow with
+# a notice job always ends green, and a run that ended any other way keeps its
+# own conclusion. Best-effort: a failed read is a `::warning::` on stderr and
+# those runs stay counted exactly as before, never dropped. So is a read that
+# succeeded but came back without the jobs of some runs (a token that may call
+# GraphQL but not see check runs answers `checkSuite: null` with no error).
+fetch_paused_run_nodes() {
+  local runs_json="$1" batch resp asked resolved
+  while IFS= read -r batch; do
+    [ -n "$batch" ] || continue
+    asked=$(jq 'length' <<< "$batch")
+    # gh exits non-zero on a GraphQL `errors` member but still prints the body,
+    # which holds every node it could resolve. Keep the body either way.
+    if resp=$(jq -n --arg q "$FLEET_PAUSE_RUNS_QUERY" --argjson ids "$batch" \
+        '{query: $q, variables: {ids: $ids}}' \
+      | gh api graphql --input - 2>/dev/null); then
+      resolved=$(printf '%s' "$resp" | fleet_pause_resolved_runs)
+      if [ "$resolved" -lt "$asked" ]; then
+        echo "::warning::Jobs read answered for ${resolved} of ${asked} run(s) — a fleet-paused run among the rest stays counted as a success" >&2
+      fi
+    else
+      echo "::warning::Cannot read jobs for ${asked} run(s) — a fleet-paused run among them stays counted as a success" >&2
+    fi
+    printf '%s' "$resp" | fleet_pause_paused_run_nodes
+  done < <(jq -c --argjson n "$FLEET_PAUSE_BATCH" '
+    [.[] | select(.conclusion == "success") | .node_id | select(. != null)] as $ids
+    | range(0; $ids | length; $n) | $ids[.:(. + $n)]' <<< "$runs_json")
 }
 
 echo "=== Actions Fleet Monitor ==="
@@ -171,8 +218,20 @@ failed_file=$(mktemp)
 # metrics TSV so the existing high-failure JSON export contract is untouched.
 # TSV: repo <TAB> wf_file <TAB> expected <TAB> actual <TAB> hit_rate <TAB> missed <TAB> label
 schedule_metrics_file=$(mktemp)
+# Normalized legacy runs for role parity (2e). Created here, not beside
+# ingress_attr_file, because the per-repo loop below already appends to it (#2277).
+legacy_attr_file=$(mktemp) || { echo "::error::Failed to create legacy_attr_file" >&2; exit 1; }
 any_failures=0
 total_workflows=0
+
+# Fleet-paused runs (#2266) — runs that did no work because AGENTS_PAUSED was
+# set. Kept out of the 12-field metrics TSV (like the schedule metrics above) and
+# reported in their own section.
+# TSV: repo <TAB> wf_file <TAB> paused
+paused_metrics_file=$(mktemp) || { echo "::error::Failed to create paused_metrics_file" >&2; exit 1; }
+# Workflow files whose runs can hold a `fleet-paused` notice job when called as
+# a reusable (the `job-gate` rows of scripts/lib/fleet-pause-registry.tsv).
+mapfile -t fleet_notice_workflows < <(fleet_pause_notice_workflows)
 
 for repo in "${repos[@]}"; do
   printf '  %s\n' "$repo"
@@ -197,6 +256,7 @@ for repo in "${repos[@]}"; do
       --paginate \
       --jq '.workflow_runs | map({
         run_number: .run_number,
+        node_id: .node_id,
         conclusion: .conclusion,
         event: .event,
         created_at: .created_at,
@@ -214,6 +274,39 @@ for repo in "${repos[@]}"; do
     fi
     # Exclude queued/in_progress runs — only completed conclusions give valid metrics.
     runs_json=$(echo "$runs_raw" | jq -s 'add // [] | [.[] | select(.conclusion != null)]')
+
+    # The workflow file itself: read once, used for the fleet-pause check just
+    # below and for the cron parse of the schedule-reliability block further down.
+    wf_content=$(gh api -H "Accept: application/vnd.github.raw" \
+      "repos/${repo}/contents/${wf_file}" 2>/dev/null || true)
+
+    # --- Fleet-paused runs (#2266) -----------------------------------------
+    # With AGENTS_PAUSED=true a gated workflow skips its work and runs only its
+    # `fleet-paused` notice job, so the run ends `success` having done nothing.
+    # Counted as a success it makes the fleet look healthiest exactly when it is
+    # idle. The variable's value at run time is not in the API, so the run's own
+    # record decides: the notice job concluded success. Such runs are taken out
+    # of runs_json here, BEFORE anything is counted, so they are not a success,
+    # not a failure, and not in any total, rate or duration; they are counted in
+    # paused_metrics_file instead.
+    # Cost: only workflows whose file declares the notice job (or calls a
+    # reusable that does) are asked about, only their `success` runs, and one
+    # request covers FLEET_PAUSE_BATCH runs. No other workflow adds a call.
+    # A paused run of a workflow WITHOUT a notice job (dev-lead, pr-review,
+    # ci-failure-analyst, spec-drift) ends `skipped`, the same as a run an event
+    # filter skipped; nothing tells the two apart, so it is left as it was.
+    if [ -n "$wf_content" ] && printf '%s' "$wf_content" \
+        | fleet_pause_workflow_has_notice ${fleet_notice_workflows[@]+"${fleet_notice_workflows[@]}"}; then
+      paused_nodes=$(fetch_paused_run_nodes "$runs_json" | jq -Rsc 'split("\n") | map(select(length > 0))')
+      if [ "$paused_nodes" != "[]" ]; then
+        unpaused_json=$(printf '%s' "$runs_json" | fleet_pause_drop_runs "$paused_nodes")
+        paused=$(( $(jq 'length' <<< "$runs_json") - $(jq 'length' <<< "$unpaused_json") ))
+        runs_json="$unpaused_json"
+        if [ "$paused" -gt 0 ]; then
+          printf '%s\t%s\t%s\n' "$repo" "$wf_file" "$paused" >> "$paused_metrics_file"
+        fi
+      fi
+    fi
 
     # Accumulate legacy (non-ingress) runs normalized to {role,conclusion} for
     # parity combining with post-collapse ingress runs (#1727 AC #4).
@@ -276,14 +369,13 @@ for repo in "${repos[@]}"; do
     fi
 
     # --- Schedule reliability (#725) ---------------------------------------
-    # The actions/workflows API does not expose cron, so fetch the workflow file
-    # content and parse schedule.cron from it. A read/parse failure is non-fatal
-    # (warn + skip) — consistent with the ERROR-sentinel tolerance elsewhere.
+    # The actions/workflows API does not expose cron, so parse schedule.cron from
+    # the workflow file content (wf_content, fetched above). A read/parse failure
+    # is non-fatal (warn + skip) — consistent with the ERROR-sentinel tolerance
+    # elsewhere.
     # Only workflows with a schedule trigger (expected > 0) get a row, so a cron
     # that silently never fired (actual 0, expected N) surfaces as STALLED even
     # though it produced no runs to otherwise flag.
-    wf_content=$(gh api -H "Accept: application/vnd.github.raw" \
-      "repos/${repo}/contents/${wf_file}" 2>/dev/null || true)
     if [ -n "$wf_content" ]; then
       expected_ticks=$(printf '%s' "$wf_content" \
         | workflow_expected_ticks "$WINDOW_START_EPOCH" "$WINDOW_END_EPOCH")
@@ -550,7 +642,6 @@ fi
 # per-repo API read failure is a `::warning::`, never fatal (mirrors 2a–2d).
 # ---------------------------------------------------------------------------
 ingress_attr_file=$(mktemp)   # accumulates normalized {role,conclusion} JSONL
-legacy_attr_file=$(mktemp)    # accumulates normalized legacy runs for parity
 for repo in "${repos[@]}"; do
   # The collapsed ingress workflow id for this repo (basename match), if present.
   if ! ingress_wf_id=$(gh api "repos/${repo}/actions/workflows?per_page=100" --paginate \
@@ -606,7 +697,7 @@ done
 # artifact or API error renders "no OK record", never fails the monitor.
 # ---------------------------------------------------------------------------
 budget_poller_log_file=$(mktemp) || { echo "::error::budget-poller: failed to create temporary file" >&2; exit 1; }
-if ! bp_download_latest_log "${BUDGET_POLLER_REPO:-petry-projects/.github-private}" "$budget_poller_log_file"; then
+if ! bp_download_latest_log "${BUDGET_POLLER_REPO:-combsmith/.github-private}" "$budget_poller_log_file"; then
   echo "::notice::budget-poller: no readable ${BUDGET_POLLER_ARTIFACT} artifact — reporting no OK record"
   : > "$budget_poller_log_file"
 fi
@@ -642,6 +733,14 @@ dev_lead_timeout_section() {
   generate_dev_lead_timeout_report "$dev_lead_reason_file" "${fleet_dl_runs:-0}"
 }
 
+# fleet_paused_section — appends the Fleet-paused runs block (#2266) when any
+# run in the window only reported a fleet pause.
+fleet_paused_section() {
+  [ -s "$paused_metrics_file" ] || return 0
+  printf '\n'
+  generate_fleet_paused_report "$paused_metrics_file"
+}
+
 # schedule_reliability_section — appends the Schedule Reliability block (#725)
 # when any scheduled workflow was seen in the window.
 schedule_reliability_section() {
@@ -667,8 +766,11 @@ ingress_attribution_section() {
   # ran on both sides of the collapse shares the required bucket (#1727 AC #4).
   local combined_attr_file attr_tsv
   combined_attr_file=$(mktemp)
+  # Both accumulators are JSONL: one {role,conclusion} OBJECT per line. They are
+  # concatenated, not `jq -s add`-ed: adding objects merges them key by key, which
+  # left ONE record (the last) for the whole fleet instead of one per run.
   if [ -s "$legacy_attr_file" ] || [ -s "$ingress_attr_file" ]; then
-    jq -s 'add // []' "$legacy_attr_file" "$ingress_attr_file" > "$combined_attr_file"
+    cat "$legacy_attr_file" "$ingress_attr_file" > "$combined_attr_file"
   fi
   [ -s "$combined_attr_file" ] || { rm -f "$combined_attr_file"; return 0; }
   attr_tsv=$(mktemp)
@@ -689,12 +791,12 @@ budget_poller_section() {
 # GitHub Step Summary has a 1 MB hard limit per job. At ~200 bytes per row
 # this supports ~5 000 workflows before truncation.
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-  { report_header; generate_report "$metrics_file" "$failed_file" "false" "$issues_lookup_file"; dev_lead_timeout_section; schedule_reliability_section; persona_optout_section; ingress_attribution_section; stub_drift_section; budget_poller_section; } \
+  { report_header; generate_report "$metrics_file" "$failed_file" "false" "$issues_lookup_file"; fleet_paused_section; dev_lead_timeout_section; schedule_reliability_section; persona_optout_section; ingress_attribution_section; stub_drift_section; budget_poller_section; } \
     >> "$GITHUB_STEP_SUMMARY"
 fi
 
 # Report file — full report with Mermaid charts (used as Issue body)
-{ report_header; generate_report "$metrics_file" "$failed_file" "true" "$issues_lookup_file"; dev_lead_timeout_section; schedule_reliability_section; persona_optout_section; ingress_attribution_section; stub_drift_section; budget_poller_section; } \
+{ report_header; generate_report "$metrics_file" "$failed_file" "true" "$issues_lookup_file"; fleet_paused_section; dev_lead_timeout_section; schedule_reliability_section; persona_optout_section; ingress_attribution_section; stub_drift_section; budget_poller_section; } \
   > "$REPORT_FILE"
 
 # ---------------------------------------------------------------------------
@@ -721,7 +823,9 @@ fi
 # Produces fleet_stub_drift.json — the DRIFTED enrolled repos across every
 # processed stub, each row tagged with its `stub`/`stub_file` so the workflow's
 # "Track stub drift" step can group/route per stub kind. HAS_STUB_DRIFT wakes
-# dev-lead. A combined empty array is emitted when no stub drifted.
+# dev-lead. A combined empty array is emitted when no stub drifted. Role rows
+# classified from a legacy per-role file (repo has no agent-ingress.yml) are left
+# out by stub_drift_alert_json and appear only in the report, marked legacy (#2289).
 # ---------------------------------------------------------------------------
 STUB_DRIFT_JSON="fleet_stub_drift.json"
 if [ ${#stub_drift_files[@]} -gt 0 ]; then
@@ -764,7 +868,7 @@ if [ -n "${GITHUB_ENV:-}" ]; then
   [ "$persona_optout_incomplete_count" -gt 0 ] && echo "HAS_PERSONA_OPTOUT_DRIFT=true" >> "$GITHUB_ENV"
 fi
 
-rm -f "$metrics_file" "$failed_file" "$issues_lookup_file" "$dev_lead_reason_file" "$schedule_metrics_file" "$persona_optout_file" "$ingress_attr_file" "$legacy_attr_file" "$budget_poller_log_file"
+rm -f "$metrics_file" "$failed_file" "$issues_lookup_file" "$dev_lead_reason_file" "$schedule_metrics_file" "$persona_optout_file" "$ingress_attr_file" "$legacy_attr_file" "$budget_poller_log_file" "$paused_metrics_file"
 [ ${#stub_drift_files[@]} -gt 0 ] && rm -f "${stub_drift_files[@]}"
 
 # ---------------------------------------------------------------------------

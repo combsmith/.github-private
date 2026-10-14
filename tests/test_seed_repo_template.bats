@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/seed-repo-template.sh — the DRY_RUN-aware generator that
-# seeds petry-projects/repo-template with the org baseline file scaffold:
+# seeds combsmith/repo-template with the org baseline file scaffold:
 # the ~10 thin-caller workflow stubs (fetched byte-identically from the public
 # standards/ and repinned from local ./… dogfood refs to published channel tags)
 # plus the root/baseline files (issue #966, epic #964). Mirrors the cross-repo
@@ -85,7 +85,7 @@ echo "\$*" >> "$CALLS"
 case "\$*" in
   *"/commits/${exists}"*) echo "cafef00d00000000000000000000000000000000" ;;
   *"/commits/"*) exit 0 ;;
-  *"/contents/"*) printf '%s' "\$(printf '    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64 -w0 2>/dev/null || printf '    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64)" ;;
+  *"/contents/"*) printf '%s' "\$(printf '    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64 -w0 2>/dev/null || printf '    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64)" ;;
   *) echo '' ;;
 esac
 EOF
@@ -230,10 +230,10 @@ EOF
 }
 
 # ── repin: caller stubs → published major-scoped channel tags (AC #1, #2) ──────
-@test "repin: public caller dogfood ref → major-scoped @<name>/v<MAJOR>-stable on petry-projects/.github" {
+@test "repin: public caller dogfood ref → major-scoped @<name>/v<MAJOR>-stable on combsmith/.github" {
   run bash -c 'printf "%s\n" "    uses: ./.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-next" | bash "$0" --repin auto-rebase' "$SEED"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-stable"* ]]
   [[ "$output" != *"./.github/workflows/auto-rebase-reusable.yml"* ]]
   [[ "$output" != *"auto-rebase/v2-next"* ]]
   # AC #1: never the pre-#1184 legacy non-major-scoped channel.
@@ -241,10 +241,10 @@ EOF
 }
 
 @test "repin: private dev-lead → @dev-lead/v<MAJOR>-stable on .github-private and agent_ref repinned" {
-  src=$'    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n    with:\n      agent_ref: dev-lead/v1-next'
+  src=$'    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n    with:\n      agent_ref: dev-lead/v1-next'
   run bash -c 'printf "%s\n" "$1" | bash "$0" --repin dev-lead' "$SEED" "$src"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"* ]]
   [[ "$output" == *"agent_ref: dev-lead/v1-stable"* ]]
   [[ "$output" != *"dev-lead/v1-next"* ]]
   [[ "$output" != *"@dev-lead/stable"* ]]
@@ -290,8 +290,8 @@ EOF
 @test "repin round-trip: a canonical @<name>/v<MAJOR>-stable stub is unchanged (#1493 AC 13)" {
   for name in "${CALLER_STUBS[@]}"; do
     # Multi-line stub so the round-trip covers surrounding context, not just the uses: line.
-    host="petry-projects/.github"
-    [ "$name" = "dev-lead" ] && host="petry-projects/.github-private"
+    host="combsmith/.github"
+    [ "$name" = "dev-lead" ] && host="combsmith/.github-private"
     src=$'jobs:\n  call:\n    uses: '"${host}/.github/workflows/${name}-reusable.yml@${name}/v1-stable"$'\n    with:\n      agent_ref: '"${name}/v1-stable"
     run bash -c 'printf "%s" "$1" | bash "$0" --repin "$2"' "$SEED" "$src" "$name"
     [ "$status" -eq 0 ]
@@ -326,7 +326,7 @@ EOF
     | _fixture_workflow dependency-audit.yml
   run bash "$SEED" --emit-workflow dependency-audit.yml
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/v2-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/v2-stable"* ]]
   [[ "$output" != *"./.github/workflows/dependency-audit-reusable.yml"* ]]
   [[ "$output" != *"@dependency-audit/stable"* ]]
 }
@@ -337,7 +337,7 @@ EOF
   # baseline contradicted standards/ and reported the correct template as DRIFTED.
   # The repin must reproduce the canonical major-scoped stable pin byte-for-byte.
   printf '%s\n' 'jobs:' '  run:' \
-    '    uses: petry-projects/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable' \
+    '    uses: combsmith/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable' \
     | _fixture_workflow agent-shield.yml
   run bash "$SEED" --emit-workflow agent-shield.yml
   [ "$status" -eq 0 ]
@@ -410,13 +410,13 @@ GHEOF
 @test "baseline: CODEOWNERS is the org default rule" {
   run bash "$SEED" --emit-baseline .github/CODEOWNERS
   [ "$status" -eq 0 ]
-  [[ "$output" == *"* @petry-projects/org-leads"* ]]
+  [[ "$output" == *"* @combsmith/org-leads"* ]]
 }
 
 @test "baseline: AGENTS.md is a consumer pointer to the org AGENTS.md" {
   run bash "$SEED" --emit-baseline AGENTS.md
   [ "$status" -eq 0 ]
-  [[ "$output" == *"petry-projects/.github"* ]]
+  [[ "$output" == *"combsmith/.github"* ]]
   [[ "$output" == *"AGENTS.md"* ]]
 }
 
@@ -693,9 +693,9 @@ EOF
   # the same standards fixtures the live seed does — but still makes zero writes.
   _stub_gh
   _drop_all_standards_fixtures
-  run env DEPENDABOT_STACK=frontend DRY_RUN=true bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend DRY_RUN=true bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
-  [[ "$output" == *"petry-projects/repo-template"* ]]
+  [[ "$output" == *"combsmith/repo-template"* ]]
   [ ! -f "$CALLS" ]
 }
 
@@ -711,7 +711,7 @@ EOF
   done
   printf 'version: 2\n' > "$STANDARDS_DIR/standards/dependabot/frontend.yml"
   printf 'title = "gitleaks config"\n' > "$STANDARDS_DIR/standards/gitleaks.toml"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [ -f "$CALLS" ]
   grep -q "contents/.github/workflows/auto-rebase.yml" "$CALLS"
@@ -741,7 +741,7 @@ EOF
   done
   printf 'version: 2\n' > "$STANDARDS_DIR/standards/dependabot/frontend.yml"
   printf 'title = "gitleaks config"\n' > "$STANDARDS_DIR/standards/gitleaks.toml"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"PR #42 already open"* ]]
   [ ! -f "$CALLS" ] || ! grep -q "pr create" "$CALLS"
@@ -754,12 +754,12 @@ EOF
 _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   local f="$BATS_TEST_TMPDIR/existing_gitignore"
   {
-    echo '# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>'
+    echo '# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>'
     echo '# First layer of defense in the Push Protection Standard.'
     echo '.env'
     echo '*.pem'
     echo 'id_rsa'
-    echo '# <<< END petry-projects secrets baseline <<<'
+    echo '# <<< END combsmith secrets baseline <<<'
   } > "$f"
   printf '%s' "$f"
 }
@@ -769,7 +769,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   _drop_all_standards_fixtures
   local gi; gi="$(_managed_gitignore_fixture)"
   _stub_gh_existing ".gitignore" "$gi"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   # The preservation is reported by name + reason (check $output before `run grep`).
   [[ "$output" == *".gitignore"* ]]
@@ -788,7 +788,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   local ci="$BATS_TEST_TMPDIR/existing_ci"
   printf 'name: CI\n# customized per stack by the consumer\njobs:\n  build:\n    runs-on: ubuntu-latest\n' > "$ci"
   _stub_gh_existing ".github/workflows/ci.yml" "$ci"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"ci.yml"* ]]
   [ -f "$CALLS" ]
@@ -817,7 +817,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   # Ownership-awareness must not degrade to deletion — a brand-new repo needs both.
   _drop_all_standards_fixtures
   _stub_gh   # every contents read returns {} → absent → create
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [ -f "$CALLS" ]
   grep -qF "contents/.gitignore" "$CALLS"
@@ -830,7 +830,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   local out="$BATS_TEST_TMPDIR/existing"; printf 'same-bytes\n' > "$out"
   _stub_gh_existing "docs/x.txt" "$out"
   # Unchanged: existing == new content → no write, reported as unchanged.
-  run _seed_file petry-projects/repo-template "docs/x.txt" "$(printf 'same-bytes\n')" seed-branch main
+  run _seed_file combsmith/repo-template "docs/x.txt" "$(printf 'same-bytes\n')" seed-branch main
   [ "$status" -eq 0 ]
   [[ "$output" == *"unchanged"* || "$output" == *"preserv"* ]]
   if [ -f "$CALLS" ]; then
@@ -838,7 +838,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
     [ "$status" -eq 1 ]
   fi
   # Differing: existing != new content → a write happens.
-  run _seed_file petry-projects/repo-template "docs/x.txt" "$(printf 'new-bytes\n')" seed-branch main
+  run _seed_file combsmith/repo-template "docs/x.txt" "$(printf 'new-bytes\n')" seed-branch main
   [ "$status" -eq 0 ]
   grep -qF "contents/docs/x.txt" "$CALLS"
 }
@@ -848,7 +848,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   _drop_all_standards_fixtures
   local gi; gi="$(_managed_gitignore_fixture)"
   _stub_gh_existing ".gitignore" "$gi"
-  run env DRY_RUN=true DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DRY_RUN=true DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   # The destructive-avoidance is visible: named, with the managed reason.
   [[ "$output" == *".gitignore"* ]]
@@ -875,11 +875,11 @@ case "$args" in
 esac
 GHEOF
   chmod +x "$STUB_BIN/gh"
-  run _existing_file_content petry-projects/repo-template docs/x.txt main
+  run _existing_file_content combsmith/repo-template docs/x.txt main
   [ "$status" -ne 0 ]
   [[ "$output" == *"gh api failed"* ]]
   # _seed_file propagates the failure — no CREATE PUT for the unreadable file.
-  run _seed_file petry-projects/repo-template docs/x.txt "$(printf 'new\n')" seed-branch main
+  run _seed_file combsmith/repo-template docs/x.txt "$(printf 'new\n')" seed-branch main
   [ "$status" -ne 0 ]
   if [ -f "$CALLS" ]; then
     run grep -qF "contents/docs/x.txt" "$CALLS"
@@ -898,9 +898,163 @@ printf '{"message":"Not Found","documentation_url":"https://docs.github.com/rest
 exit 1
 GHEOF
   chmod +x "$STUB_BIN/gh"
-  run _existing_file_content petry-projects/repo-template docs/x.txt main
+  run _existing_file_content combsmith/repo-template docs/x.txt main
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+}
+
+# ── #2233: commercial-support sections + one open seed PR per repo ─────────────
+# Fixtures: standards/commercial-support-standard.md at standards/v1.2.0, and
+# README.md / BOOTSTRAP.md from combsmith/repo-template main at bb43b0db.
+SEED_FIXTURES="$SCRIPT_DIR/tests/fixtures/seed-repo-template"
+# Git blob SHAs of those two repo-template files (guards the fixtures themselves
+# against an editor/hook adding a trailing newline).
+REPO_TEMPLATE_README_BLOB=b0b70720038659d7d303f8611fb54703e05df428
+REPO_TEMPLATE_BOOTSTRAP_BLOB=b0d2f01630b2c19437288dedd535c1c6b1ba8771
+
+_fixture_commercial_standard() {
+  cp "$SEED_FIXTURES/commercial-support-standard.md" \
+    "$STANDARDS_DIR/standards/commercial-support-standard.md"
+}
+
+# The canonical README block of a standard file, extracted independently of the
+# seeder: the body of the ```markdown fence.
+_standard_readme_block() { # <standard-file>
+  sed -n '/^```markdown$/,/^```$/p' "$1" | sed '1d;$d'
+}
+
+# Blob SHA of content as the seeder writes it: the $()-capture drops trailing
+# newlines and _put_file encodes it with printf '%s'.
+_seeded_blob() { printf '%s' "$1" | git hash-object --stdin; }
+
+@test "#2233: BOOTSTRAP.md emission is blob-identical to repo-template main (bb43b0db)" {
+  [ "$(git hash-object "$SEED_FIXTURES/repo-template-BOOTSTRAP.md")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
+  run bash "$SEED" --emit-baseline BOOTSTRAP.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"## 4. Contributing & Commercial Support"* ]]
+  [ "$(_seeded_blob "$output")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
+}
+
+@test "#2233: README.md keeps repo-template's preamble and appends the standard's canonical section" {
+  [ "$(git hash-object "$SEED_FIXTURES/repo-template-README.md")" = "$REPO_TEMPLATE_README_BLOB" ]
+  _stub_gh_empty
+  _fixture_commercial_standard
+  run bash "$SEED" --emit-baseline README.md
+  [ "$status" -eq 0 ]
+  # Everything on repo-template main before its commercial section, byte for byte.
+  local preamble; preamble="$(sed '/^## Commercial Support/,$d' "$SEED_FIXTURES/repo-template-README.md")"
+  [[ "$preamble" == *$'\n---' ]]
+  [ "${output:0:${#preamble}}" = "$preamble" ]
+  # …followed by one blank line and exactly the standard's canonical block.
+  local block; block="$(_standard_readme_block "$STANDARDS_DIR/standards/commercial-support-standard.md")"
+  [ -n "$block" ]
+  [ "$output" = "${preamble}"$'\n\n'"${block}" ]
+}
+
+@test "#2233: README.md section is read from the standard, not a copy in the script" {
+  _stub_gh_empty
+  _fixture_commercial_standard
+  sed -i -e 's/\$199\/month/$299\/month/' -e 's/^## 💼 Commercial Support.*/## Commercial Support (changed upstream)/' \
+    "$STANDARDS_DIR/standards/commercial-support-standard.md"
+  run bash "$SEED" --emit-baseline README.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"## Commercial Support (changed upstream)"* ]]
+  [[ "$output" == *'$299/month'* ]]
+  [[ "$output" != *'$199/month'* ]]
+  [[ "$output" == *"$(_standard_readme_block "$STANDARDS_DIR/standards/commercial-support-standard.md")" ]]
+}
+
+@test "#2233: README.md FAILS LOUD when the commercial-support standard is absent" {
+  _stub_gh_empty
+  run bash "$SEED" --emit-baseline README.md
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"commercial-support-standard.md"* ]]
+}
+
+@test "#2233: README.md FAILS LOUD when the standard has no canonical README block" {
+  _stub_gh_empty
+  printf '# Commercial Support\n\n## Canonical README Section\n\nNo fence here.\n\n## Other\n' \
+    > "$STANDARDS_DIR/standards/commercial-support-standard.md"
+  run bash "$SEED" --emit-baseline README.md
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Canonical README Section"* ]]
+}
+
+@test "#2233: a seed run whose commercial standard is unreadable leaves README.md untouched" {
+  _stub_gh
+  _drop_all_standards_fixtures
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"README.md"* ]]
+  grep -qF "contents/BOOTSTRAP.md" "$CALLS"
+  run grep -qF "contents/README.md" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+# gh stub with an OPEN older seed PR (#17 on seed-scaffold/2026-10-01). Contents
+# reads are served per ref from "<path>@<ref>=<file>" pairs; anything else reads
+# as absent. Writes are logged to $CALLS.
+_stub_gh_open_seed_pr() { # [<path>@<ref> <file> ...]
+  {
+    echo '#!/usr/bin/env bash'
+    echo 'args="$*"'
+    echo 'case "$args" in'
+    echo "  *\"--method PUT\"*|*\"--method POST\"*|*\"PATCH\"*|*\"pr create\"*) echo \"\$args\" >> \"$CALLS\"; echo '{}' ;;"
+    echo "  *\"pr list\"*\"--head seed-scaffold/2026-10-01\"*) echo 17 ;;"
+    echo "  *\"pr list\"*\"headRefName\"*) printf '17\\tseed-scaffold/2026-10-01\\n' ;;"
+    echo '  *"pr list"*) ;;'
+    echo "  *\"git/ref/heads/\"*) echo basesha ;;"
+    echo "  *\"repos/combsmith/repo-template --jq\"*) echo main ;;"
+    while [ $# -ge 2 ]; do
+      local p="${1%@*}" r="${1##*@}" f="$2"; shift 2
+      local b64; b64="$(base64 -w0 < "$f" 2>/dev/null || base64 < "$f")"
+      echo "  *\"contents/${p}?ref=${r}\"*) echo '{\"sha\":\"feedface\",\"content\":\"${b64}\"}' ;;"
+    done
+    echo "  *) echo '{}' ;;"
+    echo 'esac'
+  } > "$STUB_BIN/gh"
+  chmod +x "$STUB_BIN/gh"
+}
+
+@test "#2233: an open seed-scaffold/* PR is updated in place — no second PR, no new branch" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  _stub_gh_open_seed_pr
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"#17"* ]]
+  [ -f "$CALLS" ]
+  # Writes land on the existing PR's branch…
+  grep -qF "contents/BOOTSTRAP.md" "$CALLS"
+  grep -qF "branch=seed-scaffold/2026-10-01" "$CALLS"
+  run grep -F "branch=seed-scaffold/$(date -u +%Y-%m-%d)" "$CALLS"
+  [ "$status" -eq 1 ]
+  # …no branch is created and no PR is opened.
+  run grep -F "git/refs --method POST" "$CALLS"
+  [ "$status" -eq 1 ]
+  run grep -F "pr create" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2233: updating an open seed PR restores files its branch changed but the fresh seed would not" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  local current="$BATS_TEST_TMPDIR/codeowners" stale="$BATS_TEST_TMPDIR/stale" agents="$BATS_TEST_TMPDIR/agents"
+  bash "$SEED" --emit-baseline .github/CODEOWNERS > "$current"
+  bash "$SEED" --emit-baseline AGENTS.md > "$agents"
+  printf '* @someone-else\n' > "$stale"
+  # CODEOWNERS: main already matches the seed, but the old PR's branch changed it.
+  # AGENTS.md: main and the branch both already match the seed.
+  _stub_gh_open_seed_pr \
+    ".github/CODEOWNERS@main" "$current" \
+    ".github/CODEOWNERS@seed-scaffold/2026-10-01" "$stale" \
+    "AGENTS.md@main" "$agents" \
+    "AGENTS.md@seed-scaffold/2026-10-01" "$agents"
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  grep -F "contents/.github/CODEOWNERS --method PUT" "$CALLS" | grep -qF "branch=seed-scaffold/2026-10-01"
+  run grep -F "contents/AGENTS.md --method PUT" "$CALLS"
+  [ "$status" -eq 1 ]
 }
 
 # ── argument handling ─────────────────────────────────────────────────────────
@@ -913,4 +1067,540 @@ GHEOF
 @test "errors on an unknown workflow name to --repin" {
   run bash -c 'printf "x\n" | bash "$0" --repin no-such-stub' "$SEED"
   [ "$status" -ne 0 ]
+}
+
+# ── #1925: seed PR provenance, supersede, and no downgrades ───────────────────
+
+# gh stub for the seed-PR tests. Logs every write — including `pr edit`,
+# `pr close` and a ref DELETE — to $CALLS. Open seed PRs come from $SEED_OPEN_PRS
+# ("<number>\t<branch>" lines, oldest first); `pr create` prints a PR URL ending
+# in $SEED_NEW_PR; `pr close <n>` fails when <n> is $SEED_CLOSE_FAILS.
+_stub_gh_seed_prs() {
+  export SEED_OPEN_PRS="${SEED_OPEN_PRS:-}" SEED_NEW_PR="${SEED_NEW_PR:-88}" SEED_CLOSE_FAILS="${SEED_CLOSE_FAILS:-}"
+  cat > "$STUB_BIN/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in
+  "pr close "*)
+    echo "$args" >> "$CALLS"
+    [ "$2 $3" != "close $SEED_CLOSE_FAILS" ] || exit 1
+    exit 0 ;;
+  "pr edit "*) echo "$args" >> "$CALLS"; exit 0 ;;
+  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/combsmith/repo-template/pull/$SEED_NEW_PR"; exit 0 ;;
+  *"--method DELETE"*|*"--method PUT"*|*"--method POST"*) echo "$args" >> "$CALLS"; echo '{}' ;;
+  *"pr list"*"--head "*)
+    # The open PR for one branch: its number, or nothing.
+    head="${args##*--head }"; head="${head%% *}"
+    printf '%s\n' "$SEED_OPEN_PRS" | awk -F'\t' -v h="$head" '$2 == h { print $1 }' | tail -n 1 ;;
+  *"pr list"*"headRefName"*) [ -z "$SEED_OPEN_PRS" ] || printf '%s\n' "$SEED_OPEN_PRS" ;;
+  *"git/ref/heads/"*) echo basesha ;;
+  *"repos/combsmith/repo-template --jq"*) echo main ;;
+  *) echo '{}' ;;
+esac
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+}
+
+@test "#1925 AC1: _seed_pr_body states the resolved ref, how it was chosen, and the commit" {
+  source "$SEED"
+  run _seed_pr_body "standards/v1-stable" "cafef00d00000000000000000000000000000000" "channel"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'**Resolved ref:** `standards/v1-stable`'* ]]
+  [[ "$output" == *'**Source:** channel — the published standards channel `standards/v1-stable`'* ]]
+  [[ "$output" == *'**Commit:** `cafef00d00000000000000000000000000000000`'* ]]
+  [[ "$output" == *'<!-- seed-repo-template standards_ref=standards/v1-stable standards_sha=cafef00d00000000000000000000000000000000 source=channel -->'* ]]
+  # No refused files → no "left alone" section.
+  [[ "$output" != *"Left alone"* ]]
+}
+
+@test "#1925 AC1: each ref source is named in words (explicit, HEAD fallback, local)" {
+  source "$SEED"
+  [[ "$(_seed_source_label explicit)" == *'`STANDARDS_REF` was set'* ]]
+  [[ "$(_seed_source_label head-fallback)" == *"HEAD fallback"*"not published"* ]]
+  [[ "$(_seed_source_label local)" == *'`STANDARDS_DIR` checkout'* ]]
+  run _seed_pr_body "STANDARDS_DIR" "" "local"
+  [[ "$output" == *'**Commit:** `unknown`'* ]]
+}
+
+@test "#1925 AC3: _seed_pr_body lists the files left alone because the template is ahead" {
+  source "$SEED"
+  run _seed_pr_body "standards/v1-stable" "cafef00d" "channel" ".github/workflows/agent-shield.yml" "CLAUDE.md"
+  [[ "$output" == *"## Left alone: the template is ahead of the channel"* ]]
+  [[ "$output" == *'- `.github/workflows/agent-shield.yml`'* ]]
+  [[ "$output" == *'- `CLAUDE.md`'* ]]
+  [[ "$output" == *"promote standards"* ]]
+}
+
+@test "#1925 AC1: a new seed PR is opened with the standards provenance in its body" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  _stub_gh_seed_prs
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"opened seed PR #88"* ]]
+  grep -qF "pr create --repo combsmith/repo-template" "$CALLS"
+  grep -qF "Resolved ref:" "$CALLS"
+  grep -qF "seed-repo-template standards_ref=STANDARDS_DIR" "$CALLS"
+  grep -qF "source=local" "$CALLS"
+}
+
+@test "#1925 AC1: updating an open seed PR rewrites its body with this run's provenance" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  export SEED_OPEN_PRS="$(printf '17\tseed-scaffold/2026-10-01')"
+  _stub_gh_seed_prs
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  grep -qF "pr edit 17 --repo combsmith/repo-template --body" "$CALLS"
+  grep -qF "Resolved ref:" "$CALLS"
+  run grep -F "pr create" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#1925 AC2: with several seed PRs open, the newest is kept and each older one is closed with a link" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  export SEED_OPEN_PRS="$(printf '9\tseed-scaffold/2026-09-07\n12\tseed-scaffold/2026-09-20\n17\tseed-scaffold/2026-10-01')"
+  _stub_gh_seed_prs
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"closed superseded seed PR #9"* ]]
+  [[ "$output" == *"closed superseded seed PR #12"* ]]
+  grep -F "pr close 9 --repo combsmith/repo-template --comment" "$CALLS" | grep -qF "Superseded by #17"
+  grep -F "pr close 12 --repo combsmith/repo-template --comment" "$CALLS" | grep -qF "Superseded by #17"
+  # The surviving PR is never closed, and no second PR is opened.
+  run grep -F "pr close 17" "$CALLS"
+  [ "$status" -eq 1 ]
+  run grep -F "pr create" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#1925 AC2: a PR on another branch is never closed as a superseded seed" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  run _seed_close_superseded combsmith/repo-template 17 "$(printf '5\tfeature/login\n17\tseed-scaffold/2026-10-01\nnot-a-number\tseed-scaffold/x')"
+  [ "$status" -eq 0 ]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC2: an older seed PR that cannot be closed fails the run and is named" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  export SEED_CLOSE_FAILS=9 SEED_OPEN_PRS="$(printf '9\tseed-scaffold/2026-09-07\n17\tseed-scaffold/2026-10-01')"
+  _stub_gh_seed_prs
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not close superseded seed PR #9"* ]]
+  [[ "$output" == *"#17 carries the current seed"* ]]
+}
+
+@test "#1925 AC2: when this run's PR cannot be identified, no older seed PR is closed" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  run _seed_close_superseded combsmith/repo-template "" "$(printf '9\tseed-scaffold/2026-09-07')"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"leaving older seed PR #9 open"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+# _ahead_env <newer-state> — source the seeder and replace the three reads the
+# no-downgrade check makes, so the decision can be tested without a network:
+#   the standards HEAD commit, its relation to the resolved ref, and the emission
+#   at HEAD (which is "<arg>@HEAD"). The resolved ref is a published channel.
+_ahead_env() {
+  declare -p WORKFLOW_MANIFEST > /dev/null 2>&1 || source "$SEED"
+  _SEED_NEWER_STATE=""; _SEED_NEWER_SHA=""; _SEED_WRITES=0; _SEED_AHEAD=()
+  _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
+  AHEAD_HEAD="2222222222222222222222222222222222222222"; AHEAD_RELATION="ahead"; AHEAD_EMIT_FAILS=0
+  AHEAD_LOOKUPS="$BATS_TEST_TMPDIR/lookups.log"; : > "$AHEAD_LOOKUPS"
+  _template_drift_head_sha() { echo head >> "$AHEAD_LOOKUPS"; printf '%s' "$AHEAD_HEAD"; }
+  _template_drift_compare() { printf '%s' "$AHEAD_RELATION"; }
+  _seed_emit_at() { [ "$AHEAD_EMIT_FAILS" = 0 ] || return 1; printf '%s@HEAD' "$3"; }
+}
+
+@test "#1925 AC3: a file that matches the emission at a newer standards commit is REFUSED, not overwritten" {
+  _ahead_env
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"REFUSED docs/x.txt"* ]]
+  [[ "$output" == *"the template is ahead of standards/v1-stable"* ]]
+  [[ "$output" == *"222222222222"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC3: the refused file is recorded and the channel-behind warning names it" {
+  _ahead_env
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "${#_SEED_AHEAD[@]}" -eq 1 ]
+  [ "${_SEED_AHEAD[0]}" = "docs/x.txt" ]
+  run _seed_report_ahead
+  [[ "$output" == "::warning::standards channel is behind the template — promote standards"* ]]
+  [[ "$output" == *"docs/x.txt"* ]]
+}
+
+@test "#1925 AC3: a file that matches neither the ref nor the newer commit is still written" {
+  _ahead_env
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'hand edited' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -eq 0 ]
+  grep -qF "contents/docs/x.txt" "$CALLS"
+}
+
+@test "#1925 AC3: DRY_RUN reports the refusal and writes nothing" {
+  _ahead_env
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  DRY_RUN=true run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would REFUSE docs/x.txt"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC3: an unchanged file never triggers the newer-commit lookup" {
+  _ahead_env
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@channel' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -eq 0 ]
+  [ ! -s "$AHEAD_LOOKUPS" ]
+}
+
+@test "#1925 AC3: when the standards HEAD cannot be read the seed aborts instead of overwriting" {
+  _ahead_env
+  AHEAD_HEAD=""
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot tell whether"*"newer than standards/v1-stable"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC3: when the ancestry cannot be read the seed aborts instead of overwriting" {
+  _ahead_env
+  AHEAD_RELATION=""
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -ne 0 ]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC3: when the HEAD emission cannot be computed the seed aborts instead of overwriting" {
+  _ahead_env
+  AHEAD_EMIT_FAILS=1
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot compute the standards HEAD"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC3: a ref that is not behind HEAD has nothing newer — a differing file is written" {
+  local relation
+  for relation in identical behind diverged; do
+    _ahead_env
+    AHEAD_RELATION="$relation"
+    rm -f "$CALLS"
+    local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+    _stub_gh_existing "docs/x.txt" "$existing"
+    run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+    [ "$status" -eq 0 ]
+    grep -qF "contents/docs/x.txt" "$CALLS"
+  done
+}
+
+@test "#1925 AC3: the STANDARDS_DIR local seam has no ref, so nothing is looked up" {
+  _ahead_env
+  _STD_SRC="local"
+  local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
+  _stub_gh_existing "docs/x.txt" "$existing"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  [ "$status" -eq 0 ]
+  [ ! -s "$AHEAD_LOOKUPS" ]
+  grep -qF "contents/docs/x.txt" "$CALLS"
+}
+
+@test "#1925 AC3: on a reused seed branch, a refused file is restored to the base content" {
+  _ahead_env
+  local base="$BATS_TEST_TMPDIR/base" stale="$BATS_TEST_TMPDIR/stale"
+  printf 'docs/x.txt@HEAD' > "$base"       # the default branch is ahead of the channel
+  printf 'docs/x.txt@channel' > "$stale"   # an older run downgraded it on the PR branch
+  _stub_gh_open_seed_pr "docs/x.txt@main" "$base" "docs/x.txt@seed-scaffold/2026-10-01" "$stale"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-scaffold/2026-10-01 main 1 --emit-baseline "docs/x.txt"
+  [ "$status" -eq 0 ]
+  grep -F "contents/docs/x.txt --method PUT" "$CALLS" | grep -qF "branch=seed-scaffold/2026-10-01"
+  # What was written is the base (ahead) content, not this run's channel emission.
+  grep -F "contents/docs/x.txt --method PUT" "$CALLS" | grep -qF "content=$(printf 'docs/x.txt@HEAD' | base64)"
+}
+
+@test "#1925 AC3: a run that writes nothing opens no PR and removes the branch it created" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  _seed_all_files() { _SEED_AHEAD+=(".github/workflows/agent-shield.yml"); }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"standards channel is behind the template — promote standards"* ]]
+  [[ "$output" == *"no PR opened on combsmith/repo-template: the only differing files are ahead of standards/v1-stable"* ]]
+  run grep -F "pr create" "$CALLS"
+  [ "$status" -eq 1 ]
+  grep -qF "git/refs/heads/seed-scaffold/" "$CALLS"
+  grep -F "git/refs/heads/seed-scaffold/" "$CALLS" | grep -qF -- "--method DELETE"
+}
+
+@test "#1925: a run with nothing to write and nothing refused says the template already matches" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  _seed_all_files() { :; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"it already matches standards/v1-stable"* ]]
+  run grep -F "pr create" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#1925: a dated branch left by an earlier run is brought in line, not trusted as fresh" {
+  source "$SEED"
+  # The branch cannot be created (it exists) but can be read.
+  cat > "$STUB_BIN/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in
+  *"git/refs --method POST"*) exit 1 ;;
+  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/combsmith/repo-template/pull/88" ;;
+  *"pr list"*) ;;
+  *"git/ref/heads/"*) echo basesha ;;
+  *"repos/combsmith/repo-template --jq"*) echo main ;;
+  *) echo '{}' ;;
+esac
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+  _seed_all_files() { echo "reuse=$4"; _SEED_WRITES=1; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already exists on combsmith/repo-template"* ]]
+  # reuse=1 makes _seed_file restore skipped, preserved and refused files on the branch.
+  [[ "$output" == *"reuse=1"* ]]
+}
+
+@test "#1925: a freshly created branch is not treated as carrying older edits" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  _seed_all_files() { echo "reuse=$4"; _SEED_WRITES=1; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"reuse=0"* ]]
+}
+
+# ── #1925 review follow-ups ────────────────────────────────────────────────────
+
+@test "#1925: an unreadable open-PR list stops the run before anything is written" {
+  source "$SEED"
+  cat > "$STUB_BIN/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in
+  *"--method PUT"*|*"--method POST"*|"pr create "*) echo "$args" >> "$CALLS"; echo '{}' ;;
+  *"pr list"*"headRefName"*) echo '{"message":"API rate limit exceeded"}'; exit 1 ;;
+  *"git/ref/heads/"*) echo basesha ;;
+  *"repos/combsmith/repo-template --jq"*) echo main ;;
+  *) echo '{}' ;;
+esac
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+  _seed_all_files() { echo "seeded"; _SEED_WRITES=1; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo combsmith/repo-template
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot list open pull requests on combsmith/repo-template"* ]]
+  [[ "$output" != *"seeded"* ]]
+  # No branch, no file, no PR.
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925: a seed PR beyond the first 100 open PRs is still found and reused" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  # 150 open PRs; the seed PR is the last one. The stub applies --limit the way gh
+  # does (before the jq filter), so a limit of 100 would cut the seed PR off.
+  cat > "$STUB_BIN/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in
+  "pr edit "*) echo "$args" >> "$CALLS"; exit 0 ;;
+  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/combsmith/repo-template/pull/999"; exit 0 ;;
+  *"--method PUT"*|*"--method POST"*) echo "$args" >> "$CALLS"; echo '{}' ;;
+  *"pr list"*"--head seed-scaffold/2026-10-01"*) echo 150 ;;
+  *"pr list"*"headRefName"*)
+    limit="${args##*--limit }"; limit="${limit%% *}"
+    { for i in $(seq 1 149); do printf '%s\tfeature/%s\n' "$i" "$i"; done; printf '150\tseed-scaffold/2026-10-01\n'; } \
+      | head -n "$limit" | awk -F'\t' '$2 ~ /^seed-scaffold\//' ;;
+  *"pr list"*) ;;
+  *"git/ref/heads/"*) echo basesha ;;
+  *"repos/combsmith/repo-template --jq"*) echo main ;;
+  *) echo '{}' ;;
+esac
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"seed PR #150 is already open"* ]]
+  run grep -F "pr create" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#1925: a seed run fetches standards at the recorded commit, not through the moving ref" {
+  source "$SEED"
+  cat > "$STUB_BIN/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+echo "$*" >> "$CALLS"
+echo "content"
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+  unset STANDARDS_DIR
+  _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
+  # Before the seed pins it, a read goes through the ref name…
+  run _fetch_standard "standards/gitleaks.toml"
+  grep -qF "ref=standards/v1-stable" "$CALLS"
+  # …and once _seed_repo has recorded the commit, through that commit.
+  : > "$CALLS"
+  _STD_PIN="$_STD_SHA"
+  run _fetch_standard "standards/gitleaks.toml"
+  grep -qF "ref=1111111111111111111111111111111111111111" "$CALLS"
+  run grep -F "ref=standards/v1-stable" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#1925: _seed_repo pins the fetch to the resolved commit before it emits any file" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  _seed_all_files() { echo "pin=${_STD_PIN:-none}"; _SEED_WRITES=1; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pin=1111111111111111111111111111111111111111"* ]]
+}
+
+@test "#1925: a leftover dated branch with nothing written and nothing ahead of base opens no PR" {
+  source "$SEED"
+  cat > "$STUB_BIN/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+args="$*"
+case "$args" in
+  *"git/refs --method POST"*) exit 1 ;;
+  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/combsmith/repo-template/pull/88" ;;
+  *"/compare/main...seed-scaffold/"*) echo "${AHEAD_BY:-0}" ;;
+  *"pr list"*) ;;
+  *"git/ref/heads/"*) echo basesha ;;
+  *"repos/combsmith/repo-template --jq"*) echo main ;;
+  *) echo '{}' ;;
+esac
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+  _seed_all_files() { :; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no PR opened on combsmith/repo-template: branch seed-scaffold/"*"has nothing main lacks"* ]]
+  [ ! -f "$CALLS" ]
+  # The same leftover branch, but still carrying a commit the base lacks → a PR is opened.
+  export AHEAD_BY=2
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  grep -qF "pr create" "$CALLS"
+}
+
+@test "#1925: a failed provenance update on the kept seed PR fails the run and closes nothing" {
+  _drop_all_standards_fixtures
+  _fixture_commercial_standard
+  export SEED_OPEN_PRS="$(printf '9\tseed-scaffold/2026-09-07\n17\tseed-scaffold/2026-10-01')"
+  _stub_gh_seed_prs
+  # Make `pr edit` fail.
+  sed -i.bak 's|  "pr edit "\*) echo "$args" >> "$CALLS"; exit 0 ;;|  "pr edit "*) echo "$args" >> "$CALLS"; exit 1 ;;|' "$STUB_BIN/gh"
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot update the standards provenance on PR #17"* ]]
+  run grep -F "pr close" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+@test "#1925: a new PR whose number cannot be read back closes nothing" {
+  source "$SEED"
+  _stub_gh_seed_prs
+  export SEED_NEW_PR="not-a-number"
+  _seed_all_files() { _SEED_WRITES=1; }
+  STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
+    run _seed_repo combsmith/repo-template
+  [ "$status" -eq 0 ]
+  grep -qF "pr create" "$CALLS"
+  run grep -F "pr close" "$CALLS"
+  [ "$status" -eq 1 ]
+}
+
+# The no-downgrade check, end to end, with ONLY gh replaced: the real
+# _template_drift_head_sha, the real _template_drift_compare and the real
+# _seed_emit_at (a child run of this script pinned to the HEAD commit) decide.
+# standards/gitleaks.toml reads "new" at the HEAD commit and "old" anywhere else;
+# the template already holds "new".
+_stub_gh_real_ahead() { # <relation the compare API reports>
+  export REAL_HEAD="2222222222222222222222222222222222222222" REAL_RELATION="$1"
+  local b64; b64="$(printf 'new' | base64)"
+  cat > "$STUB_BIN/gh" <<GHSTUB
+#!/usr/bin/env bash
+args="\$*"
+case "\$args" in
+  *"--method PUT"*|*"--method POST"*) echo "\$args" >> "$CALLS"; echo '{}' ;;
+  *"application/vnd.github.sha"*"/commits/HEAD"*) printf '%s' "\$REAL_HEAD" ;;
+  *"/compare/"*) echo "\$REAL_RELATION" ;;
+  *"contents/standards/gitleaks.toml"*"ref=\$REAL_HEAD"*) printf 'new' ;;
+  *"contents/standards/gitleaks.toml"*) printf 'old' ;;
+  *"repo-template/contents/.gitleaks.toml"*) echo '{"sha":"feedface","content":"$b64"}' ;;
+  *) echo '{}' ;;
+esac
+GHSTUB
+  chmod +x "$STUB_BIN/gh"
+}
+
+@test "#1925 AC3 (real compare + emit): a file matching the HEAD emission is refused" {
+  source "$SEED"
+  unset STANDARDS_DIR
+  _stub_gh_real_ahead ahead
+  _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
+  run _seed_file combsmith/repo-template ".gitleaks.toml" "old" seed-branch main 0 --emit-baseline ".gitleaks.toml"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"REFUSED .gitleaks.toml"* ]]
+  [[ "$output" == *"standards HEAD 222222222222"* ]]
+  [ ! -f "$CALLS" ]
+}
+
+@test "#1925 AC3 (real compare + emit): when HEAD is not newer than the ref, the file is written" {
+  source "$SEED"
+  unset STANDARDS_DIR
+  _stub_gh_real_ahead diverged
+  _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
+  run _seed_file combsmith/repo-template ".gitleaks.toml" "old" seed-branch main 0 --emit-baseline ".gitleaks.toml"
+  [ "$status" -eq 0 ]
+  grep -qF "contents/.gitleaks.toml --method PUT" "$CALLS"
+}
+
+@test "#1925 AC3 (real compare + emit): an unreadable ancestry aborts instead of writing" {
+  source "$SEED"
+  unset STANDARDS_DIR
+  _stub_gh_real_ahead '{"message":"Not Found"}'
+  _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
+  run _seed_file combsmith/repo-template ".gitleaks.toml" "old" seed-branch main 0 --emit-baseline ".gitleaks.toml"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot tell whether"* ]]
+  [ ! -f "$CALLS" ]
 }

@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/spec-drift.yml
+# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/spec-drift.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • Post-merge SPEC-DRIFT ADVISORY (#1146, epic #1142). When a PR that closed an
@@ -41,7 +41,12 @@ jobs:
     # OPT-IN + merged-only gate. Skipping the whole job (rather than an inner
     # early-exit) is what makes "disabled" a zero-cost no-op: when
     # SPEC_DRIFT_ENABLED is unset/false the runner never spins up. (AC#1, AC#2)
+    # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
+    # (neutral, not red). No `fleet-paused` notice job here: this workflow's
+    # contract is one job with `issues: write`, and zero runner cost when it
+    # does not run (tests/dev-lead/integration/test_spec_drift_workflow.py).
     if: >-
+      vars.AGENTS_PAUSED != 'true' &&
       github.event.pull_request.merged == true &&
       vars.SPEC_DRIFT_ENABLED == 'true'
     runs-on: ubuntu-latest

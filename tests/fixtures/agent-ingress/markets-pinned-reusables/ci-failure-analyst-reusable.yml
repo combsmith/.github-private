@@ -1,13 +1,19 @@
-# PINNED-USES: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@b58510275dd1cbbd13c0733c15265d51fd63b992
-# SNAPSHOT (trimmed) of petry-projects/.github-private
-# .github/workflows/ci-failure-analyst-reusable.yml @ b58510275dd1cbbd13c0733c15265d51fd63b992,
-# read 2026-10-10 for #2171 (was @79747178…, read 2026-10-02 for #2038). The
-# reusable declares NO concurrency group at workflow or job level; the markets
-# caller forwards no with: inputs.
-name: CI Failure Analyst (reusable)
+# PINNED-USES: combsmith/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable
+# SNAPSHOT (trimmed) of combsmith/.github-private
+# .github/workflows/ci-failure-analyst-reusable.yml @ ci-failure-analyst/v1-stable
+# (cc0bc61f70dc44b06059aa0582658939d9b114c6), read 2026-10-12 for #2316
+# (markets#523 repin; was @b58510275dd1cbbd13c0733c15265d51fd63b992, read
+# 2026-10-10 for #2171). The reusable declares NO concurrency group at workflow
+# or job level, and its one job id is `analyze`, so its check run under the
+# ingress is `ci-failure-analyst / analyze`. The markets caller forwards no
+# with: inputs, only the CLAUDE_CODE_OAUTH_TOKEN secret.
+name: "CI Failure Analyst — Reusable"
 
 on:
-  workflow_call: {}
+  workflow_call:
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
 
 jobs:
   analyze:

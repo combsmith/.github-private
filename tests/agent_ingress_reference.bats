@@ -101,13 +101,13 @@ for name, spec in jobs.items():
   [ "$status" -eq 0 ]
   # dev-lead: pinned to its v139-stable channel (ADR-0002; the pin moves from a
   # per-FILE tag to a per-JOB pin) with a MATCHING agent_ref forward.
-  [[ "$output" == *"job|dev-lead|uses=petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable|"*"agent_ref=dev-lead/v139-stable"* ]]
+  [[ "$output" == *"job|dev-lead|uses=combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable|"*"agent_ref=dev-lead/v139-stable"* ]]
   # pr-review-mention: pinned to its v2-next channel, and it forwards NO agent_ref.
   # The reference mirrors the real caller stub (.github/workflows/pr-review-mention.yml),
   # whose reusable declares no agent_ref input — forwarding one here would pass an
   # input the pinned pr-review-mention/v2-next channel does not declare (the
   # channel-skew defect, #1052), so agent_ref is asserted ABSENT (=-).
-  [[ "$output" == *"job|pr-review-mention|uses=petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-next|"*"agent_ref=-"* ]]
+  [[ "$output" == *"job|pr-review-mention|uses=combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-next|"*"agent_ref=-"* ]]
 }
 
 @test "reference: every job has an if: guard, parsed per job (AC #2)" {

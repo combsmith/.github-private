@@ -12,8 +12,8 @@
 FEATURE_IDEATION_YML=".github/workflows/feature-ideation.yml"
 
 # Canonical reusable + channel pin from
-# petry-projects/.github/standards/workflows/feature-ideation.yml
-REUSABLE="petry-projects/.github/.github/workflows/feature-ideation-reusable.yml"
+# combsmith/.github/standards/workflows/feature-ideation.yml
+REUSABLE="combsmith/.github/.github/workflows/feature-ideation-reusable.yml"
 # This repo pins the v1-next ring channel (major-scope repin #657).
 CHANNEL="feature-ideation/v1-next"
 
@@ -57,7 +57,7 @@ setup() {
 
 # ── #1827: tooling_ref must ride the same ring as the reusable ────────────────
 # The reusable checks out its Python tooling (requirements file, collect/validate
-# scripts) from petry-projects/.github at inputs.tooling_ref, which DEFAULTS to
+# scripts) from combsmith/.github at inputs.tooling_ref, which DEFAULTS to
 # the `v1` release tag. This repo rides the `next` ring (the reusable is pinned at
 # @feature-ideation/v1-next), but the stale `v1` tag predates
 # scripts/feature-ideation-requirements.txt — so "Install Python jsonschema" dies
@@ -167,7 +167,7 @@ setup() {
 }
 
 # ── #1733: tooling_ref lockstep — the requirements file must resolve ──────────
-# The reusable checks out petry-projects/.github at `inputs.tooling_ref` (default
+# The reusable checks out combsmith/.github at `inputs.tooling_ref` (default
 # `v1`) and installs `.feature-ideation-tooling/scripts/feature-ideation-requirements.txt`.
 # That path does NOT exist at the frozen `v1` tag (it was added after v1), so the
 # stale default fails every run at "Install Python jsonschema". This repo pins the

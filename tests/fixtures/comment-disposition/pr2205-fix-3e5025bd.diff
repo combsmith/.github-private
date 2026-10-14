@@ -1,0 +1,6 @@
+diff --git a/tests/test_advisory_offline_mode.bats b/tests/test_advisory_offline_mode.bats
+index 33d11ab02..7016eca3f 100644
+--- a/tests/test_advisory_offline_mode.bats
++++ b/tests/test_advisory_offline_mode.bats
+@@ -154,0 +155 @@ _steps_section() {
++  ! grep -q 'escalate = yes' <<<"$bullet"

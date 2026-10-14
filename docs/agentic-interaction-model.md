@@ -1,6 +1,6 @@
 # Agentic interaction model
 
-**Status:** normative (repo-local standard) · **Scope:** `petry-projects/.github-private`
+**Status:** normative (repo-local standard) · **Scope:** `combsmith/.github-private`
 · **Anchors:** the per-role interaction contracts (Story 2 / #1404), the CI validator
 `validate-interaction-model` (Story 4 / #1406), the documentation wiring (Story 7).
 
@@ -15,7 +15,7 @@ rule here rather than re-deriving it.
 > pointing back to the governing section here.
 
 It is written **repo-local first** but shaped for promotion into an org-wide
-`standards/agent-standards.md` in [`petry-projects/.github`](https://github.com/petry-projects/.github):
+`standards/agent-standards.md` in [`combsmith/.github`](https://github.com/combsmith/.github):
 the principles and rules are org-general; only the classification table (§4) is
 repo-specific inventory. When promoting, lift §§1–3 and §§6–10 verbatim and regenerate §4
 per consuming repo. This mirrors the promotion pattern already used for the off-peak
@@ -190,10 +190,9 @@ keeps its own file) carries **no** job qualifier and remains exactly one row.
 | `.github/workflows/dismiss-stale-bot-reviews.yml` | 1 | — | `pull_request:[synchronize]`, `pull_request_review:[submitted]` — reacts to a push/re-review. |
 | `.github/workflows/issue-triage-runner.yml` | 1 | — | `issues:[opened, reopened]` — reacts to a new/reopened issue. |
 | `.github/workflows/pr-review-mention.yml` | 1 | — | Mention router: `issue_comment`, `pull_request_review_comment`, `pull_request:[review_requested]`; parses + dispatches, no clock. |
-| `.github/workflows/persona-mention.yml` | 1 | — | Mention router: `issue_comment`, `pull_request_review_comment`, `discussion_comment` — dispatches to the persona runner, no clock. |
+| `.github/workflows/persona-mention.yml` | 1 | — | Mention router: `issue_comment`, `pull_request_review_comment`, `discussion_comment`, `pull_request:[opened, ready_for_review, reopened]` — dispatches to the persona runner, no clock. Sole server of qa-lead's `pull_request` advisory (#2243). |
 | `.github/workflows/auto-rebase-retry.yml` | 1 | — | `workflow_run:[completed]` on `Auto-rebase non-Dependabot PRs` — event-driven retry handler; re-runs failed jobs bounded by attempt counter. No `timer_role`: event-driven retry handlers are Class 1 regardless of semantic role (see §6.1). |
 | `.github/workflows/dependency-advisory.yml` | 1 | — | `pull_request:[opened, synchronize, reopened]` (paths-filtered to manifest files) — reacts to dependency changes in a PR; posts an advisory comment. |
-| `.github/workflows/qa-lead-pr-advisory.yml` | 1 | — | `pull_request:[opened, ready_for_review]` — reacts to a PR entering review; a test-surface gate decides whether qa-lead posts one advisory. No `schedule`; `synchronize` deliberately not wired (#1646). |
 | `.github/workflows/spec-drift.yml` | 1 | — | `pull_request:[closed]` — reacts to a merged initiative PR; runs the drift detector once and posts at most one advisory comment on the closed story. |
 | `.github/workflows/release-notes.yml` | 1 | — | `push:[main]` — reacts to a merge to main; drafts a Keep-a-Changelog entry and opens a CHANGELOG PR. `workflow_dispatch` for ad-hoc runs. |
 | `.github/workflows/gh-aw-cross-org.yml` | 1 | — | `repository_dispatch:[gh-aw-issue-triage, gh-aw-ci-failure]` — PAT-backed cross-org dispatch receiver; no schedule. |
@@ -222,6 +221,7 @@ keeps its own file) carries **no** job qualifier and remains exactly one row.
 | `.github/workflows/auto-rebase-health.yml` | 3 | — | `schedule: '43 7 * * *'` daily auto-rebase health report; cadence is the origin. |
 | `.github/workflows/engine-token-liveness.yml` | 3 | — | `schedule: '23 7 * * *'` daily engine-token preflight liveness monitor (#1587); cadence is the origin. `workflow_dispatch` for ad-hoc runs. |
 | `.github/workflows/budget-poller.yml` | 3 | — | `schedule: '17 * * * *'` + `'47 * * * *'` twice-hourly dry-run Claude budget poller (#2029; second slot because ~60% of scheduled ticks are dropped here, #2160); reads usage and logs what the breaker would do, writes no variable; cadence is the origin. |
+| `.github/workflows/budget-breaker.yml` | 2 | backstop | `workflow_run:[completed]` fast path (#2259: a dev-lead, cross-org dispatcher or retry-sweep run completed in this repository) **plus** `schedule: '6,16,26,36,46,56 * * * *'` backstop, because few scheduled ticks are delivered here; reactive budget breaker (#2153, decision #2221): reads the fleet's quota markers, and when armed sets or lifts the organisation pause variables it owns (default off; never touches a human pause). These two triggers only, by design (both run default-branch code only; no `workflow_dispatch`: the job holds the variable-write credential), and the triggering run is never read; idempotent, so an extra or missed wake-up changes nothing. |
 
 > **Out-of-scope workflows (exclusion list).** The completeness check (§10) ignores the paths
 > below. A workflow absent from both this table and this list is a completeness failure.
@@ -483,7 +483,7 @@ human has applied them. It is **CI-verified, not trusted** — `validate-interac
   universal brake `needs-human-review` — the label `pr_has_escalation_label`
   (`scripts/lib/pr-automation-budget.sh`) checks on the event-driven surface. The mention
   router now reads a persona's `stop_markers` straight from this contract
-  (petry-projects/.github#1133), so a persona that omits the brake is **routed on a mention
+  (combsmith/.github#1133), so a persona that omits the brake is **routed on a mention
   even after a human applies it** — the fail-open asymmetry #1745 fixes. The validator
   derives the marker from the serving script, never re-listing it as a literal (#1745 AC #2).
 - **A declared marker must be honoured somewhere.** The honoured set for a persona is its own
@@ -501,7 +501,7 @@ naming the surface and the reason) rather than leaving the asymmetry implicit. S
 evaluate labels at all (see discussions below) are out of scope for this rule and are handled
 separately by the router's fail-closed refusal.
 
-**Discussions have no labels API (#1318, petry-projects/.github#755 residual).** The
+**Discussions have no labels API (#1318, combsmith/.github#755 residual).** The
 discussion surface exposes no labels, so label-based `stop_markers` **cannot be evaluated
 there** at all. The deployed router states this behaviour deliberately rather than leaving it
 implicit: on a discussion it **routes in read/advisory mode** (where there is no write to gate)
@@ -516,7 +516,7 @@ Two options were considered:
 
 - **(a) Extend `persona.yml`** with an `interaction:` block. Attractive (one manifest per
   role) but **blocked cross-repo**: `personas/validate-personas.py` validates every
-  `persona.yml` against `persona.schema.json` fetched from **`petry-projects/.github`**
+  `persona.yml` against `persona.schema.json` fetched from **`combsmith/.github`**
   (`standards/personas/persona.schema.json`). Adding an `interaction` block to `persona.yml`
   requires that **external schema to permit the fields first** — otherwise validation fails
   the moment the field appears. That is a cross-repo change on another repo's release
@@ -534,7 +534,7 @@ the validator hermetic, and matches this document's "repo-local first" posture.
 
 **Cross-repo implication to sequence (Story 2 / epic `untracked_prerequisites`):** promoting
 the contract into `persona.yml` later is the eventual home, but it is **gated on**
-`petry-projects/.github` extending `persona.schema.json` to allow the `interaction` block.
+`combsmith/.github` extending `persona.schema.json` to allow the `interaction` block.
 Sequence, in order: (1) land the `interaction` object in the org `persona.schema.json`; (2)
 release it on the schema's consumed ref; (3) only then move the contract into `persona.yml`
 and delete the standalone file. Doing (3) first breaks `validate-personas.py` for every
@@ -551,16 +551,34 @@ More numbers would be more false comfort.
 
 The ceiling is therefore the **existing** two controls, and they remain authoritative:
 
-1. **The per-PR automation budget** — `MAX_PR_AUTOMATION_CYCLES=10` in
+1. **The per-PR automation budget** — `MAX_PR_AUTOMATION_CYCLES=50` in
    `scripts/lib/pr-automation-budget.sh`. It counts agent-authored commits + review cycles +
    acks **since the last human interaction** (action-counting, not failure-counting; per-PR,
    not per-worker — §7 rules 3, 4). On exhaustion it stops all automated writes, adds
    `needs-human-review`, disables auto-merge, and posts one deduped escalation. Re-engagement
    is **human-gated** (§7 rule 2); `FORCE_REVIEW` does not bypass it.
+
+   Who is "automated" is decided by login (`*[bot]` or `AUTOMATION_BOT_LOGINS`), with two
+   corrections (#2224). On a PR authored by `dependabot[bot]`, the merge pipeline's own
+   events (Dependabot's commit, the dependabot-automerge App's branch updates and
+   re-approvals) neither count nor reset: a push to `main` causes them, not an agent
+   answering an agent. And a comment or review that carries one of our automation markers
+   is an agent event whatever login posted it: it counts and it never resets, because
+   dev-lead, the personas and auto-rebase post as the owner account. **Known limit:** a
+   commit, an unmarked comment or a review with no marker in its body that an agent makes
+   under the owner account still reads as a human interaction and resets the budget. That
+   includes review-thread replies: the reply text (`/pulls/{pr}/comments`) is not read, but
+   each reply arrives as a review with an empty body, and that review is collected.
+
+   The cap of 50 is set from measurement so that only extreme cases trip it (#2224). Across
+   332 agent-authored PRs (2026-09-10 to 2026-10-10, plus those still open), the peak count
+   between two human interactions was median 10, p95 25, p99 35; no PR that merged went
+   above 35 and one PR exceeded 50. #860 peaks at 1,487 under the same rule.
 2. **The runaway detector** — the pushed detection signal in
    `daily-pr-review-health` / `scripts/fleet_monitor.sh` that flags open PRs over soft
    thresholds (commit/comment/cycle counts, or open >48h with active agent churn), so a
-   runaway is surfaced rather than waited-on (§7 rule 7).
+   runaway is surfaced rather than waited-on (§7 rule 7). Its cycle threshold is 25, half
+   the budget cap, so a PR is reported well before it is stopped.
 
 **Rule.** A new agentic role or timer must obey these two ceilings and declare which via its
 contract's `budget` field (§8.1). It must **not** invent its own numeric cap as a substitute
