@@ -33,7 +33,7 @@ setup() {
   OUT_DIR="$STUB_DIR/cascade"
   mkdir -p "$OUT_DIR"
 
-  PR_URL="https://github.com/petry-projects/example/pull/42"
+  PR_URL="https://github.com/combsmith/example/pull/42"
   STAMPED_SHA="abc123def456"
 }
 

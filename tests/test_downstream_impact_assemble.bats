@@ -31,9 +31,9 @@ setup() {
 on: pull_request
 jobs:
   review:
-    uses: petry-projects/.github-private/.github/workflows/pr-review.yml@v1
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@v1
   dl:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@v1
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@v1
 '
   export CALLER_WF_B64
   CALLER_WF_B64="$(printf '%s' "$CALLER_WF_CONTENT" | base64)"
@@ -87,8 +87,8 @@ STUBEOF
   [ "$status" -eq 0 ]
   [ -f "$OUT_FILE" ]
   grep -q ".github/workflows/pr-review.yml" "$OUT_FILE"
-  grep -q "petry-projects/alpha" "$OUT_FILE"
-  grep -q "petry-projects/bravo" "$OUT_FILE"
+  grep -q "combsmith/alpha" "$OUT_FILE"
+  grep -q "combsmith/bravo" "$OUT_FILE"
   grep -q ".github/workflows/caller.yml" "$OUT_FILE"
   # The block is not the literal "(none)" when something is impacted.
   ! grep -qx "(none)" "$OUT_FILE" || false
@@ -106,7 +106,7 @@ STUBEOF
   run assemble_downstream_impact ".github/workflows/pr-review.yml" "$MANIFEST" "$OUT_FILE"
   [ "$status" -eq 0 ]
   [ -f "$OUT_FILE" ]
-  grep -q "petry-projects/alpha" "$OUT_FILE"
+  grep -q "combsmith/alpha" "$OUT_FILE"
   grep -q "unreadable" "$OUT_FILE"
 }
 

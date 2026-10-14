@@ -20,7 +20,7 @@ jobs:
     concurrency:
       group: "ci-failure-analyst-${{ github.event.check_run.head_sha }}"
       cancel-in-progress: false
-    uses: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable
+    uses: combsmith/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable
     permissions:
       checks: read
 
@@ -35,6 +35,6 @@ jobs:
         || format('pr-auto-review-ready-check-review-{0}', github.event.pull_request.number)
         }}
       cancel-in-progress: true
-    uses: petry-projects/.github/.github/workflows/pr-auto-review-reusable.yml@pr-auto-review/v1-stable
+    uses: combsmith/.github/.github/workflows/pr-auto-review-reusable.yml@pr-auto-review/v1-stable
     permissions:
       pull-requests: read

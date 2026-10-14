@@ -32,7 +32,7 @@ setup() {
   OUT_DIR="$STUB_DIR/cascade"
   mkdir -p "$OUT_DIR"
 
-  PR_URL="https://github.com/petry-projects/example/pull/42"
+  PR_URL="https://github.com/combsmith/example/pull/42"
   SHA="abc123def456"
 
   # A full diff (more lines than any triage truncation) written to a file the
@@ -45,7 +45,7 @@ setup() {
   # Metadata JSON the `gh pr view` stub returns — a superset of every field the
   # deep/audit/single (headRepository/headRepositoryOwner) and rubber-duck
   # (repository) prompts read.
-  export STUB_META_JSON='{"number":42,"title":"T","headRefOid":"abc123def456","headRepository":{"name":"example"},"headRepositoryOwner":{"login":"petry-projects"},"repository":{"name":"example"},"files":[{"path":"a.sh","status":"modified","additions":3,"deletions":1,"patch":"@@"}],"reviews":[],"comments":[],"commits":[]}'
+  export STUB_META_JSON='{"number":42,"title":"T","headRefOid":"abc123def456","headRepository":{"name":"example"},"headRepositoryOwner":{"login":"combsmith"},"repository":{"name":"example"},"files":[{"path":"a.sh","status":"modified","additions":3,"deletions":1,"patch":"@@"}],"reviews":[],"comments":[],"commits":[]}'
 }
 
 teardown() {
