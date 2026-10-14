@@ -1,12 +1,12 @@
-# Deploy this file to combsmith/.github as:
+# Deploy this file to petry-projects/.github as:
 #   .github/workflows/pr-review-mention.yml
 #
 # Purpose: Trigger the pr-review-agent whenever @petry-review-bot is mentioned
-#          in a PR comment or review comment within the combsmith org.
+#          in a PR comment or review comment within the petry-projects org.
 #
 # Prerequisites:
 #   Uses GH_PAT_WORKFLOWS (org-level secret, classic PAT with repo scope) — already
-#   present in combsmith. No additional secret setup required.
+#   present in petry-projects. No additional secret setup required.
 
 name: PR Review — Mention Trigger
 
@@ -90,7 +90,7 @@ jobs:
           gh api \
             --method POST \
             --header "Accept: application/vnd.github+json" \
-            /repos/combsmith/.github-private/dispatches \
+            /repos/petry-projects/.github-private/dispatches \
             --field event_type=pr-review-mention \
             --field "client_payload[pr_url]=$PR_URL"
           echo "Dispatch sent for $PR_URL"

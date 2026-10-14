@@ -115,7 +115,7 @@ first-party plumbing. Do **not** rate a PR HIGH on those grounds when ALL hold
 (or a `SAFETY_CHECKS` block reports `TRUSTED_STUB_SYNC: true`): every changed
 file is a `.github/workflows/*.yml` caller stub; it is bot-authored or a
 standards-sync PR; secrets are only forwarded (`secrets: inherit` / a
-`secrets:`/`with:`/`env:` map) to a pinned `combsmith/*` reusable with no
+`secrets:`/`with:`/`env:` map) to a pinned `petry-projects/*` reusable with no
 secret piped into a `run:` step; and no third-party reusable-workflow call is
 added. Forwarding `secrets: inherit` to a first-party reusable is the
 org-standard, SonarCloud-suppressed (S7635) pattern, shipped through a canary

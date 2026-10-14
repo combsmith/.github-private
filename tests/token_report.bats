@@ -141,8 +141,8 @@ setup() {
 
 @test "render_token_report: by-repo sorted by cost (markets first)" {
   run render_token_report "$FIXTURES" 7 2 2 2026-06-07
-  repos="$(printf '%s\n' "$output" | grep -oE 'combsmith/(markets|broodly)' | head -2 | tr '\n' ' ')"
-  [ "$repos" = "combsmith/markets combsmith/broodly " ]
+  repos="$(printf '%s\n' "$output" | grep -oE 'petry-projects/(markets|broodly)' | head -2 | tr '\n' ' ')"
+  [ "$repos" = "petry-projects/markets petry-projects/broodly " ]
 }
 
 @test "render_token_report: flags unpriced calls" {
@@ -165,7 +165,7 @@ setup() {
   # >10 distinct PR contexts — the top-10 limit must not abort under pipefail.
   tmp="$(mktemp -d)"
   for i in $(seq 1 25); do
-    printf '{"ts":"2026-06-01T00:00:00Z","workflow":"pr-review","tier":"single","model":"claude-haiku-4-5-20251001","input_tokens":%d,"cache_read_tokens":0,"output_tokens":10,"repo":"combsmith/r","context":"https://github.com/combsmith/r/pull/%d"}\n' "$((i * 100))" "$i" >> "$tmp/many.jsonl"
+    printf '{"ts":"2026-06-01T00:00:00Z","workflow":"pr-review","tier":"single","model":"claude-haiku-4-5-20251001","input_tokens":%d,"cache_read_tokens":0,"output_tokens":10,"repo":"petry-projects/r","context":"https://github.com/petry-projects/r/pull/%d"}\n' "$((i * 100))" "$i" >> "$tmp/many.jsonl"
   done
   run render_token_report "$tmp" 7 1 1 2026-06-07
   rm -rf "$tmp"
@@ -279,7 +279,7 @@ setup() {
 
 @test "render_token_report: shows first 35 chars of PR title from PR_TITLE_FILE" {
   local tf; tf="$(mktemp)"
-  printf 'https://github.com/combsmith/markets/pull/1\tFix the widget alignment bug in the dashboard header\n' > "$tf"
+  printf 'https://github.com/petry-projects/markets/pull/1\tFix the widget alignment bug in the dashboard header\n' > "$tf"
   export PR_TITLE_FILE="$tf"
   run render_token_report "$FIXTURES" 7 2 2 2026-06-07
   unset PR_TITLE_FILE; rm -f "$tf"
@@ -291,7 +291,7 @@ setup() {
 
 @test "render_token_report: PR title pipes are sanitized so the table doesn't break" {
   local tf; tf="$(mktemp)"
-  printf 'https://github.com/combsmith/markets/pull/1\tfix a|b parser\n' > "$tf"
+  printf 'https://github.com/petry-projects/markets/pull/1\tfix a|b parser\n' > "$tf"
   export PR_TITLE_FILE="$tf"
   run render_token_report "$FIXTURES" 7 2 2 2026-06-07
   unset PR_TITLE_FILE; rm -f "$tf"
@@ -329,7 +329,7 @@ setup() {
     gh() { return 1; }
     export -f gh
     source '${BATS_TEST_DIRNAME}/../scripts/token_report.sh'
-    export ORG=combsmith LOOKBACK_DAYS=7
+    export ORG=petry-projects LOOKBACK_DAYS=7
     collect_org_jsonl '${tmpdir}' 2>&1
   "
   rm -rf "$tmpdir"
@@ -343,14 +343,14 @@ setup() {
   run bash -c "
     gh() {
       case \"\$2\" in
-        orgs/*/repos*) echo 'combsmith/test-repo'; return 0;;
+        orgs/*/repos*) echo 'petry-projects/test-repo'; return 0;;
         repos/*/actions/artifacts*) return 1;;
         *) return 1;;
       esac
     }
     export -f gh
     source '${BATS_TEST_DIRNAME}/../scripts/token_report.sh'
-    export ORG=combsmith LOOKBACK_DAYS=7
+    export ORG=petry-projects LOOKBACK_DAYS=7
     collect_org_jsonl '${tmpdir}' 2>&1
   "
   rm -rf "$tmpdir"
@@ -391,7 +391,7 @@ setup() {
   run bash -c "
     gh() {
       case \"\$2\" in
-        orgs/*/repos*) echo 'combsmith/test-repo'; return 0;;
+        orgs/*/repos*) echo 'petry-projects/test-repo'; return 0;;
         repos/*/actions/artifacts/*/zip) return 1;;
         repos/*/actions/artifacts*)
           printf '{\"artifacts\":[{\"name\":\"token-usage-x\",\"id\":999,\"expired\":false,\"created_at\":\"2099-01-01T00:00:00Z\"}]}'
@@ -401,7 +401,7 @@ setup() {
     }
     export -f gh
     source '${BATS_TEST_DIRNAME}/../scripts/token_report.sh'
-    export ORG=combsmith LOOKBACK_DAYS=7
+    export ORG=petry-projects LOOKBACK_DAYS=7
     collect_org_jsonl '${tmpdir}' 2>&1
   "
   rm -rf "$tmpdir"
@@ -460,7 +460,7 @@ PY
     export FIXZIP='$fixzip'
     gh() {
       case \"\$2\" in
-        orgs/*/repos*) echo 'combsmith/test-repo'; return 0;;
+        orgs/*/repos*) echo 'petry-projects/test-repo'; return 0;;
         repos/*/actions/artifacts/111/zip) cat \"\$FIXZIP\"; return 0;;
         repos/*/actions/artifacts/999/zip) sleep 20; return 0;;
         repos/*/actions/artifacts*)
@@ -471,7 +471,7 @@ PY
     }
     export -f gh
     source '${BATS_TEST_DIRNAME}/../scripts/token_report.sh'
-    export ORG=combsmith LOOKBACK_DAYS=3650 COLLECT_CONCURRENCY=4
+    export ORG=petry-projects LOOKBACK_DAYS=3650 COLLECT_CONCURRENCY=4
     # Deliberately NOT exported: collect_org_jsonl must propagate it to the workers
     # itself, or the per-download timeout silently disables in the parallel fan-out.
     ARTIFACT_OP_TIMEOUT=1

@@ -6,7 +6,7 @@ set -euo pipefail
 # The org standard: name a model FAMILY (opus|sonnet|haiku) and let
 # ai_model_for_family (scripts/lib/engine-models.sh) return the current id, so a
 # model swap is one variable/chain edit rather than a hunt across the tree
-# (companion combsmith/.github#1199).
+# (companion petry-projects/.github#1199).
 #
 # A "pin" is any concrete, digit-versioned Claude id — claude-<family>-<digit>…
 # (opus|sonnet|haiku|fable) — appearing under a scanned directory. Two escape

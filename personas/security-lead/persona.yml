@@ -6,7 +6,7 @@
 # The vendored agent it wraps carries a person-name upstream ("Sam"); that stays
 # upstream. We point at it only by its technical skill id (`framework.skill`).
 #
-# Validate against: combsmith/.github standards/personas/persona.schema.json
+# Validate against: petry-projects/.github standards/personas/persona.schema.json
 
 schema_version: 1
 
@@ -23,7 +23,7 @@ summary: >-
 # README). Promote once a dedicated advisory workflow + release are added.
 status: draft
 
-owner: combsmith/org-leads
+owner: petry-projects/org-leads
 
 # --- How humans address this persona (§4.1) --------------------------------
 # An org TEAM handle, never a user account: '@security-lead' is a real, live
@@ -35,7 +35,7 @@ owner: combsmith/org-leads
 #   privacy: closed                               (secret teams are unmentionable)
 #   notification_setting: notifications_disabled  (routes a webhook, not a page)
 address:
-  handle: combsmith/security-lead
+  handle: petry-projects/security-lead
 
 definition:
   layers:
@@ -46,7 +46,7 @@ definition:
       path: frameworks/bmad-bgreat-suite/src/agents/bgr-agent-sam-security
       framework:
         name: bmad-bgreat-suite
-        upstream_repo: combsmith/bmad-bgreat-suite
+        upstream_repo: petry-projects/bmad-bgreat-suite
         vendor_pin: ae8914e84b87       # matches frameworks/bmad-bgreat-suite/VENDOR.md
         skill: bgr-agent-sam-security
       # No local_overrides today. When security-lead gains an org-specific
@@ -68,7 +68,7 @@ triggers:
       events: [created]
       enabled: true
       mode: advisory
-      notes: "Direct invocation: '@combsmith/security-lead threat-model this design'."
+      notes: "Direct invocation: '@petry-projects/security-lead threat-model this design'."
 
     - surface: issues
       events: [labeled, commented]
@@ -107,4 +107,4 @@ evals:
 references:
   - "frameworks/bmad-bgreat-suite/VENDOR.md"
   - "agents/compliance-auditor.md (overlapping surface — advisory persona, not a replacement)"
-  - "combsmith/.github standards/persona-standards.md"
+  - "petry-projects/.github standards/persona-standards.md"

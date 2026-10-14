@@ -10,7 +10,7 @@ DEPENDABOT_YML=".github/dependabot.yml"
 AUTOMERGE_YML=".github/workflows/dependabot-automerge.yml"
 REBASE_YML=".github/workflows/dependabot-rebase.yml"
 # This repo (.github-private) pins the v2-next ring channel (major-scope repin #657).
-# The org compliance audit is ring-aware (combsmith/.github#529).
+# The org compliance audit is ring-aware (petry-projects/.github#529).
 AUTOMERGE_CHANNEL="dependabot-automerge/v2-next"
 REBASE_CHANNEL="dependabot-rebase/v2-next"
 
@@ -48,7 +48,7 @@ setup() {
 }
 
 @test "dependabot-automerge.yml pins the reusable to the next ring channel (compliance-audit check)" {
-  grep -qE "^[[:space:]]*uses:[[:space:]]*combsmith/\.github/\.github/workflows/dependabot-automerge-reusable\.yml@${AUTOMERGE_CHANNEL}[[:space:]]*\$" "$AUTOMERGE_YML"
+  grep -qE "^[[:space:]]*uses:[[:space:]]*petry-projects/\.github/\.github/workflows/dependabot-automerge-reusable\.yml@${AUTOMERGE_CHANNEL}[[:space:]]*\$" "$AUTOMERGE_YML"
 }
 
 @test "dependabot-automerge.yml does not reference an off-channel pin" {
@@ -70,7 +70,7 @@ setup() {
   # The pin is major-scoped (v2) and on the next ring, matching this repo's
   # ring-0 posture (finding #1392 → non-stub-dependabot-rebase.yml). A trailing
   # NOSONAR annotation is permitted after the ref.
-  grep -qE "^[[:space:]]*uses:[[:space:]]*combsmith/\.github/\.github/workflows/dependabot-rebase-reusable\.yml@${REBASE_CHANNEL}([[:space:]]|\$)" "$REBASE_YML"
+  grep -qE "^[[:space:]]*uses:[[:space:]]*petry-projects/\.github/\.github/workflows/dependabot-rebase-reusable\.yml@${REBASE_CHANNEL}([[:space:]]|\$)" "$REBASE_YML"
 }
 
 @test "dependabot-rebase.yml does not reference an off-channel pin" {

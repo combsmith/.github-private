@@ -1,6 +1,6 @@
 # How to add an agentic role
 
-**Status:** runbook (repo-local) · **Scope:** `combsmith/.github-private`
+**Status:** runbook (repo-local) · **Scope:** `petry-projects/.github-private`
 · **Companion to:** [`docs/agentic-interaction-model.md`](./agentic-interaction-model.md) (the normative standard)
 
 This is the step-by-step for introducing a new agentic role — a workflow that reacts to
@@ -230,6 +230,6 @@ A contract that fails these checks blocks the PR.
 
 The **full cross-check** — verifying that a workflow's `on:` block, its §4 classification
 row, and its contract all agree — is **enforced** by Story 4 /
-[#1406](https://github.com/combsmith/.github-private/issues/1406)
+[#1406](https://github.com/petry-projects/.github-private/issues/1406)
 ([`validate-interaction-model`](./agentic-interaction-model.md#10-how-this-document-is-enforced)).
 Keep the three artefacts in sync; a mismatch fails CI and blocks merge.

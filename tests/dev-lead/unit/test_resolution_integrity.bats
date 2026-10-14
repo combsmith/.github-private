@@ -2,7 +2,7 @@
 # Unit tests for scripts/lib/resolution-integrity.sh (#1609, slice 1 of 2).
 #
 # The #1567/#1604 fix moved the evidence bar onto the `status=applied` claim only
-# — it does NOT gate thread resolution. On combsmith/.github#1024 all 18 open
+# — it does NOT gate thread resolution. On petry-projects/.github#1024 all 18 open
 # threads (including a Critical unmatched-brace finding) went resolved between
 # 14:00Z and 14:03Z with NO commit at all: head stayed at 30375c5c. `ri_may_resolve`
 # is the pure predicate that makes that resolution impossible — it fails closed

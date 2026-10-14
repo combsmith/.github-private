@@ -23,7 +23,7 @@
 #   * main() does the network I/O: dispatch, poll, log fetch.
 #
 # Env vars consumed:
-#   REPO                 owner/repo hosting the driver (default combsmith/.github-private)
+#   REPO                 owner/repo hosting the driver (default petry-projects/.github-private)
 #   CANARY_TARGET        fixture target repo owner/repo to dry-run drive (required)
 #   CANARY_EPIC          fixture epic number in the target repo (required; positive int)
 #   WORKFLOW_FILE        driver workflow to dispatch (default initiative-driver.yml)
@@ -36,7 +36,7 @@
 
 set -euo pipefail
 
-REPO="${REPO:-combsmith/.github-private}"
+REPO="${REPO:-petry-projects/.github-private}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-initiative-driver.yml}"
 # Emitted by scripts/initiative-driver.sh in its DRY_RUN branch for each ready
 # sub-issue. Its absence in a configured run means the path resolved to nothing.

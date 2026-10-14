@@ -7,7 +7,7 @@
 #   resolve_addressed_bot_threads() (dev-lead-fix-reviews.sh) resolved a bot thread
 #   the moment its LAST reply carried `<!-- dev-lead:addressed -->` and was authored
 #   by our account. It verified WHO claimed and THAT a claim was made — never
-#   WHETHER the claim was true. On combsmith/.github PR #1044 three functions
+#   WHETHER the claim was true. On petry-projects/.github PR #1044 three functions
 #   were byte-identical between two commits, carried addressed-markers, and were
 #   resolved exactly as designed. It also read `comments(last:1)` only, so an earlier
 #   maintainer "ACCEPTED — required before merge" reply went invisible the moment the
@@ -546,7 +546,7 @@ _acv_is_iso8601() {
 #   NOT already contained in the pre-pass base (<in_base>). Without it a reply citing
 #   the PR's FIRST commit — the head the model read with `git rev-parse HEAD` before
 #   committing anything — passed the on-head + intersection checks trivially (the
-#   combsmith/.github#1220 `571a3b8` case). This is the thread-path parity of the
+#   petry-projects/.github#1220 `571a3b8` case). This is the thread-path parity of the
 #   issue-comment `fixed` check in resolve_dispositioned_comments (#1813).
 #   <on_ref>/<in_base> are the literal strings "true"/"false" from
 #   acv_gather_commit_facts; anything else fails closed. Echoes one token —

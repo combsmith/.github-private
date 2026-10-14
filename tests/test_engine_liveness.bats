@@ -65,7 +65,7 @@ DATEEOF
 
   # Drive the repo/stub set explicitly so no consumer manifest or network is
   # needed. Two repos so a fleet-wide (>=2 repos) outage is expressible.
-  export ENGINE_LIVENESS_REPOS="combsmith/repo-a combsmith/repo-b"
+  export ENGINE_LIVENESS_REPOS="petry-projects/repo-a petry-projects/repo-b"
   export ENGINE_LIVENESS_STUBS="dev-lead.yml"
   export GH_TOKEN="dummy-token-for-stub"
 }

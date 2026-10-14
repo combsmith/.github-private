@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/token-report.yml
+# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/token-report.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • Weekly Token Cost Observatory report. The org-wide collection + aggregation
@@ -24,7 +24,7 @@ on:
       org:
         description: "GitHub org to scan"
         required: false
-        default: "combsmith"
+        default: "petry-projects"
         type: string
       lookback_days:
         description: "Days of token-usage history to include"
@@ -70,7 +70,7 @@ permissions:
 # A canary dispatch gets its own group so it can neither cancel nor be cancelled
 # by the scheduled org-wide report.
 concurrency:
-  group: token-report-${{ inputs.org || 'combsmith' }}${{ inputs.run_canary && '-canary' || '' }}
+  group: token-report-${{ inputs.org || 'petry-projects' }}${{ inputs.run_canary && '-canary' || '' }}
   cancel-in-progress: true
 
 jobs:
@@ -85,14 +85,14 @@ jobs:
     # per-download-timeout collection in scripts/token_report.sh.
     timeout-minutes: 60
     env:
-      ORG: ${{ inputs.org || 'combsmith' }}
+      ORG: ${{ inputs.org || 'petry-projects' }}
       LOOKBACK_DAYS: ${{ inputs.lookback_days || '7' }}
 
     steps:
       - name: Checkout agent repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          repository: combsmith/.github-private
+          repository: petry-projects/.github-private
           ref: main
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
 
@@ -217,7 +217,7 @@ jobs:
       - name: Checkout agent repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          repository: combsmith/.github-private
+          repository: petry-projects/.github-private
           ref: main
           persist-credentials: false
 

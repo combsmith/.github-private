@@ -19,7 +19,7 @@ except ImportError:
     yaml = None
 
 WORKFLOW = ".github/workflows/auto-rebase.yml"
-REUSABLE = "combsmith/.github/.github/workflows/auto-rebase-reusable.yml"
+REUSABLE = "petry-projects/.github/.github/workflows/auto-rebase-reusable.yml"
 EXPECTED_REF = "@auto-rebase/v2-next"
 SHA_PATTERN = re.compile(r"@[0-9a-f]{40}\b")
 

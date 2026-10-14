@@ -1,13 +1,13 @@
 {
   "impacted_consumers": [
     {
-      "repo": "combsmith/alpha",
+      "repo": "petry-projects/alpha",
       "via": [
         ".github/workflows/pr-review.yml"
       ]
     },
     {
-      "repo": "combsmith/bravo",
+      "repo": "petry-projects/bravo",
       "via": [
         ".github/workflows/pr-review.yml"
       ]

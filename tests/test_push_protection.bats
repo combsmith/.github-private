@@ -45,7 +45,7 @@ teardown() {
 
 # ---------------------------------------------------------------------------
 # Drift guard (#1133): the enforced key set must stay in lock-step with the org
-# standard — combsmith/.github → standards/push-protection.md (the
+# standard — petry-projects/.github → standards/push-protection.md (the
 # security_and_analysis table). This repo's lean key list and .github's larger
 # structured apply/audit list are purpose-built variants of the SAME standard
 # (kept separate on purpose, epic #613), so an "includes" test per key is not
@@ -165,7 +165,7 @@ teardown() {
 
 # ---------------------------------------------------------------------------
 # secret_scan_ci_job_present — ci.yml must use gitleaks/gitleaks-action
-# (mirrors the org compliance check in combsmith/.github/standards/
+# (mirrors the org compliance check in petry-projects/.github/standards/
 # push-protection.md#compliance-audit-checks)
 # ---------------------------------------------------------------------------
 

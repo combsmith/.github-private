@@ -1,7 +1,7 @@
 {
   "consumers": [
     {
-      "repo": "combsmith/alpha",
+      "repo": "petry-projects/alpha",
       "refs": [
         ".github-private/.github/workflows/dev-lead-reusable.yml",
         ".github-private/.github/workflows/pr-review.yml",
@@ -9,20 +9,20 @@
       ]
     },
     {
-      "repo": "combsmith/bravo",
+      "repo": "petry-projects/bravo",
       "refs": [
         ".github-private/.github/workflows/pr-review.yml"
       ]
     },
     {
-      "repo": "combsmith/charlie",
+      "repo": "petry-projects/charlie",
       "refs": [
         ".github-private/.github/workflows/dev-lead-reusable.yml",
         ".github/.github/workflows/agent-shield-reusable.yml"
       ]
     },
     {
-      "repo": "combsmith/delta",
+      "repo": "petry-projects/delta",
       "refs": [
         ".github/.github/workflows/auto-rebase-reusable.yml"
       ]

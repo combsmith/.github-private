@@ -1,13 +1,13 @@
 {
   "impacted_consumers": [
     {
-      "repo": "combsmith/alpha",
+      "repo": "petry-projects/alpha",
       "via": [
         ".github/workflows/dev-lead-reusable.yml"
       ]
     },
     {
-      "repo": "combsmith/charlie",
+      "repo": "petry-projects/charlie",
       "via": [
         ".github/workflows/dev-lead-reusable.yml"
       ]

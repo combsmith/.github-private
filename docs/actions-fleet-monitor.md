@@ -29,8 +29,8 @@ To trigger manually:
 
 ```bash
 gh workflow run actions-fleet-monitor.yml \
-  --repo combsmith/.github-private \
-  --field org=combsmith \
+  --repo petry-projects/.github-private \
+  --field org=petry-projects \
   --field lookback_days=7
 ```
 
@@ -39,9 +39,9 @@ To invoke from another workflow:
 ```yaml
 jobs:
   monitor:
-    uses: combsmith/.github-private/.github/workflows/actions-fleet-monitor.yml@main
+    uses: petry-projects/.github-private/.github/workflows/actions-fleet-monitor.yml@main
     with:
-      org: combsmith
+      org: petry-projects
       lookback_days: '7'
     secrets: inherit
 ```
@@ -57,7 +57,7 @@ Issue creation uses `github.token` with `context.repo`:
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `org` | no | `combsmith` | GitHub org to scan — all non-archived repos discovered automatically |
+| `org` | no | `petry-projects` | GitHub org to scan — all non-archived repos discovered automatically |
 | `lookback_days` | no | `1` | Rolling window of run history to inspect |
 
 ## Environment variables (script)
@@ -90,4 +90,4 @@ Thresholds are defined in `scripts/fleet_monitor.sh`.
 
 ## RFC
 
-See [Discussion #193](https://github.com/combsmith/.github-private/discussions/193) for the design discussion behind this monitor.
+See [Discussion #193](https://github.com/petry-projects/.github-private/discussions/193) for the design discussion behind this monitor.

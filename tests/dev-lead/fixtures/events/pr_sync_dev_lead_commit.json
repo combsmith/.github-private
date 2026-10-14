@@ -11,13 +11,13 @@
     "head": {
       "sha": "ccc333ddd444",
       "ref": "feat/auto-fix",
-      "repo": { "full_name": "combsmith/.github-private" }
+      "repo": { "full_name": "petry-projects/.github-private" }
     },
     "base": {
       "ref": "main",
-      "repo": { "full_name": "combsmith/.github-private" }
+      "repo": { "full_name": "petry-projects/.github-private" }
     }
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "donpetry-bot", "type": "Bot" }
 }
