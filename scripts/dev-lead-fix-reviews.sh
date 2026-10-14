@@ -3931,7 +3931,6 @@ If the test really is wrong, a human should make that call, or the fix should ca
 # push (#2185). <rows> are `path\ttemplate` lines (empty when the scan was unknown).
 # Same escalation as flag_test_tamper; the comment answers the bot suggestion as
 # declined and points at each template in combsmith/.github. [body]
-# declined and points at each template in petry-projects/.github. [body]
 # replaces that comment (the rebase pass, whose branch was already pushed: #2232).
 flag_sync_stub_drift() {
   local intent="$1" rows="$2" body="${3:-}"

@@ -33,7 +33,7 @@ setup() {
 _stub_body() {
   local variant="${1:-sync}"
   cat <<EOF
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/persona-mention.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/persona-mention.yml
 # Do not change the trigger events in a consumer repo.
 name: Persona Mention (${variant})
 on:
@@ -41,7 +41,7 @@ on:
     types: [created]
 jobs:
   route:
-    uses: petry-projects/.github/.github/workflows/persona-mention-reusable.yml@v1
+    uses: combsmith/.github/.github/workflows/persona-mention-reusable.yml@v1
 EOF
 }
 
@@ -51,7 +51,7 @@ _hl_body() {
 name: dev-lead (${variant})
 jobs:
   dispatch:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
 EOF
 }
 
@@ -70,7 +70,7 @@ _mk_pr() {
   mkdir -p .github/workflows scripts prompts
   printf '#!/usr/bin/env bash\necho ok\n' > scripts/ok.sh
   printf 'line1\nline2\n' > README.md
-  printf '# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/ci.yml\nname: ci\n' > "$CI_STUB"
+  printf '# SOURCE OF TRUTH: combsmith/.github/standards/workflows/ci.yml\nname: ci\n' > "$CI_STUB"
   git add -A; git commit -q -m base
   MB="$(git rev-parse HEAD)"
   git checkout -q -b feat
@@ -352,7 +352,7 @@ PIN="sed -i 's/@v1\$/@0123456789abcdef0123456789abcdef01234567/' '$STUB'"
   _mk_pr
   _main_moves main
   _e2e_stubs "$SYNC_PR_JSON"
-  _engine "printf '# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/persona-mention.yml\\nname: hand-merged\\n' > '$STUB'"
+  _engine "printf '# SOURCE OF TRUTH: combsmith/.github/standards/workflows/persona-mention.yml\\nname: hand-merged\\n' > '$STUB'"
   _run_rebase
   [[ "$(_remote_blob "$STUB")" == "$(_blob "origin/main:${STUB}")" ]]
   grep -q 'dev-lead-sync-stub-restore' "$REC"
@@ -445,7 +445,7 @@ HOOK
 @test "ssg_rebase_record: a header stub added on the base after the merge base is recorded when base_rev is given" {
   _mk_pr
   git checkout -q main
-  printf '# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/new.yml\nname: new\n' > .github/workflows/new.yml
+  printf '# SOURCE OF TRUTH: combsmith/.github/standards/workflows/new.yml\nname: new\n' > .github/workflows/new.yml
   git add -A; git commit -q -m "main adds stub"; git push -q origin main; git fetch -q origin
   run ssg_rebase_record "$PRE" "$MB"
   run grep -q 'new.yml' <<<"$output"
