@@ -10,6 +10,7 @@ LIB="$SCRIPT_DIR/scripts/lib/engine-chain.sh"
 setup() {
   unset AI_ENGINES DEV_LEAD_ENGINES AI_DUCK_ENGINE AI_DUCK_MODEL
   unset CLAUDE_AVAILABLE GEMINI_AVAILABLE COPILOT_AVAILABLE REVIEW_ENGINE
+  unset GOOGLE_API_KEY GOOGLE_API_KEY_2 GOOGLE_API_KEY_3 GOOGLE_API_KEY_4 GEMINI_API_KEY
   # shellcheck source=../../../scripts/lib/engine-chain.sh
   source "$LIB"
 }
