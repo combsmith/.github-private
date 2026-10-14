@@ -88,6 +88,19 @@ _validate_with() {
   [ "$status" -eq 0 ]
 }
 
+@test "gate: a price row with a malformed date or non-numeric rate does not price a model" {
+  local pt="$BATS_TEST_TMPDIR/pricing.tsv" f="$BATS_TEST_TMPDIR/ai-engines.json"
+  jq '.models["mistral-large"] = {"provider": "copilot", "status": "active"}' "$CONFIG" > "$f"
+  grep -v '^#' "$REPO_ROOT/scripts/lib/model-pricing.tsv" > "$pt"
+  printf 'mistral-large*\t2000-01-01\tnope\t\tbad\tx\n' >> "$pt"
+  run python3 "$VALIDATOR" "$f" "$REPO_ROOT/config/ai-engines.schema.json" "$pt"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"mistral-large"*"model-pricing.tsv"* ]]
+  printf 'mistral-large*\tnot-a-date\t1\t1\t1\t1\n' >> "$pt"
+  run python3 "$VALIDATOR" "$f" "$REPO_ROOT/config/ai-engines.schema.json" "$pt"
+  [ "$status" -ne 0 ]
+}
+
 @test "gate: a vendor-prefixed Copilot id is priced by its bare name" {
   # No row matches "azure/o4-mini" itself; the bare "o4-mini" matches o4-mini*.
   _validate_with '.models["azure/o4-mini"] = {"provider": "copilot", "status": "active"}'
