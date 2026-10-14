@@ -53,7 +53,7 @@ concurrency:
 
 env:
   GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || secrets.GITHUB_TOKEN }}
-  TARGET_ORG: ${{ vars.TARGET_ORG || 'petry-projects' }}
+  TARGET_ORG: ${{ vars.TARGET_ORG || 'combsmith' }}
   DRY_RUN: ${{ inputs.dry_run || 'false' }}
   DISPATCH_DELAY_SEC: ${{ inputs.dispatch_delay_sec || '30' }}
 

@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/persona-mention.yml
-# Standard:        petry-projects/.github/standards/persona-standards.md (§4.1)
-# Reusable:        petry-projects/.github/.github/workflows/persona-mention-reusable.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/persona-mention.yml
+# Standard:        combsmith/.github/standards/persona-standards.md (§4.1)
+# Reusable:        combsmith/.github/.github/workflows/persona-mention-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All routing logic lives in the reusable
@@ -26,15 +26,15 @@
 # Persona Mention Router — thin caller for the org-level reusable.
 #
 # Adopting this file makes every persona that enables the `mention` surface
-# addressable in this repo as `@petry-projects/<role>` — e.g.
+# addressable in this repo as `@combsmith/<role>` — e.g.
 #
-#     @petry-projects/qa-lead please assess test risk on this PR
+#     @combsmith/qa-lead please assess test risk on this PR
 #
 # The handle is an org TEAM, never a user account: '@qa-lead' is a real GitHub
 # account owned by an unrelated person (§4.1).
 #
 # To adopt: copy this file to .github/workflows/persona-mention.yml in your repo.
-# Requires: GH_PAT_WORKFLOWS org secret (already present in petry-projects org).
+# Requires: GH_PAT_WORKFLOWS org secret (already present in combsmith org).
 name: Persona — Mention Router
 
 on:
@@ -52,7 +52,7 @@ on:
 # here yet, even though §4 says "Reviewer-assignment counts here too". The
 # router has no path for it, and a trigger that fires into a router which
 # ignores it is a dead trigger that only burns runs. Tracked as finding 10 in
-# petry-projects/.github#755; the trigger lands with the routing, not before.
+# combsmith/.github#755; the trigger lands with the routing, not before.
 
 permissions: {}
 
@@ -64,5 +64,5 @@ jobs:
                             # no more than the caller; §5)
       issues: read
       pull-requests: read
-    uses: petry-projects/.github/.github/workflows/persona-mention-reusable.yml@persona-mention/v1-next  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/persona-mention-reusable.yml@persona-mention/v1-next  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets: inherit  # NOSONAR(githubactions:S7635) org secrets are scoped to first-party reusables

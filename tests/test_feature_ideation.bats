@@ -12,8 +12,8 @@
 FEATURE_IDEATION_YML=".github/workflows/feature-ideation.yml"
 
 # Canonical reusable + channel pin from
-# petry-projects/.github/standards/workflows/feature-ideation.yml
-REUSABLE="petry-projects/.github/.github/workflows/feature-ideation-reusable.yml"
+# combsmith/.github/standards/workflows/feature-ideation.yml
+REUSABLE="combsmith/.github/.github/workflows/feature-ideation-reusable.yml"
 # This repo pins the v1-next ring channel (major-scope repin #657).
 CHANNEL="feature-ideation/v1-next"
 

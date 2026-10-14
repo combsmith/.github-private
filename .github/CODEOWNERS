@@ -1,24 +1,24 @@
 # Default owner for all files
-* @petry-projects/org-leads
+* @combsmith/org-leads
 
 # Held-out eval cases (#691, epic #581) — the proposer must never edit these.
 # Explicit rule so the holdout stays owner-locked even if broader rules loosen;
 # the dev/ split may remain proposer-visible.
-/evals/**/holdout/ @petry-projects/org-leads
+/evals/**/holdout/ @combsmith/org-leads
 
 # LLM-judge scoring prompt(s) (#585, epic #581) — a skill-quality input on a par
 # with the held-out cases: the rubric the candidate is graded against. Owner-lock
 # it explicitly so the proposer can never weaken the judge it must satisfy.
-/evals/judge.md @petry-projects/org-leads
-/evals/**/scorer.json @petry-projects/org-leads
+/evals/judge.md @combsmith/org-leads
+/evals/**/scorer.json @combsmith/org-leads
 
 # Frozen pre-change ET baseline (#1102, epic #1101) — the immutable before-number
 # Story 6 measures against. Owner-lock it so the goalpost cannot be moved without
 # a maintainer's explicit review.
-/tests/fixtures/et-baseline/ @petry-projects/org-leads
+/tests/fixtures/et-baseline/ @combsmith/org-leads
 
 # Frozen deep-review bug-hunter baseline (#1089, epic #1088) — the immutable
 # quality/cost before-numbers every downstream enhancement (#1090-#1093) proves
 # "no regression" against, and the #1094 convergence gate consumes. Owner-lock it
 # so later prompt-tuning stories cannot silently move the goalpost.
-/tests/fixtures/deep-review-baseline/ @petry-projects/org-leads
+/tests/fixtures/deep-review-baseline/ @combsmith/org-leads

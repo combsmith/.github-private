@@ -1,10 +1,10 @@
 # .github-private
 
-Org-wide Copilot custom agents, automated workflows, prompts, scripts, and frameworks for `petry-projects`.
+Org-wide Copilot custom agents, automated workflows, prompts, scripts, and frameworks for `combsmith`.
 
 ## What This Repo Does
 
-This is the [`.github-private` convention](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/create-custom-agents) repo for the petry-projects org.
+This is the [`.github-private` convention](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/create-custom-agents) repo for the combsmith org.
 Agent profiles in `/agents/` are available org-wide — invocable from GitHub.com, VS Code, JetBrains, and Copilot CLI.
 
 It also contains automated workflows (GitHub Actions agents running on events and schedules),
@@ -51,7 +51,7 @@ Autonomous agents that run as GitHub Actions, triggered by events or schedules a
 | [`initiative-driver.yml`](.github/workflows/initiative-driver.yml) | Initiative driver — auto-releases an epic's ready sub-issues to Dev-Lead |
 | [`initiative-planner.yml`](.github/workflows/initiative-planner.yml) | Initiative planner (BMAD Scrum Master) — breaks an approved initiative into an epic + sub-issues |
 | [`issue-triage-runner.yml`](.github/workflows/issue-triage-runner.yml) | Issue triage agent — labels and routes newly opened issues |
-| [`pr-review-trigger.yml`](.github/workflows/pr-review-trigger.yml) | PR review agent — cascading triage → deep → security review on open PRs across the org; auto-approves LOW/MEDIUM risk PRs with passing CI, escalates HIGH risk to human review (see also [`@pr-reviewer`](agents/pr-reviewer.md)). Trigger manually: `gh workflow run pr-review-trigger.yml --repo petry-projects/.github-private` or comment `@petry-review-bot` on any org PR |
+| [`pr-review-trigger.yml`](.github/workflows/pr-review-trigger.yml) | PR review agent — cascading triage → deep → security review on open PRs across the org; auto-approves LOW/MEDIUM risk PRs with passing CI, escalates HIGH risk to human review (see also [`@pr-reviewer`](agents/pr-reviewer.md)). Trigger manually: `gh workflow run pr-review-trigger.yml --repo combsmith/.github-private` or comment `@petry-review-bot` on any org PR |
 | [`release-notes.yml`](.github/workflows/release-notes.yml) | Release-notes agent — drafts Keep-a-Changelog entries from merged PRs and opens a CHANGELOG PR |
 | [`stale-manager.yml`](.github/workflows/stale-manager.yml) | Stale manager agent — warns and closes stale issues/PRs across the org |
 
@@ -76,31 +76,31 @@ Scheduled workflows post reports and dashboards as issues or run summaries for m
 
 | Workflow | Purpose |
 |----------|---------|
-| [`compliance-audit-and-improvement.yml`](https://github.com/petry-projects/.github/blob/main/.github/workflows/compliance-audit-and-improvement.yml) | Weekly org standards compliance audit + runtime health survey, with per-finding remediation issues |
-| [`daily-org-status.yml`](https://github.com/petry-projects/.github/blob/main/.github/workflows/daily-org-status.yml) | Daily "Org Status" digest posted as an issue for maintainers |
-| [`org-scorecard.yml`](https://github.com/petry-projects/.github/blob/main/.github/workflows/org-scorecard.yml) | Weekly OpenSSF Scorecard security-posture review across public repos; findings tracked as issues |
+| [`compliance-audit-and-improvement.yml`](https://github.com/combsmith/.github/blob/main/.github/workflows/compliance-audit-and-improvement.yml) | Weekly org standards compliance audit + runtime health survey, with per-finding remediation issues |
+| [`daily-org-status.yml`](https://github.com/combsmith/.github/blob/main/.github/workflows/daily-org-status.yml) | Daily "Org Status" digest posted as an issue for maintainers |
+| [`org-scorecard.yml`](https://github.com/combsmith/.github/blob/main/.github/workflows/org-scorecard.yml) | Weekly OpenSSF Scorecard security-posture review across public repos; findings tracked as issues |
 
 ## Standards
 
-Engineering standards live in `petry-projects/.github/standards/`.
+Engineering standards live in `combsmith/.github/standards/`.
 Notable subtopics are listed below to aid discoverability; see the standards directory for full documentation.
 
 | Standard | Notable subtopics |
 |----------|-------------------|
-| [`advanced-security`](https://github.com/petry-projects/.github/blob/main/standards/advanced-security.md) | Code Security Configurations, push-protection live-fire (canary), licensing & billing, compliance audit checks |
-| [`agent-standards`](https://github.com/petry-projects/.github/blob/main/standards/agent-standards.md) | Required files, compliance exemptions, AgentShield CI workflow, decision-making reusables, BMAD Method Workflows |
-| [`ci-standards`](https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md) | Staged promotion through concentric rings, reusable workflow versioning (`stable` channel), action pinning policy, permissions policy, Dev-Lead Agent |
-| [`codeowners-standard`](https://github.com/petry-projects/.github/blob/main/standards/codeowners-standard.md) | Team composition, required setup for new bots, branch protection, verified end-to-end |
-| [`copilot-instructions-standard`](https://github.com/petry-projects/.github/blob/main/standards/copilot-instructions-standard.md) | Canonical instruction files, adding a new language, required sections, content quality rules |
-| [`dependabot-policy`](https://github.com/petry-projects/.github/blob/main/standards/dependabot-policy.md) | Configuration files, auto-merge workflow, vulnerability audit CI check, applying to a repository |
-| [`feature-ideation-sources`](https://github.com/petry-projects/.github/blob/main/standards/feature-ideation-sources.md) | AI/ML vendor & lab sources, developer tooling changelogs, security & compliance sources, newsletters, podcasts |
-| [`github-settings`](https://github.com/petry-projects/.github/blob/main/standards/github-settings.md) | Org-level settings, repository rulesets, required checks ruleset, GitHub Apps & integrations, org-level secrets |
-| [`gitignore-standard`](https://github.com/petry-projects/.github/blob/main/standards/gitignore-standard.md) | Two-Layer Model (L1 secrets baseline, L2 ecosystem extension), managed-block markers, negation discipline, compliance check |
-| [`initiatives-project`](https://github.com/petry-projects/.github/blob/main/standards/initiatives-project.md) | Project board fields, Theme → Initiative, how auto-add works, initiative classification |
-| [`persona-standards`](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md) | Canary onboarding (the last step), trigger matrix, trust & permissions, definition of done |
-| [`pr-limits`](https://github.com/petry-projects/.github/blob/main/standards/pr-limits.md) | Exempt actors, operator runbook, reconciliation with the Dependabot cap |
-| [`push-protection`](https://github.com/petry-projects/.github/blob/main/standards/push-protection.md) | Layer 1 (GitHub push protection), Layer 2 (local pre-commit), Layer 3 (CI secret scanning), incident response |
-| [`ruleset-remediation-runbook`](https://github.com/petry-projects/.github/blob/main/standards/ruleset-remediation-runbook.md) | Bypass actors, migrate checks into `code-quality`, delete legacy rulesets, rollback procedure |
+| [`advanced-security`](https://github.com/combsmith/.github/blob/main/standards/advanced-security.md) | Code Security Configurations, push-protection live-fire (canary), licensing & billing, compliance audit checks |
+| [`agent-standards`](https://github.com/combsmith/.github/blob/main/standards/agent-standards.md) | Required files, compliance exemptions, AgentShield CI workflow, decision-making reusables, BMAD Method Workflows |
+| [`ci-standards`](https://github.com/combsmith/.github/blob/main/standards/ci-standards.md) | Staged promotion through concentric rings, reusable workflow versioning (`stable` channel), action pinning policy, permissions policy, Dev-Lead Agent |
+| [`codeowners-standard`](https://github.com/combsmith/.github/blob/main/standards/codeowners-standard.md) | Team composition, required setup for new bots, branch protection, verified end-to-end |
+| [`copilot-instructions-standard`](https://github.com/combsmith/.github/blob/main/standards/copilot-instructions-standard.md) | Canonical instruction files, adding a new language, required sections, content quality rules |
+| [`dependabot-policy`](https://github.com/combsmith/.github/blob/main/standards/dependabot-policy.md) | Configuration files, auto-merge workflow, vulnerability audit CI check, applying to a repository |
+| [`feature-ideation-sources`](https://github.com/combsmith/.github/blob/main/standards/feature-ideation-sources.md) | AI/ML vendor & lab sources, developer tooling changelogs, security & compliance sources, newsletters, podcasts |
+| [`github-settings`](https://github.com/combsmith/.github/blob/main/standards/github-settings.md) | Org-level settings, repository rulesets, required checks ruleset, GitHub Apps & integrations, org-level secrets |
+| [`gitignore-standard`](https://github.com/combsmith/.github/blob/main/standards/gitignore-standard.md) | Two-Layer Model (L1 secrets baseline, L2 ecosystem extension), managed-block markers, negation discipline, compliance check |
+| [`initiatives-project`](https://github.com/combsmith/.github/blob/main/standards/initiatives-project.md) | Project board fields, Theme → Initiative, how auto-add works, initiative classification |
+| [`persona-standards`](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md) | Canary onboarding (the last step), trigger matrix, trust & permissions, definition of done |
+| [`pr-limits`](https://github.com/combsmith/.github/blob/main/standards/pr-limits.md) | Exempt actors, operator runbook, reconciliation with the Dependabot cap |
+| [`push-protection`](https://github.com/combsmith/.github/blob/main/standards/push-protection.md) | Layer 1 (GitHub push protection), Layer 2 (local pre-commit), Layer 3 (CI secret scanning), incident response |
+| [`ruleset-remediation-runbook`](https://github.com/combsmith/.github/blob/main/standards/ruleset-remediation-runbook.md) | Bypass actors, migrate checks into `code-quality`, delete legacy rulesets, rollback procedure |
 
 ## Documentation
 

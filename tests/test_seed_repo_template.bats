@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/seed-repo-template.sh — the DRY_RUN-aware generator that
-# seeds petry-projects/repo-template with the org baseline file scaffold:
+# seeds combsmith/repo-template with the org baseline file scaffold:
 # the ~10 thin-caller workflow stubs (fetched byte-identically from the public
 # standards/ and repinned from local ./… dogfood refs to published channel tags)
 # plus the root/baseline files (issue #966, epic #964). Mirrors the cross-repo
@@ -85,7 +85,7 @@ echo "\$*" >> "$CALLS"
 case "\$*" in
   *"/commits/${exists}"*) echo "cafef00d00000000000000000000000000000000" ;;
   *"/commits/"*) exit 0 ;;
-  *"/contents/"*) printf '%s' "\$(printf '    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64 -w0 2>/dev/null || printf '    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64)" ;;
+  *"/contents/"*) printf '%s' "\$(printf '    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64 -w0 2>/dev/null || printf '    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64)" ;;
   *) echo '' ;;
 esac
 EOF
@@ -189,10 +189,10 @@ EOF
 }
 
 # ── repin: caller stubs → published major-scoped channel tags (AC #1, #2) ──────
-@test "repin: public caller dogfood ref → major-scoped @<name>/v<MAJOR>-stable on petry-projects/.github" {
+@test "repin: public caller dogfood ref → major-scoped @<name>/v<MAJOR>-stable on combsmith/.github" {
   run bash -c 'printf "%s\n" "    uses: ./.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-next" | bash "$0" --repin auto-rebase' "$SEED"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-stable"* ]]
   [[ "$output" != *"./.github/workflows/auto-rebase-reusable.yml"* ]]
   [[ "$output" != *"auto-rebase/v2-next"* ]]
   # AC #1: never the pre-#1184 legacy non-major-scoped channel.
@@ -200,10 +200,10 @@ EOF
 }
 
 @test "repin: private dev-lead → @dev-lead/v<MAJOR>-stable on .github-private and agent_ref repinned" {
-  src=$'    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n    with:\n      agent_ref: dev-lead/v1-next'
+  src=$'    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n    with:\n      agent_ref: dev-lead/v1-next'
   run bash -c 'printf "%s\n" "$1" | bash "$0" --repin dev-lead' "$SEED" "$src"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"* ]]
   [[ "$output" == *"agent_ref: dev-lead/v1-stable"* ]]
   [[ "$output" != *"dev-lead/v1-next"* ]]
   [[ "$output" != *"@dev-lead/stable"* ]]
@@ -265,7 +265,7 @@ EOF
     | _fixture_workflow dependency-audit.yml
   run bash "$SEED" --emit-workflow dependency-audit.yml
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/v2-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/v2-stable"* ]]
   [[ "$output" != *"./.github/workflows/dependency-audit-reusable.yml"* ]]
   [[ "$output" != *"@dependency-audit/stable"* ]]
 }
@@ -276,7 +276,7 @@ EOF
   # baseline contradicted standards/ and reported the correct template as DRIFTED.
   # The repin must reproduce the canonical major-scoped stable pin byte-for-byte.
   printf '%s\n' 'jobs:' '  run:' \
-    '    uses: petry-projects/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable' \
+    '    uses: combsmith/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable' \
     | _fixture_workflow agent-shield.yml
   run bash "$SEED" --emit-workflow agent-shield.yml
   [ "$status" -eq 0 ]
@@ -349,13 +349,13 @@ GHEOF
 @test "baseline: CODEOWNERS is the org default rule" {
   run bash "$SEED" --emit-baseline .github/CODEOWNERS
   [ "$status" -eq 0 ]
-  [[ "$output" == *"* @petry-projects/org-leads"* ]]
+  [[ "$output" == *"* @combsmith/org-leads"* ]]
 }
 
 @test "baseline: AGENTS.md is a consumer pointer to the org AGENTS.md" {
   run bash "$SEED" --emit-baseline AGENTS.md
   [ "$status" -eq 0 ]
-  [[ "$output" == *"petry-projects/.github"* ]]
+  [[ "$output" == *"combsmith/.github"* ]]
   [[ "$output" == *"AGENTS.md"* ]]
 }
 
@@ -632,9 +632,9 @@ EOF
   printf 'name: CI\n' | _fixture_workflow ci.yml
   printf 'name: Auto\n  uses: ./.github/workflows/auto-rebase-reusable.yml@auto-rebase/next\n' \
     | _fixture_workflow auto-rebase.yml
-  run env DRY_RUN=true bash "$SEED" --repo petry-projects/repo-template
+  run env DRY_RUN=true bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
-  [[ "$output" == *"petry-projects/repo-template"* ]]
+  [[ "$output" == *"combsmith/repo-template"* ]]
   [ ! -f "$CALLS" ]
 }
 
@@ -650,7 +650,7 @@ EOF
   done
   printf 'version: 2\n' > "$STANDARDS_DIR/standards/dependabot/frontend.yml"
   printf 'title = "gitleaks config"\n' > "$STANDARDS_DIR/standards/gitleaks.toml"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [ -f "$CALLS" ]
   grep -q "contents/.github/workflows/auto-rebase.yml" "$CALLS"
@@ -680,7 +680,7 @@ EOF
   done
   printf 'version: 2\n' > "$STANDARDS_DIR/standards/dependabot/frontend.yml"
   printf 'title = "gitleaks config"\n' > "$STANDARDS_DIR/standards/gitleaks.toml"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"PR #42 already open"* ]]
   [ ! -f "$CALLS" ] || ! grep -q "pr create" "$CALLS"

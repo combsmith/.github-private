@@ -1,7 +1,7 @@
 # Third-Party Reviewer Scorecard — Weekly Report
 
 Org-wide, **deterministic** visibility into the agentic third-party code reviewers that
-participate in PR review across `petry-projects` — GitHub Copilot, Gemini Code Assist,
+participate in PR review across `combsmith` — GitHub Copilot, Gemini Code Assist,
 Codex, CodeRabbit, SonarCloud, Qodo Merge, CodeAnt, and Graphite. Every figure is computed with `jq`/`awk` from GitHub's
 own review data. **No LLM is involved** in this pipeline: a narrative / quality-scoring
 layer is a deliberately separate, human-approved add-on (see [Roadmap](#roadmap-v2--llm-optional-human-approved)).
@@ -79,7 +79,7 @@ snapshot for downstream use — they're just kept out of the headline table to k
 ### Agent comment noise (our own automation)
 
 Distinct from the third-party scorecard above, the report also measures the **no-action share of
-our own automation's comments** — the net-new noise metric from [#1411](https://github.com/petry-projects/.github-private/issues/1411).
+our own automation's comments** — the net-new noise metric from [#1411](https://github.com/combsmith/.github-private/issues/1411).
 This is deterministic (`scripts/lib/comment-noise.sh`), computed from the automation markers each
 comment already carries — **no LLM**.
 
@@ -141,15 +141,15 @@ Runs automatically every Monday. To trigger manually:
 
 ```bash
 gh workflow run reviewer-report.yml \
-  --repo petry-projects/.github-private \
-  --field org=petry-projects \
+  --repo combsmith/.github-private \
+  --field org=combsmith \
   --field lookback_days=7
 ```
 
 To generate the report locally (requires a token with org-wide repo read):
 
 ```bash
-ORG=petry-projects LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
+ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
   bash scripts/reviewer_report.sh
 ```
 
@@ -167,7 +167,7 @@ ORG=petry-projects LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
 
 | Variable | Description |
 |---|---|
-| `ORG` | Org to scan (default `petry-projects`). All non-archived repos discovered automatically. |
+| `ORG` | Org to scan (default `combsmith`). All non-archived repos discovered automatically. |
 | `LOOKBACK_DAYS` | Rolling window of PR activity to include (default `7`). |
 | `GH_TOKEN` | PAT with repo read across the org — PRs + reviews are per-repo. Uses `GH_PAT_WORKFLOWS` in CI. |
 | `REVIEWER_REPORT_OUT` | Optional path to also write the report to (used by the workflow to post the issue comment). |

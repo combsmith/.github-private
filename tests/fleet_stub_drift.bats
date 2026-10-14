@@ -18,10 +18,10 @@ setup() {
 
   DRIFT_TSV="$(mktemp)"
   {
-    printf '%s\t%s\t%s\t%s\n' "petry-projects/alpha"   "ALIGNED" "$CANON" "$CANON"
-    printf '%s\t%s\t%s\t%s\n' "petry-projects/bravo"   "DRIFTED" "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" "$CANON"
-    printf '%s\t%s\t%s\t%s\n' "petry-projects/charlie" "MISSING" "" "$CANON"
-    printf '%s\t%s\t%s\t%s\n' "petry-projects/delta"   "DRIFTED" "dddddddddddddddddddddddddddddddddddddddd" "$CANON"
+    printf '%s\t%s\t%s\t%s\n' "combsmith/alpha"   "ALIGNED" "$CANON" "$CANON"
+    printf '%s\t%s\t%s\t%s\n' "combsmith/bravo"   "DRIFTED" "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" "$CANON"
+    printf '%s\t%s\t%s\t%s\n' "combsmith/charlie" "MISSING" "" "$CANON"
+    printf '%s\t%s\t%s\t%s\n' "combsmith/delta"   "DRIFTED" "dddddddddddddddddddddddddddddddddddddddd" "$CANON"
   } > "$DRIFT_TSV"
 }
 
@@ -59,14 +59,14 @@ teardown() {
 # ---------------------------------------------------------------------------
 
 @test "stub_drift_row: emits a 4-field TSV with the classified status" {
-  run stub_drift_row "petry-projects/bravo" "$CANON" "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  run stub_drift_row "combsmith/bravo" "$CANON" "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   [ "$status" -eq 0 ]
-  [ "$output" = "$(printf 'petry-projects/bravo\tDRIFTED\tbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\t%s' "$CANON")" ]
+  [ "$output" = "$(printf 'combsmith/bravo\tDRIFTED\tbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\t%s' "$CANON")" ]
 }
 
 @test "stub_drift_row: a missing stub records an empty repo SHA" {
-  run stub_drift_row "petry-projects/charlie" "$CANON" ""
-  [ "$output" = "$(printf 'petry-projects/charlie\tMISSING\t\t%s' "$CANON")" ]
+  run stub_drift_row "combsmith/charlie" "$CANON" ""
+  [ "$output" = "$(printf 'combsmith/charlie\tMISSING\t\t%s' "$CANON")" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -97,14 +97,14 @@ teardown() {
   len=$(printf '%s' "$output" | jq 'length')
   [ "$len" -eq 2 ]
   repos=$(printf '%s' "$output" | jq -r '.[].repo' | sort | tr '\n' ',')
-  [ "$repos" = "petry-projects/bravo,petry-projects/delta," ]
+  [ "$repos" = "combsmith/bravo,combsmith/delta," ]
   # Each entry carries both SHAs so the alert can show the drift.
   printf '%s' "$output" | jq -e '.[0] | has("repo") and has("repo_sha") and has("canonical_sha")' >/dev/null
 }
 
 @test "stub_drift_alert_json: an all-aligned TSV yields an empty array" {
   aligned="$(mktemp)"
-  printf '%s\t%s\t%s\t%s\n' "petry-projects/alpha" "ALIGNED" "$CANON" "$CANON" > "$aligned"
+  printf '%s\t%s\t%s\t%s\n' "combsmith/alpha" "ALIGNED" "$CANON" "$CANON" > "$aligned"
   run stub_drift_alert_json "$aligned"
   [ "$output" = "[]" ]
   rm -f "$aligned"
@@ -138,8 +138,8 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"Initiative-planner stub"* ]]
   # Drifted repos are called out by name.
-  [[ "$output" == *"petry-projects/bravo"* ]]
-  [[ "$output" == *"petry-projects/delta"* ]]
+  [[ "$output" == *"combsmith/bravo"* ]]
+  [[ "$output" == *"combsmith/delta"* ]]
   # The canonical SHA (short form) is shown.
   [[ "$output" == *"aaaaaaa"* ]]
 }
@@ -150,7 +150,7 @@ teardown() {
   [[ "$output" == *"Initiative-driver stub"* ]]
   # It must not silently fall back to the planner heading.
   [[ "$output" != *"Initiative-planner stub"* ]]
-  [[ "$output" == *"petry-projects/bravo"* ]]
+  [[ "$output" == *"combsmith/bravo"* ]]
 }
 
 @test "generate_stub_drift_report: the default label is still Initiative-planner (regression)" {
@@ -161,7 +161,7 @@ teardown() {
 
 @test "generate_stub_drift_report: a clean fleet reports no drift" {
   aligned="$(mktemp)"
-  printf '%s\t%s\t%s\t%s\n' "petry-projects/alpha" "ALIGNED" "$CANON" "$CANON" > "$aligned"
+  printf '%s\t%s\t%s\t%s\n' "combsmith/alpha" "ALIGNED" "$CANON" "$CANON" > "$aligned"
   run generate_stub_drift_report "$aligned" "$CANON"
   [ "$status" -eq 0 ]
   [[ "$output" == *"ALIGNED"* || "$output" == *"aligned"* || "$output" == *"No drift"* ]]

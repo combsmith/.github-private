@@ -1,8 +1,8 @@
 # Persona manifest — Dev Lead (Developer Lead & implementation advisor).
 # Formalizes the existing dev-lead agent under the persona standard
-# (petry-projects/.github standards/persona-standards.md). Role, not a person (§1.6).
+# (combsmith/.github standards/persona-standards.md). Role, not a person (§1.6).
 #
-# Validate against: petry-projects/.github standards/personas/persona.schema.json
+# Validate against: combsmith/.github standards/personas/persona.schema.json
 
 schema_version: 1
 
@@ -17,14 +17,14 @@ summary: >-
 # and the addressing team must land before promotion (see README).
 status: draft
 
-owner: petry-projects/org-leads
+owner: combsmith/org-leads
 
 # --- How humans address this persona (§4.1) --------------------------------
 # Org TEAM handle, never a user account. The mention path is ADVISORY — code is
 # written by the existing label-triggered dev-lead.yml runtime, not by this
 # router (see triggers.issues, mode: write, which documents that path).
 address:
-  handle: petry-projects/dev-lead
+  handle: combsmith/dev-lead
 
 definition:
   layers:
@@ -46,7 +46,7 @@ triggers:
       events: [created]
       enabled: true
       mode: advisory
-      notes: "'@petry-projects/dev-lead' — implementation/risk advice, no writes."
+      notes: "'@combsmith/dev-lead' — implementation/risk advice, no writes."
 
     - surface: issues
       events: [labeled]
@@ -89,7 +89,7 @@ trust:
 # review-only machine user `donpetry-bot`. dev-lead-reusable.yml resolves
 # BOT_USER from identity.account (see scripts/lib/resolve-persona-identity.sh);
 # git-identity.sh then attributes commits to it. Distinct from address.handle
-# (petry-projects/dev-lead, the mention team). This decoupling is the fix for
+# (combsmith/dev-lead, the mention team). This decoupling is the fix for
 # the donpetry-bot regression (.github-private#1316).
 runtime:
   identity:
@@ -102,10 +102,10 @@ evals:
   min_cases: 5
 
 canary:
-  registry: petry-projects/.github/standards/canary-rings.json
+  registry: combsmith/.github/standards/canary-rings.json
   agent: dev-lead
 
 references:
   - "prompts/dev-lead/ (the phase-keyed prompt library)"
   - ".github/workflows/dev-lead-reusable.yml (the runtime)"
-  - "petry-projects/.github standards/persona-standards.md"
+  - "combsmith/.github standards/persona-standards.md"

@@ -2,7 +2,7 @@
 # Tests for personas/validate-personas.py — the persona manifest validator.
 # Exercises the cross-invariants (id==dir==canary.agent, layer paths exist,
 # eval splits present) hermetically against a minimal test-double schema, so no
-# network and no copy of the canonical schema (which lives in petry-projects/.github)
+# network and no copy of the canonical schema (which lives in combsmith/.github)
 # is needed. The live check against the real schema is the `validate-personas`
 # CI job in lint.yml.
 
@@ -42,7 +42,7 @@ name: Demo
 title: Demo Persona
 summary: A fixture persona for validator tests.
 status: draft
-owner: petry-projects/org-leads
+owner: combsmith/org-leads
 definition:
   layers:
     - kind: copilot-profile
@@ -62,7 +62,7 @@ evals:
   path: evals/demo/
   min_cases: 1
 canary:
-  registry: petry-projects/.github/standards/canary-rings.json
+  registry: combsmith/.github/standards/canary-rings.json
   agent: demo
 YAML
 }
@@ -121,7 +121,7 @@ name: Demo
 title: Demo Persona
 summary: A fixture persona for validator tests.
 status: draft
-owner: petry-projects/org-leads
+owner: combsmith/org-leads
 definition:
   layers:
     - kind: framework-agent
@@ -145,7 +145,7 @@ evals:
   path: evals/demo/
   min_cases: 1
 canary:
-  registry: petry-projects/.github/standards/canary-rings.json
+  registry: combsmith/.github/standards/canary-rings.json
   agent: demo
 YAML
   run python3 "$VALIDATOR" "$TMP/personas" --schema "$TMP/schema.json"
@@ -193,13 +193,13 @@ clone_persona() {
 }
 
 @test "validate-personas accepts a manifest whose address handle slug matches its id" {
-  add_address demo petry-projects/demo
+  add_address demo combsmith/demo
   run python3 "$VALIDATOR" "$TMP/personas" --schema "$TMP/schema.json"
   [ "$status" -eq 0 ]
 }
 
 @test "validate-personas rejects an address handle whose team slug != id" {
-  add_address demo petry-projects/something-else
+  add_address demo combsmith/something-else
   run python3 "$VALIDATOR" "$TMP/personas" --schema "$TMP/schema.json"
   [ "$status" -ne 0 ]
   [[ "$output" == *"!= id 'demo'"* ]]
@@ -208,9 +208,9 @@ clone_persona() {
 
 
 @test "validate-personas accepts distinct handles across personas" {
-  add_address demo petry-projects/demo
+  add_address demo combsmith/demo
   clone_persona rival
-  add_address rival petry-projects/rival
+  add_address rival combsmith/rival
   run python3 "$VALIDATOR" "$TMP/personas" --schema "$TMP/schema.json"
   [ "$status" -eq 0 ]
 }

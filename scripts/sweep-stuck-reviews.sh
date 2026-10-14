@@ -27,7 +27,7 @@
 #   scripts/initiative-planner/redispatch.sh.
 #
 # Env:
-#   AGENT_REPO        owner/repo hosting the trigger workflow (default: petry-projects/.github-private)
+#   AGENT_REPO        owner/repo hosting the trigger workflow (default: combsmith/.github-private)
 #   TRIGGER_WORKFLOW  workflow file to dispatch (default: pr-review-trigger.yml)
 #   SWEEP_PRS_FILE    optional file of candidate PR URLs (one per line); when
 #                     unset, candidates are enumerated via list-prs.sh
@@ -46,7 +46,7 @@ source "$SCRIPT_DIR/lib/ci-status.sh"
 # shellcheck source=lib/pr-automation-budget.sh
 source "$SCRIPT_DIR/lib/pr-automation-budget.sh"
 
-AGENT_REPO="${AGENT_REPO:-petry-projects/.github-private}"
+AGENT_REPO="${AGENT_REPO:-combsmith/.github-private}"
 TRIGGER_WORKFLOW="${TRIGGER_WORKFLOW:-pr-review-trigger.yml}"
 MAX_DISPATCH="${MAX_DISPATCH:-20}"
 

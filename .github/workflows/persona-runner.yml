@@ -1,8 +1,8 @@
 # Persona Runtime — caller (receives the router's dispatch).
-# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/persona-runner-reusable.yml
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md (§4.1)
+# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/persona-runner-reusable.yml
+# Standard: https://github.com/combsmith/.github/blob/main/standards/persona-standards.md (§4.1)
 #
-# The mention router (in petry-projects/.github) fires `persona-mention` at this
+# The mention router (in combsmith/.github) fires `persona-mention` at this
 # repo with client_payload {persona, mode, source_repo, item_number, comment_url,
 # requested_by}. This stub hands that payload to the reusable, which runs the
 # addressed persona's advisory prompt.

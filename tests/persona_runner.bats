@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for the persona runtime core (scripts/lib/persona-runner.sh).
-# Standard: petry-projects/.github standards/persona-standards.md §4.1.
+# Standard: combsmith/.github standards/persona-standards.md §4.1.
 #
 # The runner is a SEPARATE trust boundary from the router: a repository_dispatch
 # can be sent by anything with a token, so payload re-validation and the

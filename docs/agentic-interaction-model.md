@@ -1,6 +1,6 @@
 # Agentic interaction model
 
-**Status:** normative (repo-local standard) · **Scope:** `petry-projects/.github-private`
+**Status:** normative (repo-local standard) · **Scope:** `combsmith/.github-private`
 · **Anchors:** the per-role interaction contracts (Story 2 / #1404), the CI validator
 `validate-interaction-model` (Story 4 / #1406), the documentation wiring (Story 7).
 
@@ -15,7 +15,7 @@ rule here rather than re-deriving it.
 > pointing back to the governing section here.
 
 It is written **repo-local first** but shaped for promotion into an org-wide
-`standards/agent-standards.md` in [`petry-projects/.github`](https://github.com/petry-projects/.github):
+`standards/agent-standards.md` in [`combsmith/.github`](https://github.com/combsmith/.github):
 the principles and rules are org-general; only the classification table (§4) is
 repo-specific inventory. When promoting, lift §§1–3 and §§6–10 verbatim and regenerate §4
 per consuming repo. This mirrors the promotion pattern already used for the off-peak
@@ -413,7 +413,7 @@ Two options were considered:
 
 - **(a) Extend `persona.yml`** with an `interaction:` block. Attractive (one manifest per
   role) but **blocked cross-repo**: `personas/validate-personas.py` validates every
-  `persona.yml` against `persona.schema.json` fetched from **`petry-projects/.github`**
+  `persona.yml` against `persona.schema.json` fetched from **`combsmith/.github`**
   (`standards/personas/persona.schema.json`). Adding an `interaction` block to `persona.yml`
   requires that **external schema to permit the fields first** — otherwise validation fails
   the moment the field appears. That is a cross-repo change on another repo's release
@@ -431,7 +431,7 @@ the validator hermetic, and matches this document's "repo-local first" posture.
 
 **Cross-repo implication to sequence (Story 2 / epic `untracked_prerequisites`):** promoting
 the contract into `persona.yml` later is the eventual home, but it is **gated on**
-`petry-projects/.github` extending `persona.schema.json` to allow the `interaction` block.
+`combsmith/.github` extending `persona.schema.json` to allow the `interaction` block.
 Sequence, in order: (1) land the `interaction` object in the org `persona.schema.json`; (2)
 release it on the schema's consumed ref; (3) only then move the contract into `persona.yml`
 and delete the standalone file. Doing (3) first breaks `validate-personas.py` for every

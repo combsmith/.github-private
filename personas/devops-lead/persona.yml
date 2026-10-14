@@ -2,7 +2,7 @@
 # Role, not a person (§1.6): wraps the vendored BMAD B-Great DevOps agent; the
 # upstream agent's person-name stays upstream, referenced only by skill id.
 #
-# Validate against: petry-projects/.github standards/personas/persona.schema.json
+# Validate against: combsmith/.github standards/personas/persona.schema.json
 
 schema_version: 1
 
@@ -19,7 +19,7 @@ summary: >-
 # README). Promote once a dedicated advisory workflow + release are added.
 status: draft
 
-owner: petry-projects/org-leads
+owner: combsmith/org-leads
 
 # --- How humans address this persona (§4.1) --------------------------------
 # An org TEAM handle, never a user account: '@devops-lead' is a real GitHub
@@ -27,7 +27,7 @@ owner: petry-projects/org-leads
 # them on every mention. The team slug equals `id`, so the router resolves a
 # mention by stripping the org prefix.
 address:
-  handle: petry-projects/devops-lead
+  handle: combsmith/devops-lead
 
 definition:
   layers:
@@ -38,7 +38,7 @@ definition:
       path: frameworks/bmad-bgreat-suite/src/agents/bgr-agent-riley-devops
       framework:
         name: bmad-bgreat-suite
-        upstream_repo: petry-projects/bmad-bgreat-suite
+        upstream_repo: combsmith/bmad-bgreat-suite
         vendor_pin: ae8914e84b87   # matches frameworks/bmad-bgreat-suite/VENDOR.md (commit SHA, no tags)
         skill: bgr-agent-riley-devops
 
@@ -54,7 +54,7 @@ triggers:
       events: [created]
       enabled: true
       mode: advisory
-      notes: "'@petry-projects/devops-lead' — IaC/CI-CD/deployment strategy advice."
+      notes: "'@combsmith/devops-lead' — IaC/CI-CD/deployment strategy advice."
 
     - surface: issues
       events: [labeled, commented]
@@ -88,10 +88,10 @@ evals:
   min_cases: 5               # seed cases are placeholders; reach 5 held-out before stable
 
 canary:
-  registry: petry-projects/.github/standards/canary-rings.json
+  registry: combsmith/.github/standards/canary-rings.json
   agent: devops-lead         # entry added at first release cut (not present while status: draft)
 
 references:
   - "prompts/devops-lead/advisory.md (headless advisory contract)"
   - "frameworks/bmad-bgreat-suite/VENDOR.md (ae8914e84b87)"
-  - "petry-projects/.github standards/persona-standards.md"
+  - "combsmith/.github standards/persona-standards.md"

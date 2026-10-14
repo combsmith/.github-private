@@ -76,7 +76,7 @@ setup() {
   [ "$status" -eq 0 ]
   [[ "$output" == on:* ]]
   [[ "$output" == *"pull_request_review:"* ]]
-  [[ "$output" == *"uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"* ]]
   [[ "$output" == *"with:"* ]]
   [[ "$output" == *"agent_ref: dev-lead/v1-stable"* ]]
   # The secrets/permissions blocks are NOT part of the frozen forwarding region.
@@ -87,7 +87,7 @@ setup() {
 @test "extract: pr-review-trigger keeps the with-forwarding and the on-block separator comment" {
   run extract_forwarding_block "${REPO_ROOT}/.github/workflows/pr-review-trigger.yml"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/next"* ]]
+  [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/next"* ]]
   [[ "$output" == *"force_review: \${{ inputs.force_review || '' }}"* ]]
   # Column-0 comments before the top-level permissions: key are now included in
   # the frozen block (security fix: prevents hidden-trigger bypass via blank/comment).
@@ -101,7 +101,7 @@ setup() {
   run extract_forwarding_block "${REPO_ROOT}/.github/workflows/ci-failure-analyst.lock.yml"
   [ "$status" -eq 0 ]
   [[ "$output" == on:* ]]
-  [[ "$output" == *"uses: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable"* ]]
   [[ "$output" != *"with:"* ]]
   [[ "$output" != *"CLAUDE_CODE_OAUTH_TOKEN"* ]]
 }

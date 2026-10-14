@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Integration tests for the cross-repo publish path in cut-release.sh (#872):
-# feature-ideation + the six #482 reusables are hosted in petry-projects/.github,
+# feature-ideation + the six #482 reusables are hosted in combsmith/.github,
 # so their release/channel tags are cut against THAT repo via `gh api`. These
 # tests run main() end-to-end with a fake `gh` so no network/tags are touched.
 #
@@ -12,7 +12,7 @@ setup() {
   GH_CALLS="${TT_TMP}/gh-calls.log"; export GH_CALLS
   : > "$GH_CALLS"
   # A this-repo agent resolves its host from GITHUB_REPOSITORY (#1076 unified path).
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
   install_gh_stub
 }
 
@@ -41,7 +41,7 @@ STUB
 @test "cross-repo --dry-run resolves the SHA against .github and touches nothing" {
   run env GH_TOKEN=x bash "$SCRIPT" agent-shield 2.1.0 --channel next --dry-run
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'target=petry-projects/.github'
+  echo "$output" | grep -q 'target=combsmith/.github'
   echo "$output" | grep -q '(dry-run) no tags created'
   # resolved a SHA, but no tag object / ref was created
   grep -q 'commits/main' "$GH_CALLS"
@@ -60,18 +60,18 @@ STUB
 @test "cross-repo --push creates the release tag and moves the channel on .github" {
   run env GH_TOKEN=x bash "$SCRIPT" agent-shield 2.1.0 --channel next --push
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'created agent-shield/v2.1.0 on petry-projects/.github'
+  echo "$output" | grep -q 'created agent-shield/v2.1.0 on combsmith/.github'
   echo "$output" | grep -q 'moved agent-shield/v2-next'
-  echo "$output" | grep -q 'published to petry-projects/.github'
-  # annotated tag object + ref creation both went to petry-projects/.github
-  grep -qE 'POST repos/petry-projects/\.github/git/tags' "$GH_CALLS"
-  grep -qE 'POST repos/petry-projects/\.github/git/refs .*refs/tags/agent-shield/v2.1.0' "$GH_CALLS"
+  echo "$output" | grep -q 'published to combsmith/.github'
+  # annotated tag object + ref creation both went to combsmith/.github
+  grep -qE 'POST repos/combsmith/\.github/git/tags' "$GH_CALLS"
+  grep -qE 'POST repos/combsmith/\.github/git/refs .*refs/tags/agent-shield/v2.1.0' "$GH_CALLS"
 }
 
 @test "cross-repo --push refuses to overwrite an existing release tag" {
   GH_TAG_EXISTS=1 run env GH_TOKEN=x GH_TAG_EXISTS=1 bash "$SCRIPT" agent-shield 2.1.0 --channel next --push
   [ "$status" -ne 0 ]
-  echo "$output" | grep -q 'already exists on petry-projects/.github'
+  echo "$output" | grep -q 'already exists on combsmith/.github'
   ! grep -qE 'POST .*git/tags' "$GH_CALLS"
 }
 
@@ -80,7 +80,7 @@ STUB
   [ "$status" -eq 0 ]
   # host is the current repo (GITHUB_REPOSITORY), and resolution goes through the API —
   # the consistent gh-api path, not a local git resolve.
-  echo "$output" | grep -q 'target=petry-projects/.github-private'
+  echo "$output" | grep -q 'target=combsmith/.github-private'
   grep -q 'commits/' "$GH_CALLS"
   ! grep -qE 'POST .*git/(tags|refs)' "$GH_CALLS"
 }
@@ -88,11 +88,11 @@ STUB
 @test "a this-repo agent --push creates+moves tags via gh api on its host, not git push (#1076)" {
   run env GH_TOKEN=x bash "$SCRIPT" dev-lead 1.5.4 --channel next --push
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'created dev-lead/v1.5.4 on petry-projects/.github-private'
+  echo "$output" | grep -q 'created dev-lead/v1.5.4 on combsmith/.github-private'
   echo "$output" | grep -q 'moved dev-lead/v1-next'
   # the create + channel move both went through the API on the this-repo host
-  grep -qE 'POST repos/petry-projects/\.github-private/git/tags' "$GH_CALLS"
-  grep -qE '(POST|PATCH) repos/petry-projects/\.github-private/git/refs' "$GH_CALLS"
+  grep -qE 'POST repos/combsmith/\.github-private/git/tags' "$GH_CALLS"
+  grep -qE '(POST|PATCH) repos/combsmith/\.github-private/git/refs' "$GH_CALLS"
 }
 
 # ── --promote (ring-to-ring channel move of an existing release) ──────────────
@@ -115,9 +115,9 @@ STUB
   [ "$status" -eq 0 ]
   echo "$output" | grep -q 'moved agent-shield/v2-ring1'
   # the immutable release tag object is never (re)created
-  ! grep -qE 'POST repos/petry-projects/\.github/git/tags' "$GH_CALLS"
+  ! grep -qE 'POST repos/combsmith/\.github/git/tags' "$GH_CALLS"
   # the channel ref WAS moved
-  grep -qE '(PATCH|POST) repos/petry-projects/\.github/git/refs' "$GH_CALLS"
+  grep -qE '(PATCH|POST) repos/combsmith/\.github/git/refs' "$GH_CALLS"
 }
 
 @test "cross-repo --promote --dry-run moves nothing" {
@@ -154,12 +154,12 @@ STUB
 @test "major-scoped: release tag <agent>/v2.0.0 is still created on --push" {
   run env GH_TOKEN=x bash "$SCRIPT" dev-lead 2.0.0 --channel stable --push
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'created dev-lead/v2.0.0 on petry-projects/.github-private'
+  echo "$output" | grep -q 'created dev-lead/v2.0.0 on combsmith/.github-private'
   echo "$output" | grep -q 'moved dev-lead/v2-stable'
   # the immutable release tag ref is the un-prefixed vX.Y.Z form
-  grep -qE 'POST repos/petry-projects/\.github-private/git/refs .*refs/tags/dev-lead/v2.0.0' "$GH_CALLS"
+  grep -qE 'POST repos/combsmith/\.github-private/git/refs .*refs/tags/dev-lead/v2.0.0' "$GH_CALLS"
   # the channel ref that moved is the major-scoped v2-stable
-  grep -qE '(POST|PATCH) repos/petry-projects/\.github-private/git/refs.*dev-lead/v2-stable' "$GH_CALLS"
+  grep -qE '(POST|PATCH) repos/combsmith/\.github-private/git/refs.*dev-lead/v2-stable' "$GH_CALLS"
 }
 
 @test "major-scoped: --promote moves the major-scoped channel of the release's major" {
