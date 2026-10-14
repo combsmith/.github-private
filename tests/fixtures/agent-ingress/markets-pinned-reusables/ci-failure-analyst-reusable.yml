@@ -1,5 +1,5 @@
-# PINNED-USES: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@b58510275dd1cbbd13c0733c15265d51fd63b992
-# SNAPSHOT (trimmed) of petry-projects/.github-private
+# PINNED-USES: combsmith/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@b58510275dd1cbbd13c0733c15265d51fd63b992
+# SNAPSHOT (trimmed) of combsmith/.github-private
 # .github/workflows/ci-failure-analyst-reusable.yml @ b58510275dd1cbbd13c0733c15265d51fd63b992,
 # read 2026-10-10 for #2171 (was @79747178…, read 2026-10-02 for #2038). The
 # reusable declares NO concurrency group at workflow or job level; the markets

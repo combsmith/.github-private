@@ -29,7 +29,7 @@ setup() {
   export BASE_TIP="ccccccccccccccccccccccccccccccccccccccc3"  # tip of `main`
   export BASE_COMMIT="ddddddddddddddddddddddddddddddddddddddd4" # base-side merge parent
   export MERGE_SHA="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee5"  # the base-merge commit
-  export PR_URL="https://github.com/petry-projects/.github-private/pull/1531"
+  export PR_URL="https://github.com/combsmith/.github-private/pull/1531"
 
   export TEST_DIR="$BATS_TEST_TMPDIR"
   mkdir -p "$TEST_DIR/bin"

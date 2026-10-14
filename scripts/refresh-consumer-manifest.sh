@@ -20,13 +20,13 @@ set -euo pipefail
 #   refresh-consumer-manifest.sh [--manifest PATH] [--org ORG] [--dry-run]
 # Env overrides (lower precedence than flags):
 #   CONSUMER_MANIFEST   path to the manifest JSON (default: scripts/lib/consumer-manifest.json)
-#   TARGET_ORG          org to enumerate (default: petry-projects)
+#   TARGET_ORG          org to enumerate (default: combsmith)
 # --dry-run prints the regenerated manifest to stdout instead of writing it.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 MANIFEST="${CONSUMER_MANIFEST:-$SCRIPT_DIR/lib/consumer-manifest.json}"
-ORG="${TARGET_ORG:-petry-projects}"
+ORG="${TARGET_ORG:-combsmith}"
 DRY_RUN=0
 
 while [ "$#" -gt 0 ]; do

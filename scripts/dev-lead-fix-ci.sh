@@ -334,7 +334,7 @@ main() {
       git commit -m "fix(ci): auto-fix for $(echo "$CHECKS_JSON" | jq -r '.[0].name // "CI failure"') [skip ci-relay]"
     fi
     # Sync-stub guard (#2185/#2212): on a `standards-sync` PR a CI fix must not
-    # change a stub copied verbatim from petry-projects/.github/standards/ (e.g.
+    # change a stub copied verbatim from combsmith/.github/standards/ (e.g.
     # SHA-pinning a `uses:` line a linter flags). Same rule as the review intents:
     # the PR is read only when the pass changed a file, and an unreadable PR fails
     # closed only when a header stub was touched.

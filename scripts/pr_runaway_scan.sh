@@ -14,7 +14,7 @@
 # Env vars consumed:
 #   GH_TOKEN        — must have repo read on REPO (PR list/detail, comments)
 #   GH_PAT_FALLBACK — optional secondary token if the primary can't read REPO
-#   REPO / AGENT_REPO — target repo (default: petry-projects/.github-private)
+#   REPO / AGENT_REPO — target repo (default: combsmith/.github-private)
 #   GITHUB_ENV      — written by the Actions runner (HAS_RUNAWAY / RUNAWAY_COUNT)
 #   GITHUB_STEP_SUMMARY — written by the Actions runner
 
@@ -26,7 +26,7 @@ source "${SCRIPT_DIR}/lib/pr-automation-budget.sh"
 # shellcheck source=scripts/lib/pr-runaway-detect.sh
 source "${SCRIPT_DIR}/lib/pr-runaway-detect.sh"
 
-REPO="${REPO:-${AGENT_REPO:-petry-projects/.github-private}}"
+REPO="${REPO:-${AGENT_REPO:-combsmith/.github-private}}"
 REPORT_FILE="${REPORT_FILE:-pr_runaway_report.md}"
 TODAY=$(date -u +%Y-%m-%d)
 
