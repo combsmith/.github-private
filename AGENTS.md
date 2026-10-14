@@ -234,6 +234,10 @@ calling it a regression, and treat CI as authoritative.**
   that runs `scripts/validate-ai-engines.py` against `config/ai-engines.json`; the `paths:` filters also carry
   `config/**` for it. It is not covered by the org template and must not be removed by template syncs. If the
   org template gains an equivalent, remove this exception and defer to the template instead.
+- **Exception:** `.github/workflows/engine-config-validate.yml` (#1973) is a documented repo-specific
+  workflow that runs `scripts/validate-ai-engines.py` when `config/ai-engines.json`, its schema, or the
+  pricing table change. It is not covered by the org template and must not be removed by template syncs.
+  If the org template gains an equivalent, remove this exception and defer to the template instead.
 - **Exception:** the `lint.yml` `paths:` filters (pull_request and push) carry the repo-specific entry
   `docs/initiatives/agent-ingress-collapse-markets.md`, which is read by
   `tests/agent_ingress_markets_package.bats` (#2038). It must not be removed as template drift on a sync;
