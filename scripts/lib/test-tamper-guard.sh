@@ -34,11 +34,22 @@
 #   unresolvable pre-pass head; a pass that touches no test file needs no merge
 #   base (and no fetch).
 #
+# A REBASE OR MERGE OF THE BASE IS NOT THE PASS'S CHANGE (#2254)
+#   A pass that rebases onto (or merges) a base branch that moved brings in the
+#   base's own test changes, which the pre-pass head..result diff shows as
+#   removals (PR #2252 was held for lines main had changed). When the pass
+#   result's merge base with the base branch differs from the pre-pass one, each
+#   test file is judged against what a plain update would give — the 3-way merge of
+#   the pre-pass head and the updated merge base — so only the pass's own edits
+#   count. Lines on the updated base, including a test file the base added after
+#   the branch point, are protected; lines the PR added stay free.
+#
 # PURITY / TESTABILITY (ADR-0004)
 #   ttg_is_test_path, ttg_touched_existing_tests, ttg_count_added_skips,
 #   ttg_count_preexisting_removals, ttg_numstat_has_tests, ttg_has_justification
-#   and ttg_classify are PURE. ttg_scan_pass, ttg_pass_touches_tests and
-#   ttg_resolve_merge_base are the impure gatherers (all git calls). Sourced under `set -euo pipefail`; helpers only `return`, never
+#   and ttg_classify are PURE. ttg_scan_pass, _ttg_moved_base_file,
+#   ttg_pass_touches_tests and ttg_resolve_merge_base are the impure gatherers (all
+#   git calls). Sourced under `set -euo pipefail`; helpers only `return`, never
 #   `exit`.
 
 set -euo pipefail
@@ -201,7 +212,65 @@ ttg_pass_touches_tests() {
   ttg_numstat_has_tests "$numstat"
 }
 
-# ttg_scan_pass <base_sha> [head] <merge_base_sha>
+# _ttg_blob_to <rev> <path> <file>
+#   Impure. Writes <rev>:<path> to <file>, or an empty <file> when the path is
+#   absent at <rev>.
+_ttg_blob_to() {
+  git cat-file blob "${1}:${2}" > "$3" 2>/dev/null || : > "$3"
+}
+
+# _ttg_moved_base_file <base_sha> <merge_base_sha> <updated_merge_base_sha> <path> <binary:true|false>
+#   Impure. The pass brought base-branch changes in (rebase or merge, #2254), so
+#   the pass diff for <path> is taken from what a plain update would give — the
+#   3-way merge of the pre-pass head (<base_sha>) and the updated merge base over
+#   the pre-pass merge base — to the WORKING TREE. Echoes `<removed> <skips>`:
+#   lines removed that are on the updated base and not added by the PR, and skips
+#   added. A file absent at both merge bases is the PR's own (`0 0`). A binary
+#   file counts as one removal unless it equals the plain update. Returns 2 when
+#   git fails.
+_ttg_moved_base_file() {
+  local base="$1" mb="$2" umb="$3" path="$4" binary="$5"
+  local top wt tmp rc=0 pass_fd pr_fd removed skips
+  if ! git cat-file -e "${mb}:${path}" 2>/dev/null && ! git cat-file -e "${umb}:${path}" 2>/dev/null; then
+    echo "0 0"
+    return 0
+  fi
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || return 2
+  wt="${top}/${path}"
+  [[ -e "$wt" ]] || wt=/dev/null
+  tmp=$(mktemp -d) || return 2
+  _ttg_blob_to "$base" "$path" "$tmp/pre"
+  _ttg_blob_to "$mb" "$path" "$tmp/mb"
+  _ttg_blob_to "$umb" "$path" "$tmp/umb"
+  if [[ "$binary" == "true" ]]; then
+    # The plain update takes the side that changed; when both did there is none.
+    removed=1
+    if cmp -s "$tmp/pre" "$tmp/mb"; then
+      cmp -s "$tmp/umb" "$wt" && removed=0
+    elif cmp -s "$tmp/umb" "$tmp/mb"; then
+      cmp -s "$tmp/pre" "$wt" && removed=0
+    fi
+    rm -rf "$tmp"
+    echo "$removed 0"
+    return 0
+  fi
+  # Conflicts leave markers in the expected file (exit status = conflict count,
+  # 255 on error); they are PR-side lines, so only base lines the resolution dropped count.
+  git merge-file -p -q "$tmp/pre" "$tmp/mb" "$tmp/umb" > "$tmp/exp" 2>/dev/null || rc=$?
+  if (( rc >= 128 )); then rm -rf "$tmp"; return 2; fi
+  rc=0
+  pass_fd=$(git diff --no-index --no-renames --unified=0 -- "$tmp/exp" "$wt" 2>/dev/null) || rc=$?
+  if (( rc > 1 )); then rm -rf "$tmp"; return 2; fi
+  rc=0
+  pr_fd=$(git diff --no-index --no-renames --unified=0 -- "$tmp/umb" "$tmp/exp" 2>/dev/null) || rc=$?
+  rm -rf "$tmp"
+  (( rc > 1 )) && return 2
+  removed=$(ttg_count_preexisting_removals "$pass_fd" "$pr_fd")
+  skips=$(ttg_count_added_skips "+++ b/${path}"$'\n'"$(printf '%s\n' "$pass_fd" | awk 'f || /^@@/ { f = 1; print }')")
+  echo "$removed $skips"
+}
+
+# ttg_scan_pass <base_sha> [head] <merge_base_sha> [updated_merge_base_sha]
 #   The impure gatherer. Compares <base_sha> (the pre-pass head) against the
 #   WORKING TREE (so committed and not-yet-committed edits are both seen), keeps
 #   only removals of lines present at <merge_base_sha> and skips added to test
@@ -210,15 +279,21 @@ ttg_pass_touches_tests() {
 #   followed by the offending test paths (one per line). Returns 0 for
 #   clean/justified, 1 for tampered, 2 (echoing `unknown`) when <base_sha> is
 #   empty or does not resolve, or when the pass touches a test file and
-#   <merge_base_sha> is empty or does not resolve.
+#   <merge_base_sha> (or a given <updated_merge_base_sha>) is empty or does not
+#   resolve.
+#   <updated_merge_base_sha> is the merge base of the pass result with the base
+#   branch (#2254). When it differs from <merge_base_sha>, the pass rebased onto or
+#   merged a moved base: test changes the base made after the branch point are not
+#   the pass's, so each test file is judged against the plain update
+#   (_ttg_moved_base_file) and a test file the base added is protected too.
 ttg_scan_pass() {
-  local base="${1:-}" head="${2:-HEAD}" mb="${3:-}"
+  local base="${1:-}" head="${2:-HEAD}" mb="${3:-}" umb="${4:-}"
   if [[ -z "$base" ]] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
     echo "unknown"
     return 2
   fi
   local numstat diff msgs candidates touched="" skips justified=false verdict rc=0
-  local path pass_fd pr_fd removed _a _d
+  local path pass_fd pr_fd removed _a _d mb_sha umb_sha res fskips fbin base_side seen
   local -a mb_tests=()
   numstat=$(git -c core.quotePath=false diff --no-renames --numstat "$base" 2>/dev/null) || { echo "unknown"; return 2; }
   # A pass that touches no test file is clean whatever the merge base is; one that
@@ -227,9 +302,39 @@ ttg_scan_pass() {
     echo "clean"
     return 0
   fi
-  if [[ -z "$mb" ]] || ! git cat-file -e "${mb}^{commit}" 2>/dev/null; then
+  if [[ -z "$mb" ]] || ! mb_sha=$(git rev-parse -q --verify "${mb}^{commit}" 2>/dev/null); then
     echo "unknown"
     return 2
+  fi
+  if [[ -n "$umb" ]]; then
+    umb_sha=$(git rev-parse -q --verify "${umb}^{commit}" 2>/dev/null) || { echo "unknown"; return 2; }
+    if [[ "$umb_sha" != "$mb_sha" ]]; then
+      # Candidates: test files the pass result differs in, plus test files the base
+      # changed (a pass that reverts one leaves no trace against the pre-pass head).
+      base_side=$(git -c core.quotePath=false diff --no-renames --numstat "$mb_sha" "$umb_sha" 2>/dev/null) || { echo "unknown"; return 2; }
+      skips=0 seen=$'\n'
+      while IFS=$'\t' read -r _a _d path; do
+        [[ -z "${path:-}" ]] && continue
+        ttg_is_test_path "$path" || continue
+        [[ "$seen" == *$'\n'"${path}"$'\n'* ]] && continue
+        seen+="${path}"$'\n'
+        # Binary on either side (the first row seen for a path may be the text one).
+        fbin=false
+        [[ $'\n'"$numstat"$'\n'"$base_side"$'\n' == *$'\n-\t-\t'"$path"$'\n'* ]] && fbin=true
+        res=$(_ttg_moved_base_file "$base" "$mb_sha" "$umb_sha" "$path" "$fbin") || { echo "unknown"; return 2; }
+        read -r removed fskips <<<"$res"
+        (( removed > 0 )) && touched+="${path}"$'\n'
+        skips=$((skips + fskips))
+      done <<<"$numstat"$'\n'"$base_side"
+      touched="${touched%$'\n'}"
+      # The base's own commits are not the pass's: their trailers do not count.
+      msgs=$(git log --format=%B "$head" --not "$base" "$umb_sha" 2>/dev/null || true)
+      ttg_has_justification "$msgs" && justified=true
+      verdict=$(ttg_classify "$touched" "$skips" "$justified") || rc=$?
+      echo "$verdict"
+      [[ -n "$touched" ]] && printf '%s\n' "$touched"
+      return "$rc"
+    fi
   fi
   candidates=$(ttg_touched_existing_tests "$numstat")
   while IFS= read -r path; do

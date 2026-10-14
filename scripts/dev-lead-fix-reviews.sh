@@ -3320,10 +3320,13 @@ commit_and_push() {
     # "Existing" means present at the merge base with the PR's base branch (#2141):
     # tests the PR itself added are free to revise. The merge base is resolved only
     # when the pass touches a test file; an unresolvable one leaves ttg_mb empty,
-    # which ttg_scan_pass then refuses (fail closed).
+    # which ttg_scan_pass then refuses (fail closed). ttg_umb is the pass result's
+    # merge base with the base branch (#2254): when a rebase or merge of the base
+    # moved it, test changes the base brought in are not the pass's. Unresolvable,
+    # it stays empty and the stricter pre-pass comparison applies.
     case "$intent" in
       fix-reviews|fix-bot-comment|review-changes|human-pr)
-        local ttg_out ttg_rc=0 ttg_files ttg_mb=""
+        local ttg_out ttg_rc=0 ttg_files ttg_mb="" ttg_umb=""
         if ttg_pass_touches_tests "${RESOLUTION_BASE_SHA:-}"; then
           # Several intents default BASE_REF to `main` before the PR is read, so ask
           # the API for the PR's real target; an unreadable base leaves ttg_mb empty.
@@ -3333,9 +3336,10 @@ commit_and_push() {
           fi
           if [ -n "$ttg_base" ]; then
             ttg_mb=$(ttg_resolve_merge_base "$ttg_base" "${RESOLUTION_BASE_SHA:-}" "${HEAD_REF:-}") || ttg_mb=""
+            [ -n "$ttg_mb" ] && { ttg_umb=$(git merge-base HEAD "origin/${ttg_base}" 2>/dev/null) || ttg_umb=""; }
           fi
         fi
-        ttg_out=$(ttg_scan_pass "${RESOLUTION_BASE_SHA:-}" HEAD "$ttg_mb") || ttg_rc=$?
+        ttg_out=$(ttg_scan_pass "${RESOLUTION_BASE_SHA:-}" HEAD "$ttg_mb" "$ttg_umb") || ttg_rc=$?
         ttg_files=$(printf '%s\n' "$ttg_out" | sed '1d' | paste -sd ',' - | sed 's/,/, /g')
         if [ "$ttg_rc" -eq 1 ]; then
           echo "::error::Test-tamper guard: the ${intent} pass changed or skipped existing test(s) [${ttg_files:-skip added}] with no Test-Change-Justification trailer — refusing to push (#2013)"

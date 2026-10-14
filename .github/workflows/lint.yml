@@ -155,6 +155,7 @@ jobs:
             tests/test_pr_runaway_detect.bats \
             tests/test_sync_scope_check.bats \
             tests/test_sync_scope_guard.bats \
+            tests/test_deletion_guard.bats \
             tests/test_pr_stall_detect.bats \
             tests/test_pr_stall_regression.bats \
             tests/test_pr_mergeready_detect.bats \
