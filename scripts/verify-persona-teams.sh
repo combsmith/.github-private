@@ -19,7 +19,7 @@ set -euo pipefail
 #
 # FAIL CLOSED: any API/parse error is a failure, never a pass. Conflating "could
 # not read the team" with "the team is fine" is the exact systemic bug this check
-# exists to prevent (combsmith/.github#755, finding 3). If the team cannot be
+# exists to prevent (petry-projects/.github#755, finding 3). If the team cannot be
 # read, the check fails.
 #
 # Requires: gh (authenticated with an ORG-scoped token — github.token cannot read
@@ -27,9 +27,9 @@ set -euo pipefail
 # use the `::error::persona manifest invalid: ...` style of validate-personas.py.
 #
 # Usage: verify-persona-teams.sh [personas_root]   (default: personas)
-#   VPT_ORG — org whose teams are read (default: combsmith)
+#   VPT_ORG — org whose teams are read (default: petry-projects)
 
-export VPT_ORG="${VPT_ORG:-combsmith}"
+export VPT_ORG="${VPT_ORG:-petry-projects}"
 
 vpt_fail() {
   echo "::error::persona manifest invalid: $*" >&2
@@ -55,7 +55,7 @@ except ImportError:
           file=sys.stderr)
     sys.exit(1)
 
-vpt_org = os.environ.get("VPT_ORG", "combsmith")
+vpt_org = os.environ.get("VPT_ORG", "petry-projects")
 root = sys.argv[1]
 for manifest in sorted(glob.glob(os.path.join(root, "*", "persona.yml"))):
     try:
@@ -77,7 +77,7 @@ for manifest in sorted(glob.glob(os.path.join(root, "*", "persona.yml"))):
     handle = address.get("handle")
     if not isinstance(handle, str) or "/" not in handle:
         print(f"::error::persona manifest invalid: {manifest}: address.handle must be an "
-              f"'org/team-slug' string (e.g. 'combsmith/qa-lead'), got {handle!r}",
+              f"'org/team-slug' string (e.g. 'petry-projects/qa-lead'), got {handle!r}",
               file=sys.stderr)
         sys.exit(1)
     org, slug = handle.split("/", 1)

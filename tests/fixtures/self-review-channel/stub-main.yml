@@ -5,7 +5,7 @@ on:
     branches: [main]
 jobs:
   dev-lead:
-    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@main
+    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@main
     with:
       agent_ref: main
     secrets: inherit

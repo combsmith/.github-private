@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/lib/claim-landing.sh (#2013).
 #
-# On combsmith/.github#1220 dev-lead posted "Fixed in …" replies for changes
+# On petry-projects/.github#1220 dev-lead posted "Fixed in …" replies for changes
 # that never reached the branch: the model posts its addressed/claim reply from
 # its own shell BEFORE the harness commits and pushes, so a rejected push, a
 # no-op-guard abort, an engine failure, or a claim citing the pre-pass head left a

@@ -10,7 +10,7 @@
       "type": "User"
     },
     "pull_request": {
-      "url": "https://api.github.com/repos/combsmith/.github-private/pulls/1303"
+      "url": "https://api.github.com/repos/petry-projects/.github-private/pulls/1303"
     }
   },
   "comment": {
@@ -21,6 +21,6 @@
       "type": "Bot"
     }
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "sonarqubecloud[bot]", "type": "Bot" }
 }

@@ -24,13 +24,13 @@
     "head": {
       "sha": "aaa111bbb222",
       "ref": "dev-lead/issue-1417-20260802-0956",
-      "repo": { "full_name": "combsmith/.github-private" }
+      "repo": { "full_name": "petry-projects/.github-private" }
     },
     "base": {
       "ref": "main",
-      "repo": { "full_name": "combsmith/.github-private" }
+      "repo": { "full_name": "petry-projects/.github-private" }
     }
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "trusted-maintainer", "type": "User" }
 }

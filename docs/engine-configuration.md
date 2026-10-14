@@ -101,7 +101,7 @@ example `deep: opus 5.5 [opus 4.8, sonnet 5.5]`.
 ## Model selection — name a family, never pin a version
 
 The org standard (#1979, companion
-[`combsmith/.github#1199`](https://github.com/combsmith/.github/issues/1199)):
+[`petry-projects/.github#1199`](https://github.com/petry-projects/.github/issues/1199)):
 callers name a model **family** — `opus`, `sonnet`, or `haiku` — and let the
 resolver return the current concrete id. A model swap is then one edit to the
 chains above, not a hunt for hard-coded ids across the tree.

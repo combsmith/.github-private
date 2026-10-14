@@ -25,17 +25,17 @@ setup() {
   grep -q 'agent_host_repo' "$script"
 }
 
-@test "agent_host_repo: cross-repo agent resolves to combsmith/.github" {
+@test "agent_host_repo: cross-repo agent resolves to petry-projects/.github" {
   run agent_host_repo "agent-shield"
   [ "$status" -eq 0 ]
-  [ "$output" = "combsmith/.github" ]
+  [ "$output" = "petry-projects/.github" ]
 }
 
 @test "agent_host_repo: this-repo agent resolves to the current repo (GITHUB_REPOSITORY)" {
-  export GITHUB_REPOSITORY="combsmith/.github-private"
+  export GITHUB_REPOSITORY="petry-projects/.github-private"
   run agent_host_repo "dev-lead"
   [ "$status" -eq 0 ]
-  [ "$output" = "combsmith/.github-private" ]
+  [ "$output" = "petry-projects/.github-private" ]
 }
 
 @test "valid_agent: pr-review is accepted" {
@@ -56,10 +56,10 @@ setup() {
 }
 
 @test "agent_host_repo: ci-failure-analyst resolves to this repo (not cross-repo)" {
-  export GITHUB_REPOSITORY="combsmith/.github-private"
+  export GITHUB_REPOSITORY="petry-projects/.github-private"
   run agent_host_repo "ci-failure-analyst"
   [ "$status" -eq 0 ]
-  [ "$output" = "combsmith/.github-private" ]
+  [ "$output" = "petry-projects/.github-private" ]
 }
 
 @test "valid_agent: feature-ideation is accepted" {
@@ -67,7 +67,7 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-# idea-enhancer's reusable is hosted cross-repo in combsmith/.github, brought
+# idea-enhancer's reusable is hosted cross-repo in petry-projects/.github, brought
 # under the versioned-release model in #515.
 @test "valid_agent: idea-enhancer is accepted" {
   run valid_agent "idea-enhancer"
@@ -84,22 +84,22 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "agent_host_repo: pr-auto-review resolves to combsmith/.github (cross-repo)" {
+@test "agent_host_repo: pr-auto-review resolves to petry-projects/.github (cross-repo)" {
   run agent_host_repo "pr-auto-review"
   [ "$status" -eq 0 ]
-  [ "$output" = "combsmith/.github" ]
+  [ "$output" = "petry-projects/.github" ]
 }
 
-@test "agent_host_repo: add-to-project resolves to combsmith/.github (cross-repo)" {
+@test "agent_host_repo: add-to-project resolves to petry-projects/.github (cross-repo)" {
   run agent_host_repo "add-to-project"
   [ "$status" -eq 0 ]
-  [ "$output" = "combsmith/.github" ]
+  [ "$output" = "petry-projects/.github" ]
 }
 
-@test "agent_host_repo: idea-enhancer resolves to combsmith/.github (cross-repo)" {
+@test "agent_host_repo: idea-enhancer resolves to petry-projects/.github (cross-repo)" {
   run agent_host_repo "idea-enhancer"
   [ "$status" -eq 0 ]
-  [ "$output" = "combsmith/.github" ]
+  [ "$output" = "petry-projects/.github" ]
 }
 
 # The six .github-hosted reusables migrated by #482, brought under the ring model (#870).
@@ -144,7 +144,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# cross_repo_agent — agents whose reusable lives in combsmith/.github
+# cross_repo_agent — agents whose reusable lives in petry-projects/.github
 # (this repo holds only the thin caller stub), so live cuts are refused until
 # the cross-repo push target is wired (TODO #872).
 # ---------------------------------------------------------------------------

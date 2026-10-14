@@ -82,7 +82,7 @@ while IFS= read -r repo; do
 done < <(
   {
     gh repo list "${BOT_USER:-donpetry-bot}" --json nameWithOwner --jq '.[].nameWithOwner' 2>/dev/null || true
-    gh repo list "${TARGET_ORG:-combsmith}" --json nameWithOwner --jq '.[].nameWithOwner' 2>/dev/null || true
+    gh repo list "${TARGET_ORG:-petry-projects}" --json nameWithOwner --jq '.[].nameWithOwner' 2>/dev/null || true
   } | sort -u
 )
 

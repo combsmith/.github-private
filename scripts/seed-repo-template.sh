@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # seed-repo-template.sh — DRY_RUN-aware generator that seeds the org baseline file
-# scaffold into combsmith/repo-template so a template click yields the
+# scaffold into petry-projects/repo-template so a template click yields the
 # standard layout with no manual copying (issue #966, epic #964).
 #
 # The scaffold is a DISTRIBUTION ARTIFACT of standards/ in the public
-# combsmith/.github repo — regenerable from it, NOT a hand-edited fork. This
+# petry-projects/.github repo — regenerable from it, NOT a hand-edited fork. This
 # script therefore FETCHES the ~10 thin-caller workflow stubs from
 # standards/workflows/ and the Dependabot config from standards/dependabot/, then:
 #
 #   • copies the workflow stubs byte-identically (AC #1), and
 #   • repins each CALLER stub from the local `./…`/`@<name>/next` dogfood ref the
 #     source repo uses internally to the PUBLISHED channel tag a consumer must pin
-#     (`@<name>/v<MAJOR>-stable`; public reusables on combsmith/.github, the
-#     private dev-lead reusable on combsmith/.github-private). Inline workflows
+#     (`@<name>/v<MAJOR>-stable`; public reusables on petry-projects/.github, the
+#     private dev-lead reusable on petry-projects/.github-private). Inline workflows
 #     (ci/copilot-setup-steps/sonarcloud) carry no reusable ref and ship verbatim
 #     (AC #2). ci.yml is a customize-per-stack stub; the post-clone "pick your
 #     Dependabot + ci.yml stack" step is documented in the generated BOOTSTRAP.md
@@ -41,8 +41,8 @@ set -euo pipefail
 #
 # Env:
 #   DRY_RUN          "true" → print intent, make no write API calls.
-#   TEMPLATE_REPO    target repo to seed (default combsmith/repo-template).
-#   STANDARDS_REPO   repo holding the canonical standards/ (default combsmith/.github).
+#   TEMPLATE_REPO    target repo to seed (default petry-projects/repo-template).
+#   STANDARDS_REPO   repo holding the canonical standards/ (default petry-projects/.github).
 #   STANDARDS_DIR    optional local checkout of STANDARDS_REPO; when set, files are
 #                    read from disk instead of the GitHub API (regeneration seam,
 #                    retained for tests — #1448 step 2).
@@ -62,8 +62,8 @@ set -euo pipefail
 SEED_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 
 DRY_RUN="${DRY_RUN:-false}"
-TEMPLATE_REPO="${TEMPLATE_REPO:-combsmith/repo-template}"
-STANDARDS_REPO="${STANDARDS_REPO:-combsmith/.github}"
+TEMPLATE_REPO="${TEMPLATE_REPO:-petry-projects/repo-template}"
+STANDARDS_REPO="${STANDARDS_REPO:-petry-projects/.github}"
 STANDARDS_REF="${STANDARDS_REF:-}"
 STANDARDS_CHANNEL="${STANDARDS_CHANNEL:-standards/v1-stable}"
 DEPENDABOT_STACK="${DEPENDABOT_STACK:-frontend}"
@@ -103,15 +103,15 @@ fi
 #   kind=inline → self-contained; shipped byte-identically (host unused).
 # ci is the documented customize-per-stack inline stub (AC #4).
 readonly -a WORKFLOW_MANIFEST=(
-  "agent-shield|caller|combsmith/.github"
-  "auto-rebase|caller|combsmith/.github"
+  "agent-shield|caller|petry-projects/.github"
+  "auto-rebase|caller|petry-projects/.github"
   "ci|inline|-"
   "copilot-setup-steps|inline|-"
-  "dependabot-automerge|caller|combsmith/.github"
-  "dependabot-rebase|caller|combsmith/.github"
-  "dependency-audit|caller|combsmith/.github"
-  "dev-lead|caller|combsmith/.github-private"
-  "pr-review-mention|caller|combsmith/.github"
+  "dependabot-automerge|caller|petry-projects/.github"
+  "dependabot-rebase|caller|petry-projects/.github"
+  "dependency-audit|caller|petry-projects/.github"
+  "dev-lead|caller|petry-projects/.github-private"
+  "pr-review-mention|caller|petry-projects/.github"
   "sonarcloud|inline|-"
 )
 
@@ -177,7 +177,7 @@ _manifest_row() {
 
 # ── Resolve the ref standards content is fetched at (#1448 AC #7, #10) ─────────
 # The pre-#1448 bug read standards/ from the default branch WITHOUT a ref, so the
-# "expected" baseline was whatever combsmith/.github had at the moment of
+# "expected" baseline was whatever petry-projects/.github had at the moment of
 # execution — the same commit passed or failed template-drift purely on WHEN the
 # check ran. The fetch is now pinned to an explicit, logged ref.
 #
@@ -315,19 +315,19 @@ _gen_baseline() {
 # AGENTS.md
 
 This repository follows the organization-wide development standards defined in
-[`combsmith/.github/AGENTS.md`](https://github.com/combsmith/.github/blob/main/AGENTS.md).
+[`petry-projects/.github/AGENTS.md`](https://github.com/petry-projects/.github/blob/main/AGENTS.md).
 
 Read that file before making changes that touch CI, agent configuration, repo
 settings, or labels. Repo-specific deviations, if any, are documented below.
 EOF
       ;;
     CLAUDE.md) cat <<'EOF'
-See [AGENTS.md](./AGENTS.md), which points to the org standards in `combsmith/.github`.
+See [AGENTS.md](./AGENTS.md), which points to the org standards in `petry-projects/.github`.
 EOF
       ;;
     .github/CODEOWNERS) cat <<'EOF'
 # Default owner for all files
-* @combsmith/org-leads
+* @petry-projects/org-leads
 EOF
       ;;
     sonar-project.properties) cat <<'EOF'
@@ -361,7 +361,7 @@ EOF
     LICENSE) cat <<'EOF'
 MIT License
 
-Copyright (c) combsmith
+Copyright (c) petry-projects
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -386,7 +386,7 @@ EOF
 # Security Policy
 
 To report a vulnerability, please follow the org-wide policy in
-[`combsmith/.github`](https://github.com/combsmith/.github/blob/main/SECURITY.md).
+[`petry-projects/.github`](https://github.com/petry-projects/.github/blob/main/SECURITY.md).
 
 Do not open public issues for security reports.
 EOF
@@ -394,7 +394,7 @@ EOF
     README.md) cat <<'EOF'
 # repo-template
 
-Org baseline scaffold for new `combsmith` repositories. Click **Use this
+Org baseline scaffold for new `petry-projects` repositories. Click **Use this
 template** to create a repo pre-wired with the standard workflow stubs and
 baseline files.
 
@@ -402,7 +402,7 @@ After creating your repo, follow **[BOOTSTRAP.md](./BOOTSTRAP.md)** to finish th
 one-time, per-stack setup (Dependabot + `ci.yml`).
 
 The workflow stubs and baseline files here are a distribution artifact of the org
-standards in [`combsmith/.github`](https://github.com/combsmith/.github)
+standards in [`petry-projects/.github`](https://github.com/petry-projects/.github)
 (`standards/`) and are regenerated from it — edit the standards, not this copy.
 EOF
       ;;
@@ -418,7 +418,7 @@ after you create your repo from the template:
 
 `.github/dependabot.yml` ships with the `frontend` (npm) stack by default.
 Replace it with the stack that matches your project — the canonical stacks live
-in `combsmith/.github` under `standards/dependabot/<stack>.yml`. Available
+in `petry-projects/.github` under `standards/dependabot/<stack>.yml`. Available
 stacks: `frontend` (npm), `backend-go`, `backend-python`, `backend-rust`,
 `fullstack` (npm + Go + Terraform), and `infra-terraform`.
 
@@ -443,7 +443,7 @@ Two onboarding questions are resolved here so they are not left implicit:
 
 - **Framework subtrees (`frameworks/`) are opt-in — they are not seeded by this
   template.** The agentic frameworks (`bmad-method`, `spec-kit`, `gsd`) are
-  `git subtree` development tooling maintained in `combsmith/.github-private`;
+  `git subtree` development tooling maintained in `petry-projects/.github-private`;
   a product repo does not need them on day 0. If your project uses one, add it on
   demand with `git subtree add` against its upstream — see that repo's `AGENTS.md`.
 
@@ -569,7 +569,7 @@ _emit_baseline() {
 # A file may carry a block owned by a DIFFERENT managed process, delimited by a
 # marker of the form `>>> BEGIN … (managed by <owner> — do not edit) >>>`. The
 # live case is the org secrets baseline synced into .gitignore from the
-# gitignore-standard (combsmith/.github): a 420-line L1 block the seeder does
+# gitignore-standard (petry-projects/.github): a 420-line L1 block the seeder does
 # not own. Detection is GENERIC — any content carrying a "managed by … do not
 # edit" marker is treated as owned elsewhere and preserved, regardless of path —
 # so the next managed file is not discovered by losing it (#1812).

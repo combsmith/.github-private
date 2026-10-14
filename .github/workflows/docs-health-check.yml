@@ -29,10 +29,10 @@ jobs:
       # Operator model override for the family resolver (ai_model_for_family, #1979).
       AI_MODELS_CLAUDE: ${{ vars.AI_MODELS_CLAUDE || '' }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      ORG: ${{ vars.ORG || 'combsmith' }}
+      ORG: ${{ vars.ORG || 'petry-projects' }}
       STALE_DAYS: ${{ inputs.stale_days || vars.DOCS_STALE_DAYS || '90' }}
       DOCS_STALENESS_IGNORE: ${{ vars.DOCS_STALENESS_IGNORE || '' }}
-      REPORT_REPO: ${{ vars.ORG || 'combsmith' }}/.github-private
+      REPORT_REPO: ${{ vars.ORG || 'petry-projects' }}/.github-private
       # Pin via vars.CLAUDE_CODE_VERSION for reproducible caching; mirrors pr-review.yml.
       CLAUDE_CODE_VERSION: ${{ vars.CLAUDE_CODE_VERSION || 'latest' }}
 

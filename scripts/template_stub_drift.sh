@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # template_stub_drift.sh — drift guard for the repo-template scaffold (#969, epic
-# #964). Fails CI when a file committed in combsmith/repo-template has
+# #964). Fails CI when a file committed in petry-projects/repo-template has
 # drifted from its canonical standards-derived baseline, so the template stays a
 # thin distribution layer of standards/ and never becomes a competing fork.
 #
 # repo-template is a DISTRIBUTION ARTIFACT of the canonical standards/ in the
-# public combsmith/.github repo: scripts/seed-repo-template.sh fetches each
+# public petry-projects/.github repo: scripts/seed-repo-template.sh fetches each
 # canonical workflow stub / baseline file and ships it (caller stubs repinned to
 # the published @<name>/v<MAJOR>-stable channel, inline stubs + baseline files verbatim).
 # This guard re-derives that standards-based content and compares it, file by
@@ -44,7 +44,7 @@ set -euo pipefail
 # does NOT fail the check — see "AHEAD detection" below for the recorded decision.
 
 TEMPLATE_DRIFT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-TEMPLATE_REPO="${TEMPLATE_REPO:-combsmith/repo-template}"
+TEMPLATE_REPO="${TEMPLATE_REPO:-petry-projects/repo-template}"
 
 # shellcheck source=scripts/fleet_stub_drift.sh
 source "${TEMPLATE_DRIFT_DIR}/fleet_stub_drift.sh"
@@ -369,7 +369,7 @@ _template_drift_resolve_ref() {
 _template_drift_head_sha() {
   local sha
   sha="$(gh api -H "Accept: application/vnd.github.sha" \
-    "repos/${STANDARDS_REPO:-combsmith/.github}/commits/HEAD" 2>/dev/null)" || true
+    "repos/${STANDARDS_REPO:-petry-projects/.github}/commits/HEAD" 2>/dev/null)" || true
   if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
     return 0
   fi

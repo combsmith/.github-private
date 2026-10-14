@@ -47,7 +47,7 @@
 #                                 monitor scan with).
 #   BUDGET_BREAKER_NOTIFY_TOKEN   this repository's workflow token (issues: write)
 #   BUDGET_BREAKER_ORG            organisation to scan and to pause (default
-#                                 combsmith)
+#                                 petry-projects)
 #   BUDGET_BREAKER_NOTIFY_REPO    repository of the tracking issue (default
 #                                 $GITHUB_REPOSITORY)
 #   BUDGET_BREAKER_VARS_PAUSED / _SOURCE / _UNTIL
@@ -81,7 +81,7 @@ unset BUDGET_BREAKER_MARKER_KINDS
 
 bbw_take_credentials
 
-ORG="${BUDGET_BREAKER_ORG:-combsmith}"
+ORG="${BUDGET_BREAKER_ORG:-petry-projects}"
 NOTIFY_REPO="${BUDGET_BREAKER_NOTIFY_REPO:-${GITHUB_REPOSITORY:-}}"
 SECRET_NAME="${BUDGET_BREAKER_SECRET_NAME:-}"
 SECRET_LABEL="${SECRET_NAME:-the write secret}"

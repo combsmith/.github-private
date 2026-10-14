@@ -5,8 +5,8 @@ The org standard requires agent-shield.yml to be a thin caller stub that delegat
 to the reusable at the major-scoped channel tag @agent-shield/v2-stable (#1184). A
 bare @agent-shield/stable tier pin (missing the major scope) is drift (issue #1393).
 
-Standard: combsmith/.github/standards/ci-standards.md#centralization-tiers
-Source of truth: combsmith/.github/standards/workflows/agent-shield.yml
+Standard: petry-projects/.github/standards/ci-standards.md#centralization-tiers
+Source of truth: petry-projects/.github/standards/workflows/agent-shield.yml
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ except ImportError:
     sys.exit(2)
 
 WORKFLOW = ".github/workflows/agent-shield.yml"
-EXPECTED_USES = "combsmith/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable"
+EXPECTED_USES = "petry-projects/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable"
 EXPECTED_JOB = "agent-shield"
 REQUIRED_TRIGGERS = {"push", "pull_request"}
 

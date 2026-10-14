@@ -98,7 +98,7 @@ make_fixture() {
 @test "ort_fetch_open_threads: 51 threads, only open one is #51 (page boundary at 50) → seen" {
   make_fixture 51 51
   export ORT_PAGE_SIZE=50
-  run ort_fetch_open_threads "combsmith/.github-private" 1953
+  run ort_fetch_open_threads "petry-projects/.github-private" 1953
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq 'length')" -eq 1 ]
   [ "$(printf '%s' "$output" | jq -r '.[0].id')" = "PRRT_51" ]
@@ -108,7 +108,7 @@ make_fixture() {
 
 @test "ort_fetch_open_threads: 101 threads, only open one is #101 (page boundary at 100) → seen" {
   make_fixture 101 101
-  run ort_fetch_open_threads "combsmith/.github-private" 1953
+  run ort_fetch_open_threads "petry-projects/.github-private" 1953
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq -r '[.[].id] | join(",")')" = "PRRT_101" ]
   [ "$(wc -l < "$GH_CALLS_FILE")" -eq 2 ]
@@ -117,7 +117,7 @@ make_fixture() {
 @test "ort_fetch_open_threads: PR #1953 shape (66 threads, open at #66) with 50-thread pages → seen" {
   make_fixture 66 66
   export ORT_PAGE_SIZE=50
-  run ort_fetch_open_threads "combsmith/.github-private" 1953
+  run ort_fetch_open_threads "petry-projects/.github-private" 1953
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq -r '[.[].id] | join(",")')" = "PRRT_66" ]
 }
@@ -125,7 +125,7 @@ make_fixture() {
 @test "ort_fetch_open_threads: open threads spread across three pages are all collected in order" {
   make_fixture 120 3 50 51 100 101 120
   export ORT_PAGE_SIZE=50
-  run ort_fetch_open_threads "combsmith/.github-private" 7
+  run ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq -r '[.[].line] | join(",")')" = "3,50,51,100,101,120" ]
   [ "$(wc -l < "$GH_CALLS_FILE")" -eq 3 ]
@@ -133,7 +133,7 @@ make_fixture() {
 
 @test "ort_fetch_open_threads: exactly 100 threads in one full page → single fetch, open one seen" {
   make_fixture 100 100
-  run ort_fetch_open_threads "combsmith/.github-private" 7
+  run ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq -r '.[0].id')" = "PRRT_100" ]
   [ "$(wc -l < "$GH_CALLS_FILE")" -eq 1 ]
@@ -141,7 +141,7 @@ make_fixture() {
 
 @test "ort_fetch_open_threads: default page size is the GraphQL max (100)" {
   make_fixture 1
-  run ort_fetch_open_threads "combsmith/.github-private" 7
+  run ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 0 ]
   grep -q 'reviewThreads(first:100' "$GH_CALLS_FILE"
 }
@@ -149,7 +149,7 @@ make_fixture() {
 @test "ort_fetch_open_threads: second page passes the first page's endCursor" {
   make_fixture 51 51
   export ORT_PAGE_SIZE=50
-  run ort_fetch_open_threads "combsmith/.github-private" 7
+  run ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 0 ]
   sed -n 2p "$GH_CALLS_FILE" | grep -q 'cursor=50'
   ! sed -n 1p "$GH_CALLS_FILE" | grep -q 'cursor='
@@ -157,7 +157,7 @@ make_fixture() {
 
 @test "ort_fetch_open_threads: emits the thread fields the prompts consume" {
   make_fixture 1 1
-  run ort_fetch_open_threads "combsmith/.github-private" 7
+  run ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 0 ]
   printf '%s' "$output" | jq -e '.[0] | has("id") and has("isResolved") and has("isOutdated") and has("line") and has("path") and (.comments.nodes[0].author.__typename == "Bot")'
   # The fixture is returned verbatim by the stub, so assert the query itself
@@ -177,7 +177,7 @@ make_fixture() {
     '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":null,"endCursor":"5"},"nodes":[]}}}}}' \
     '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":"true","endCursor":"5"},"nodes":[]}}}}}'; do
     : > "$GH_CALLS_FILE"  # the stub's page override keys off the call count
-    GH_PAGE_BODY="$body" run --separate-stderr ort_fetch_open_threads "combsmith/.github-private" 7
+    GH_PAGE_BODY="$body" run --separate-stderr ort_fetch_open_threads "petry-projects/.github-private" 7
     [ "$status" -eq 1 ]
     [ -z "$output" ]
   done
@@ -188,7 +188,7 @@ make_fixture() {
   export GH_PAGE_OVERRIDE=2
   export GH_PAGE_BODY='{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":true,"endCursor":"5"},"nodes":[]}}}}}'
   export ORT_PAGE_SIZE=5
-  run --separate-stderr ort_fetch_open_threads "combsmith/.github-private" 7
+  run --separate-stderr ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 1 ]
   [ -z "$output" ]
 }
@@ -196,14 +196,14 @@ make_fixture() {
 @test "ort_fetch_open_threads: no open threads → empty array, success" {
   make_fixture 60
   export ORT_PAGE_SIZE=50
-  run ort_fetch_open_threads "combsmith/.github-private" 7
+  run ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 0 ]
   [ "$output" = "[]" ]
 }
 
 @test "ort_fetch_open_threads: zero threads → empty array, success" {
   echo '[]' > "$FIXTURE_DIR/threads.json"
-  run ort_fetch_open_threads "combsmith/.github-private" 7
+  run ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 0 ]
   [ "$output" = "[]" ]
 }
@@ -213,7 +213,7 @@ make_fixture() {
 @test "ort_fetch_open_threads: failed second page fetch → non-zero, no partial list on stdout" {
   make_fixture 101 1 101
   export GH_FAIL_PAGE=2
-  run --separate-stderr ort_fetch_open_threads "combsmith/.github-private" 7
+  run --separate-stderr ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 1 ]
   [ -z "$output" ]
 }
@@ -221,7 +221,7 @@ make_fixture() {
 @test "ort_fetch_open_threads: failed first page fetch → non-zero (not an empty list)" {
   make_fixture 10 5
   export GH_FAIL_PAGE=1
-  run --separate-stderr ort_fetch_open_threads "combsmith/.github-private" 7
+  run --separate-stderr ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 1 ]
   [ -z "$output" ]
 }
@@ -230,7 +230,7 @@ make_fixture() {
   make_fixture 10 5
   export GH_PAGE_OVERRIDE=1
   export GH_PAGE_BODY='{"data":null,"errors":[{"message":"Something went wrong"}]}'
-  run --separate-stderr ort_fetch_open_threads "combsmith/.github-private" 7
+  run --separate-stderr ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 1 ]
   [ -z "$output" ]
 }
@@ -239,7 +239,7 @@ make_fixture() {
   make_fixture 10 5
   export GH_PAGE_OVERRIDE=1
   export GH_PAGE_BODY='{}'
-  run --separate-stderr ort_fetch_open_threads "combsmith/.github-private" 7
+  run --separate-stderr ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 1 ]
   [ -z "$output" ]
 }
@@ -248,7 +248,7 @@ make_fixture() {
   make_fixture 10 5
   export GH_PAGE_OVERRIDE=1
   export GH_PAGE_BODY='<html>502</html>'
-  run --separate-stderr ort_fetch_open_threads "combsmith/.github-private" 7
+  run --separate-stderr ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 1 ]
   [ -z "$output" ]
 }
@@ -257,7 +257,7 @@ make_fixture() {
   make_fixture 10 5
   export GH_PAGE_OVERRIDE=1
   export GH_PAGE_BODY='{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":true,"endCursor":null},"nodes":[]}}}}}'
-  run --separate-stderr ort_fetch_open_threads "combsmith/.github-private" 7
+  run --separate-stderr ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 1 ]
   [ -z "$output" ]
 }
@@ -265,7 +265,7 @@ make_fixture() {
 @test "ort_fetch_open_threads: missing repo or PR argument → non-zero without calling gh" {
   run --separate-stderr ort_fetch_open_threads "" 7
   [ "$status" -eq 1 ]
-  run --separate-stderr ort_fetch_open_threads "combsmith/.github-private" ""
+  run --separate-stderr ort_fetch_open_threads "petry-projects/.github-private" ""
   [ "$status" -eq 1 ]
   [ ! -s "$GH_CALLS_FILE" ]
 }
@@ -276,7 +276,7 @@ make_fixture() {
           isOutdated: false, line: $i, path: "scripts/f.sh",
           comments: {nodes: [{body: ("x" * 2000), author: {login: "coderabbitai", __typename: "Bot"}}]}}]' \
     > "$FIXTURE_DIR/threads.json"
-  run ort_fetch_open_threads "combsmith/.github-private" 7
+  run ort_fetch_open_threads "petry-projects/.github-private" 7
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq 'length')" -eq 150 ]
 }

@@ -108,7 +108,7 @@ make_persona() {
 # ---------------------------------------------------------------------------
 
 @test "vpt_list_addresses emits slug+manifest only for personas with an address" {
-  make_persona qa-lead combsmith/qa-lead
+  make_persona qa-lead petry-projects/qa-lead
   make_persona no-addr
   run vpt_list_addresses "$TMP/personas"
   [ "$status" -eq 0 ]
@@ -144,7 +144,7 @@ make_persona() {
 # ---------------------------------------------------------------------------
 
 @test "vpt_run verifies a persona whose team is closed + notifications-disabled" {
-  make_persona qa-lead combsmith/qa-lead
+  make_persona qa-lead petry-projects/qa-lead
   export VPT_TEST_TEAM_JSON='{"slug":"qa-lead","privacy":"closed","notification_setting":"notifications_disabled"}'
   run vpt_run "$TMP/personas"
   [ "$status" -eq 0 ]
@@ -152,14 +152,14 @@ make_persona() {
 }
 
 @test "vpt_run fails when a persona's team is secret" {
-  make_persona qa-lead combsmith/qa-lead
+  make_persona qa-lead petry-projects/qa-lead
   export VPT_TEST_TEAM_JSON='{"slug":"qa-lead","privacy":"secret","notification_setting":"notifications_disabled"}'
   run vpt_run "$TMP/personas"
   [ "$status" -ne 0 ]
 }
 
 @test "vpt_run fails CLOSED when the teams API errors for a declared address" {
-  make_persona qa-lead combsmith/qa-lead
+  make_persona qa-lead petry-projects/qa-lead
   export VPT_TEST_GH_FAIL=1
   run vpt_run "$TMP/personas"
   [ "$status" -ne 0 ]
@@ -194,7 +194,7 @@ make_persona() {
 # ---------------------------------------------------------------------------
 
 @test "vpt_run skips with a warning when no gh credential is available" {
-  make_persona qa-lead combsmith/qa-lead
+  make_persona qa-lead petry-projects/qa-lead
   # A misconfigured team is present; without a credential the check must NOT
   # read it at all — it skips rather than failing closed.
   export VPT_TEST_NO_CRED=1
@@ -207,7 +207,7 @@ make_persona() {
 
 @test "vpt_run still fails closed on an API error when a credential IS present" {
   # Regression guard: the credential-skip must not swallow a real live failure.
-  make_persona qa-lead combsmith/qa-lead
+  make_persona qa-lead petry-projects/qa-lead
   export VPT_TEST_GH_FAIL=1
   run vpt_run "$TMP/personas"
   [ "$status" -ne 0 ]

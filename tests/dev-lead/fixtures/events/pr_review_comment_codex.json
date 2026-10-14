@@ -20,18 +20,18 @@
       "sha": "aaa111bbb222",
       "ref": "dev-lead/issue-232-20260718-1200",
       "repo": {
-        "full_name": "combsmith/.github-private"
+        "full_name": "petry-projects/.github-private"
       }
     },
     "base": {
       "ref": "main",
       "repo": {
-        "full_name": "combsmith/.github-private"
+        "full_name": "petry-projects/.github-private"
       }
     }
   },
   "repository": {
-    "full_name": "combsmith/.github-private"
+    "full_name": "petry-projects/.github-private"
   },
   "sender": {
     "login": "chatgpt-codex-connector[bot]",

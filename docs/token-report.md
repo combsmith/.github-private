@@ -2,7 +2,7 @@
 
 Org-wide visibility into LLM token spend for the agentic workflows (pr-review and
 dev-lead). Builds on the per-call JSONL logging added by the
-[Token Cost Observatory](https://github.com/combsmith/.github-private/discussions/332)
+[Token Cost Observatory](https://github.com/petry-projects/.github-private/discussions/332)
 work — this layer aggregates that data across **every repo in the org** and
 delivers it where humans actually look.
 
@@ -128,15 +128,15 @@ Runs automatically every Monday. To trigger manually:
 
 ```bash
 gh workflow run token-report.yml \
-  --repo combsmith/.github-private \
-  --field org=combsmith \
+  --repo petry-projects/.github-private \
+  --field org=petry-projects \
   --field lookback_days=7
 ```
 
 To generate the report locally (requires a token with org-wide `actions:read`):
 
 ```bash
-ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
+ORG=petry-projects LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
   bash scripts/token_report.sh
 ```
 
@@ -155,7 +155,7 @@ ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
 
 | Variable | Description |
 |---|---|
-| `ORG` | Org to scan (default `combsmith`). All non-archived repos discovered automatically. |
+| `ORG` | Org to scan (default `petry-projects`). All non-archived repos discovered automatically. |
 | `LOOKBACK_DAYS` | Rolling window of artifact history to include (default `7`). |
 | `GH_TOKEN` | PAT with `actions:read` across the org — token-usage artifacts are per-repo. Uses `GH_PAT_WORKFLOWS` in CI. |
 | `TOKEN_REPORT_OUT` | Optional path to also write the report to (used by the workflow to post the issue comment). |
