@@ -15,7 +15,7 @@ setup() {
   export BOT_USER="don-petry"
   export TRUSTED_BOTS="coderabbitai[bot],codeant-ai[bot],chatgpt-codex-connector[bot]"
   export TRIGGER_PHRASES="@dev-lead"
-  export GITHUB_REPOSITORY="combsmith/.github-private"
+  export GITHUB_REPOSITORY="petry-projects/.github-private"
   export GITHUB_EVENT_NAME="repository_dispatch"
   MOCK_BIN="$(mktemp -d)"
   export PATH="$MOCK_BIN:$PATH"
@@ -64,7 +64,7 @@ _ctx() { _get_env INTENT_CONTEXT | jq -r ".$1 // empty"; }
 _event() {
   jq -nc --arg id "${1-IC_cr}" --arg b "${2:-}" '
     {action:"dev-lead-reviews-retry",
-     client_payload:({pr_number:2009, repo:"combsmith/.github-private",
+     client_payload:({pr_number:2009, repo:"petry-projects/.github-private",
                       intent_type:"fix-bot-comment"}
                      + (if $id == "" then {} else {comment_node_id:$id} end)
                      + (if $b == "" then {} else {body:$b} end))}' > "$EVENT_FILE"
@@ -76,7 +76,7 @@ _node() {
   NODE_JSON="$(jq -nc --arg l "$1" --arg b "$2" --arg m "${3:-}" \
     --argjson pr "${4:-2009}" --arg pa "${5:-don-petry}" --arg st "${6:-OPEN}" \
     --arg e "${7:-}" --arg ty "${8-Bot}" --argjson cross "${9:-false}" \
-    --arg repo "${10:-combsmith/.github-private}" '
+    --arg repo "${10:-petry-projects/.github-private}" '
     {data:{node:{id:"IC_cr", author:({login:$l} + (if $ty == "" then {} else {__typename:$ty} end)), body:$b,
       createdAt:"2026-10-01T23:05:43Z", lastEditedAt:(if $e == "" then null else $e end),
       isMinimized:($m != ""), minimizedReason:(if $m == "" then null else $m end),

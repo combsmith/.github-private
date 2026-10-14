@@ -6,7 +6,7 @@
     "title": "feat(pr-review): mirror dispatch inputs as workflow_call inputs",
     "state": "closed",
     "pull_request": {
-      "url": "https://api.github.com/repos/combsmith/.github-private/pulls/519",
+      "url": "https://api.github.com/repos/petry-projects/.github-private/pulls/519",
       "merged_at": "2026-06-09T21:00:00Z"
     }
   },
@@ -18,6 +18,6 @@
       "type": "Bot"
     }
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "sonarqubecloud[bot]", "type": "Bot" }
 }

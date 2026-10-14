@@ -13,7 +13,7 @@ setup() {
   export POST_SCRIPT="$REPO_ROOT/scripts/post-pr-review.sh"
 
   export SHA="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-  export PR_URL="https://github.com/combsmith/.github-private/pull/1874"
+  export PR_URL="https://github.com/petry-projects/.github-private/pull/1874"
   export PR_HEAD_SHA="$SHA"
   export BOT_USER="donpetry-bot"
   export DRY_RUN="false"

@@ -1,5 +1,5 @@
-# PINNED-USES: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/stable
-# SNAPSHOT (trimmed) of combsmith/.github-private
+# PINNED-USES: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/stable
+# SNAPSHOT (trimmed) of petry-projects/.github-private
 # .github/workflows/pr-review.yml @ pr-review/stable (776c9585c8fff87a1ffefd469137791ab6467e61),
 # read 2026-10-02 for #2038. Only the parts the two ingress guards read are kept:
 # the workflow_call inputs (validate-caller-inputs.sh) and the workflow-level

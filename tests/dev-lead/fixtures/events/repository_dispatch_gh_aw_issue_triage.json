@@ -1,11 +1,11 @@
 {
-  "_test_note": "Cross-org issue triage dispatch from an org repo listener (gh-aw-org-listener.yml). Source: combsmith/ContentTwin. Used to verify gh-aw-cross-org.yml routes correctly to dev-lead-fix-issue.sh.",
+  "_test_note": "Cross-org issue triage dispatch from an org repo listener (gh-aw-org-listener.yml). Source: petry-projects/ContentTwin. Used to verify gh-aw-cross-org.yml routes correctly to dev-lead-fix-issue.sh.",
   "action": "gh-aw-issue-triage",
   "client_payload": {
-    "source_repo": "combsmith/ContentTwin",
+    "source_repo": "petry-projects/ContentTwin",
     "issue_number": 42,
     "label": "bug"
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "donpetry", "type": "User" }
 }

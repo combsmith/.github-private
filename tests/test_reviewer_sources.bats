@@ -473,9 +473,9 @@ _has_findings() {
   "pull_request": {
     "number": 1421,
     "author_association": "OWNER",
-    "head": { "sha": "deadbee", "ref": "dev-lead/issue-1425", "repo": { "full_name": "combsmith/.github-private" } }
+    "head": { "sha": "deadbee", "ref": "dev-lead/issue-1425", "repo": { "full_name": "petry-projects/.github-private" } }
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "graphite-app[bot]", "type": "Bot" }
 }
 JSON
@@ -484,7 +484,7 @@ JSON
   unset TRUSTED_BOTS
   GITHUB_ENV="$out" GITHUB_OUTPUT="$out_output" \
     GITHUB_EVENT_NAME="pull_request_review" GITHUB_EVENT_PATH="$ev" \
-    BOT_USER="donpetry-bot" GITHUB_REPOSITORY="combsmith/.github-private" \
+    BOT_USER="donpetry-bot" GITHUB_REPOSITORY="petry-projects/.github-private" \
     run bash "$REPO_ROOT/scripts/dev-lead-intent.sh"
   [ "$status" -eq 0 ]
   grep -q "^INTENT_TYPE=fix-reviews$" "$out"

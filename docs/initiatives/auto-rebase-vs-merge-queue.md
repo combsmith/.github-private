@@ -2,7 +2,7 @@
 
 **Status:** Decision record — free mitigation validated (≥50% metric met) **and deployed org-wide &
 verified live 2026-06-26** (see §2 update); Merge Queue go/no-go **deferred to a human** (epic
-[#736](https://github.com/combsmith/.github-private/issues/736) open question).
+[#736](https://github.com/petry-projects/.github-private/issues/736) open question).
 
 **2026-07-03 update:** the developer-facing *delay* was measured directly (not just fan-out volume) — approval→merge
 latency is **~7 min median**, per-cycle CI is **~50 s**, and serialization uses **<0.5%** of capacity, so
@@ -10,13 +10,13 @@ the current state adds negligible delay and the gate reading now leans **strongl
 **Author:** dev-lead / Claude Code
 **Date:** 2026-06-21
 **Scope (confirmed):** Records the measured before/after impact of the **review-ready auto-rebase
-fan-out restriction** (the free, plan-independent mitigation from epic [#736](https://github.com/combsmith/.github-private/issues/736),
-Story [#738](https://github.com/combsmith/.github-private/issues/738)) and the now-measurable
-agentic-conflict-resolution rate (Story [#737](https://github.com/combsmith/.github-private/issues/737)).
+fan-out restriction** (the free, plan-independent mitigation from epic [#736](https://github.com/petry-projects/.github-private/issues/736),
+Story [#738](https://github.com/petry-projects/.github-private/issues/738)) and the now-measurable
+agentic-conflict-resolution rate (Story [#737](https://github.com/petry-projects/.github-private/issues/737)).
 Defines the GitHub **Merge Queue** go/no-go as explicit, checkable gate conditions. Does **not** decide
 the go/no-go — that remains a human call (see §4).
 **Constraints (confirmed):** Docs-only. The before/after numbers are sourced from the Story 1 (#737)
-observability report and the discussion [#735](https://github.com/combsmith/.github-private/discussions/735)
+observability report and the discussion [#735](https://github.com/petry-projects/.github-private/discussions/735)
 manual baseline — not re-estimated here. Fan-out volume is an **estimate** (per-run behind-PR counts
 live in the central reusable, not this repo); it is labelled as such throughout, consistent with the
 Story 1 report's method note.
@@ -36,7 +36,7 @@ Epic #736 split the response into two tiers:
 
 1. **Free, plan-independent mitigation (Story #738):** stop fanning out to PRs nobody will review —
    restrict the update to a **review-ready eligibility predicate**. Landed **2026-06-15** in the central
-   reusable via PR [combsmith/.github#468](https://github.com/combsmith/.github/pull/468)
+   reusable via PR [petry-projects/.github#468](https://github.com/petry-projects/.github/pull/468)
    (issue #465). Predicate: **non-draft AND (current `APPROVED` review OR `auto-rebase:ready` label)**,
    tunable via an `eligibility` workflow input. The merge-method update (approval-safe) and the
    `<!-- auto-rebase-conflict:` sentinel → dev-lead agentic-rebase path are both preserved.
@@ -82,9 +82,9 @@ fallback (the sentinel path is preserved — see §3).
 > computed from the eligible-PR *multiplier* (a predicate snapshot), and at the time this record was
 > written the restriction was **not yet filtering anything in production**: the central reusable
 > defaulted `tooling_ref` to `v1`, a tag that predates `lib/eligibility.sh` (added in #468), so every
-> auto-rebase run failed to source the predicate — `combsmith/.github`'s own runs errored outright
+> auto-rebase run failed to source the predicate — `petry-projects/.github`'s own runs errored outright
 > while consumer repos still ran the **original unrestricted fan-out**. That latent regression was fixed
-> in [combsmith/.github#528](https://github.com/combsmith/.github/pull/528) (2026-06-24), which
+> in [petry-projects/.github#528](https://github.com/petry-projects/.github/pull/528) (2026-06-24), which
 > sources the predicate from the reusable's own commit (`github.job_workflow_sha`); the
 > `auto-rebase/stable` channel was then promoted org-wide. The gate is now **verified live** — e.g.
 > `.github-private` PR #744 (no approval, no `auto-rebase:ready` label) went from auto-updated-every-push
@@ -206,17 +206,17 @@ counts are not logged in this repo).
 
 ## 6. References
 
-- Epic [#736](https://github.com/combsmith/.github-private/issues/736) — fan-out reduction +
+- Epic [#736](https://github.com/petry-projects/.github-private/issues/736) — fan-out reduction +
   conflict-rate instrumentation; success metric (≥50% fan-out reduction) and the Merge Queue open
   question.
-- Story [#737](https://github.com/combsmith/.github-private/issues/737) — auto-rebase
+- Story [#737](https://github.com/petry-projects/.github-private/issues/737) — auto-rebase
   instrumentation (`scripts/auto_rebase_health.sh`, `.github/workflows/auto-rebase-health.yml`); source
   of the before-numbers and the conflict-resolution rate.
-- Story [#738](https://github.com/combsmith/.github-private/issues/738) — review-ready fan-out
+- Story [#738](https://github.com/petry-projects/.github-private/issues/738) — review-ready fan-out
   restriction; delivered as central PR
-  [combsmith/.github#468](https://github.com/combsmith/.github/pull/468) (issue #465); source
+  [petry-projects/.github#468](https://github.com/petry-projects/.github/pull/468) (issue #465); source
   of the after-numbers.
-- Discussion [#735](https://github.com/combsmith/.github-private/discussions/735) — manual baseline
+- Discussion [#735](https://github.com/petry-projects/.github-private/discussions/735) — manual baseline
   (~170–220 redundant CI runs/day, ~12.3 merges/day, TTM mean 31h / p90 71h) and the auto-rebase vs.
   Merge Queue comparison table.
 - `docs/initiatives/agentic-release-strategy.md`, `docs/initiatives/mcp-powered-review.md` —

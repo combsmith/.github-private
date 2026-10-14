@@ -19,8 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      ORG: ${{ vars.ORG || 'combsmith' }}
-      STANDARDS_REPO: ${{ vars.STANDARDS_REPO || 'combsmith/.github' }}
+      ORG: ${{ vars.ORG || 'petry-projects' }}
+      STANDARDS_REPO: ${{ vars.STANDARDS_REPO || 'petry-projects/.github' }}
       SYNC_LABEL: ${{ vars.STANDARDS_SYNC_LABEL || 'standards-sync' }}
       SKIP_REPOS: ${{ vars.STANDARDS_SYNC_SKIP_REPOS || '' }}
 

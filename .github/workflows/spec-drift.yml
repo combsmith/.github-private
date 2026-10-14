@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/spec-drift.yml
+# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/spec-drift.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • Post-merge SPEC-DRIFT ADVISORY (#1146, epic #1142). When a PR that closed an

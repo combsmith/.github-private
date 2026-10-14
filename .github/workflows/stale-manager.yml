@@ -12,7 +12,7 @@ on:
         default: "true"
         type: string
       target_org:
-        description: "GitHub org to scan (default: combsmith)"
+        description: "GitHub org to scan (default: petry-projects)"
         required: false
         type: string
 
@@ -35,7 +35,7 @@ jobs:
       AI_MODELS_CLAUDE: ${{ vars.AI_MODELS_CLAUDE || '' }}
       GH_TOKEN: ${{ secrets.DON_PETRY_BOT_GH_PAT }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      TARGET_ORG: ${{ inputs.target_org || vars.TARGET_ORG || 'combsmith' }}
+      TARGET_ORG: ${{ inputs.target_org || vars.TARGET_ORG || 'petry-projects' }}
       STALE_DAYS_ISSUE: ${{ vars.STALE_DAYS_ISSUE || '60' }}
       STALE_DAYS_PR: ${{ vars.STALE_DAYS_PR || '30' }}
       GRACE_DAYS: ${{ vars.GRACE_DAYS || '7' }}

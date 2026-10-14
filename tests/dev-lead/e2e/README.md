@@ -22,7 +22,7 @@ bash tests/dev-lead/e2e/run-all.sh --scenario 05-skip-anti-loop
 |---|---|---|
 | `GH_TOKEN` or `GH_PAT` | For live scenarios (02–04) | GitHub PAT with `repo` scope |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Optional | Claude token; omit to skip response-content assertions |
-| `E2E_TARGET_REPO` | No | Override target repo (default: `combsmith/.github-private`) |
+| `E2E_TARGET_REPO` | No | Override target repo (default: `petry-projects/.github-private`) |
 | `E2E_CLEANUP` | No | Set `false` to keep test PRs/branches/issues after run (default: `true`) |
 
 ## Scenarios

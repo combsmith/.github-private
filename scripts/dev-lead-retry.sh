@@ -31,7 +31,7 @@ set -euo pipefail
 #
 # Env (required):
 #   GH_TOKEN            — PAT with repo + contents:write scopes
-#   TARGET_ORG          — GitHub org to scan (default: combsmith)
+#   TARGET_ORG          — GitHub org to scan (default: petry-projects)
 #
 # Env (optional):
 #   DELEGATION_ORGS     — space-separated additional orgs to scan
@@ -113,7 +113,7 @@ source "$SCRIPT_DIR/lib/dispatch-channel-gate.sh"
 # shellcheck source=lib/budget-poller.sh
 source "$SCRIPT_DIR/lib/budget-poller.sh"
 
-TARGET_ORG="${TARGET_ORG:-combsmith}"
+TARGET_ORG="${TARGET_ORG:-petry-projects}"
 DELEGATION_ORGS="${DELEGATION_ORGS:-}"
 DISPATCH_DELAY_SEC="${DISPATCH_DELAY_SEC:-30}"
 DRY_RUN="${DRY_RUN:-false}"
@@ -232,7 +232,7 @@ budget_hold_init() {
     echo "retry-cron: budget hold fail-open (temp file unavailable), retrying as usual"
     return 0
   fi
-  bp_download_latest_log "${BUDGET_POLLER_REPO:-combsmith/.github-private}" "$log" || rc=$?
+  bp_download_latest_log "${BUDGET_POLLER_REPO:-petry-projects/.github-private}" "$log" || rc=$?
   if [ "$rc" -eq 1 ]; then
     reason="no readable ${BUDGET_POLLER_ARTIFACT} artifact"
   elif [ "$rc" -ne 0 ]; then

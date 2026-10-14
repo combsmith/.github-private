@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/reviewer-report.yml
+# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/reviewer-report.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • Weekly Third-Party Reviewer Scorecard. Measures the external agentic PR
@@ -29,7 +29,7 @@ on:
       org:
         description: "GitHub org to scan"
         required: false
-        default: "combsmith"
+        default: "petry-projects"
         type: string
       lookback_days:
         description: "Days of PR review activity to include"
@@ -42,7 +42,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: reviewer-report-${{ inputs.org || 'combsmith' }}
+  group: reviewer-report-${{ inputs.org || 'petry-projects' }}
   cancel-in-progress: true
 
 jobs:
@@ -50,14 +50,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      ORG: ${{ inputs.org || 'combsmith' }}
+      ORG: ${{ inputs.org || 'petry-projects' }}
       LOOKBACK_DAYS: ${{ inputs.lookback_days || '7' }}
 
     steps:
       - name: Checkout agent repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          repository: combsmith/.github-private
+          repository: petry-projects/.github-private
           ref: main
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
 

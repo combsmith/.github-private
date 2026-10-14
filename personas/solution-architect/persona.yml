@@ -7,7 +7,7 @@
 # that stays upstream. We point at it only by its technical skill id
 # (`framework.skill`).
 #
-# Validate against: combsmith/.github standards/personas/persona.schema.json
+# Validate against: petry-projects/.github standards/personas/persona.schema.json
 
 schema_version: 1
 
@@ -25,7 +25,7 @@ summary: >-
 # before promotion.
 status: draft
 
-owner: combsmith/org-leads
+owner: petry-projects/org-leads
 
 # --- How humans address this persona (§4.1) --------------------------------
 # An org TEAM handle, never a user account: '@solution-architect' would be a
@@ -37,7 +37,7 @@ owner: combsmith/org-leads
 #   privacy: closed                               (secret teams are unmentionable)
 #   notification_setting: notifications_disabled  (routes a webhook, not a page)
 address:
-  handle: combsmith/solution-architect
+  handle: petry-projects/solution-architect
 
 definition:
   layers:
@@ -72,7 +72,7 @@ triggers:
       events: [created]
       enabled: true
       mode: advisory
-      notes: "Direct invocation: '@combsmith/solution-architect measure this against our ADRs'."
+      notes: "Direct invocation: '@petry-projects/solution-architect measure this against our ADRs'."
 
     - surface: issues
       events: [labeled, commented]
@@ -112,4 +112,4 @@ references:
   - "frameworks/bmad-method/VENDOR.md"
   - "docs/architecture/adr/ (the S1 ADRs this persona measures changes against)"
   - "prompts/deep-review-style.md (overlapping lens — advisory persona, not a replacement)"
-  - "combsmith/.github standards/persona-standards.md"
+  - "petry-projects/.github standards/persona-standards.md"

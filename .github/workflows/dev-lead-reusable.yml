@@ -9,11 +9,11 @@ on:
         required: false
         default: ""
       agent_ref:
-        # Ref of combsmith/.github-private to check out for the dev-lead
+        # Ref of petry-projects/.github-private to check out for the dev-lead
         # scripts. A trigger-stub caller passes its pinned channel (dev-lead/stable)
         # so the agent runs at the pinned version, not main — the self-host pin
         # (#535/#506). Defaults to "main" → unchanged behaviour.
-        description: "Ref of combsmith/.github-private to check out for dev-lead scripts"
+        description: "Ref of petry-projects/.github-private to check out for dev-lead scripts"
         type: string
         required: false
         default: "main"
@@ -46,8 +46,8 @@ on:
         # callers that haven't set the new secret yet still authenticate. Remove once
         # GH_PAT_DON_PETRY is confirmed everywhere.
         # Required for cross-repo callers: the default github.token cannot read
-        # combsmith/.github-private from another repo. Callers must pass a
-        # PAT that has read access to combsmith/.github-private.
+        # petry-projects/.github-private from another repo. Callers must pass a
+        # PAT that has read access to petry-projects/.github-private.
         required: false
       GOOGLE_API_KEY:
         required: false
@@ -68,7 +68,7 @@ permissions: {}
 # and can no longer drift into — their own concurrency group. Separate per-issue
 # and per-PR lanes ensure issue pickups are NEVER cancelled by unrelated PR
 # follow-up traffic (reviews, comments, ci-relay) — the root cause of issue
-# pickups being cancelled before they could open a PR. See combsmith/.github#402.
+# pickups being cancelled before they could open a PR. See petry-projects/.github#402.
 #
 # Routing (first match wins):
 #   check_run                        -> dev-lead-ci-relay-<sha>  (per-SHA relay lane)
@@ -242,7 +242,7 @@ jobs:
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: combsmith/.github-private
+          repository: petry-projects/.github-private
           # Pinned channel (e.g. dev-lead/stable) when a trigger stub passes it;
           # defaults to "main" → unchanged behaviour (#535/#506).
           ref: ${{ inputs.agent_ref }}
@@ -815,7 +815,7 @@ jobs:
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: combsmith/.github-private
+          repository: petry-projects/.github-private
           # Pinned channel (e.g. dev-lead/stable) when a trigger stub passes it;
           # defaults to "main" → unchanged behaviour (#535/#506).
           ref: ${{ inputs.agent_ref }}
