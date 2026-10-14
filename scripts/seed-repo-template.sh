@@ -376,8 +376,8 @@ EOF
     sonar-project.properties) cat <<'EOF'
 # Customize sonar.projectKey / sonar.organization for this repo before enabling
 # the sonarcloud workflow. See BOOTSTRAP.md.
-sonar.projectKey=petry-projects_repo-template
-sonar.organization=petry-projects
+sonar.projectKey=combsmith_repo-template
+sonar.organization=combsmith
 sonar.sources=.
 sonar.exclusions=**/node_modules/**,**/vendor/**,**/dist/**
 EOF
