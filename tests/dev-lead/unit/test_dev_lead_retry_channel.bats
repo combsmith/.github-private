@@ -42,7 +42,7 @@ _stub_fixture() {
   cat >"$f" <<EOF
 jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@$1
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@$1
     with:
       agent_ref: $1
 EOF

@@ -38,7 +38,7 @@ PROMPTS_DIR="$(resolve_abs "$PROMPTS_DIR")"
 export PROMPTS_DIR
 
 # Checks that never start a fix pass (#2220). `template-drift` compares
-# petry-projects/repo-template with the standards baseline: nothing in a PR here
+# combsmith/repo-template with the standards baseline: nothing in a PR here
 # can clear it, it is not required, and "fixing" it led a pass to repin this
 # repo's own dev-lead.yml to a stale channel. Keep in sync with the ci-relay
 # job's `if:` in .github/workflows/dev-lead-reusable.yml (asserted by
@@ -383,7 +383,7 @@ main() {
       git commit -m "fix(ci): auto-fix for $(echo "$CHECKS_JSON" | jq -r '.[0].name // "CI failure"') [skip ci-relay]"
     fi
     # Sync-stub guard (#2185/#2212): on a `standards-sync` PR a CI fix must not
-    # change a stub copied verbatim from petry-projects/.github/standards/ (e.g.
+    # change a stub copied verbatim from combsmith/.github/standards/ (e.g.
     # SHA-pinning a `uses:` line a linter flags). Same rule as the review intents:
     # the PR is read only when the pass changed a file, and an unreadable PR fails
     # closed only when a header stub was touched.

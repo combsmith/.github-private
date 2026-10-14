@@ -24,7 +24,7 @@
 #   3. Fleet merge-state observability (AC7, #1440) — a snapshot of how many open
 #      non-draft, non-Dependabot PRs are currently `mergeStateStatus: BEHIND` vs
 #      DIRTY. This makes the effectiveness of the AC1/AC2 auto-rebase fixes
-#      (petry-projects/.github#926) measurable per run without another manual
+#      (combsmith/.github#926) measurable per run without another manual
 #      audit. Repo-scoped — fleet-wide would need a cross-repo PAT this report
 #      does not carry.
 #
@@ -47,7 +47,7 @@
 # Env vars consumed:
 #   GH_TOKEN        — primary token (needs actions:read + repo read on this repo)
 #   GH_PAT_FALLBACK — optional fallback PAT if GH_TOKEN lacks run-telemetry access
-#   AGENT_REPO      — repo to scan (default: petry-projects/.github-private)
+#   AGENT_REPO      — repo to scan (default: combsmith/.github-private)
 #   LOOKBACK_DAYS   — days of history to consider (default: 7)
 #   PR_LIST_LIMIT   — max open PRs fetched for BEHIND/DIRTY/multiplier metrics (default: 1000)
 #                     raise if the repo regularly has >1000 open PRs; a truncation warning
@@ -57,7 +57,7 @@
 
 set -euo pipefail
 
-WORKFLOW_REPO="${AGENT_REPO:-petry-projects/.github-private}"
+WORKFLOW_REPO="${AGENT_REPO:-combsmith/.github-private}"
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-7}"
 PR_LIST_LIMIT="${PR_LIST_LIMIT:-1000}"
 AUTO_REBASE_WORKFLOW="auto-rebase.yml"
@@ -286,7 +286,7 @@ render_report() {
   fi
   printf '> Snapshot of the current open-PR queue, scoped to **`%s`** — fleet-wide counts would '  "$WORKFLOW_REPO"
   printf 'require a cross-repo PAT this report does not carry. Tracks the effectiveness of the '
-  printf 'AC1/AC2 auto-rebase fixes (petry-projects/.github#926) without a manual audit.\n\n'
+  printf 'AC1/AC2 auto-rebase fixes (combsmith/.github#926) without a manual audit.\n\n'
 
   printf '## Base-merge necessity (#1881)\n\n'
   printf -- '- **Up-to-date-branches policy** (ruleset `strict_required_status_checks_policy`): `%s`\n' "$strict_enabled"

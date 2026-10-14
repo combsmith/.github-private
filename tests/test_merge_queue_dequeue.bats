@@ -24,7 +24,7 @@ setup() {
 
   export SHA="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
   export OLD_SHA="0123456701234567012345670123456701234567"
-  export PR_URL="https://github.com/petry-projects/.github-private/pull/2084"
+  export PR_URL="https://github.com/combsmith/.github-private/pull/2084"
   export PR_HEAD_SHA="$SHA"
   export BOT_USER="donpetry-bot"
   export PR_REVIEW_APPROVER="donpetry-bot"

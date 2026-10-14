@@ -117,7 +117,7 @@ jobs:
       - name: Install PyYAML
         run: python3 -m pip install --quiet --only-binary ":all:" pyyaml==6.0.3
       - name: Validate caller<->reusable permission contract
-        # Reads the public petry-projects/.github caller template; github.token suffices.
+        # Reads the public combsmith/.github caller template; github.token suffices.
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 tests/dev-lead/integration/test_caller_permissions.py

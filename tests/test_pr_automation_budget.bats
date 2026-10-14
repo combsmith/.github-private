@@ -228,22 +228,22 @@ mk_bot_events() {  # mk_bot_events <count>
 # ---------------------------------------------------------------------------
 
 @test "pr_resume_suppressed: needs-human-review label → suppress (exit 0)" {
-  run pr_resume_suppressed 860 petry-projects/demo '["needs-human-review"]' '[]'
+  run pr_resume_suppressed 860 combsmith/demo '["needs-human-review"]' '[]'
   [ "$status" -eq 0 ]
 }
 
 @test "pr_resume_suppressed: exhausted budget (no label) → suppress (exit 0)" {
-  run pr_resume_suppressed 860 petry-projects/demo '["bug"]' "$(mk_bot_events "$MAX_PR_AUTOMATION_CYCLES")"
+  run pr_resume_suppressed 860 combsmith/demo '["bug"]' "$(mk_bot_events "$MAX_PR_AUTOMATION_CYCLES")"
   [ "$status" -eq 0 ]
 }
 
 @test "pr_resume_suppressed: clean labels + budget remaining → proceed (exit 1)" {
-  run pr_resume_suppressed 860 petry-projects/demo '["bug"]' "$(mk_bot_events 3)"
+  run pr_resume_suppressed 860 combsmith/demo '["bug"]' "$(mk_bot_events 3)"
   [ "$status" -ne 0 ]
 }
 
 @test "pr_resume_suppressed: human label wins even with budget remaining" {
-  run pr_resume_suppressed 860 petry-projects/demo '["needs-human-review"]' "$(mk_bot_events 1)"
+  run pr_resume_suppressed 860 combsmith/demo '["needs-human-review"]' "$(mk_bot_events 1)"
   [ "$status" -eq 0 ]
 }
 
@@ -252,7 +252,7 @@ mk_bot_events() {  # mk_bot_events <count>
   # so only the hold itself can suppress: it must short-circuit before the budget.
   pr_budget_exhausted() { return 1; }
   gather_pr_automation_events() { echo "events read" >&2; return 1; }
-  run pr_resume_suppressed 2085 petry-projects/demo '["bug","dev-lead:hands-off"]'
+  run pr_resume_suppressed 2085 combsmith/demo '["bug","dev-lead:hands-off"]'
   [ "$status" -eq 0 ]
   [[ "$output" == *"carries dev-lead:hands-off"* ]]
   [[ "$output" != *"events read"* ]]
@@ -262,34 +262,47 @@ mk_bot_events() {  # mk_bot_events <count>
   pr_budget_exhausted() { return 1; }
   local bad
   for bad in 'not json' 'null' '{"labels":[]}'; do
-    run pr_resume_suppressed 2085 petry-projects/demo "$bad" '[]'
+    run pr_resume_suppressed 2085 combsmith/demo "$bad" '[]'
     [ "$status" -eq 0 ]
     [[ "$output" == *"labels unavailable"* ]]
   done
   # A failed label fetch (labels not passed in) suppresses too — never read as `[]`.
   gh() { return 1; }
-  run pr_resume_suppressed 2085 petry-projects/demo '' '[]'
+  run pr_resume_suppressed 2085 combsmith/demo '' '[]'
   [ "$status" -eq 0 ]
   [[ "$output" == *"labels unavailable"* ]]
   # …while a label set that was read and is empty still proceeds.
-  run pr_resume_suppressed 2085 petry-projects/demo '[]' '[]'
+  run pr_resume_suppressed 2085 combsmith/demo '[]' '[]'
   [ "$status" -ne 0 ]
 }
 
+@test "pr_resume_suppressed(#2297): a quota-refused label read suppresses with the quota error line" {
+  pr_budget_exhausted() { return 1; }
+  gh() {
+    echo '{"message":"API rate limit exceeded for user ID 12345.","status":"403"}'
+    echo 'gh: API rate limit exceeded for user ID 12345. (HTTP 403)' >&2
+    return 1
+  }
+  run pr_resume_suppressed 2085 combsmith/demo '' '[]'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::error::"*"GitHub API quota exhausted"*"gh api repos/combsmith/demo/pulls/2085"* ]]
+  [[ "$output" != *"labels unavailable"* ]]
+}
+
 @test "pr_resume_suppressed(#2089): dev-lead:needs-human → suppress" {
-  run pr_resume_suppressed 2085 petry-projects/demo '["dev-lead:needs-human"]' "$(mk_bot_events 1)"
+  run pr_resume_suppressed 2085 combsmith/demo '["dev-lead:needs-human"]' "$(mk_bot_events 1)"
   [ "$status" -eq 0 ]
   [[ "$output" == *"carries dev-lead:needs-human"* ]]
 }
 
 @test "pr_resume_suppressed(#2089): needs-human-review keeps its #946 message" {
-  run pr_resume_suppressed 2085 petry-projects/demo '["dev-lead:hands-off","needs-human-review"]' '[]'
+  run pr_resume_suppressed 2085 combsmith/demo '["dev-lead:hands-off","needs-human-review"]' '[]'
   [ "$status" -eq 0 ]
   [[ "$output" == *"carries needs-human-review — human-gated; not resuming (#946)"* ]]
 }
 
 @test "pr_resume_suppressed(#2089): a label merely containing a hold name does not suppress" {
-  run pr_resume_suppressed 2085 petry-projects/demo '["dev-lead:hands-off-later","x-dev-lead:needs-human"]' "$(mk_bot_events 1)"
+  run pr_resume_suppressed 2085 combsmith/demo '["dev-lead:hands-off-later","x-dev-lead:needs-human"]' "$(mk_bot_events 1)"
   [ "$status" -ne 0 ]
 }
 
@@ -304,7 +317,7 @@ mk_bot_events() {  # mk_bot_events <count>
 }
 
 @test "pr_resume_suppressed: FORCE_REVIEW must not bypass the budget" {
-  FORCE_REVIEW=true run pr_resume_suppressed 860 petry-projects/demo '["bug"]' "$(mk_bot_events "$MAX_PR_AUTOMATION_CYCLES")"
+  FORCE_REVIEW=true run pr_resume_suppressed 860 combsmith/demo '["bug"]' "$(mk_bot_events "$MAX_PR_AUTOMATION_CYCLES")"
   [ "$status" -eq 0 ]
 }
 
@@ -314,7 +327,7 @@ mk_bot_events() {  # mk_bot_events <count>
   # an unproven budget — prevents runaway automation during outages.
   gather_pr_automation_events() { return 1; }
   # No events_json passed so pr_resume_suppressed calls gather_pr_automation_events.
-  run pr_resume_suppressed 860 petry-projects/demo '[]'
+  run pr_resume_suppressed 860 combsmith/demo '[]'
   [ "$status" -eq 0 ]
 }
 
@@ -328,7 +341,7 @@ case "$*" in
 esac
 EOF
   chmod +x "$BATS_TEST_TMPDIR/gh"
-  PATH="$BATS_TEST_TMPDIR:$PATH" run gather_pr_automation_events 860 petry-projects/demo
+  PATH="$BATS_TEST_TMPDIR:$PATH" run gather_pr_automation_events 860 combsmith/demo
   [ "$status" -ne 0 ]
 }
 
@@ -410,7 +423,7 @@ RL_AT() {  # RL_AT <head> → a rate-limited withhold marker body at <head>
 DEPENDABOT="dependabot[bot]"
 AUTOMRG="petry-projects-dependabot-automrg[bot]"
 
-# The ten events the counter saw on petry-projects/broodminder-data#176.
+# The ten events the counter saw on combsmith/broodminder-data#176.
 bd176_events() {
   events \
     "$(ev 2026-10-08T15:33:54Z "$DEPENDABOT")" \
@@ -665,25 +678,25 @@ JSON
 @test "#2224 gather: the #176 history on a Dependabot PR is not exhausted, and says why" {
   budget_gh_stub; bd176_fixture
   printf 'dependabot[bot]' > "$FIXD/author"
-  local j; j=$(gather_pr_automation_events 176 petry-projects/demo 2>"$BATS_TEST_TMPDIR/err")
+  local j; j=$(gather_pr_automation_events 176 combsmith/demo 2>"$BATS_TEST_TMPDIR/err")
   [ "$(jq 'length' <<<"$j")" = "10" ]
   [ "$(compute_pr_automation_cycles "$j")" = "2" ]
   grep -q "8 Dependabot-pipeline event(s)" "$BATS_TEST_TMPDIR/err"
-  MAX_PR_AUTOMATION_CYCLES=10 run enforce_pr_budget 176 petry-projects/demo
+  MAX_PR_AUTOMATION_CYCLES=10 run enforce_pr_budget 176 combsmith/demo
   [ "$status" -ne 0 ]
 }
 
 @test "#2224 gather: the same history on a PR by another author is exhausted" {
   budget_gh_stub; bd176_fixture
   printf 'don-petry' > "$FIXD/author"
-  local j; j=$(gather_pr_automation_events 176 petry-projects/demo 2>/dev/null)
+  local j; j=$(gather_pr_automation_events 176 combsmith/demo 2>/dev/null)
   [ "$(compute_pr_automation_cycles "$j")" = "10" ]
 }
 
 @test "#2224 gather: an unreadable PR author exempts nothing and is not an API failure" {
   budget_gh_stub; bd176_fixture   # no author file → the author call exits 1
   local j rc=0
-  j=$(gather_pr_automation_events 176 petry-projects/demo 2>/dev/null) || rc=$?
+  j=$(gather_pr_automation_events 176 combsmith/demo 2>/dev/null) || rc=$?
   [ "$rc" -eq 0 ]
   [ "$(compute_pr_automation_cycles "$j")" = "10" ]
 }
@@ -696,7 +709,7 @@ JSON
     {created_at:"2026-10-09T04:34:02Z", user:{login:"don-petry"}, body:"<!-- pr-automation-budget exhausted -->\n## Automated activity budget exhausted"},
     {created_at:"2026-10-09T04:35:08Z", user:{login:"don-petry"}, body:"<!-- dev-lead-hold-notice label=needs-human-review -->\n\n**dev-lead is holding this PR**"}
   ]' "$FIXD/comments.json" > "$tmp" && mv "$tmp" "$FIXD/comments.json"
-  local j; j=$(gather_pr_automation_events 176 petry-projects/demo 2>"$BATS_TEST_TMPDIR/err")
+  local j; j=$(gather_pr_automation_events 176 combsmith/demo 2>"$BATS_TEST_TMPDIR/err")
   [ "$(compute_pr_automation_cycles "$j")" = "12" ]
   grep -q "2 marker-carrying agent event(s)" "$BATS_TEST_TMPDIR/err"
 }
@@ -707,11 +720,11 @@ JSON
   local tmp; tmp=$(mktemp)
   jq '. + [{submitted_at:"2026-10-09T05:00:00Z", user:{login:"don-petry"}, body:"<!-- persona:qa-lead -->\n## QA Lead"}]' \
     "$FIXD/reviews.json" > "$tmp" && mv "$tmp" "$FIXD/reviews.json"
-  local j; j=$(gather_pr_automation_events 176 petry-projects/demo 2>/dev/null)
+  local j; j=$(gather_pr_automation_events 176 combsmith/demo 2>/dev/null)
   [ "$(compute_pr_automation_cycles "$j")" = "11" ]
   jq '. + [{created_at:"2026-10-09T06:00:00Z", user:{login:"don-petry"}, body:"Looked at this, carry on."}]' \
     "$FIXD/comments.json" > "$tmp" && mv "$tmp" "$FIXD/comments.json"
-  j=$(gather_pr_automation_events 176 petry-projects/demo 2>/dev/null)
+  j=$(gather_pr_automation_events 176 combsmith/demo 2>/dev/null)
   [ "$(compute_pr_automation_cycles "$j")" = "0" ]
 }
 
@@ -726,7 +739,7 @@ JSON
   local tmp; tmp=$(mktemp)
   jq '. + [{submitted_at:"2026-10-09T05:00:00Z", state:"COMMENTED", user:{login:"don-petry"}, body:""}]' \
     "$FIXD/reviews.json" > "$tmp" && mv "$tmp" "$FIXD/reviews.json"
-  local j; j=$(gather_pr_automation_events 176 petry-projects/demo 2>/dev/null)
+  local j; j=$(gather_pr_automation_events 176 combsmith/demo 2>/dev/null)
   [ "$(jq 'length' <<<"$j")" = "11" ]                  # the reply's review is in the list
   [ "$(compute_pr_automation_cycles "$j")" = "0" ]     # and it reset the count
 }
@@ -734,6 +747,6 @@ JSON
 @test "#2224 gather: event bodies are not carried in the result" {
   budget_gh_stub; bd176_fixture
   printf 'don-petry' > "$FIXD/author"
-  local j; j=$(gather_pr_automation_events 176 petry-projects/demo 2>/dev/null)
+  local j; j=$(gather_pr_automation_events 176 combsmith/demo 2>/dev/null)
   [ "$(jq '[.[] | select(has("body"))] | length' <<<"$j")" = "0" ]
 }

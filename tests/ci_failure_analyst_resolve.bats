@@ -54,7 +54,7 @@ GHEOF
   chmod +x "$STUB_BIN/gh"
   export PATH="$STUB_BIN:$PATH"
 
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export GITHUB_OUTPUT="$TMP/output"
   : > "$GITHUB_OUTPUT"
   export GITHUB_EVENT_PATH="$TMP/event.json"
@@ -108,7 +108,7 @@ workflow_run_event() {
     "conclusion": "failure",
     "head_sha": "$SHA",
     "head_branch": "${2:-feature/x}",
-    "html_url": "https://github.com/petry-projects/.github-private/actions/runs/777",
+    "html_url": "https://github.com/combsmith/.github-private/actions/runs/777",
     "pull_requests": $1
   }
 }
@@ -154,7 +154,7 @@ failed_jobs_fixture() {
 @test "check_run: an Actions details URL yields the run id and its failed jobs" {
   check_run_event
   fixture "repos/$REPO/pulls/42" '{"state": "open"}'
-  jq '.check_run.details_url = "https://github.com/petry-projects/.github-private/actions/runs/777/job/9"' \
+  jq '.check_run.details_url = "https://github.com/combsmith/.github-private/actions/runs/777/job/9"' \
     "$GITHUB_EVENT_PATH" > "$TMP/e" && mv "$TMP/e" "$GITHUB_EVENT_PATH"
   failed_jobs_fixture
   run bash "$SCRIPT" resolve
@@ -166,7 +166,7 @@ failed_jobs_fixture() {
 @test "check_run: a failed jobs lookup fails the step instead of emitting empty failed_jobs" {
   check_run_event
   fixture "repos/$REPO/pulls/42" '{"state": "open"}'
-  jq '.check_run.details_url = "https://github.com/petry-projects/.github-private/actions/runs/777/job/9"' \
+  jq '.check_run.details_url = "https://github.com/combsmith/.github-private/actions/runs/777/job/9"' \
     "$GITHUB_EVENT_PATH" > "$TMP/e" && mv "$TMP/e" "$GITHUB_EVENT_PATH"
   run bash "$SCRIPT" resolve
   [ "$status" -ne 0 ]
@@ -178,7 +178,7 @@ failed_jobs_fixture() {
   check_run_event
   jq '.check_run.pull_requests = []' "$GITHUB_EVENT_PATH" > "$TMP/e" && mv "$TMP/e" "$GITHUB_EVENT_PATH"
   fixture "repos/$REPO/commits/$SHA/pulls" '[
-    {"number": 43, "state": "open", "head": {"repo": {"full_name": "petry-projects/.github-private"}}}
+    {"number": 43, "state": "open", "head": {"repo": {"full_name": "combsmith/.github-private"}}}
   ]'
   run bash "$SCRIPT" resolve
   [ "$status" -eq 0 ]
@@ -199,7 +199,7 @@ failed_jobs_fixture() {
   [ "$(out pr_number)" = "99" ]
   [ "$(out head_sha)" = "$SHA" ]
   [ "$(out check_name)" = "Lint" ]
-  [ "$(out details_url)" = "https://github.com/petry-projects/.github-private/actions/runs/777" ]
+  [ "$(out details_url)" = "https://github.com/combsmith/.github-private/actions/runs/777" ]
   [ "$(out run_id)" = "777" ]
   [ "$(out check_run_id)" = "" ]
   [ "$(out failed_jobs)" = "shellcheck / Run tests; template-drift" ]
@@ -219,7 +219,7 @@ failed_jobs_fixture() {
 @test "workflow_run: empty pull_requests falls back to the commits-to-pulls lookup" {
   workflow_run_event '[]'
   fixture "repos/$REPO/commits/$SHA/pulls" '[
-    {"number": 101, "state": "open", "head": {"repo": {"full_name": "petry-projects/.github-private"}}}
+    {"number": 101, "state": "open", "head": {"repo": {"full_name": "combsmith/.github-private"}}}
   ]'
   failed_jobs_fixture
   run bash "$SCRIPT" resolve
@@ -232,7 +232,7 @@ failed_jobs_fixture() {
   workflow_run_event '[]' main
   # A push to main: the commit's only associated PR is the one already merged.
   fixture "repos/$REPO/commits/$SHA/pulls" '[
-    {"number": 88, "state": "closed", "head": {"repo": {"full_name": "petry-projects/.github-private"}}}
+    {"number": 88, "state": "closed", "head": {"repo": {"full_name": "combsmith/.github-private"}}}
   ]'
   run bash "$SCRIPT" resolve
   [ "$status" -eq 0 ]

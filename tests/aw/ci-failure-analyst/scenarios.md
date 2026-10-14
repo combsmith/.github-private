@@ -15,7 +15,7 @@ Written before the workflow per the TDD cycle in issue #233.
     "name": "test",
     "conclusion": "failure",
     "head_sha": "abc123def456",
-    "details_url": "https://github.com/petry-projects/example/actions/runs/999",
+    "details_url": "https://github.com/combsmith/example/actions/runs/999",
     "pull_requests": [{ "number": 42 }]
   }
 }
@@ -28,7 +28,7 @@ Written before the workflow per the TDD cycle in issue #233.
 - Comment includes the failed step name extracted from logs.
 - Comment includes a root cause category (one of: Test failure, Env issue, Flaky test, Config error, Lint/style, Build error).
 - Comment includes one concrete suggested fix.
-- Comment includes a link to `https://github.com/petry-projects/example/actions/runs/999`.
+- Comment includes a link to `https://github.com/combsmith/example/actions/runs/999`.
 
 ---
 
@@ -44,7 +44,7 @@ Written before the workflow per the TDD cycle in issue #233.
     "name": "lint",
     "conclusion": "failure",
     "head_sha": "def789ghi012",
-    "details_url": "https://github.com/petry-projects/example/actions/runs/1000",
+    "details_url": "https://github.com/combsmith/example/actions/runs/1000",
     "pull_requests": [{ "number": 17 }]
   }
 }
@@ -110,7 +110,7 @@ Written before the workflow per the TDD cycle in issue #233.
     "name": "test",
     "conclusion": "failure",
     "head_sha": "zzz000",
-    "details_url": "https://github.com/petry-projects/example/actions/runs/2000",
+    "details_url": "https://github.com/combsmith/example/actions/runs/2000",
     "pull_requests": []
   }
 }
@@ -135,7 +135,7 @@ Written before the workflow per the TDD cycle in issue #233.
     "name": "Lint",
     "conclusion": "failure",
     "head_sha": "www111",
-    "html_url": "https://github.com/petry-projects/example/actions/runs/3000",
+    "html_url": "https://github.com/combsmith/example/actions/runs/3000",
     "pull_requests": [
       { "number": 77, "head": { "repo": { "id": 1 } }, "base": { "repo": { "id": 1 } } }
     ]
@@ -148,7 +148,7 @@ Written before the workflow per the TDD cycle in issue #233.
 - A comment is posted to PR #77.
 - Comment begins with `<!-- ci-analyst sha=www111 -->`.
 - The failing job and step come from run `3000`'s failed jobs and `--log-failed` logs.
-- Comment includes a link to `https://github.com/petry-projects/example/actions/runs/3000`.
+- Comment includes a link to `https://github.com/combsmith/example/actions/runs/3000`.
 - If another watched workflow (or a third-party check) also fails on `www111`, no second comment is posted.
 
 ---

@@ -44,7 +44,7 @@ jobs:
       - name: Checkout analyst tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          repository: petry-projects/.github-private
+          repository: combsmith/.github-private
           ref: ${{ job.workflow_sha }}
           path: .ci-analyst-tooling
           sparse-checkout: scripts/ci-failure-analyst-resolve.sh
