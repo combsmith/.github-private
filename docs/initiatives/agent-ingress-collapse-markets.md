@@ -52,7 +52,7 @@ ingress `pr-review` job from `@pr-review/stable` to `@pr-review/v1-stable`
 (markets `62587ec`, 2026-10-10), in both `uses:` and `agent_ref`. §3 carries
 that pin. The row above still records the pre-collapse stub pin. See §5a.
 
-### 1a. Measured baseline (workflow runs)
+### 1a. Measured baseline (billed runs)
 
 - **Window:** `2026-09-15T00:00:00Z..2026-09-22T00:00:00Z`, 7 days, bounded at
   both ends. Each count is a per-workflow `total_count` from
@@ -669,17 +669,17 @@ event-filtered, no-runner skips.
 - Post-collapse window: `2026-10-10T01:16:00Z..2026-10-14T01:16:00Z`, 4 days,
   from the markets#513 merge.
 - `agent-ingress.yml` had 382 runs. Each of the five deleted stubs had 0.
-- A job counts as **runner-assigned** when `runner_name` is non-empty. Runner
-  minutes are per job, each rounded up to a whole minute. This measures runner
+- A job counts as **billed** when `runner_name` is non-empty. Billed
+  minutes are per job, each rounded up to a whole minute. This measures billed
   usage, not billing: `combsmith/markets` is a public repository, and
   public-repository Actions jobs accrue no billable minutes. Read the figures
-  below as a proxy for runner load.
+  below as a proxy for billed load.
 - Job sample: 1340 of the 1342 baseline runs (§1a; 2 returned no jobs), and all
   382 post-collapse runs.
 
 **Per-day figures:**
 
-| Role | Runner jobs/day, before → after | Runner min/day, before → after |
+| Role | Billed jobs/day, before → after | Billed min/day, before → after |
 | --- | --- | --- |
 | dev-lead | 44.4 → 41.8 | 60.3 → 49.8 |
 | pr-auto-review | 29.7 → 23.8 | 29.7 → 24.8 |
@@ -692,7 +692,7 @@ event-filtered, no-runner skips.
 
 - Workflow runs/day: 191.7 → 95.5 (−50%).
 - Jobs evaluated/day, including skipped: 358.6 → 626.0 (+75%). These are all
-  kind (a): **0 jobs concluded `skipped` with a runner assigned**, in either
+  kind (a): **0 jobs concluded `skipped` with billed minutes**, in either
   window.
 - PRs opened: 5 in the baseline window (0.7/day) and 7 in the post-collapse
   window (1.75/day). Post-collapse PR-opening traffic was not lighter. This
@@ -701,10 +701,10 @@ event-filtered, no-runner skips.
 - Raw totals: baseline 552 runner jobs and 663 runner minutes; post-collapse 281
   runner jobs and 317 runner minutes.
 
-**Conclusion:** runner load is neutral to slightly lower for markets (no
+**Conclusion:** billed load is neutral to slightly lower for markets (no
 billing conclusion is drawn; the repository is public). The per-event `if:`
-filters skip union events before a runner is assigned. The pr-auto-review
-figures (old stub: a runner on 208 of 208 runs; ingress job: a runner on 95 of
+filters skip union events before a billed job is assigned. The pr-auto-review
+figures (old stub: billed on 208 of 208 runs; ingress job: billed on 95 of
 382 runs) are **not a matched comparison**: the 382 ingress runs include union
 events pr-auto-review never subscribed to, and the two windows do not overlap,
 so `workflow_run`/`check_suite` traffic may differ. They show the filter
