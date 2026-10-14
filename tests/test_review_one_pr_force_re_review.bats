@@ -26,7 +26,7 @@ setup() {
   export REVIEW_SCRIPT="$REPO_ROOT/scripts/review-one-pr.sh"
 
   export SHA="8203876e5b0718dd3d672fed4eec8394e5d3729d"
-  export PR_URL="https://github.com/petry-projects/.github-private/pull/1590"
+  export PR_URL="https://github.com/combsmith/.github-private/pull/1590"
 
   export TEST_DIR="$BATS_TEST_TMPDIR"
   mkdir -p "$TEST_DIR/bin"

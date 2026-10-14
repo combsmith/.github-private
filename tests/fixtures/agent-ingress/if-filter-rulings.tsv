@@ -26,7 +26,7 @@ vars	FORBID	vars.DEV_LEAD_ENGINE == 'claude'	Org/repo configuration variables ar
 secrets	FORBID	secrets.CLAUDE_CODE_OAUTH_TOKEN != ''	Secrets are repo/org configuration, never part of the event payload; probing them in an if: is a repo-state reach.
 needs-outputs	FORBID	needs.detect.outputs.should_run == 'true'	needs.*.outputs.* is another job's COMPUTED state; the ingress declares one job per role with no upstream needs, and computed output is logic that belongs in the reusable.
 hashfiles	FORBID	hashFiles('package-lock.json') != ''	hashFiles(...) reads the checked-out repo tree — a filesystem/repo-state read the Actions service cannot do pre-runner and that a thin caller (no steps/run) has no place to perform.
-repo-identity	FORBID	github.repository == 'petry-projects/some-repo'	github.repository is repo IDENTITY, not an event predicate; gating a role on which repo it is is enrollment/config, expressed by adopting the ingress, not by an if:.
+repo-identity	FORBID	github.repository == 'combsmith/some-repo'	github.repository is repo IDENTITY, not an event predicate; gating a role on which repo it is is enrollment/config, expressed by adopting the ingress, not by an if:.
 default-branch	FORBID	github.event.repository.default_branch == 'main'	default_branch is repo CONFIGURATION that merely rides in the payload; it is a snapshot of repo state, not the triggering delta. Use github.event.pull_request.base.ref for the branch the event is actually about.
 labels-array-contains	FORBID	contains(github.event.pull_request.labels.*.name, 'agent-ready')	The pull_request.labels array is a human-mutated repo-state SNAPSHOT carried in the payload, not the triggering change; scanning it makes the if: gate on standing repo state. Use github.event.label.name (the labeled delta) instead.
 # Indexed-form reaches (#1772): x['y'] is the SAME reach as x.y. The guard
@@ -36,7 +36,7 @@ labels-array-contains	FORBID	contains(github.event.pull_request.labels.*.name, '
 vars	FORBID	vars['DEV_LEAD_ENGINE'] == 'claude'	Bracket-indexed config-variable access is the same repo-state reach as vars.X; normalized to vars.X and forbidden identically.
 secrets	FORBID	secrets['CLAUDE_CODE_OAUTH_TOKEN'] != ''	Bracket-indexed secrets access is the same repo/org-config reach as secrets.X; normalized and forbidden identically.
 needs-outputs	FORBID	needs['detect'].outputs['should_run'] == 'true'	Bracket-indexed needs/outputs access is another job's computed state, identical to needs.detect.outputs.should_run once normalized.
-repo-identity	FORBID	github['repository'] == 'petry-projects/some-repo'	Bracket-indexed repo identity (github['repository']) is the same enrollment/config reach as github.repository; normalized and forbidden identically.
+repo-identity	FORBID	github['repository'] == 'combsmith/some-repo'	Bracket-indexed repo identity (github['repository']) is the same enrollment/config reach as github.repository; normalized and forbidden identically.
 labels-array-contains	FORBID	contains(github.event.pull_request['labels'].*.name, 'agent-ready')	Bracket-indexed access to the standing labels array is the same human-mutated repo-state snapshot reach as the dot form.
 # Bare-context-root reaches (#1781): a context used as a WHOLE VALUE with no
 # trailing property (toJSON(env), contains(toJSON(secrets), …), or the root

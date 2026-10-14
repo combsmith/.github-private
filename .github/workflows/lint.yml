@@ -155,6 +155,7 @@ jobs:
             tests/test_pr_runaway_detect.bats \
             tests/test_sync_scope_check.bats \
             tests/test_sync_scope_guard.bats \
+            tests/test_deletion_guard.bats \
             tests/test_pr_stall_detect.bats \
             tests/test_pr_stall_regression.bats \
             tests/test_pr_mergeready_detect.bats \
@@ -419,7 +420,7 @@ jobs:
         run: bash scripts/validate-ingress-if.sh
 
   template-drift:
-    # Drift guard (#969): fail when a file committed in petry-projects/repo-template
+    # Drift guard (#969): fail when a file committed in combsmith/repo-template
     # has diverged from its standards-derived baseline, so the template stays a thin
     # distribution layer of standards/ and never becomes a competing fork. Reuses the
     # byte-identity (blob-SHA) model from scripts/fleet_stub_drift.sh. PR-triggered via
@@ -635,7 +636,7 @@ jobs:
     # suite (tests/persona_reach_check.bats, run by the `bats` job) unit-tests the pure
     # predicates; this job runs the guard END-TO-END against the real personas/ tree,
     # passing --registry with the cross-repo canary-rings.json snapshot fetched from the
-    # PUBLIC petry-projects/.github standards (the same registry validate-personas reads).
+    # PUBLIC combsmith/.github standards (the same registry validate-personas reads).
     # Without this, a status advanced past `draft` with no matching cross-repo
     # registration only surfaces post-merge (the #1052 hollow-green skew) — this catches
     # it at PR time. The fetch soft-fails to a warning (registration UNVERIFIED) so a
@@ -650,7 +651,7 @@ jobs:
       - name: Run persona reach check (solution-architect)
         run: |
           curl -fsSL --retry 3 \
-            https://raw.githubusercontent.com/petry-projects/.github/main/standards/canary-rings.json \
+            https://raw.githubusercontent.com/combsmith/.github/main/standards/canary-rings.json \
             -o canary-rings.json \
             || echo "::warning::could not fetch cross-repo canary-rings.json; running reach check without --registry (registration UNVERIFIED)"
           if [ -f canary-rings.json ]; then

@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/dependabot-rebase.yml
-# Standard:        petry-projects/.github/standards/dependabot-policy.md
-# Reusable:        petry-projects/.github/.github/workflows/dependabot-rebase-reusable.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/dependabot-rebase.yml
+# Standard:        combsmith/.github/standards/dependabot-policy.md
+# Reusable:        combsmith/.github/.github/workflows/dependabot-rebase-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All rebase/merge serialization logic
@@ -51,7 +51,7 @@ jobs:
     permissions:
       contents: write   # update-branch via GITHUB_TOKEN (may touch .github/workflows/)
       pull-requests: write  # re-approve PRs after branch update
-    uses: petry-projects/.github/.github/workflows/dependabot-rebase-reusable.yml@dependabot-rebase/v2-next  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/dependabot-rebase-reusable.yml@dependabot-rebase/v2-next  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets:
       APP_ID: ${{ secrets.APP_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}

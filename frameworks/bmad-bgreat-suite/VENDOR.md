@@ -1,6 +1,6 @@
 # Vendored: BMad B-Great Suite (module "bgr" — ops personas)
 
-Source: https://github.com/petry-projects/bmad-bgreat-suite @ **ae8914e84b87**
+Source: https://github.com/combsmith/bmad-bgreat-suite @ **ae8914e84b87**
 Vendored: `src/` only (`agents/bgr-agent-{morgan-sre,riley-devops,sam-security}`,
 `skills/bgr-ops-review`, `workflows/`, `templates/`, `module.yaml`,
 `module-help.csv`) + `LICENSE`.
@@ -20,7 +20,7 @@ satisfied by the already-vendored `frameworks/bmad-method/`
 
 ## Refresh
 ```bash
-git clone https://github.com/petry-projects/bmad-bgreat-suite /tmp/bgr-src
+git clone https://github.com/combsmith/bmad-bgreat-suite /tmp/bgr-src
 git -C /tmp/bgr-src checkout <commit-sha>
 rm -rf frameworks/bmad-bgreat-suite/src && cp -r /tmp/bgr-src/src frameworks/bmad-bgreat-suite/src
 cp /tmp/bgr-src/LICENSE frameworks/bmad-bgreat-suite/LICENSE
