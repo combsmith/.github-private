@@ -21,6 +21,7 @@ Every problem is reported as a `::error::` line. Exit 0 when valid, 1 otherwise.
 """
 import datetime
 import json
+import math
 import os
 import re
 import sys
@@ -76,7 +77,14 @@ def price_globs(path: Path) -> list:
         if len(cols) >= 6 and cols[0]:
             # model-pricing.sh's price_for ignores a row until its effective_from
             # date, so a future-dated row does not price a model running today.
-            if cols[1].strip() <= today:
+            # A malformed date or non-numeric rate would price the model as zero in
+            # cost_usd, so only well-formed rows count.
+            try:
+                datetime.date.fromisoformat(cols[1].strip())
+                rates = [float(c) for c in cols[2:6]]
+            except ValueError:
+                continue
+            if all(math.isfinite(r) and r >= 0 for r in rates) and cols[1].strip() <= today:
                 globs.append(cols[0])
     return globs
 

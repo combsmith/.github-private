@@ -2179,6 +2179,14 @@ run_writer_with_fallback() {
   # distinct `unconfigured` so the caller escalates to a human instead of retrying.
   local any_unconfigured=0
   for engine in "${engines[@]}"; do
+    # The workflow's token preflight sets CLAUDE_UNAVAILABLE=1 when claude is a later
+    # fallback but CLAUDE_CODE_OAUTH_TOKEN is absent. A tokenless claude auth error is
+    # terminal, so skip it as a config-gap and let a later usable provider run.
+    if [ "$engine" = "claude" ] && [ "${CLAUDE_UNAVAILABLE:-}" = "1" ]; then
+      echo "::warning::Skipping claude fallback: no CLAUDE_CODE_OAUTH_TOKEN (configuration gap, not a rate limit)" >&2
+      any_unconfigured=1
+      continue
+    fi
     if [ "$engine" = "copilot" ] && [[ "${COPILOT_GITHUB_TOKEN:-}" == ghp_* ]]; then
       echo "::warning::Skipping copilot fallback: classic PAT in COPILOT_GITHUB_TOKEN is unsupported (configuration gap, not a rate limit)" >&2
       any_unconfigured=1

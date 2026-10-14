@@ -251,6 +251,11 @@ jobs:
           }
           primary="$(effective_primary "$DEV_LEAD_ENGINE")"
           if [ "$primary" != claude ]; then
+            if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+              # claude may still sit later in the chain; mark it unavailable so
+              # run_writer_with_fallback skips it instead of hitting a terminal auth error.
+              echo "CLAUDE_UNAVAILABLE=1" >> "$GITHUB_ENV"
+            fi
             echo "effective primary engine is ${primary} (AI_ENGINES=${AI_ENGINES}) — CLAUDE_CODE_OAUTH_TOKEN not required"
             exit 0
           fi
@@ -1055,6 +1060,11 @@ jobs:
           }
           primary="$(effective_primary "$DEV_LEAD_ENGINE")"
           if [ "$primary" != claude ]; then
+            if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+              # claude may still sit later in the chain; mark it unavailable so
+              # run_writer_with_fallback skips it instead of hitting a terminal auth error.
+              echo "CLAUDE_UNAVAILABLE=1" >> "$GITHUB_ENV"
+            fi
             echo "effective primary engine is ${primary} (AI_ENGINES=${AI_ENGINES}) — CLAUDE_CODE_OAUTH_TOKEN not required"
             exit 0
           fi
