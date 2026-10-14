@@ -6,5 +6,5 @@ on:
     types: [opened]
 jobs:
   run:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
     secrets: inherit

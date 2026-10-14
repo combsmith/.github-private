@@ -101,7 +101,7 @@ PY
   run python3 "$CHECK" --root "$REPO_ROOT"
   [ "$status" -eq 0 ]
   [ "$(grep -c '^NOT PAUSED: ' <<< "$output")" -eq 1 ]
-  [[ "$output" == *"NOT PAUSED: feature-ideation.yml (model call in petry-projects/.github/.github/workflows/feature-ideation-reusable.yml)"* ]]
+  [[ "$output" == *"NOT PAUSED: feature-ideation.yml (model call in combsmith/.github/.github/workflows/feature-ideation-reusable.yml)"* ]]
 }
 
 @test "registry: each workflow #2249 gated has a job-gate row" {
@@ -918,7 +918,7 @@ YAML
   while IFS= read -r wf; do
     [[ "$section" == *"\`$wf\`"* ]] || { echo "the pause promise does not name $wf"; return 1; }
   done < <(awk -F'\t' '$2 == "upstream" { print $1 }' "$REPO_ROOT/$REGISTRY_REL")
-  [[ "$section" == *"petry-projects/.github#1295"* ]]
+  [[ "$section" == *"combsmith/.github#1295"* ]]
 }
 
 # ── mutation: the registry ───────────────────────────────────────────────────
@@ -962,13 +962,13 @@ YAML
 
 @test "mutation: an upstream row must name a reusable in another repository that the workflow calls" {
   drop_row feature-ideation.yml
-  add_row feature-ideation.yml upstream petry-projects/.github/.github/workflows/something-else.yml "Reason."
+  add_row feature-ideation.yml upstream combsmith/.github/.github/workflows/something-else.yml "Reason."
   check
   [ "$status" -eq 1 ]
   [[ "$output" == *"feature-ideation.yml: no job calls the reusable the registry names"* ]]
 
   drop_row feature-ideation.yml
-  add_row feature-ideation.yml upstream petry-projects/.github-private/.github/workflows/pr-review.yml "Reason."
+  add_row feature-ideation.yml upstream combsmith/.github-private/.github/workflows/pr-review.yml "Reason."
   check
   [ "$status" -eq 1 ]
   [[ "$output" == *"feature-ideation.yml: mode upstream needs"* ]]

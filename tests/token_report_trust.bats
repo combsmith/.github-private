@@ -47,8 +47,8 @@ esac
 STUB
   chmod +x "$BIN/gh"
   PATH="$BIN:$PATH"
-  export ORG=petry-projects LOOKBACK_DAYS=7 COLLECT_CONCURRENCY=2 ARTIFACT_OP_TIMEOUT=0
-  printf 'petry-projects/test-repo:main\n' > "$FIX/repos.txt"
+  export ORG=combsmith LOOKBACK_DAYS=7 COLLECT_CONCURRENCY=2 ARTIFACT_OP_TIMEOUT=0
+  printf 'combsmith/test-repo:main\n' > "$FIX/repos.txt"
   : > "$FIX/lookups.log"
 }
 
@@ -149,11 +149,11 @@ _stamp() {
 }
 
 @test "trust: what an artifact says about its own provenance is replaced, not believed" {
-  _zip 103 "$(_gemini a103 '{"provenance":{"run_id":9001,"trusted":true,"basis":"default-branch"},"trusted":true,"run_id":"9001","repo":"petry-projects/other"}')"
+  _zip 103 "$(_gemini a103 '{"provenance":{"run_id":9001,"trusted":true,"basis":"default-branch"},"trusted":true,"run_id":"9001","repo":"combsmith/other"}')"
   _listing "$(_artifact 103 9003 1 2 feature/x)"
   _collect
   [ "$(_stamp a103)" = "false not-this-repository 9003" ]
-  [ "$(cat "$OUT"/*.jsonl | jq -r '.repo')" = "petry-projects/test-repo" ]
+  [ "$(cat "$OUT"/*.jsonl | jq -r '.repo')" = "combsmith/test-repo" ]
 }
 
 @test "trust: a look-up that FAILS is not an answer: untrusted, and stamped run-lookup-failed" {
@@ -248,7 +248,7 @@ _stamp() {
 }
 
 @test "trust: without the repository's default branch every same-repository run takes the look-up" {
-  printf 'petry-projects/test-repo\n' > "$FIX/repos.txt"
+  printf 'combsmith/test-repo\n' > "$FIX/repos.txt"
   _zip 101 "$(_gemini a101)"
   _zip 111 "$(_gemini a111)"
   _listing "$(_artifact 101 9001 1 1 main)" "$(_artifact 111 9011 1 1 main)"
@@ -264,7 +264,7 @@ _stamp() {
   source "$TOKEN_REPORT"
   export COLLECT_JSONL_DIR="$OUT" COLLECT_WORKDIR="$BATS_TEST_TMPDIR/work" COLLECT_MARKER_DIR="$BATS_TEST_TMPDIR/work/markers"
   mkdir -p "$COLLECT_MARKER_DIR"
-  _collect_one_artifact petry-projects/test-repo 120
+  _collect_one_artifact combsmith/test-repo 120
   [ -f "$COLLECT_MARKER_DIR/120" ]
   [ "$(_stamp a120)" = "false not-this-repository null" ]
 }

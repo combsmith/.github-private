@@ -7,7 +7,7 @@ accepted
 ## Context
 
 Agentic automation (dev-lead, pr-review, auto-rebase, …) runs in many
-`petry-projects` repos. If each repo carried the full workflow logic, a
+`combsmith` repos. If each repo carried the full workflow logic, a
 behavior change would mean editing every repo, and the copies would drift.
 
 Lifted from `AGENTS.md` §"Workflow Files" and §"Reusable caller-input contract":
@@ -25,11 +25,11 @@ boundary:
   all logic. Behavior changes for the whole fleet are made here.
 - **Caller-stub tier** — a `.github/workflows/*.yml` stub that only declares
   `on:` triggers and forwards inputs via `with:` to a pinned first-party
-  `petry-projects/*` reusable. Repo-specific trigger adjustments are the only
+  `combsmith/*` reusable. Repo-specific trigger adjustments are the only
   logic a stub may carry (per the stub's header comment).
 
 The boundary a check can later assert: **a caller-stub job must `uses:` a
-pinned first-party `petry-projects/*` reusable — and, because a `uses:` job
+pinned first-party `combsmith/*` reusable — and, because a `uses:` job
 carries no `steps` or `run:` keys of its own under the Actions schema, it must
 declare none — must forward only inputs the pinned ref declares under
 `workflow_call.inputs`, and must pass any secret only via the `secrets:` key,

@@ -2,18 +2,18 @@
 
 Standard guidelines and canonical language for offering commercial support, enterprise
 service-level agreements (SLAs), custom development, and commercial licensing across
-repositories in the **petry-projects** organization.
+repositories in the **combsmith** organization.
 
 ---
 
 ## Purpose & Scope
 
-All repositories in the `petry-projects` organization are open source by default (under MIT,
+All repositories in the `combsmith` organization are open source by default (under MIT,
 Apache 2.0, or AGPL). While software is freely available for community use, commercial entities
 deploying these tools in production environments often require guaranteed response times, upstream
 patch prioritization, custom integrations, or proprietary licensing exemptions.
 
-Commercial support, enterprise integration services, and proprietary licensing for `petry-projects`
+Commercial support, enterprise integration services, and proprietary licensing for `combsmith`
 repositories are operated and provided through **CombSmith LLC**.
 
 This standard defines:
@@ -55,7 +55,7 @@ For commercial invoicing, custom service agreements, or enterprise purchase orde
 | Tier / Service | Price | Deliverables | Target Audience |
 | :--- | :--- | :--- | :--- |
 | **Community / FOSS** | Free ($0) | Public issue tracker, community PR reviews, open-source license | Individual developers, hobbyists, evaluators |
-| **Standard SLA & Priority Support** | $199 / month | 24-hour initial response SLA on issues, private Slack/Discord channel, prioritized upstream patch releases | Startups and teams running petry-projects tooling in CI/CD or production |
+| **Standard SLA & Priority Support** | $199 / month | 24-hour initial response SLA on issues, private Slack/Discord channel, prioritized upstream patch releases | Startups and teams running combsmith tooling in CI/CD or production |
 | **Custom Engineering & Architecture Advisory** | $250 / hour | Custom tool connector implementation, security audits, infrastructure deployment, agent workflow design | Enterprises integrating custom proprietary data sources, MCPs, or internal workflows |
 | **Commercial / Dual-Licensing** | Custom quote | Exemption from copyleft provisions (e.g., AGPL), custom warranties, indemnification | Organizations embedding libraries into closed-source proprietary commercial software |
 
@@ -63,7 +63,7 @@ For commercial invoicing, custom service agreements, or enterprise purchase orde
 
 ## Repository Adoption Guidelines
 
-When adopting this standard in a `petry-projects` repository:
+When adopting this standard in a `combsmith` repository:
 
 1. **README Placement**: Insert the canonical markdown section above before the `License` heading.
 2. **Package Metadata**:
