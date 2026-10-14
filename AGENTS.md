@@ -866,20 +866,30 @@ gh api -X DELETE orgs/petry-projects/actions/variables/AGENTS_PAUSE_SOURCE
 ```
 
 Then wait until every Budget Breaker run that was already under way has finished. This
-command waits for each run in progress now and returns when they are done (a run that starts
-later reads your pause and leaves it alone):
+command waits for each run in progress now and says so only if the listing and every wait
+worked (a run that starts later reads your pause and leaves it alone). Run it with your own
+`gh` login: `gh run watch` does not accept a fine-grained token.
 
 ```bash
-for id in $(gh run list -R petry-projects/.github-private --workflow budget-breaker.yml --status in_progress --json databaseId --jq '.[].databaseId'); do gh run watch "$id" -R petry-projects/.github-private >/dev/null 2>&1; done; echo "no earlier breaker run is still in progress"
+ok=1
+ids=$(gh run list -R petry-projects/.github-private --workflow budget-breaker.yml \
+  --status in_progress --json databaseId --jq '.[].databaseId') || ok=0
+while read -r id; do
+  [ -n "$id" ] || continue
+  gh run watch "$id" -R petry-projects/.github-private >/dev/null 2>&1 </dev/null || ok=0
+done <<< "$ids"
+if [ "$ok" = 1 ]; then echo "no earlier breaker run is still in progress"; else echo "WAIT FAILED: do not check yet; run this again"; fi
 ```
 
-Then read the state:
+Then read the state, one variable at a time (no list, so no page can be missed):
 
 ```bash
-gh api "orgs/petry-projects/actions/variables?per_page=100" --jq '[.variables[] | select(.name == "AGENTS_PAUSED" or .name == "AGENTS_PAUSE_SOURCE") | "\(.name)=\(.value) (\(.visibility))"] | join("  ")'
+if p=$(gh api orgs/petry-projects/actions/variables/AGENTS_PAUSED --jq '"\(.value) (\(.visibility))"' 2>/dev/null); then echo "AGENTS_PAUSED=$p"; else echo "AGENTS_PAUSED could not be read"; fi
+if v=$(gh api orgs/petry-projects/actions/variables/AGENTS_PAUSE_SOURCE --jq .value 2>/dev/null); then echo "AGENTS_PAUSE_SOURCE=$v"; else echo "no AGENTS_PAUSE_SOURCE"; fi
 ```
 
-The answer must be exactly `AGENTS_PAUSED=true (all)`, with no `AGENTS_PAUSE_SOURCE`. **If it
+The answer must be exactly `AGENTS_PAUSED=true (all)` and `no AGENTS_PAUSE_SOURCE`; any other
+answer, including an error from the first read, is a failed check. **If it
 is anything else, run the three calls, the wait and the check again, until it is.** The wait
 and the check are part of the procedure, not extras.
 
@@ -1287,8 +1297,8 @@ as soon as the workflow is on `main`.
      - a read of the variable list sees a write, and a delete, made just before it. The pause
        guard and the hand-pause procedure both rest on this, and it replaces a drill of the
        hand-pause races (there is no test organisation to run one in). Twenty times, with the
-       throwaway variable: create it, read `orgs/petry-projects/actions/variables?per_page=30`
-       and find it; `PATCH` a new value, read and find that value; delete it, read and find it
+       throwaway variable: create it, read the list as the breaker does (`gh api --paginate`
+       on `orgs/petry-projects/actions/variables?per_page=30`) and find it; `PATCH` a new value, read and find that value; delete it, read and find it
        gone. Once the dedicated write credential exists, make the reads with it, since it is
        the breaker's reader. **Arming is blocked until this has passed. One stale read fails
        it, and arming then stays blocked until a drill has been run after all;**
@@ -1321,12 +1331,14 @@ as soon as the workflow is on `main`.
   described above on every run.) This stops further writes; it does not lift a pause that
   is already set (see the next point).
 - **Overriding a breaker pause by hand.** To **keep** the fleet paused past the breaker's
-  time, delete `AGENTS_PAUSE_SOURCE` (leave `AGENTS_PAUSED=true`): the pause is then a human
-  one and automation never lifts it. To **end** a breaker pause early, set
+  time, follow "Setting a pause by hand: three calls, a wait, then a check": the pause then
+  carries no source, and automation never lifts it. Deleting `AGENTS_PAUSE_SOURCE` on its own
+  is not enough, because a resume the breaker has already decided on can still set
+  `AGENTS_PAUSED=false` afterwards. To **end** a breaker pause early, set
   `AGENTS_PAUSED=false` **and delete `AGENTS_PAUSE_SOURCE`**; if the provider is still
   refusing work the next refusals trip it again, so disarm first if you want it to stay up.
-  To hold the fleet paused regardless of the breaker, set `AGENTS_PAUSED=true` **without**
-  `AGENTS_PAUSE_SOURCE` (the manual path). Ownership is the source and nothing else: a
+  To hold the fleet paused regardless of the breaker, use the same procedure (the manual
+  path: `AGENTS_PAUSED=true` **without** `AGENTS_PAUSE_SOURCE`). Ownership is the source and nothing else: a
   `AGENTS_PAUSE_SOURCE=rate-limit-observed` left behind on an unpaused fleet makes the next
   pause set by hand look like the breaker's, so the next armed run removes it (see "Leftover
   ownership markers are removed"); a run that is not armed raises a `::warning::` asking for
