@@ -1466,6 +1466,46 @@ on it is the follow-up actuation work.
     hit. The report ends with the redacted rejection messages.
   - It emits one `::warning::` per tier that is `degraded` or `unavailable`, at most once
     per tier per Pacific day. A `gemini_tier_notice` record in the store prevents repeats.
+- **Only records from trusted runs (#2147).** A token-usage artifact is untrusted input: a
+  pull request from a fork runs the fork's copy of a workflow and can upload an artifact of
+  any name and content, and a record says nothing about its origin but a run id it wrote
+  itself. `scripts/token_report.sh` decides trust from the Actions API, never from the
+  artifact:
+  - **trusted:** the uploading run's head repository is the repository itself, and either
+    the run was on the default branch (read from the artifact listing's `workflow_run`, no
+    extra call), or the run, looked up, confirms the head repository and was not started by
+    Dependabot. These are the runs GitHub gives the repository's secrets to.
+  - **not trusted:** a fork run, a Dependabot run, an artifact with no `workflow_run`, and a
+    run that cannot be looked up or does not match. A look-up that *failed* (timeout, 403,
+    rate limit) is also counted as a failed read (`run_lookups_failed`), because that run
+    may have been a trusted one.
+
+  Every collected record is stamped `provenance: {run_id, trusted, basis}`, replacing
+  anything the artifact wrote under that name. Only trusted records are handed to the tier
+  report. The ignored ones are counted in the log, in a `::warning::` and in the job summary
+  ("Gemini ledger provenance"). The cost report is not filtered. The history cache was
+  renamed (`gemini-tier-history-v2-`), so nothing collected before the filter is restored.
+- **The snapshot is not yet a basis for a dispatch decision (#2147).** A forged record can
+  only make a tier look less available. Usage that is missing, or records that are not real
+  calls, are the other half, and the snapshot records both in `collection`:
+  - **Missing usage** makes a tier look *more* available: a repository listing, an
+    artifact, a run look-up or a record file that could not be read (each is counted, and
+    any of them makes `collection.complete` false), or simply the time since the snapshot
+    (it is written once a day, at 06:27 UTC, shortly before the Pacific reset).
+  - **Test fixtures are in the real ledger.** An agent session that runs this repository's
+    engine tests passes them the job's `TOKEN_LOG_FILE`, so the tests append their fixture
+    calls, rejections and cooldowns to the ledger the job then uploads. They arrive from a
+    trusted run and some look exactly like real calls. The collector counts the visible
+    part (`gemini_records_unlisted`: records for a key index and model the caps file does
+    not list) and raises a `::warning::`. The fix belongs at the source (tests must not
+    inherit the ledger path); until then the tier view over-counts Gemini usage.
+
+  A dispatch decision must read the snapshot with
+  `gq_tier_decision <snapshot> <tier> [max_age_sec]`, not `gq_tier_can_run`. It answers
+  `unknown` (return 2: do not start the work) when the snapshot is unreadable, older than
+  the limit (default 3600 s, `GEMINI_DECISION_MAX_AGE_SEC`), for a quota day that is over,
+  not marked `trusted-runs-only`, or built from a collection that was incomplete or held
+  unlisted records. Nothing calls it yet. Tests: `tests/token_report_trust.bats`.
 - **Rejected attempts count.** Google counts rejected calls against the limits. So a call
   rejected as rate-limited or quota-exceeded appends a `kind:"gemini_attempt"`
   (`rejected:true`) record, which holds the key index, model and timestamp only. Metering
