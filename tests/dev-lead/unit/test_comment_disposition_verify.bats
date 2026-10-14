@@ -598,3 +598,170 @@ Also `real_token`.'
   run bash -c "cd '$root' && source .dev-lead/scripts/lib/comment-disposition-verify.sh && cd pr-worktree && cdv_body_has_findings '**Actionable comments posted: 2**'"
   [ "$status" -eq 0 ]
 }
+
+# ── #2269: an additive fix to a finding that names a token ───────────────────
+# The #2004 rule accepts a `fixed` disposition only when the cited diff REMOVES a
+# token the finding names. A fix that only adds lines (a missing assertion, a
+# missing guard) removes nothing, so it could never verify. Such a commit now
+# verifies when THIS pass produced it and it changes a file the finding names:
+# the rule a review-thread claim already passes.
+#   cdv_finding_paths <body>                    → one named file per line
+#   cdv_touches_named_file <own_files> <paths>  → rc0 when a file is in both
+#   cdv_fixed_verdict … <this_pass> <touches_named>
+#       → this-pass-touches-named-file (rc0) for that case
+
+FIXTURES_2269="$BATS_TEST_DIRNAME/../../fixtures/comment-disposition"
+
+_paths() {
+  run bash -c "source '$LIB'; cdv_finding_paths \"\$1\"" _ "$1"
+}
+
+_touches() {
+  run bash -c "source '$LIB'; cdv_touches_named_file \"\$1\" \"\$2\"" _ "$1" "$2"
+}
+
+@test "finding paths(#2269): a named file is read without its line, and a link target is not a named file" {
+  _paths 'Incomplete implementation · [`tests/test_advisory_offline_mode.bats:147`](https://github.com/o/r/pull/1/files#diff-abcR147-R147)'
+  [ "$status" -eq 0 ]
+  [ "$output" = "tests/test_advisory_offline_mode.bats" ]
+}
+
+@test "finding paths(#2269): prose paths, a leading ./ and a sentence-ending period" {
+  _paths 'See scripts/foo.sh. Also ./lib/bar.py:12-14 and README.md, but not https://example.com/a/b.sh or v1.2.3.'
+  [ "$status" -eq 0 ]
+  [ "$output" = "README.md
+lib/bar.py
+scripts/foo.sh" ]
+}
+
+@test "finding paths(#2269): HTML comments and fenced code name no file, and a body with none echoes nothing" {
+  _paths 'Check the guard.
+<!-- scripts/hidden.sh -->
+```
+scripts/fenced.sh
+```'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  _paths ""
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "touches named file(#2269): the whole path must match" {
+  _touches "scripts/foo.sh
+docs/x.md" "tests/a.bats
+scripts/foo.sh"
+  [ "$status" -eq 0 ]
+  # A bare file name does not match a file in a directory, nor the reverse.
+  _touches "scripts/foo.sh" "foo.sh"
+  [ "$status" -eq 1 ]
+  _touches "foo.sh" "scripts/foo.sh"
+  [ "$status" -eq 1 ]
+  # A path is not a pattern.
+  _touches "scripts/fooXsh" "scripts/foo.sh"
+  [ "$status" -eq 1 ]
+  # Nothing named, or an empty diff: no match.
+  _touches "scripts/foo.sh" ""
+  [ "$status" -eq 1 ]
+  _touches "" "scripts/foo.sh"
+  [ "$status" -eq 1 ]
+}
+
+@test "fixed verdict(#2269): this pass's commit in a file the finding names verifies though it removes no token" {
+  _fixed_verdict true false 1 "2026-10-02T12:00:00Z" "2026-10-02T10:00:00Z" content-no-token-removed true true
+  [ "$status" -eq 0 ]
+  [ "$output" = "this-pass-touches-named-file" ]
+}
+
+@test "fixed verdict(#2269): a diff that ADDS a token the finding names never verifies, even from this pass in a named file" {
+  # "Remove `eval` from scripts/x.sh": a commit that adds another `eval` there is
+  # the defect again, not a fix.
+  _fixed_verdict true false 1 "2026-10-02T12:00:00Z" "2026-10-02T10:00:00Z" content-adds-token true true
+  [ "$status" -eq 1 ]
+  [ "$output" = "content-adds-token" ]
+}
+
+@test "finding paths(#2269): the forms reviewer bots write a location in" {
+  local row body want
+  while IFS='|' read -r body want; do
+    [ -n "$body" ] || continue
+    _paths "$body"
+    [ "$status" -eq 0 ]
+    [ "$output" = "$want" ] || { echo "body <$body>: got <$output>, want <$want>"; return 1; }
+  done <<'ROWS'
+In `scripts/foo.sh` the guard is missing.|scripts/foo.sh
+See scripts/foo.sh:L12-L14 for the loop.|scripts/foo.sh
+See scripts/foo.sh#L12 for the loop.|scripts/foo.sh
+(scripts/foo.sh), then stop.|scripts/foo.sh
+**scripts/lib/a-b_c.sh**: wrong exit code.|scripts/lib/a-b_c.sh
+The file .github/workflows/lint.yml sets no timeout.|.github/workflows/lint.yml
+ROWS
+}
+
+@test "touches named file(#2269): a commit that renames or deletes the named file touches it" {
+  # The commit's own files list both sides of a rename (it is read without rename
+  # detection), and a deleted file by its old path.
+  _touches "scripts/old.sh
+scripts/new.sh" "scripts/old.sh"
+  [ "$status" -eq 0 ]
+  _touches "scripts/gone.sh" "scripts/gone.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "fixed verdict(#2269): an earlier pass's commit, or one outside the named files, keeps the removed-token rule" {
+  # Not from this pass (the #1977 introducing commit is one of these).
+  _fixed_verdict true false 1 "2026-10-02T12:00:00Z" "2026-10-02T10:00:00Z" content-adds-token false true
+  [ "$status" -eq 1 ]
+  [ "$output" = "content-adds-token" ]
+  _fixed_verdict true false 1 "2026-10-02T12:00:00Z" "2026-10-02T10:00:00Z" content-no-token-removed false true
+  [ "$status" -eq 1 ]
+  [ "$output" = "content-no-token-removed" ]
+  # From this pass, but in no file the finding names.
+  _fixed_verdict true false 1 "2026-10-02T12:00:00Z" "2026-10-02T10:00:00Z" content-no-token-removed true false
+  [ "$status" -eq 1 ]
+  [ "$output" = "content-no-token-removed" ]
+  # The two new arguments default to "no".
+  _fixed_verdict true false 1 "2026-10-02T12:00:00Z" "2026-10-02T10:00:00Z" content-no-token-removed
+  [ "$status" -eq 1 ]
+  [ "$output" = "content-no-token-removed" ]
+}
+
+@test "fixed verdict(#2269): the additive case still fails every earlier check" {
+  _fixed_verdict false false 1 "2026-10-02T12:00:00Z" "2026-10-02T10:00:00Z" content-no-token-removed true true
+  [ "$output" = "not-on-head" ]
+  _fixed_verdict true true 1 "2026-10-02T12:00:00Z" "2026-10-02T10:00:00Z" content-no-token-removed true true
+  [ "$output" = "on-base-branch" ]
+  _fixed_verdict true unknown 1 "2026-10-02T12:00:00Z" "2026-10-02T10:00:00Z" content-no-token-removed true true
+  [ "$output" = "base-unknown" ]
+  _fixed_verdict true false 0 "2026-10-02T12:00:00Z" "2026-10-02T10:00:00Z" content-no-token-removed true true
+  [ "$output" = "empty-diff" ]
+  _fixed_verdict true false 1 "" "2026-10-02T10:00:00Z" content-no-token-removed true true
+  [ "$output" = "undated" ]
+  _fixed_verdict true false 1 "2026-10-02T09:00:00Z" "2026-10-02T10:00:00Z" content-no-token-removed true true
+  [ "$status" -eq 1 ]
+  [ "$output" = "predates-finding" ]
+}
+
+@test "#2269 AC3: the PR #2205 CodeAnt comment and the diff of 3e5025bd verify as this pass's additive fix" {
+  # The real comment body and the real diff. The fix adds one line and removes
+  # neither token the finding names, so the removed-token rule says no…
+  local body diff tokens paths
+  body=$(cat "$FIXTURES_2269/pr2205-codeant-nitpick.md")
+  diff=$(cat "$FIXTURES_2269/pr2205-fix-3e5025bd.diff")
+  tokens=$(bash -c "source '$LIB'; cdv_finding_tokens \"\$1\"" _ "$body")
+  _diff_verdict "$diff" "$tokens"
+  [ "$status" -eq 1 ]
+  [ "$output" = "content-no-token-removed" ]
+  # …and the commit changes the one file the finding names.
+  paths=$(bash -c "source '$LIB'; cdv_finding_paths \"\$1\"" _ "$body")
+  [ "$paths" = "tests/test_advisory_offline_mode.bats" ]
+  _touches "tests/test_advisory_offline_mode.bats" "$paths"
+  [ "$status" -eq 0 ]
+  # Made by the pass that answers the finding (16:58Z), it verifies; cited by a
+  # later pass, it does not.
+  _fixed_verdict true false 1 "2026-10-10T21:34:01Z" "2026-10-10T16:58:23Z" content-no-token-removed true true
+  [ "$status" -eq 0 ]
+  [ "$output" = "this-pass-touches-named-file" ]
+  _fixed_verdict true false 1 "2026-10-10T21:34:01Z" "2026-10-10T16:58:23Z" content-no-token-removed false true
+  [ "$status" -eq 1 ]
+}

@@ -172,8 +172,11 @@ seed_runs() { printf '%s\n' "$@" | jq -cs '.' > "$MOCK_DIR/runs.json"; }
 
 # woken_by <event> [<now_offset_sec>] — the run as the runner starts it: the
 # event's name, this workflow's file and this run's id. The clock moves to NOW
-# + offset; NOW is the start of a two-minute slot, so offset 90 is inside the
-# slot that starts at `ts 0`.
+# + offset; NOW is the start of a ten-minute slot (and so of a two-minute and a
+# one-minute one), so offset 90 is inside the slot that starts at `ts 0` for
+# every slot length these tests use. The guard keeps a change to NOW from moving
+# that boundary unnoticed.
+(( NOW % 600 == 0 )) || { echo "NOW must be a multiple of 600 (the default slot)" >&2; exit 1; }
 OWN_RUN_ID=9000
 woken_by() {
   export GITHUB_EVENT_NAME="$1"
@@ -2302,11 +2305,13 @@ FAILED DELETE AGENTS_PAUSE_UNTIL" ]
       armed
     fi
     woken_by workflow_run 90
-    # Created ten seconds into the two-minute slot this run is in.
+    # Created ten seconds into the slot this run is in (ten minutes, the
+    # default). The quota markers are all in another repository (seed_quota),
+    # so this is also the accepted cost: such markers wait for the next slot.
     seed_runs "$(wrun 8001 success 10 25)"
     run bash "$SCRIPT"
     [ "$status" -eq 0 ] || { echo "$mode: status=$status $output"; false; }
-    [[ "$output" == *"budget-breaker: early exit: an earlier run was created in this 2 min slot (since $(ts 0)) and acme/.github-private shows no quota marker since; no scan, no decision"* ]] \
+    [[ "$output" == *"budget-breaker: early exit: an earlier run was created in this 10 min slot (since $(ts 0)) and acme/.github-private shows no quota marker since; no scan, no decision"* ]] \
       || { echo "$mode: $output"; false; }
     [[ "$output" != *"decision:"* ]]
     [[ "$output" != *"quota markers read"* ]]
@@ -2319,7 +2324,7 @@ FAILED DELETE AGENTS_PAUSE_UNTIL" ]
     no_notice
     grep -qF "| Quota markers | not collected (early exit) |" "$GITHUB_STEP_SUMMARY"
     grep -qF "| Decision | not taken this run (early exit) |" "$GITHUB_STEP_SUMMARY"
-    grep -qF "| Result | no scan: an earlier run covered this 2 min slot (since $(ts 0))" "$GITHUB_STEP_SUMMARY"
+    grep -qF "| Result | no scan: an earlier run covered this 10 min slot (since $(ts 0))" "$GITHUB_STEP_SUMMARY"
   done
   [ "$(org_var AGENTS_PAUSED)" = "<absent>" ]
 }
@@ -2528,16 +2533,32 @@ DELETE AGENTS_PAUSE_UNTIL" ]
   [[ "$output" != *"early exit"* ]]
   [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
 
-  export BUDGET_BREAKER_MIN_INTERVAL_MIN=10
+  export BUDGET_BREAKER_MIN_INTERVAL_MIN=2
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"early exit: an earlier run was created in this 2 min slot (since $(ts 0))"* ]]
+
+  # Unset is the default, ten minutes: a run created early in the slot still
+  # covers a wake-up nine minutes later, and one created before the slot does not.
+  unset BUDGET_BREAKER_MIN_INTERVAL_MIN
+  woken_by workflow_run 590
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   [[ "$output" == *"early exit: an earlier run was created in this 10 min slot (since $(ts 0))"* ]]
+  woken_by workflow_run 610
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"early exit"* ]]
+  [[ "$output" == *"decision: trip (evidence_count=3)"* ]]
+  run scanned
+  [ "$status" -eq 0 ]
+  woken_by workflow_run 90
 
   export BUDGET_BREAKER_MIN_INTERVAL_MIN="2m"
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"::warning::budget-breaker: BUDGET_BREAKER_MIN_INTERVAL_MIN is not a whole number of minutes; using 2"* ]]
-  [[ "$output" == *"early exit: an earlier run was created in this 2 min slot"* ]]
+  [[ "$output" == *"::warning::budget-breaker: BUDGET_BREAKER_MIN_INTERVAL_MIN is not a whole number of minutes; using 10"* ]]
+  [[ "$output" == *"early exit: an earlier run was created in this 10 min slot"* ]]
 }
 
 @test "#2259: the slot, the earlier runs and the fresh markers are judged fail open (pure helpers)" {

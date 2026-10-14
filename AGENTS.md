@@ -1070,13 +1070,21 @@ as soon as the workflow is on `main`.
   **The early exit.** A run woken by `workflow_run` on a fleet that is **not paused** exits
   before the organisation scan when both hold: an earlier run of this workflow that
   succeeded was created in the same clock slot of `BUDGET_BREAKER_MIN_INTERVAL_MIN` minutes
-  (default 2; `0` switches the early exit off; a failed run covers nothing, because it may
+  (default 10; `0` switches the early exit off; a failed run covers nothing, because it may
   have ended before its scan), and this repository shows no quota marker created in that
   slot (one listing instead of one per repository). It is slots, not "the previous run
-  finished less than two minutes ago", because a run that exits early is itself a previous
+  finished less than N minutes ago", because a run that exits early is itself a previous
   run: under a steady stream of wake-ups that rule would exit early for ever, while the
   first run to look in a slot always decides. The earlier runs are listed with the read
   credential (the repository is public, so the workflow's `permissions:` are unchanged).
+  The default was two minutes when the trigger was added and was raised to ten after the
+  first 84 minutes of real runs (2026-10-11): 309 runs were created, 115 executed, and a slot
+  of two minutes meant up to 30 organisation scans an hour on the maintainer login's shared
+  API quota. With ten, event wake-ups cause at most 6. A scheduled run always scans, so each
+  scheduled tick that is delivered adds one (up to 6 more an hour; two were delivered in the
+  first 13 hours). A quota marker posted in this repository still
+  makes the next run decide at once; one posted only in another repository is read by the
+  first run of the next slot, so up to ten minutes later.
   The early exit never applies to a scheduled run, never while the fleet is paused by
   anyone (so it cannot delay a resume), and never when the earlier runs, the slot or this
   repository's markers could not be read: then the run decides. Its one cost: a marker
@@ -1288,7 +1296,7 @@ as soon as the workflow is on `main`.
 - **Tuning** (repository variables, all optional): `BUDGET_BREAKER_MIN_ITEMS`,
   `BUDGET_BREAKER_WINDOW_MIN`, `BUDGET_BREAKER_PROBE_HOURS` (the pause length when no reset
   time is known, default 2), `BUDGET_BREAKER_MIN_HOLD_MIN` and
-  `BUDGET_BREAKER_MIN_INTERVAL_MIN` (the early exit's slot, default 2, `0` for off). Keep
+  `BUDGET_BREAKER_MIN_INTERVAL_MIN` (the early exit's slot, default 10, `0` for off). Keep
   the minimum hold at or above the window: otherwise the markers that caused a pause can
   still be inside the window when it lifts.
 - **Guard rails for editors.** The workflow's triggers are `schedule` and `workflow_run`
