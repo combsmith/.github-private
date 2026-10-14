@@ -2,7 +2,7 @@
 # Tests for scripts/template_stub_drift.sh — the repo-template drift guard (#969,
 # epic #964). The guard reuses fleet_stub_drift.sh's byte-identity (blob-SHA
 # equality) ALIGNED/DRIFTED/MISSING model to fail CI when a file committed in
-# petry-projects/repo-template has drifted from its standards-derived baseline
+# combsmith/repo-template has drifted from its standards-derived baseline
 # (what seed-repo-template.sh emits).
 #
 # All assertions here are PURE: they exercise the classification + allowlist +

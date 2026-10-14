@@ -3,7 +3,7 @@
 # Shape fixed by docs/agentic-interaction-model.md §8.1; standalone repo-local
 # file per the §8.2 location decision (option b). Story 2 / #1404.
 #
-# qa-lead is an advisory, mention-routed persona: a human @petry-projects/qa-lead
+# qa-lead is an advisory, mention-routed persona: a human @combsmith/qa-lead
 # mention is parsed by the shared router .github/workflows/persona-mention.yml and
 # bridged (repository_dispatch:persona-mention) to persona-runner, which posts a
 # single advisory comment as the persona's runtime.identity. It writes nothing else.
@@ -13,7 +13,7 @@
 # personas/qa-lead/persona.yml declares broader advisory surfaces (issues:labeled,
 # discussion:labeled, reviewer-assignment) that the router does not yet wire — the
 # contract records what is actually deployed, not the aspiration (persona-standards
-# finding 10 / petry-projects/.github#755).
+# finding 10 / combsmith/.github#755).
 
 schema_version: 1
 role: qa-lead

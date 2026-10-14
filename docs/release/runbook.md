@@ -11,10 +11,10 @@ reusables (`agent-shield`, `auto-rebase`, `dependency-audit`,
 `dev-lead` live in this repo; callers (consumers + this repo's own self-host
 caller) pin the moving channel tag `@<agent>/stable` and thread
 `agent_ref: <agent>/stable`. The cross-repo reusables (`feature-ideation` + the
-six above) live in `petry-projects/.github`, so their release/channel tags are cut
+six above) live in `combsmith/.github`, so their release/channel tags are cut
 against **that** repo, not this repo's `origin` (see "Cross-repo reusables" in
 [`versioning.md`](./versioning.md)). `cut-release.sh` resolves and publishes their
-tags against **`petry-projects/.github`** via `gh api` (#872, wired); a live
+tags against **`combsmith/.github`** via `gh api` (#872, wired); a live
 `--push` for a cross-repo agent needs `GH_TOKEN` with `contents:write` on that repo.
 
 **Two tag kinds per agent:**
@@ -58,7 +58,7 @@ scripts/cut-release.sh pr-review 1.6.0 --ref origin/main --dry-run
 scripts/cut-release.sh pr-review 1.6.0 --ref origin/main --push
 
 # Cross-repo agents (feature-ideation + the six #482 reusables, reusables in
-# petry-projects/.github): tags are cut against that repo via gh api (#872).
+# combsmith/.github): tags are cut against that repo via gh api (#872).
 # Preview with --dry-run; publish with --push (needs contents:write on .github):
 scripts/cut-release.sh agent-shield 2.1.0 --channel next --dry-run
 scripts/cut-release.sh agent-shield 2.1.0 --channel next --push
@@ -109,8 +109,8 @@ git push origin pr-review/stable --force
 > **Cross-repo agents.** `feature-ideation` and the six #482 reusables
 > (`agent-shield`, `auto-rebase`, `dependency-audit`, `dependabot-automerge`,
 > `dependabot-rebase`, `pr-review-mention`) have `<agent>/<channel>` tags that live
-> on `petry-projects/.github`, so a promotion is a tag move on **that** repo
-> (`git push <petry-projects/.github remote> <agent>/<channel> --force`), not this
+> on `combsmith/.github`, so a promotion is a tag move on **that** repo
+> (`git push <combsmith/.github remote> <agent>/<channel> --force`), not this
 > repo's `origin`. The exact remote/target for the automated path is an open
 > question — `cut-release.sh` refuses a live cut for any cross-repo agent until it
 > is resolved; preview with `--dry-run`.
@@ -192,7 +192,7 @@ git push origin pr-review/stable --force
 - The immutable `vX.Y.Z` tags are the rollback targets — pick the last release
   known healthy (`git tag -l 'pr-review/v*' | sort -V`).
 - For the cross-repo agents (`feature-ideation` + the six #482 reusables), the
-  same reverse-tag-move applies but against `petry-projects/.github` (where their
+  same reverse-tag-move applies but against `combsmith/.github` (where their
   `<agent>/v*` and channel tags live), not this repo — see the cross-repo note in §2b.
 - Every caller picks up the rolled-back version on its **next** run with no
   change on their side. In-flight runs already started on the bad version finish;

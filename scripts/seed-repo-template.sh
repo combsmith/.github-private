@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # seed-repo-template.sh — DRY_RUN-aware generator that seeds the org baseline file
-# scaffold into petry-projects/repo-template so a template click yields the
+# scaffold into combsmith/repo-template so a template click yields the
 # standard layout with no manual copying (issue #966, epic #964).
 #
 # The scaffold is a DISTRIBUTION ARTIFACT of standards/ in the public
-# petry-projects/.github repo — regenerable from it, NOT a hand-edited fork. This
+# combsmith/.github repo — regenerable from it, NOT a hand-edited fork. This
 # script therefore FETCHES the ~10 thin-caller workflow stubs from
 # standards/workflows/ and the Dependabot config from standards/dependabot/, then:
 #
 #   • copies the workflow stubs byte-identically (AC #1), and
 #   • repins each CALLER stub from the local `./…`/`@<name>/next` dogfood ref the
 #     source repo uses internally to the PUBLISHED channel tag a consumer must pin
-#     (`@<name>/v<MAJOR>-stable`; public reusables on petry-projects/.github, the
-#     private dev-lead reusable on petry-projects/.github-private). Inline workflows
+#     (`@<name>/v<MAJOR>-stable`; public reusables on combsmith/.github, the
+#     private dev-lead reusable on combsmith/.github-private). Inline workflows
 #     (ci/copilot-setup-steps/sonarcloud) carry no reusable ref and ship verbatim
 #     (AC #2). ci.yml is a customize-per-stack stub; the post-clone "pick your
 #     Dependabot + ci.yml stack" step is documented in the generated BOOTSTRAP.md
@@ -41,8 +41,8 @@ set -euo pipefail
 #
 # Env:
 #   DRY_RUN          "true" → print intent, make no write API calls.
-#   TEMPLATE_REPO    target repo to seed (default petry-projects/repo-template).
-#   STANDARDS_REPO   repo holding the canonical standards/ (default petry-projects/.github).
+#   TEMPLATE_REPO    target repo to seed (default combsmith/repo-template).
+#   STANDARDS_REPO   repo holding the canonical standards/ (default combsmith/.github).
 #   STANDARDS_DIR    optional local checkout of STANDARDS_REPO; when set, files are
 #                    read from disk instead of the GitHub API (regeneration seam).
 #   DEPENDABOT_STACK standards/dependabot/<stack>.yml to ship as .github/dependabot.yml
@@ -51,8 +51,8 @@ set -euo pipefail
 #   GH_TOKEN         PAT with repo scope (create a branch + PR on TEMPLATE_REPO).
 
 DRY_RUN="${DRY_RUN:-false}"
-TEMPLATE_REPO="${TEMPLATE_REPO:-petry-projects/repo-template}"
-STANDARDS_REPO="${STANDARDS_REPO:-petry-projects/.github}"
+TEMPLATE_REPO="${TEMPLATE_REPO:-combsmith/repo-template}"
+STANDARDS_REPO="${STANDARDS_REPO:-combsmith/.github}"
 DEPENDABOT_STACK="${DEPENDABOT_STACK:-frontend}"
 
 _is_dry() { [ "$DRY_RUN" = "true" ]; }
@@ -66,15 +66,15 @@ _is_dry() { [ "$DRY_RUN" = "true" ]; }
 #   kind=inline → self-contained; shipped byte-identically (host unused).
 # ci is the documented customize-per-stack inline stub (AC #4).
 readonly -a WORKFLOW_MANIFEST=(
-  "agent-shield|caller|petry-projects/.github"
-  "auto-rebase|caller|petry-projects/.github"
+  "agent-shield|caller|combsmith/.github"
+  "auto-rebase|caller|combsmith/.github"
   "ci|inline|-"
   "copilot-setup-steps|inline|-"
-  "dependabot-automerge|caller|petry-projects/.github"
-  "dependabot-rebase|caller|petry-projects/.github"
-  "dependency-audit|caller|petry-projects/.github"
-  "dev-lead|caller|petry-projects/.github-private"
-  "pr-review-mention|caller|petry-projects/.github"
+  "dependabot-automerge|caller|combsmith/.github"
+  "dependabot-rebase|caller|combsmith/.github"
+  "dependency-audit|caller|combsmith/.github"
+  "dev-lead|caller|combsmith/.github-private"
+  "pr-review-mention|caller|combsmith/.github"
   "sonarcloud|inline|-"
 )
 
@@ -179,19 +179,19 @@ _gen_baseline() {
 # AGENTS.md
 
 This repository follows the organization-wide development standards defined in
-[`petry-projects/.github/AGENTS.md`](https://github.com/petry-projects/.github/blob/main/AGENTS.md).
+[`combsmith/.github/AGENTS.md`](https://github.com/combsmith/.github/blob/main/AGENTS.md).
 
 Read that file before making changes that touch CI, agent configuration, repo
 settings, or labels. Repo-specific deviations, if any, are documented below.
 EOF
       ;;
     CLAUDE.md) cat <<'EOF'
-See [AGENTS.md](./AGENTS.md), which points to the org standards in `petry-projects/.github`.
+See [AGENTS.md](./AGENTS.md), which points to the org standards in `combsmith/.github`.
 EOF
       ;;
     .github/CODEOWNERS) cat <<'EOF'
 # Default owner for all files
-* @petry-projects/org-leads
+* @combsmith/org-leads
 EOF
       ;;
     sonar-project.properties) cat <<'EOF'
@@ -225,7 +225,7 @@ EOF
     LICENSE) cat <<'EOF'
 MIT License
 
-Copyright (c) petry-projects
+Copyright (c) combsmith
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -250,7 +250,7 @@ EOF
 # Security Policy
 
 To report a vulnerability, please follow the org-wide policy in
-[`petry-projects/.github`](https://github.com/petry-projects/.github/blob/main/SECURITY.md).
+[`combsmith/.github`](https://github.com/combsmith/.github/blob/main/SECURITY.md).
 
 Do not open public issues for security reports.
 EOF
@@ -258,7 +258,7 @@ EOF
     README.md) cat <<'EOF'
 # repo-template
 
-Org baseline scaffold for new `petry-projects` repositories. Click **Use this
+Org baseline scaffold for new `combsmith` repositories. Click **Use this
 template** to create a repo pre-wired with the standard workflow stubs and
 baseline files.
 
@@ -266,7 +266,7 @@ After creating your repo, follow **[BOOTSTRAP.md](./BOOTSTRAP.md)** to finish th
 one-time, per-stack setup (Dependabot + `ci.yml`).
 
 The workflow stubs and baseline files here are a distribution artifact of the org
-standards in [`petry-projects/.github`](https://github.com/petry-projects/.github)
+standards in [`combsmith/.github`](https://github.com/combsmith/.github)
 (`standards/`) and are regenerated from it — edit the standards, not this copy.
 EOF
       ;;
@@ -282,7 +282,7 @@ after you create your repo from the template:
 
 `.github/dependabot.yml` ships with the `frontend` (npm) stack by default.
 Replace it with the stack that matches your project — the canonical stacks live
-in `petry-projects/.github` under `standards/dependabot/<stack>.yml`. Available
+in `combsmith/.github` under `standards/dependabot/<stack>.yml`. Available
 stacks: `frontend` (npm), `backend-go`, `backend-python`, `backend-rust`,
 `fullstack` (npm + Go + Terraform), and `infra-terraform`.
 
@@ -307,7 +307,7 @@ Two onboarding questions are resolved here so they are not left implicit:
 
 - **Framework subtrees (`frameworks/`) are opt-in — they are not seeded by this
   template.** The agentic frameworks (`bmad-method`, `spec-kit`, `gsd`) are
-  `git subtree` development tooling maintained in `petry-projects/.github-private`;
+  `git subtree` development tooling maintained in `combsmith/.github-private`;
   a product repo does not need them on day 0. If your project uses one, add it on
   demand with `git subtree add` against its upstream — see that repo's `AGENTS.md`.
 

@@ -376,5 +376,5 @@ EOF
   grep -qF "repos/other/repo/issues/2/dependencies/blocked_by" "$GH_LOG"
   # …and the release labeled the sub-issue in the target repo, not self.
   grep -qF "issue edit 2 --repo other/repo --add-label dev-lead" "$GH_LOG"
-  ! grep -qF "petry-projects/.github-private" "$GH_LOG"
+  ! grep -qF "combsmith/.github-private" "$GH_LOG"
 }

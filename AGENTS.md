@@ -1,14 +1,14 @@
 # AGENTS.md — .github-private
 
 This repository follows the organization-wide development standards defined in
-[`petry-projects/.github/AGENTS.md`](https://github.com/petry-projects/.github/blob/main/AGENTS.md).
+[`combsmith/.github/AGENTS.md`](https://github.com/combsmith/.github/blob/main/AGENTS.md).
 Read that file before making changes that touch CI, agent configuration, repo settings, or labels.
 
 ---
 
 ## Repository Context
 
-This is the `.github-private` org infrastructure repo for `petry-projects`. It contains:
+This is the `.github-private` org infrastructure repo for `combsmith`. It contains:
 
 - **`agents/`** — Copilot custom agent profiles (org-wide, invocable from GitHub.com, VS Code, JetBrains)
 - **`frameworks/`** — Agentic frameworks installed via `git subtree` (bmad-method, spec-kit, gsd)
@@ -20,7 +20,7 @@ This is the `.github-private` org infrastructure repo for `petry-projects`. It c
 ### Workflow Files
 
 - Do **not** modify `.github/workflows/agent-shield.yml` — this is exempted from agent modification per
-  [`standards/agent-standards.md`](https://github.com/petry-projects/.github/blob/main/standards/agent-standards.md).
+  [`standards/agent-standards.md`](https://github.com/combsmith/.github/blob/main/standards/agent-standards.md).
 - `.github/workflows/dev-lead.yml` is a thin caller stub that delegates to
   `dev-lead-reusable.yml` (the canonical org standard). To change behavior for
   all org repos, edit `dev-lead-reusable.yml`. Repo-specific trigger adjustments
@@ -30,7 +30,7 @@ This is the `.github-private` org infrastructure repo for `petry-projects`. It c
   ["Caller-stub input forwarding across channel pins"](#caller-stub-input-forwarding-across-channel-pins):
   never forward an input the pinned channel does not yet declare.
 - All other workflow changes must use templates from
-  [`standards/workflows/`](https://github.com/petry-projects/.github/tree/main/standards/workflows) verbatim.
+  [`standards/workflows/`](https://github.com/combsmith/.github/tree/main/standards/workflows) verbatim.
 - **Note:** `.github/workflows/auto-rebase.yml` pins the reusable workflow at the `@auto-rebase/v2-next`
   moving channel tag — the major-scoped dogfood channel this repo rides ahead of the canonical
   `@auto-rebase/v2-stable` org stub in `standards/workflows/auto-rebase.yml`. Do not
@@ -160,8 +160,8 @@ This is the `.github-private` org infrastructure repo for `petry-projects`. It c
 
 ### Template drift guard (`repo-template`)
 
-`petry-projects/repo-template` is a **distribution artifact** of the canonical `standards/` in the public
-`petry-projects/.github` repo: `scripts/seed-repo-template.sh` fetches each canonical workflow stub /
+`combsmith/repo-template` is a **distribution artifact** of the canonical `standards/` in the public
+`combsmith/.github` repo: `scripts/seed-repo-template.sh` fetches each canonical workflow stub /
 baseline file and ships it (caller stubs repinned to the published `@<name>/stable` channel, inline stubs +
 baseline files verbatim). The `template-drift` job in `lint.yml` (#969, epic #964) guards that the files
 **committed** in the template have not diverged from that standards-derived baseline — it re-derives the
@@ -196,7 +196,7 @@ PR-triggered check on the existing Lint workflow — **no new cron/scheduled wor
   - **Why not the alternatives.** *Option 2 — keep Dependabot, automate a re-seed after each bump* — was
     rejected: it leaves a permanent drift window between the bump and the re-seed during which
     `template-drift` is red and review here is halted. *Option 3 — point Dependabot at
-    `petry-projects/.github` and let bumps flow to the template by re-seeding* — reaches the same
+    `combsmith/.github` and let bumps flow to the template by re-seeding* — reaches the same
     end state but additionally requires a change in the public standards repo; the scope-out above is
     implementable entirely from this repo (which owns `seed-repo-template.sh`) and is a prerequisite for
     Option 3 anyway (the template still must not run its own `github-actions` Dependabot). If the standards
@@ -219,7 +219,7 @@ breaks post-merge (the #1034 defect). This guard closes that gap.
 - Same-repo channel tags (`dev-lead/*`, `pr-review/*`, `ci-failure-analyst/*`, …) are resolved by
   `git fetch`-ing the tag and reading the reusable at that ref. A ref that genuinely can't be resolved
   **soft-passes with a logged `::warning::` — never silently.** Cross-repo reusables (hosted in another
-  repo, e.g. `petry-projects/.github`) are treated as unresolved here unless `VCI_RESOLVE_CROSS_REPO=1`
+  repo, e.g. `combsmith/.github`) are treated as unresolved here unless `VCI_RESOLVE_CROSS_REPO=1`
   opts in; the warning keeps the skip visible. Extending resolution to cross-repo channel tags is the
   scope of the later #1052 parts.
 - PR-triggered on the existing Lint workflow — **no new cron/scheduled workload.** It must not be
@@ -264,7 +264,7 @@ row to its §4 classification table and declare a machine-readable per-role inte
   the self-host caller stubs the standard classifies as Class 1). Like the off-peak scheduling
   standard, it is **repo-local first**, shaped for promotion into an org-wide
   `standards/agent-standards.md` in
-  [`petry-projects/.github`](https://github.com/petry-projects/.github).
+  [`combsmith/.github`](https://github.com/combsmith/.github).
 
 ### Scheduled workflows
 
@@ -291,7 +291,7 @@ row to its §4 classification table and declare a machine-readable per-role inte
   or `docs/aw/*.md`. The `frameworks/` subtrees are upstream-owned knowledge docs,
   not our schedules, and are intentionally out of scope.
 - **Promotion:** this is currently a repo-local standard. To make it org-wide,
-  lift it into [`petry-projects/.github`](https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md)
+  lift it into [`combsmith/.github`](https://github.com/combsmith/.github/blob/main/standards/ci-standards.md)
   (`standards/ci-standards.md`) and have repos defer to it — see the org-wide
   rollout tracked under epic #722.
 
@@ -337,7 +337,7 @@ run to `remediate=live` for the configured pilot.
 
 - Every agent profile must have YAML frontmatter with `name`, `description`, and `tools`.
 - Agent names must be kebab-case and match the filename.
-- Profiles are org-wide — changes affect all `petry-projects` repos.
+- Profiles are org-wide — changes affect all `combsmith` repos.
 
 ### Framework Subtrees (`frameworks/`)
 
@@ -359,7 +359,7 @@ secret holding that account's PAT. The runtime resolves `BOT_USER` from
 `account` via `scripts/lib/resolve-persona-identity.sh`; **never** derive a
 write persona's identity from a shared `vars.BOT_USER` — that coupling let
 dev-lead regress to committing as the review-only machine user `donpetry-bot`
-([#1316](https://github.com/petry-projects/.github-private/issues/1316)).
+([#1316](https://github.com/combsmith/.github-private/issues/1316)).
 
 - **dev-lead** acts as `don-petry` (the owner); **pr-review** acts as the
   review-only machine user `donpetry-bot`. They are deliberately different accounts.
@@ -417,7 +417,7 @@ HTTP 406 above that limit.
 - Prices are data, not code: keep per-model rates in `scripts/lib/model-pricing.tsv`
   (effective-dated) — never hardcode dollar rates in scripts.
 - **Promotion:** this is currently a repo-local standard. To make it org-wide,
-  lift it into [`petry-projects/.github`](https://github.com/petry-projects/.github/blob/main/AGENTS.md)
+  lift it into [`combsmith/.github`](https://github.com/combsmith/.github/blob/main/AGENTS.md)
   (the org AGENTS.md / `standards/`) and have repos defer to it.
 
 ### Release channel tags & the mutable-ref exception
@@ -426,7 +426,7 @@ First-party reusables are versioned via tags — see
 [`docs/release/versioning.md`](./docs/release/versioning.md). This began with the `pr-review` and
 `dev-lead` agents and now covers every first-party reusable we own — the reusables in this repo
 (`pr-review`, `dev-lead`, `ci-failure-analyst`) and the cross-repo reusables hosted in
-`petry-projects/.github` (`feature-ideation` and the six #482 reusables). **One convention applies to
+`combsmith/.github` (`feature-ideation` and the six #482 reusables). **One convention applies to
 all of them.** Two kinds of tag exist per reusable:
 
 - **Immutable releases** `<name>/vX.Y.Z` — never moved or deleted; the audit trail and rollback targets.
@@ -458,7 +458,7 @@ mechanism (see the initiative analysis §5.1: `docs/initiatives/agentic-release-
 **feature-ideation (cross-repo).** The `feature-ideation` agent is released through the same model with
 the channel set `{next, ring0, ring1, stable}`, so its `feature-ideation/v<MAJOR>-<tier>` pins (e.g., `feature-ideation/v1-stable`) are the **same
 sanctioned mutable-ref exception** and must not be flagged as unpinned. Unlike `pr-review`/`dev-lead`
-whose reusables live in this repo, `feature-ideation`'s reusable lives in **`petry-projects/.github`**
+whose reusables live in this repo, `feature-ideation`'s reusable lives in **`combsmith/.github`**
 (this repo holds only the thin caller stub), so its release/channel tags are cut against that public
 repo — and the protective ruleset bounding `feature-ideation/**` channel tags is therefore created
 **there**, not on this repo (an untracked prerequisite in the public repo). See
@@ -490,6 +490,6 @@ even though every ref looks valid, because the stub is ahead of the channel it p
   skew at the source; the **Part A CI guard (#1253)** is the belt-and-braces check that fails a PR whose
   caller-stub `with:` forwards an input the pinned channel does not declare.
 - **Promotion.** The canonical org-wide version of this rule is tracked for
-  [`petry-projects/.github`](https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md)
+  [`combsmith/.github`](https://github.com/combsmith/.github/blob/main/standards/ci-standards.md)
   (`standards/ci-standards.md`, "Reusable workflow versioning — the `stable` channel") in
-  petry-projects/.github#736; consumer repos defer to it once it lands.
+  combsmith/.github#736; consumer repos defer to it once it lands.

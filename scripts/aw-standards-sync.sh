@@ -4,8 +4,8 @@
 #
 # Env vars consumed:
 #   GH_TOKEN          — PAT with repo scope (create branches and PRs cross-repo)
-#   ORG               — GitHub org to scan (default: petry-projects)
-#   STANDARDS_REPO    — repo containing org standards templates (default: petry-projects/.github)
+#   ORG               — GitHub org to scan (default: combsmith)
+#   STANDARDS_REPO    — repo containing org standards templates (default: combsmith/.github)
 #   REPORT_REPO       — repo for summary issue (default: ORG/.github-private)
 #   SYNC_LABEL        — label for opened PRs and summary issue (default: standards-sync)
 #   SKIP_REPOS        — comma-separated list of repos to skip
@@ -16,7 +16,7 @@ set -euo pipefail
 # shellcheck source=scripts/lib/push-protection.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/push-protection.sh"
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 STANDARDS_REPO="${STANDARDS_REPO:-${ORG}/.github}"
 REPORT_REPO="${REPORT_REPO:-${ORG}/.github-private}"
 SYNC_LABEL="${SYNC_LABEL:-standards-sync}"
@@ -251,14 +251,14 @@ while IFS= read -r repo; do
     --head "$BRANCH_NAME" \
     --base "$default_branch" \
     --title "chore: add missing org standard files (standards-sync)" \
-    --body "$(printf 'This PR adds files required by the \`petry-projects\` org standards.\n\n**Missing files added:**%s\n\nOpened by the [standards-sync](%s) workflow.\n' "$missing_labels" "https://github.com/${REPORT_REPO}/actions")" \
+    --body "$(printf 'This PR adds files required by the \`combsmith\` org standards.\n\n**Missing files added:**%s\n\nOpened by the [standards-sync](%s) workflow.\n' "$missing_labels" "https://github.com/${REPORT_REPO}/actions")" \
     --label "$SYNC_LABEL" \
     2>/dev/null || true)
 
   if [ -n "$pr_url" ]; then
     prs_opened=$((prs_opened + 1))
     echo "  [pr]   ${repo} — opened ${pr_url}"
-    # Make the PR auto-rebase-eligible from creation (petry-projects/.github#711):
+    # Make the PR auto-rebase-eligible from creation (combsmith/.github#711):
     # without the ready label an unapproved PR is skipped by auto-rebase, drifts
     # into conflict, and cannot be approved (pr-review skips red PRs) — a deadlock.
     # Ensure the label exists (idempotent) so a repo missing it does not break.

@@ -224,27 +224,27 @@ mk_bot_events() {  # mk_bot_events <count>
 # ---------------------------------------------------------------------------
 
 @test "pr_resume_suppressed: needs-human-review label → suppress (exit 0)" {
-  run pr_resume_suppressed 860 petry-projects/demo '["needs-human-review"]' '[]'
+  run pr_resume_suppressed 860 combsmith/demo '["needs-human-review"]' '[]'
   [ "$status" -eq 0 ]
 }
 
 @test "pr_resume_suppressed: exhausted budget (no label) → suppress (exit 0)" {
-  run pr_resume_suppressed 860 petry-projects/demo '["bug"]' "$(mk_bot_events 10)"
+  run pr_resume_suppressed 860 combsmith/demo '["bug"]' "$(mk_bot_events 10)"
   [ "$status" -eq 0 ]
 }
 
 @test "pr_resume_suppressed: clean labels + budget remaining → proceed (exit 1)" {
-  run pr_resume_suppressed 860 petry-projects/demo '["bug"]' "$(mk_bot_events 3)"
+  run pr_resume_suppressed 860 combsmith/demo '["bug"]' "$(mk_bot_events 3)"
   [ "$status" -ne 0 ]
 }
 
 @test "pr_resume_suppressed: human label wins even with budget remaining" {
-  run pr_resume_suppressed 860 petry-projects/demo '["needs-human-review"]' "$(mk_bot_events 1)"
+  run pr_resume_suppressed 860 combsmith/demo '["needs-human-review"]' "$(mk_bot_events 1)"
   [ "$status" -eq 0 ]
 }
 
 @test "pr_resume_suppressed: FORCE_REVIEW must not bypass the budget" {
-  FORCE_REVIEW=true run pr_resume_suppressed 860 petry-projects/demo '["bug"]' "$(mk_bot_events 10)"
+  FORCE_REVIEW=true run pr_resume_suppressed 860 combsmith/demo '["bug"]' "$(mk_bot_events 10)"
   [ "$status" -eq 0 ]
 }
 
@@ -254,7 +254,7 @@ mk_bot_events() {  # mk_bot_events <count>
   # an unproven budget — prevents runaway automation during outages.
   gather_pr_automation_events() { return 1; }
   # No events_json passed so pr_resume_suppressed calls gather_pr_automation_events.
-  run pr_resume_suppressed 860 petry-projects/demo '[]'
+  run pr_resume_suppressed 860 combsmith/demo '[]'
   [ "$status" -eq 0 ]
 }
 
@@ -268,6 +268,6 @@ case "$*" in
 esac
 EOF
   chmod +x "$BATS_TEST_TMPDIR/gh"
-  PATH="$BATS_TEST_TMPDIR:$PATH" run gather_pr_automation_events 860 petry-projects/demo
+  PATH="$BATS_TEST_TMPDIR:$PATH" run gather_pr_automation_events 860 combsmith/demo
   [ "$status" -ne 0 ]
 }
