@@ -264,11 +264,11 @@ esac
 GHEOF
   chmod +x "$MOCK_BIN/gh"
   export FIRST_PAGE='{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":true,"endCursor":"C1"},"nodes":[{"id":"T1"}]}}}}}'
-  run btr_fetch_pr_threads "petry-projects/.github-private" 1953
+  run btr_fetch_pr_threads "combsmith/.github-private" 1953
   [ "$status" -eq 0 ]
   [ "$(jq -r 'map(.id) | join(",")' <<< "$output")" = "T1,T2" ]
   export FIRST_PAGE='{"errors":[{"message":"boom"}],"data":null}'
-  run btr_fetch_pr_threads "petry-projects/.github-private" 1953
+  run btr_fetch_pr_threads "combsmith/.github-private" 1953
   [ "$status" -ne 0 ]
   [ -z "$output" ]
 }
@@ -292,7 +292,7 @@ _setup_sweep() {
   fi
   export MARKER_LISTING
   if [ -z "${PR_JSON:-}" ]; then
-    export PR_JSON='{"state":"open","head":{"sha":"abc","ref":"dev-lead/issue-1900-x","repo":{"full_name":"petry-projects/.github-private"}},"user":{"login":"don-petry"},"labels":[]}'
+    export PR_JSON='{"state":"open","head":{"sha":"abc","ref":"dev-lead/issue-1900-x","repo":{"full_name":"combsmith/.github-private"}},"user":{"login":"don-petry"},"labels":[]}'
   fi
   cat > "$MOCK_BIN/gh" <<'GHEOF'
 #!/usr/bin/env bash
@@ -337,7 +337,7 @@ _comments_page() {
        "$(_reply don-petry 'Fixed in abc. <!-- dev-lead:addressed -->')")")"
   _setup_sweep
 
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "1" ]
   [ "$(grep -c '/dispatches' "$GH_LOG")" -eq 1 ]
@@ -353,7 +353,7 @@ _comments_page() {
 }
 
 @test "sweep(#2089): a dev-lead:hands-off PR gets no retry marker and no dispatch" {
-  export PR_JSON='{"state":"open","head":{"sha":"abc","ref":"dev-lead/issue-1900-x","repo":{"full_name":"petry-projects/.github-private"}},"user":{"login":"don-petry"},"labels":[{"name":"dev-lead:hands-off"}]}'
+  export PR_JSON='{"state":"open","head":{"sha":"abc","ref":"dev-lead/issue-1900-x","repo":{"full_name":"combsmith/.github-private"}},"user":{"login":"don-petry"},"labels":[{"name":"dev-lead:hands-off"}]}'
   export THREADS_RESPONSE
   THREADS_RESPONSE="$(_threads_page "$(_thread PRRT_cubic cubic-dev-ai 2026-10-01T11:35:00Z)")"
   _setup_sweep
@@ -361,7 +361,7 @@ _comments_page() {
   # shellcheck source=/dev/null
   source "$(dirname "$RETRY_SCRIPT")/lib/pr-automation-budget.sh"
 
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1902
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1902
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
@@ -376,7 +376,7 @@ _comments_page() {
     "$(_ours "$(_retry_marker PRRT_cubic 1 2026-10-02T00:30:00Z)" 2026-10-02T00:30:00Z MEMBER donpetry-bot)")"
   _setup_sweep
 
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
@@ -390,7 +390,7 @@ _comments_page() {
     "$(_ours '<!-- dev-lead-dispatch-guard sha=abc at=2026-10-02T00:58:00Z -->' 2026-10-02T00:58:00Z MEMBER don-petry)")"
   _setup_sweep
 
-  run --separate-stderr scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run --separate-stderr scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "0" ]
   [[ "$stderr" == *"recent dispatch guard"* ]]
@@ -404,7 +404,7 @@ _comments_page() {
   COMMENTS_RESPONSE="$(_comments_page \
     "$(_ours '<!-- dev-lead-dispatch-guard sha=abc at=2026-10-02T00:58:00Z -->' 2026-10-02T00:58:00Z NONE some-user)")"
   _setup_sweep
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "${lines[-1]}" = "1" ]
   [ "$(grep -c '/dispatches' "$GH_LOG")" -eq 1 ]
 }
@@ -427,11 +427,11 @@ _comments_page() {
 {"id":888,"created_at":"2026-10-02T01:00:00Z"}'
   _setup_sweep
 
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
-  grep -q -- '-X DELETE repos/petry-projects/.github-private/issues/comments/888' "$GH_LOG"
+  grep -q -- '-X DELETE repos/combsmith/.github-private/issues/comments/888' "$GH_LOG"
 }
 
 @test "sweep: an expired marker from a lost run never beats this scan's claim" {
@@ -443,7 +443,7 @@ _comments_page() {
 {"id":888,"created_at":"2026-10-02T01:00:00Z"}'
   _setup_sweep
 
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "${lines[-1]}" = "1" ]
   grep -q 'dev-lead-bot-thread-retry threads=PRRT_cubic attempt=2 ' "$GH_LOG"
   [ "$(grep -c '/dispatches' "$GH_LOG")" -eq 1 ]
@@ -454,10 +454,10 @@ _comments_page() {
   THREADS_RESPONSE="$(_threads_page "$(_thread PRRT_cubic cubic-dev-ai)")"
   _setup_sweep
 
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "${lines[-1]}" = "0" ]
   grep -q '/dispatches' "$GH_LOG"
-  grep -q -- '-X DELETE repos/petry-projects/.github-private/issues/comments/888' "$GH_LOG"
+  grep -q -- '-X DELETE repos/combsmith/.github-private/issues/comments/888' "$GH_LOG"
 }
 
 @test "sweep: exhausted attempts post ONE visible notice, and a later scan does not repeat it" {
@@ -468,7 +468,7 @@ _comments_page() {
     "$(_ours "$(_retry_marker PRRT_cubic 2 2026-10-01T15:00:00Z)" 2026-10-01T15:00:00Z)")"
   _setup_sweep
 
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
   [ "$(grep -c 'dev-lead-bot-thread-retry-exhausted threads=PRRT_cubic' "$GH_LOG")" -eq 1 ]
@@ -479,7 +479,7 @@ _comments_page() {
     "$(_ours "$(_retry_marker PRRT_cubic 1 2026-10-01T12:00:00Z)" 2026-10-01T12:00:00Z)" \
     "$(_ours "$(_retry_marker PRRT_cubic 2 2026-10-01T15:00:00Z)" 2026-10-01T15:00:00Z)" \
     "$(_ours '<!-- dev-lead-bot-thread-retry-exhausted threads=PRRT_cubic -->' 2026-10-01T20:00:00Z MEMBER donpetry-bot)")"
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "${lines[-1]}" = "0" ]
   if grep -q -- '--method POST' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
@@ -494,7 +494,7 @@ _comments_page() {
     "$(_ours "$(_retry_marker PRRT_cubic 2 2026-10-01T15:00:00Z)" 2026-10-01T15:00:00Z)")"
   _setup_sweep
 
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "${lines[-1]}" = "1" ]
   [ "$(grep -c '/dispatches' "$GH_LOG")" -eq 1 ]
   if grep -q 'dev-lead-bot-thread-retry-exhausted' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
@@ -503,10 +503,10 @@ _comments_page() {
 @test "sweep: a PR dev-lead did not author is never scanned" {
   export THREADS_RESPONSE
   THREADS_RESPONSE="$(_threads_page "$(_thread PRRT_cubic cubic-dev-ai)")"
-  export PR_JSON='{"state":"open","head":{"sha":"abc","ref":"dev-lead/issue-1-x","repo":{"full_name":"petry-projects/.github-private"}},"user":{"login":"someone"},"labels":[]}'
+  export PR_JSON='{"state":"open","head":{"sha":"abc","ref":"dev-lead/issue-1-x","repo":{"full_name":"combsmith/.github-private"}},"user":{"login":"someone"},"labels":[]}'
   _setup_sweep
 
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "${lines[-1]}" = "0" ]
   if grep -q 'graphql' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
@@ -515,7 +515,7 @@ _comments_page() {
   export THREADS_RESPONSE='{"errors":[{"message":"boom"}]}'
   _setup_sweep
 
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "${lines[-1]}" = "0" ]
   if grep -q -- '--method POST' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
@@ -527,11 +527,11 @@ _comments_page() {
   scan_pr_for_unreplied_bot_threads() { echo "THREAD-SCAN" >&2; echo "1"; }
   scan_repo_issues() { :; }
   gh() { echo '[{"number":1953,"head_sha":"abc"}]'; }
-  run scan_repo "petry-projects/.github-private"
+  run scan_repo "combsmith/.github-private"
   [[ "$output" != *"THREAD-SCAN"* ]]
 
   scan_pr_for_undispositioned_bot_comments() { echo "0"; }
-  run scan_repo "petry-projects/.github-private"
+  run scan_repo "combsmith/.github-private"
   [[ "$output" == *"THREAD-SCAN"* ]]
   [[ "$output" == *"dispatched 1 PR retries"* ]]
 }
@@ -542,7 +542,7 @@ _comments_page() {
   _setup_sweep
   export DRY_RUN="true"
 
-  run scan_pr_for_unreplied_bot_threads "petry-projects/.github-private" 1953
+  run scan_pr_for_unreplied_bot_threads "combsmith/.github-private" 1953
   [ "${lines[-1]}" = "1" ]
   [[ "$output" == *"would dispatch dev-lead-reviews-retry"*"intent=fix-reviews"* ]]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi

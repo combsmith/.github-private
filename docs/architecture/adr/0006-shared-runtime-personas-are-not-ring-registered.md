@@ -16,7 +16,7 @@ Advisory personas do not fit that model, and the mismatch was found only when
 onboarding the ninth one.
 
 A persona has **no dedicated reusable**. It rides the shared, convention-driven
-persona runtime: the `persona-mention` router parses an `@petry-projects/<role>`
+persona runtime: the `persona-mention` router parses an `@combsmith/<role>`
 mention and bridges (`repository_dispatch`) to `persona-runner`, which executes
 any persona supplying a manifest plus `prompts/<role>/advisory.md`. Adding a
 persona is a data change, not a workflow change — which is precisely why the
@@ -114,7 +114,7 @@ The checkable boundaries:
   records that personas are not in its scope.
 - ADR-0004 (pure logic + bats) — why the reach check may carry this weight.
 - ADR-0005 (advisory-by-default personas) — the persona pattern this serves.
-- Decision thread: petry-projects/.github-private#1688, including the
+- Decision thread: combsmith/.github-private#1688, including the
   `solution-architect` advisory that identified the ADR-0001 boundary inversion.
-- Superseded implementation: petry-projects/.github#1078 / #1079, closed
+- Superseded implementation: combsmith/.github#1078 / #1079, closed
   unmerged; #1078's premise that autocut ignores prompt-only changes was false.

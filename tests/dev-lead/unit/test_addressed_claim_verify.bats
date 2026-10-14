@@ -684,7 +684,7 @@ setup() {
 # The thread-resolution gate used to accept any commit on the head branch whose
 # <sha>^..HEAD range touched the claimed file, so a reply citing the PR's FIRST
 # commit (the pre-pass head the model read with `git rev-parse HEAD` before it
-# committed anything) passed trivially — the petry-projects/.github#1220 `571a3b8`
+# committed anything) passed trivially — the combsmith/.github#1220 `571a3b8`
 # case. A claim now verifies only when its commit is on the reference head AND
 # is not already contained in the pre-pass base.
 

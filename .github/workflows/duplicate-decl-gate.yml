@@ -5,7 +5,7 @@ name: duplicate-decl-gate
 # a top-level function declared twice in scripts/**/*.sh, a markdown heading
 # repeated in prompts/**/*.md, or a key declared twice in one mapping in
 # personas/**/*.yml. The md/yml scopes close the scan-scope gap filed as
-# petry-projects/.github#1041 (this gate widened, not a second gate). Runs on
+# combsmith/.github#1041 (this gate widened, not a second gate). Runs on
 # EVERY pull request — no paths filter — because a required check that is
 # path-skipped never reports and blocks the merge forever; the scan itself costs
 # seconds. Complements the advisory, parent-aware detector on the rebase path

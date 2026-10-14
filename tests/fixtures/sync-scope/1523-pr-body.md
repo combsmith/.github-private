@@ -1,4 +1,4 @@
-This PR adds files required by the `petry-projects` org standards.
+This PR adds files required by the `combsmith` org standards.
 
 **Declared sync paths:** 3 workflow stubs
 

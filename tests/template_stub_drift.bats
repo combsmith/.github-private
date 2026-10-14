@@ -2,7 +2,7 @@
 # Tests for scripts/template_stub_drift.sh — the repo-template drift guard (#969,
 # epic #964). The guard reuses fleet_stub_drift.sh's byte-identity (blob-SHA
 # equality) ALIGNED/DRIFTED/MISSING model to fail CI when a file committed in
-# petry-projects/repo-template has drifted from its standards-derived baseline
+# combsmith/repo-template has drifted from its standards-derived baseline
 # (what seed-repo-template.sh emits).
 #
 # All assertions here are PURE: they exercise the classification + allowlist +
@@ -447,7 +447,7 @@ _drv_stub() {
     printf '%s@%s' "$2" "$3"
     # A HEAD emission carrying a pre-#1184 legacy non-major-scoped pin (#2237).
     if [ -n "${DRV_HEAD_LEGACY:-}" ] && [ "$3" = "$DRV_HEAD_SHA" ]; then
-      printf '\n    uses: petry-projects/.github/.github/workflows/foo-reusable.yml@foo/stable'
+      printf '\n    uses: combsmith/.github/.github/workflows/foo-reusable.yml@foo/stable'
     fi
   }
   _template_drift_committed_sha() {
@@ -677,12 +677,12 @@ _drv_row() {
 # ---------------------------------------------------------------------------
 
 @test "major-scoped guard: passes on a major-scoped v<MAJOR>-stable reusable pin (AC #9)" {
-  run template_drift_assert_major_scoped "    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"
+  run template_drift_assert_major_scoped "    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"
   [ "$status" -eq 0 ]
 }
 
 @test "major-scoped guard: FAILS on a legacy bare-tier reusable pin (AC #9)" {
-  run template_drift_assert_major_scoped "    uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/stable"
+  run template_drift_assert_major_scoped "    uses: combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/stable"
   [ "$status" -ne 0 ]
   [[ "$output" == *"pr-review-mention"* || "$output" == *"legacy"* || "$output" == *"major"* ]]
 }

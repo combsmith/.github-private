@@ -27,7 +27,7 @@ setup() {
   export GH_CALL_LOG="$STUB_DIR/gh_calls.log"
   : > "$GH_CALL_LOG"
   OUT_FILE="$STUB_DIR/symbol-context.txt"
-  REPO="petry-projects/.github-private"
+  REPO="combsmith/.github-private"
 
   # A one-function bash diff used by most tests.
   DIFF='--- a/scripts/foo.sh
