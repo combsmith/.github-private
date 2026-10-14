@@ -16,6 +16,7 @@ SCRIPT="$REPO_ROOT/scripts/ci-failure-analyst-resolve.sh"
 
 SHA="0123456789abcdef0123456789abcdef01234567"
 
+# setup — initialize test environment with temporary directories, gh stub, and fixtures.
 setup() {
   TMP="$(mktemp -d)" || { echo "Failed to create temp directory" >&2; exit 1; }
   STUB_BIN="$TMP/bin"
@@ -60,16 +61,17 @@ GHEOF
   unset PR_NUMBER HEAD_SHA
 }
 
+# teardown — clean up temporary directory and all test artifacts.
 teardown() {
   [ -n "${TMP:-}" ] && rm -rf "$TMP"
 }
 
-# fixture <api-path> <json>
+# fixture <api-path> <json> — write a mock gh api response fixture for testing.
 fixture() {
   printf '%s\n' "$2" > "$GH_FIXTURES/$(printf '%s' "$1" | tr '/' '_').json"
 }
 
-# out <key> — the last value the script wrote for <key> to GITHUB_OUTPUT.
+# out <key> — retrieve the last value written for <key> to GITHUB_OUTPUT.
 out() {
   grep "^$1=" "$GITHUB_OUTPUT" | tail -n 1 | cut -d= -f2-
 }
@@ -113,6 +115,7 @@ workflow_run_event() {
 JSON
 }
 
+# failed_jobs_fixture — create a mock GitHub Actions jobs API response with failed jobs.
 failed_jobs_fixture() {
   fixture "repos/$REPO/actions/runs/777/jobs" '{
     "total_count": 3,

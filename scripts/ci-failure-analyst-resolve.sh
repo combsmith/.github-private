@@ -27,6 +27,7 @@ REPO="${REPO:-${GITHUB_REPOSITORY:-}}"
 GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
 export REPO
 
+# emit <key> <value> — write a key=value pair to GITHUB_OUTPUT, stripping carriage returns.
 emit() { printf '%s=%s\n' "$1" "$(printf '%s' "$2" | tr -d '\r\n')" >> "$GITHUB_OUTPUT"; }
 
 # payload_field <jq-filter> — read one value from the event payload; empty on a
@@ -48,6 +49,9 @@ failed_jobs() {
   printf '%s\n' "$jobs" | paste -sd';' - | sed 's/;/; /g'
 }
 
+# resolve — parse the GitHub event payload and emit outputs needed for analysis.
+# Detects check_run or workflow_run events, resolves to an open PR, collects failed jobs.
+# Emits skip=true if no open PR is found or the payload is unsupported.
 resolve() {
   local event key head_sha pr_number pr_state pulls candidates candidate name details_url jobs_summary run_id="" check_run_id=""
   event="$(payload_field 'if (.check_run | type) == "object" then "check_run"
@@ -138,6 +142,9 @@ resolve() {
   emit failed_jobs "$jobs_summary"
 }
 
+# idempotency — check whether a comment with the SHA marker already exists on the PR.
+# Prevents duplicate analysis comments for the same commit across multiple failures.
+# Fails closed (assumes exists=true) on API errors to avoid posting duplicates.
 idempotency() {
   local existing ids
   # Fail closed: a failed lookup must not read as "no marker yet", or a second
