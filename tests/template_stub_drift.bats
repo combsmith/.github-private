@@ -2,7 +2,7 @@
 # Tests for scripts/template_stub_drift.sh — the repo-template drift guard (#969,
 # epic #964). The guard reuses fleet_stub_drift.sh's byte-identity (blob-SHA
 # equality) ALIGNED/DRIFTED/MISSING model to fail CI when a file committed in
-# petry-projects/repo-template has drifted from its standards-derived baseline
+# combsmith/repo-template has drifted from its standards-derived baseline
 # (what seed-repo-template.sh emits).
 #
 # All assertions here are PURE: they exercise the classification + allowlist +
@@ -12,10 +12,15 @@
 # Drift TSV format (4 fields, tab-separated), shared with fleet_stub_drift.sh:
 #   1:file  2:status  3:committed_sha  4:expected_sha
 # status ∈ { ALIGNED, DRIFTED, MISSING }
+# template_drift_row5 adds a 5th field (matched) and the AHEAD status (#1926).
 
 EXPECTED="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 # N-1 (immediately-preceding published version) expected blob SHA.
 N1="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+# Blob SHA of the emission at the standards default-branch HEAD (#1926).
+HEAD_BLOB="cccccccccccccccccccccccccccccccccccccccc"
+# A committed blob that matches no standards emission (a hand edit).
+HAND_EDIT="ffffffffffffffffffffffffffffffffffffffff"
 
 setup() {
   # shellcheck source=scripts/template_stub_drift.sh
@@ -278,6 +283,375 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
+# #1926 — AHEAD: a committed file that matches neither N nor N-1 but DOES match
+# the emission at the standards default-branch HEAD is ahead of the published
+# channel. It is not drift, and the re-seed remedy would regress it, so it gets
+# its own status, its own message (promote standards), and does not fail the job.
+# The five outcomes (AC #4): ALIGNED (N), ALIGNED (N-1), AHEAD, DRIFTED, MISSING.
+# ---------------------------------------------------------------------------
+
+@test "AHEAD classify: a committed file matching N is ALIGNED (N), HEAD given (#1926)" {
+  run template_drift_classify "$EXPECTED" "$EXPECTED" "$N1" "$HEAD_BLOB"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'ALIGNED\tN')" ]
+}
+
+@test "AHEAD classify: a committed file matching N-1 is ALIGNED (N-1), HEAD given (#1926)" {
+  run template_drift_classify "$N1" "$EXPECTED" "$N1" "$HEAD_BLOB"
+  [ "$output" = "$(printf 'ALIGNED\tN-1')" ]
+}
+
+@test "AHEAD classify: a committed file matching only the HEAD emission is AHEAD (#1926)" {
+  run template_drift_classify "$HEAD_BLOB" "$EXPECTED" "$N1" "$HEAD_BLOB"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'AHEAD\tHEAD')" ]
+}
+
+@test "AHEAD classify: AHEAD needs no N-1 ref (#1926)" {
+  run template_drift_classify "$HEAD_BLOB" "$EXPECTED" "" "$HEAD_BLOB"
+  [ "$output" = "$(printf 'AHEAD\tHEAD')" ]
+}
+
+@test "AHEAD classify: a committed file matching none of N, N-1, HEAD is DRIFTED (#1926)" {
+  run template_drift_classify "$HAND_EDIT" "$EXPECTED" "$N1" "$HEAD_BLOB"
+  [ "$output" = "$(printf 'DRIFTED\t')" ]
+}
+
+@test "AHEAD classify: an empty committed SHA is MISSING even with a HEAD emission (#1926)" {
+  run template_drift_classify "" "$EXPECTED" "$N1" "$HEAD_BLOB"
+  [ "$output" = "$(printf 'MISSING\t')" ]
+}
+
+@test "AHEAD classify: N wins when the channel already is HEAD — never AHEAD (#1926)" {
+  run template_drift_classify "$EXPECTED" "$EXPECTED" "" "$EXPECTED"
+  [ "$output" = "$(printf 'ALIGNED\tN')" ]
+}
+
+@test "AHEAD classify: an uncomputable HEAD emission leaves DRIFTED tagged ahead-unchecked (#1926)" {
+  run template_drift_classify "$HAND_EDIT" "$EXPECTED" "$N1" "unknown"
+  [ "$output" = "$(printf 'DRIFTED\tahead-unchecked')" ]
+}
+
+@test "AHEAD classify: an uncomputable HEAD emission never downgrades an ALIGNED file (#1926)" {
+  run template_drift_classify "$EXPECTED" "$EXPECTED" "$N1" "unknown"
+  [ "$output" = "$(printf 'ALIGNED\tN')" ]
+}
+
+@test "template_drift_row5: an AHEAD file gets a row tagged matched=HEAD (#1926)" {
+  run template_drift_row5 ".github/workflows/agent-shield.yml" "$HEAD_BLOB" "$EXPECTED" "$N1" "$HEAD_BLOB"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf '.github/workflows/agent-shield.yml\tAHEAD\t%s\t%s\tHEAD' "$HEAD_BLOB" "$EXPECTED")" ]
+}
+
+@test "annotate: an AHEAD row warns, points at promotion, and does NOT fail (#1926 AC #2/#3)" {
+  tsv="$BATS_TEST_TMPDIR/drift.tsv"
+  printf '%s\t%s\t%s\t%s\t%s\n' ".github/workflows/agent-shield.yml" "AHEAD" "$HEAD_BLOB" "$EXPECTED" "HEAD" >> "$tsv"
+  run template_drift_annotate "$tsv" "standards/v1-stable" "1234567890abcdef1234567890abcdef12345678"
+  [ "$status" -eq 0 ]                                   # a propagation lag, not corruption
+  [[ "$output" == *"::warning file=.github/workflows/agent-shield.yml::"* ]]
+  [[ "$output" != *"::error"* ]]
+  [[ "$output" == *'is ahead of `standards/v1-stable`'* ]]
+  [[ "$output" == *"cut-standards-release.sh"* ]]
+  [[ "$output" == *"instead of re-seeding"* ]]
+  [[ "$output" == *"1234567890ab"* ]]                   # the standards HEAD commit
+  # The DRIFTED remedy must never be printed for an AHEAD file.
+  [[ "$output" != *"Re-seed it via scripts/seed-repo-template.sh"* ]]
+  [[ "$output" != *"has DRIFTED"* ]]
+}
+
+@test "annotate: an AHEAD row names the default channel when no ref is passed (#1926)" {
+  tsv="$BATS_TEST_TMPDIR/drift.tsv"
+  printf '%s\t%s\t%s\t%s\t%s\n' "CLAUDE.md" "AHEAD" "$HEAD_BLOB" "$EXPECTED" "HEAD" >> "$tsv"
+  run template_drift_annotate "$tsv"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'is ahead of `standards/v1-stable`'* ]]
+}
+
+@test "annotate: AHEAD beside a real DRIFTED file still fails, each with its own remedy (#1926)" {
+  tsv="$BATS_TEST_TMPDIR/drift.tsv"
+  printf '%s\t%s\t%s\t%s\t%s\n' ".github/workflows/agent-shield.yml" "AHEAD" "$HEAD_BLOB" "$EXPECTED" "HEAD" >> "$tsv"
+  printf '%s\t%s\t%s\t%s\t%s\n' ".github/CODEOWNERS" "DRIFTED" "$HAND_EDIT" "$EXPECTED" "" >> "$tsv"
+  run template_drift_annotate "$tsv" "standards/v1-stable"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"::warning file=.github/workflows/agent-shield.yml::"* ]]
+  [[ "$output" == *"::error file=.github/CODEOWNERS::"*"Re-seed it via scripts/seed-repo-template.sh"* ]]
+  [[ "$output" != *"::error file=.github/workflows/agent-shield.yml"* ]]
+}
+
+@test "annotate: a DRIFTED row tagged ahead-unchecked fails WITHOUT the bare re-seed remedy (#1926)" {
+  tsv="$BATS_TEST_TMPDIR/drift.tsv"
+  printf '%s\t%s\t%s\t%s\t%s\n' ".github/CODEOWNERS" "DRIFTED" "$HAND_EDIT" "$EXPECTED" "ahead-unchecked" >> "$tsv"
+  run template_drift_annotate "$tsv" "standards/v1-stable"
+  [ "$status" -ne 0 ]                                   # still drift until proven otherwise
+  [[ "$output" == *"::error file=.github/CODEOWNERS::"* ]]
+  [[ "$output" == *"could NOT be compared against standards HEAD"* ]]
+  [[ "$output" == *"STANDARDS_REF="* ]]
+  [[ "$output" != *"Re-seed it via scripts/seed-repo-template.sh"* ]]
+}
+
+@test "report header: names the standards HEAD commit used for AHEAD detection (#1926)" {
+  run template_drift_report_header "standards/v1-stable" "feedfacefeedface0000000000000000" "" "1234567890abcdef1234567890abcdef12345678"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"1234567890ab"* ]]
+  [[ "$output" == *"AHEAD"* ]]
+}
+
+@test "report header: says nothing about AHEAD when the channel already is HEAD (#1926)" {
+  run template_drift_report_header "standards/v1-stable" "feedfacefeedface0000000000000000" ""
+  [[ "$output" != *"AHEAD"* ]]
+}
+
+@test "_template_drift_head_sha: a 40-hex SHA is returned as-is (#1926)" {
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!/usr/bin/env bash\nprintf "1234567890abcdef1234567890abcdef12345678"\n' > "$BATS_TEST_TMPDIR/bin/gh"
+  chmod +x "$BATS_TEST_TMPDIR/bin/gh"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run _template_drift_head_sha
+  [ "$status" -eq 0 ]
+  [ "$output" = "1234567890abcdef1234567890abcdef12345678" ]
+}
+
+@test "_template_drift_head_sha: an API error body yields empty, never a bogus ref (#1926)" {
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!/usr/bin/env bash\nprintf "{\\"message\\":\\"API rate limit exceeded\\",\\"status\\":\\"403\\"}"\nexit 1\n' > "$BATS_TEST_TMPDIR/bin/gh"
+  chmod +x "$BATS_TEST_TMPDIR/bin/gh"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run _template_drift_head_sha
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# ---------------------------------------------------------------------------
+# #1926 — the driver, end to end, with the four network seams replaced. The
+# "template" below holds one file in each of the five states. Emissions are the
+# string "<name>@<ref>", so a file's blob SHA says which standards ref it matches.
+# ---------------------------------------------------------------------------
+
+DRV_N_SHA="1111111111111111111111111111111111111111"
+DRV_HEAD_SHA="2222222222222222222222222222222222222222"
+
+# _drv_stub <head_sha> — replace main's network seams. <head_sha> is what the
+# standards default-branch HEAD resolves to ("" = unresolvable).
+_drv_stub() {
+  DRV_HEAD="$1"
+  DRV_EMIT_LOG="$BATS_TEST_TMPDIR/emit.log"
+  : > "$DRV_EMIT_LOG"
+  export STANDARDS_PREV_REF="prev-ref"
+  DRV_HEAD_LOG="$BATS_TEST_TMPDIR/head.log"
+  : > "$DRV_HEAD_LOG"
+  _template_drift_resolve_ref() { printf '%s\t%s\t%s\n' "standards/v1-stable" "$DRV_N_SHA" "${DRV_SRC:-channel}"; }
+  _template_drift_head_sha() { echo called >> "$DRV_HEAD_LOG"; printf '%s' "$DRV_HEAD"; }
+  # What the compare API says about HEAD relative to the baseline (#2237).
+  _template_drift_compare() { printf '%s' "${DRV_COMPARE-ahead}"; }
+  _template_drift_emit() {
+    printf '%s@%s\n' "$2" "$3" >> "$DRV_EMIT_LOG"
+    [ "${DRV_EMIT_FAIL:-}" = "$3" ] && return 1
+    printf '%s@%s' "$2" "$3"
+    # A HEAD emission carrying a pre-#1184 legacy non-major-scoped pin (#2237).
+    if [ -n "${DRV_HEAD_LEGACY:-}" ] && [ "$3" = "$DRV_HEAD_SHA" ]; then
+      printf '\n    uses: combsmith/.github/.github/workflows/foo-reusable.yml@foo/stable'
+    fi
+  }
+  _template_drift_committed_sha() {
+    local name ref
+    case "$1" in
+      .github/workflows/*) name="${1##*/}" ;;
+      *) name="$1" ;;
+    esac
+    case "$1" in
+      .github/workflows/agent-shield.yml)         ref="$DRV_HEAD_SHA" ;;        # AHEAD
+      .github/workflows/copilot-setup-steps.yml)  ref="prev-ref" ;;             # ALIGNED (N-1)
+      .github/workflows/dependabot-automerge.yml) ref="${DRV_HAND_EDIT_REF:-hand-edited}" ;;  # DRIFTED
+      CLAUDE.md)                                  return 0 ;;                   # MISSING
+      *)                                          ref="standards/v1-stable" ;;  # ALIGNED (N)
+    esac
+    printf '%s@%s' "$name" "$ref" | git hash-object --stdin
+  }
+}
+
+# _drv_row <path> — the "<status>\t<matched>" of <path> in the driver's output.
+_drv_row() {
+  printf '%s\n' "$output" | awk -F'\t' -v p="$1" '$1 == p { printf "%s\t%s", $2, $5 }'
+}
+
+@test "driver: one file in each state — AHEAD is told apart from DRIFTED (#1926 AC #1/#4)" {
+  _drv_stub "$DRV_HEAD_SHA"
+  run main
+  [ "$status" -ne 0 ]                                   # the one DRIFTED file fails it
+  [ "$(_drv_row .github/workflows/auto-rebase.yml)" = "$(printf 'ALIGNED\tN')" ]
+  [ "$(_drv_row .github/workflows/copilot-setup-steps.yml)" = "$(printf 'ALIGNED\tN-1')" ]
+  [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'AHEAD\tHEAD')" ]
+  [ "$(_drv_row .github/workflows/dependabot-automerge.yml)" = "$(printf 'DRIFTED\t')" ]
+  [ "$(_drv_row CLAUDE.md)" = "$(printf 'MISSING\t')" ]
+  [[ "$output" == *"::warning file=.github/workflows/agent-shield.yml::"*'is ahead of `standards/v1-stable`'* ]]
+  [[ "$output" == *"::error file=.github/workflows/dependabot-automerge.yml::"* ]]
+  [[ "$output" != *"::error file=.github/workflows/agent-shield.yml"* ]]
+}
+
+@test "driver: only would-be DRIFTED files pay for a HEAD emission (#1926 AC #1)" {
+  _drv_stub "$DRV_HEAD_SHA"
+  run main
+  run grep "@${DRV_HEAD_SHA}\$" "$DRV_EMIT_LOG"
+  [ "$output" = "$(printf 'agent-shield.yml@%s\ndependabot-automerge.yml@%s' "$DRV_HEAD_SHA" "$DRV_HEAD_SHA")" ]
+}
+
+@test "driver: an AHEAD-only template passes with a warning (#1926 AC #3)" {
+  _drv_stub "$DRV_HEAD_SHA"
+  # Same template, minus the hand edit: nothing is DRIFTED, one file is AHEAD.
+  DRV_HAND_EDIT_REF="standards/v1-stable"
+  run main
+  [ "$status" -eq 0 ]
+  [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'AHEAD\tHEAD')" ]
+  [[ "$output" == *"::warning file=.github/workflows/agent-shield.yml::"* ]]
+  [[ "$output" != *"::error"* ]]
+}
+
+@test "driver: when the channel already is HEAD nothing is AHEAD and no HEAD emission is made (#1926)" {
+  _drv_stub "$DRV_N_SHA"
+  run main
+  [ "$status" -ne 0 ]
+  # With nothing newer than N, a file that matches only some other ref is plain drift.
+  [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'DRIFTED\t')" ]
+  [[ "$output" == *"::error file=.github/workflows/agent-shield.yml::"*"Re-seed it via"* ]]
+  run grep -c "@${DRV_HEAD_SHA}\$" "$DRV_EMIT_LOG"
+  [ "$output" = "0" ]
+}
+
+@test "driver: an unresolvable standards HEAD is named, and DRIFTED is tagged ahead-unchecked (#1926)" {
+  _drv_stub ""
+  run main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"::warning::Could not resolve the standards default-branch HEAD commit"* ]]
+  [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'DRIFTED\tahead-unchecked')" ]
+  [[ "$output" == *"::error file=.github/workflows/agent-shield.yml::"*"could NOT be compared against standards HEAD"* ]]
+  [[ "$output" != *"Re-seed it via scripts/seed-repo-template.sh"* ]]
+  # Files that match the channel are unaffected by the failed lookup.
+  [ "$(_drv_row .github/workflows/auto-rebase.yml)" = "$(printf 'ALIGNED\tN')" ]
+}
+
+@test "driver: a failed HEAD emission for one file is named and tags only that file (#1926)" {
+  _drv_stub "$DRV_HEAD_SHA"
+  DRV_EMIT_FAIL="$DRV_HEAD_SHA"
+  run main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"::warning::Could not compute the standards HEAD emission for .github/workflows/agent-shield.yml"* ]]
+  [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'DRIFTED\tahead-unchecked')" ]
+}
+
+# ---------------------------------------------------------------------------
+# #2237 — paths PR #2219 left untested, and the two misclassifications it left.
+# ---------------------------------------------------------------------------
+
+@test "AHEAD classify: N-1 wins when N-1 and HEAD are the same blob (#2237)" {
+  run template_drift_classify "$N1" "$EXPECTED" "$N1" "$N1"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(printf 'ALIGNED\tN-1')" ]
+}
+
+@test "driver: a legacy pin in the HEAD emission fails the major-scoped guard (#2237)" {
+  _drv_stub "$DRV_HEAD_SHA"
+  DRV_HEAD_LEGACY=1
+  DRV_HAND_EDIT_REF="standards/v1-stable"
+  run main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"::error::resolved standards content carries a pre-#1184 legacy non-major-scoped reusable pin (foo-reusable.yml@foo/stable"* ]]
+  [[ "$output" == *"::error::a resolved standards baseline (N, N-1 or HEAD) carries a legacy non-major-scoped reusable pin"* ]]
+}
+
+@test "driver: the STANDARDS_DIR local seam never reads standards HEAD and tags nothing ahead-unchecked (#2237)" {
+  _drv_stub ""
+  DRV_SRC="local"
+  run main
+  [ "$status" -ne 0 ]                                   # the hand edit is still drift
+  [ ! -s "$DRV_HEAD_LOG" ]                              # _template_drift_head_sha never called
+  [[ "$output" != *"ahead-unchecked"* ]]
+  [[ "$output" != *"Could not resolve the standards default-branch HEAD"* ]]
+  [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'DRIFTED\t')" ]
+  run grep -c "@${DRV_HEAD_SHA}\$" "$DRV_EMIT_LOG"
+  [ "$output" = "0" ]
+}
+
+@test "driver: a baseline diverged from standards HEAD never yields AHEAD (#2237 AC #1)" {
+  _drv_stub "$DRV_HEAD_SHA"
+  DRV_COMPARE="diverged"
+  run main
+  [ "$status" -ne 0 ]
+  [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'DRIFTED\t')" ]
+  [[ "$output" == *"::notice::"*"not an ancestor"* ]]
+  [[ "$output" != *"ahead-unchecked"* ]]
+  run grep -c "@${DRV_HEAD_SHA}\$" "$DRV_EMIT_LOG"
+  [ "$output" = "0" ]
+}
+
+@test "driver: a baseline ahead of standards HEAD never yields AHEAD (#2237 AC #1)" {
+  _drv_stub "$DRV_HEAD_SHA"
+  DRV_COMPARE="behind"
+  run main
+  [ "$status" -ne 0 ]
+  [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'DRIFTED\t')" ]
+  [[ "$output" != *'is ahead of `standards/v1-stable`'* ]]
+  run grep -c "@${DRV_HEAD_SHA}\$" "$DRV_EMIT_LOG"
+  [ "$output" = "0" ]
+}
+
+@test "driver: an unreadable ancestry is named, and DRIFTED is tagged ahead-unchecked (#2237 AC #1)" {
+  _drv_stub "$DRV_HEAD_SHA"
+  DRV_COMPARE=""
+  run main
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"::warning::Could not tell whether"* ]]
+  [ "$(_drv_row .github/workflows/agent-shield.yml)" = "$(printf 'DRIFTED\tahead-unchecked')" ]
+  [ "$(_drv_row .github/workflows/auto-rebase.yml)" = "$(printf 'ALIGNED\tN')" ]
+  run grep -c "@${DRV_HEAD_SHA}\$" "$DRV_EMIT_LOG"
+  [ "$output" = "0" ]
+}
+
+@test "_template_drift_compare: a compare status is returned as-is (#2237)" {
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!/usr/bin/env bash\nprintf "ahead"\n' > "$BATS_TEST_TMPDIR/bin/gh"
+  chmod +x "$BATS_TEST_TMPDIR/bin/gh"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run _template_drift_compare "$DRV_N_SHA" "$DRV_HEAD_SHA"
+  [ "$status" -eq 0 ]
+  [ "$output" = "ahead" ]
+}
+
+@test "_template_drift_compare: an API error body yields empty, never a status (#2237)" {
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!/usr/bin/env bash\nprintf "{\\"message\\":\\"Not Found\\",\\"status\\":\\"404\\"}"\nexit 1\n' > "$BATS_TEST_TMPDIR/bin/gh"
+  chmod +x "$BATS_TEST_TMPDIR/bin/gh"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run _template_drift_compare "$DRV_N_SHA" "$DRV_HEAD_SHA"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "_template_drift_compare: an empty baseline SHA makes no call and yields empty (#2237)" {
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!/usr/bin/env bash\nprintf "ahead"\n' > "$BATS_TEST_TMPDIR/bin/gh"
+  chmod +x "$BATS_TEST_TMPDIR/bin/gh"
+  PATH="$BATS_TEST_TMPDIR/bin:$PATH" run _template_drift_compare "" "$DRV_HEAD_SHA"
+  [ -z "$output" ]
+}
+
+@test "annotate: DRIFTED while HEAD is newer names an intermediate-commit sync, not the bare re-seed remedy (#2237 AC #2)" {
+  tsv="$BATS_TEST_TMPDIR/drift.tsv"
+  printf '%s\t%s\t%s\t%s\t%s\n' ".github/CODEOWNERS" "DRIFTED" "$HAND_EDIT" "$EXPECTED" "" >> "$tsv"
+  run template_drift_annotate "$tsv" "standards/v1-stable" "1234567890abcdef1234567890abcdef12345678"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"::error file=.github/CODEOWNERS::"* ]]
+  [[ "$output" == *"standards HEAD (commit 1234567890ab)"* ]]
+  [[ "$output" == *'synced from a standards commit between `standards/v1-stable` and HEAD'* ]]
+  [[ "$output" == *"STANDARDS_REF=<commit>"* ]]
+  [[ "$output" != *"Re-seed it via scripts/seed-repo-template.sh"* ]]
+}
+
+@test "driver: a file matching neither the channel nor a newer HEAD gets the intermediate-commit message (#2237 AC #2)" {
+  _drv_stub "$DRV_HEAD_SHA"
+  run main
+  [ "$status" -ne 0 ]
+  [ "$(_drv_row .github/workflows/dependabot-automerge.yml)" = "$(printf 'DRIFTED\t')" ]
+  [[ "$output" == *"::error file=.github/workflows/dependabot-automerge.yml::"*"STANDARDS_REF=<commit>"* ]]
+  [[ "$output" != *"Re-seed it via scripts/seed-repo-template.sh"* ]]
+}
+
+# ---------------------------------------------------------------------------
 # #1448 AC #7 — the resolved standards ref + commit SHA are recorded in the
 # drift report so a mismatch is explainable rather than mysterious.
 # ---------------------------------------------------------------------------
@@ -303,12 +677,12 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "major-scoped guard: passes on a major-scoped v<MAJOR>-stable reusable pin (AC #9)" {
-  run template_drift_assert_major_scoped "    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"
+  run template_drift_assert_major_scoped "    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"
   [ "$status" -eq 0 ]
 }
 
 @test "major-scoped guard: FAILS on a legacy bare-tier reusable pin (AC #9)" {
-  run template_drift_assert_major_scoped "    uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/stable"
+  run template_drift_assert_major_scoped "    uses: combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/stable"
   [ "$status" -ne 0 ]
   [[ "$output" == *"pr-review-mention"* || "$output" == *"legacy"* || "$output" == *"major"* ]]
 }

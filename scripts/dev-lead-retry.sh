@@ -31,7 +31,7 @@ set -euo pipefail
 #
 # Env (required):
 #   GH_TOKEN            — PAT with repo + contents:write scopes
-#   TARGET_ORG          — GitHub org to scan (default: petry-projects)
+#   TARGET_ORG          — GitHub org to scan (default: combsmith)
 #
 # Env (optional):
 #   DELEGATION_ORGS     — space-separated additional orgs to scan
@@ -42,10 +42,26 @@ set -euo pipefail
 #                         turns on the #2086 per-target payload-field gate
 #                         (dev-lead-retry.yml passes it; unset = gate off)
 #   NOW_ISO             — override current time for testing (ISO-8601 UTC)
+#   STALE_DISPOSITION_MAX_PASSES — fix-reviews passes that may start after a bot
+#                         comment's latest edit without writing a fresh
+#                         disposition before the #2008 edit re-dispatch holds the
+#                         PR with a warning (default 2, #2166)
 #   BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC — seconds to wait after posting a
 #                         bot-comment retry marker before re-listing markers
 #                         to pick the earliest (default: 5), so a concurrent
 #                         scan's marker is visible to the listing
+#   BOT_COMMENT_RETRY_RUN_LOOKUP_WAIT_SEC — seconds to wait before each look
+#                         for the workflow run a bot-comment retry dispatch
+#                         created (default: the claim settle above), so the run
+#                         is visible to the Actions listing (#2262)
+#   BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES — how many times to look for that run
+#                         before recording none (default: 3). A run is recorded
+#                         only when two looks in a row show it as the single
+#                         candidate, so fewer than 2 records none
+#   BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC — once this process has run this
+#                         many seconds, stop looking for dispatched runs
+#                         (default: 1200), so the lookup waits cannot use up
+#                         the workflow's time limit on a busy scan
 #
 # Retryable intents: fix-reviews, review-changes, rebase
 #   These intents fetch all needed context (open threads, PR metadata) fresh
@@ -55,9 +71,10 @@ set -euo pipefail
 # disposition (#2008). CodeRabbit edits one summary comment in place, for example
 # to append a Security Architecture finding, and dev-lead only fires on CREATED
 # comments. The caller stub's `on:` is standards-owned, so this sweep is the
-# trigger. It is deduplicated: a successful fix-reviews run marker posted
-# at/after the edit means a pass already saw the edited body, so CodeRabbit's
-# frequent progress edits don't each spawn a run (stale_disposition_needs_dispatch).
+# trigger. It is deduplicated on a disposition NEWER than the edit (#2166): a pass
+# that ran after the edit but wrote no fresh disposition left the gate blocked, so
+# it does not count as done. Passes that started after the edit are capped
+# (STALE_DISPOSITION_MAX_PASSES), so it never loops (stale_disposition_needs_dispatch).
 #
 # NOT retried automatically: on-mention
 #   on-mention requires USER_INSTRUCTION from the original triggering event,
@@ -73,6 +90,14 @@ set -euo pipefail
 #   dispatches one deduplicated fix-bot-comment pass (lib/bot-comment-retry.sh).
 #   This recovers the run GitHub drops when a burst of PR events supersedes the
 #   pending fix-bot-comment run in the per-PR concurrency lane (#2009).
+#   The retry's own run joins that lane and can be dropped the same way (#2262).
+#   So the scan records the run each dispatch created on its retry marker
+#   (record_bot_comment_retry_run) and reads those runs back on later scans
+#   (fetch_bot_comment_retry_run_states): a retry cancelled before it started is
+#   re-dispatched without waiting out the pending window and uses up none of
+#   BOT_COMMENT_RETRY_MAX_ATTEMPTS, while a retry still queued or running holds
+#   the PR's other retries. A run that cannot be identified or read keeps the
+#   time-based behaviour.
 #
 # Unreplied bot review threads are retried too (#2046). A trusted reviewer bot's
 #   review thread is processed only by a fix-reviews pass. When that pass is lost,
@@ -113,12 +138,23 @@ source "$SCRIPT_DIR/lib/dispatch-channel-gate.sh"
 # shellcheck source=lib/budget-poller.sh
 source "$SCRIPT_DIR/lib/budget-poller.sh"
 
-TARGET_ORG="${TARGET_ORG:-petry-projects}"
+TARGET_ORG="${TARGET_ORG:-combsmith}"
 DELEGATION_ORGS="${DELEGATION_ORGS:-}"
 DISPATCH_DELAY_SEC="${DISPATCH_DELAY_SEC:-30}"
 DRY_RUN="${DRY_RUN:-false}"
 BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC="${BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC:-5}"
 [[ "$BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC" =~ ^[0-9]+$ ]] || BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC=5
+# Both waits let an eventually consistent listing catch up with a write this scan
+# just made, so the run lookup (#2262) defaults to the claim settle.
+BOT_COMMENT_RETRY_RUN_LOOKUP_WAIT_SEC="${BOT_COMMENT_RETRY_RUN_LOOKUP_WAIT_SEC:-$BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC}"
+[[ "$BOT_COMMENT_RETRY_RUN_LOOKUP_WAIT_SEC" =~ ^[0-9]+$ ]] \
+  || BOT_COMMENT_RETRY_RUN_LOOKUP_WAIT_SEC="$BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC"
+BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES="${BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES:-3}"
+[[ "$BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES" =~ ^[0-9]+$ ]] || BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES=3
+# Each lookup waits up to TRIES x WAIT seconds. The retry workflow has a 30-minute
+# limit, so past 20 minutes a dispatch records no run instead of waiting.
+BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC="${BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC:-1200}"
+[[ "$BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC" =~ ^[0-9]+$ ]] || BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC=1200
 
 # CI_MARKER_PREFIX / REVIEWS_MARKER_PREFIX / ISSUE_MARKER_PREFIX: one definition
 # shared with the budget breaker's marker reader (#2221), values unchanged.
@@ -233,7 +269,7 @@ budget_hold_init() {
     echo "retry-cron: budget hold fail-open (temp file unavailable), retrying as usual"
     return 0
   fi
-  bp_download_latest_log "${BUDGET_POLLER_REPO:-petry-projects/.github-private}" "$log" || rc=$?
+  bp_download_latest_log "${BUDGET_POLLER_REPO:-combsmith/.github-private}" "$log" || rc=$?
   if [ "$rc" -eq 1 ]; then
     reason="no readable ${BUDGET_POLLER_ARTIFACT} artifact"
   elif [ "$rc" -ne 0 ]; then
@@ -471,35 +507,43 @@ fetch_pr_comment_nodes() {
 # stale_disposition_needs_dispatch <comment_nodes_json> <pr_number>
 #   0 when a fix-reviews pass should be dispatched for the #2008 edit re-open:
 #   some bot comment was edited strictly after its latest dev-lead disposition
-#   (maintainer_gate_stale_dispositions), AND no successful fix-reviews run marker
-#   for THIS PR (`<!-- dev-lead-fix-reviews pr=<N> … intent=fix-reviews
-#   status=applied|no-changes`) was posted at/after the latest such edit. The
-#   marker check is the dedup. A pass that already ran after the edit saw the
-#   current body, so a burst of CodeRabbit progress edits costs one run, not one per
-#   edit. A pass counts from when it STARTED (the marker's read_at=, a lower bound
-#   on when it read the comments), not when its marker was posted: a pass that
-#   began before the edit and finished after it never saw the edited body. A
-#   legacy marker without read_at= falls back to its createdAt.
-#   A failed pass does not count, so its comment is retried. Only a marker
+#   (maintainer_gate_stale_dispositions). The dedup is a disposition NEWER than
+#   the edit (#2166), which drops the comment from that list. A fix-reviews run
+#   marker after the edit is not proof the edit was handled: on
+#   empower-personal-dashboard#65/#66/#67 passes ran after the edit, wrote no
+#   fresh disposition, and that marker stopped every later dispatch.
+#   Run markers only BOUND the retry. A successful fix-reviews pass for THIS PR
+#   (`<!-- dev-lead-fix-reviews pr=<N> … intent=fix-reviews
+#   status=<any>`) that started at/after the latest such edit counts
+#   as one attempt. After STALE_DISPOSITION_MAX_PASSES (default 2) it returns 3:
+#   hold for a human rather than spend a model run on every sweep. A new edit
+#   starts a new count. A pass counts from when it STARTED (the marker's
+#   read_at=, a lower bound on when it read the comments), not when its marker
+#   was posted: a pass that began before the edit never saw the edited body. A
+#   legacy marker without read_at= falls back to its createdAt. Only a marker
 #   from a trusted author (OWNER/MEMBER/COLLABORATOR, as dev-lead's own markers
-#   are) counts, so an outside commenter pasting a success-shaped marker cannot
-#   suppress the re-dispatch. 1 otherwise, including unreadable input (never
-#   dispatch on a guess). Pure apart from reading the reviewer registry.
+#   are) counts, so an outside commenter cannot exhaust the cap.
+#   1 otherwise, including unreadable input (never dispatch on a guess). Pure
+#   apart from reading the reviewer registry.
 stale_disposition_needs_dispatch() {
   local nodes="$1" pr_number="$2" stale latest_edit later_runs
+  local max_passes="${STALE_DISPOSITION_MAX_PASSES:-2}"
+  [[ "$max_passes" =~ ^[0-9]+$ ]] || max_passes=2
   [[ "$pr_number" =~ ^[0-9]+$ ]] || return 1
   stale=$(maintainer_gate_stale_dispositions "$nodes" "${BOT_USER:-donpetry-bot}") || return 1
   latest_edit=$(jq -r 'map(.lastEditedAt) | max // ""' <<< "$stale" 2>/dev/null) || return 1
   [ -n "$latest_edit" ] || return 1
   later_runs=$(jq -r --arg e "$latest_edit" \
-    --arg re "<!-- dev-lead-fix-reviews pr=${pr_number} [^>]*intent=fix-reviews status=(applied|no-changes)" '
+    --arg re "<!-- dev-lead-fix-reviews pr=${pr_number} [^>]*intent=fix-reviews status=" '
       [ .[] | objects
         | select((.authorAssociation // "") as $a | ["OWNER","MEMBER","COLLABORATOR"] | index($a) != null)
         | select((.body // "") | test($re))
         | (.createdAt // "") as $posted
         | ([(.body // "") | capture("read_at=(?<r>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)") | .r] | first // $posted) as $seen
         | select($seen >= $e) ] | length' <<< "$nodes" 2>/dev/null) || return 1
-  [ "$later_runs" = "0" ]
+  [[ "$later_runs" =~ ^[0-9]+$ ]] || return 1
+  [ "$later_runs" -lt "$max_passes" ] || return 3
+  return 0
 }
 
 # scan_pr_for_rate_limits <repo> <pr_number>
@@ -722,14 +766,45 @@ scan_pr_for_rate_limits() {
   if [ "$dispatched" -eq 0 ] && [ "$held" -eq 0 ]; then
     local comment_nodes
     comment_nodes=$(fetch_pr_comment_nodes "$repo" "$pr_number")
-    if [ -n "$comment_nodes" ] && stale_disposition_needs_dispatch "$comment_nodes" "$pr_number"; then
+    local stale_rc=1
+    if [ -n "$comment_nodes" ]; then
+      if stale_disposition_needs_dispatch "$comment_nodes" "$pr_number"; then
+        stale_rc=0
+      else
+        stale_rc=$?
+      fi
+    fi
+    if [ "$stale_rc" -eq 0 ]; then
       echo "  [stale-disposition] PR ${pr_number}: a bot comment was edited after its dev-lead disposition — re-dispatching fix-reviews (#2008)" >&2
       if [ "$guard_posted" -eq 0 ]; then
         post_dispatch_guard "$repo" "$pr_number" "$head_sha"
         guard_posted=1
       fi
-      dispatch_reviews_retry "$repo" "$pr_number" "$head_sha" "fix-reviews"
-      dispatched=$(( dispatched + 1 ))
+      if dispatch_reviews_retry "$repo" "$pr_number" "$head_sha" "fix-reviews"; then
+        dispatched=$(( dispatched + 1 ))
+      fi
+    elif [ "$stale_rc" -eq 3 ]; then
+      echo "::warning::PR ${pr_number} in ${repo}: a bot comment edited after its dev-lead disposition still has no fresh disposition after ${STALE_DISPOSITION_MAX_PASSES:-2} fix-reviews pass(es) since the edit — not re-dispatching; needs a human (#2166)" >&2
+      local max_passes="${STALE_DISPOSITION_MAX_PASSES:-2}"
+      local hold_marker="<!-- dev-lead-stale-disposition-hold pr=${pr_number} sha=${head_sha} max_passes=${max_passes} -->"
+      if ! echo "$comments_json" | jq -e --arg pat "dev-lead-stale-disposition-hold pr=${pr_number}" '.[] | select(test($pat))' >/dev/null 2>&1; then
+        if [ "$DRY_RUN" != "true" ]; then
+          gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
+            -f body="**dev-lead: stale bot comment disposition needs human action**
+
+A bot comment on this PR was edited after dev-lead dispositioned it, and ${max_passes} fix-reviews pass(es) since the edit wrote no fresh disposition. Automatic retries have stopped.
+
+This blocks pr-review's approval (its comment gate reports \`undispositioned-pr-comment\`). It is not a branch-protection block.
+
+A maintainer can:
+- re-dispatch dev-lead for that comment: \`repository_dispatch\` \`dev-lead-reviews-retry\` with \`intent_type=fix-bot-comment\`, \`pr_number\`, \`head_sha\` and the comment's \`comment_node_id\`; or
+- review the PR and merge it by hand.
+
+An \`@dev-lead\` mention from the owner account does not start a pass (#2027).
+
+$hold_marker" >/dev/null 2>&1 || true
+        fi
+      fi
     fi
   fi
 
@@ -790,6 +865,116 @@ dispatch_bot_comment_retry() {
   fi
 }
 
+# record_bot_comment_retry_run <repo> <pr_number> <marker_id> <comment_id> <version> <attempt> <marker_at_iso> <since_iso>
+# Finds the workflow run the dispatch just created and records it on the retry
+# marker as `run=<id>` (#2262), so a later scan can tell a retry that was
+# cancelled before it started from one that is queued or running.
+# repository_dispatch returns no run id, and a run that has not started exposes
+# no payload, so the run is paired by what the API does expose: the dev-lead
+# caller stub's repository_dispatch runs, titled with the retry's event type,
+# created at/after <since_iso> (bcr_pick_dispatched_run). It is recorded ONLY when
+# two looks in a row show the same single such run: another PR's retry can be
+# listed before this dispatch's own run is, and one look would record that run.
+# None after the tries, a candidate seen only on the last look, more than one
+# (another retry reached this repo in the same seconds) or any API failure
+# records nothing, and the marker keeps the time-based behaviour. The second
+# look narrows that race, it does not close it: a run of ours that is listed
+# later than both looks, or never, still leaves the other run as the only one.
+# Past BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC it does not look at all.
+# The marker is EDITED, never re-posted: the caller stub subscribes to
+# issue_comment `created` only, so an edit starts no run in the PR's lane. A new
+# comment would, and that run would cancel the retry just dispatched.
+# Best effort: it never fails the scan. All logging goes to stderr.
+record_bot_comment_retry_run() {
+  local repo="$1" pr_number="$2" marker_id="$3" cid="$4" version="$5" attempt="$6"
+  local marker_at="$7" since="$8"
+  local try listing pick count run_id="" candidate="" seen=""
+  [[ "$marker_id" =~ ^[0-9]+$ ]] || return 0
+  if [ "$SECONDS" -ge "$BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC" ]; then
+    echo "  [warn] bot-comment retry: this scan has run ${SECONDS}s, past the ${BOT_COMMENT_RETRY_RUN_LOOKUP_DEADLINE_SEC}s limit for run lookups — not waiting for PR ${pr_number}'s retry run in ${repo}, so the retry marker records none" >&2
+    return 0
+  fi
+  for (( try = 1; try <= BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES; try++ )); do
+    if [ "$BOT_COMMENT_RETRY_RUN_LOOKUP_WAIT_SEC" -gt 0 ]; then
+      sleep "$BOT_COMMENT_RETRY_RUN_LOOKUP_WAIT_SEC"
+    fi
+    # An unreadable listing is not "no run": stop, and say which read failed.
+    if ! listing=$(gh api --method GET "repos/${repo}/actions/runs" \
+           -f event=repository_dispatch -f "created=>=${since}" -f per_page=100 2>/dev/null) \
+       || ! pick=$(bcr_pick_dispatched_run "$listing" "$since") \
+       || ! count=$(jq -er '.count | numbers' <<< "$pick" 2>/dev/null); then
+      echo "  ::warning::bot-comment retry: could not read the Actions runs of ${repo} to find the run dispatched for PR ${pr_number} — the retry marker records no run and keeps the time-based pending window" >&2
+      return 0
+    fi
+    if [ "$count" -gt 1 ]; then
+      echo "  [warn] bot-comment retry: ${count} ${BCR_RETRY_EVENT_TYPE} runs started in ${repo} since ${since} — cannot tell which is PR ${pr_number}'s, so the retry marker records none" >&2
+      return 0
+    fi
+    candidate=""
+    if [ "$count" -eq 1 ]; then
+      candidate=$(jq -r '.id // empty' <<< "$pick" 2>/dev/null || true)
+    fi
+    # The same single candidate on two looks in a row is the run to record.
+    if [ -n "$candidate" ] && [ "$candidate" = "$seen" ]; then
+      run_id="$candidate"
+      break
+    fi
+    seen="$candidate"
+  done
+  if [[ ! "$run_id" =~ ^[0-9]+$ ]] && [ -n "$seen" ]; then
+    echo "  [warn] bot-comment retry: ${BCR_RETRY_EVENT_TYPE} run ${seen} in ${repo} was the only candidate for PR ${pr_number} on the last of ${BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES} look(s) and could not be confirmed by a second — the retry marker records none" >&2
+    return 0
+  fi
+  if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
+    echo "  [warn] bot-comment retry: no ${BCR_RETRY_EVENT_TYPE} run appeared in ${repo} for PR ${pr_number} after ${BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES} look(s) — the retry marker records no run" >&2
+    return 0
+  fi
+  if ! gh api --method PATCH "repos/${repo}/issues/comments/${marker_id}" \
+       -f body="$(bcr_retry_marker "$cid" "$version" "$attempt" "$marker_at" "$run_id")" >/dev/null 2>&1; then
+    echo "  ::warning::bot-comment retry: could not record Actions run ${run_id} on retry marker ${marker_id} in ${repo} — the marker keeps the time-based pending window" >&2
+    return 0
+  fi
+  echo "  [run] bot-comment ${cid} on PR ${pr_number}: retry attempt ${attempt} is Actions run ${run_id}" >&2
+}
+
+# fetch_bot_comment_retry_run_states <repo> <run_ids_json>
+# Reads from the Actions API the state of each run a retry marker recorded, and
+# echoes the {"<run id>": {status, conclusion, started}} map bcr_retry_decisions
+# takes (#2262). A cancelled run's jobs are read too: only a run in which no job
+# ran a step counts as lost. A run that cannot be read is LEFT OUT of the map and
+# named in a ::warning::, so its retry keeps the time-based pending window and
+# its attempt — an API error is never read as "cancelled".
+# Always returns 0 and echoes a JSON object. All logging goes to stderr.
+fetch_bot_comment_retry_run_states() {
+  local repo="$1" ids_json="$2" out='{}' id run jobs state next
+  while IFS= read -r id; do
+    [[ "$id" =~ ^[0-9]+$ ]] || continue
+    if ! run=$(gh api "repos/${repo}/actions/runs/${id}" 2>/dev/null </dev/null); then
+      echo "  ::warning::bot-comment retry: could not read Actions run ${id} in ${repo} — its retry keeps the time-based pending window (an unreadable run is never treated as cancelled)" >&2
+      continue
+    fi
+    jobs=""
+    if jq -e '.status == "completed" and .conclusion == "cancelled"' <<< "$run" >/dev/null 2>&1; then
+      if ! jobs=$(gh api "repos/${repo}/actions/runs/${id}/jobs?per_page=100" 2>/dev/null </dev/null); then
+        echo "  ::warning::bot-comment retry: could not read the jobs of cancelled Actions run ${id} in ${repo} — its retry keeps the time-based pending window (whether it started is unknown)" >&2
+        jobs=""
+      fi
+    fi
+    if ! state=$(bcr_run_state "$id" "$run" "$jobs"); then
+      echo "  ::warning::bot-comment retry: Actions run ${id} in ${repo} did not read back as a repository_dispatch run — its retry keeps the time-based pending window" >&2
+      continue
+    fi
+    if jq -e '.status == "completed" and .conclusion == "cancelled" and .started == false' \
+         <<< "$state" >/dev/null 2>&1; then
+      echo "  [lost] bot-comment retry: Actions run ${id} in ${repo} was cancelled before it started" >&2
+    fi
+    if next=$(jq -ce --arg id "$id" --argjson s "$state" '. + {($id): $s}' <<< "$out" 2>/dev/null); then
+      out="$next"
+    fi
+  done < <(jq -r '.[]? | strings' <<< "$ids_json" 2>/dev/null || true)
+  printf '%s\n' "$out"
+}
+
 # dev_lead_identity: dev-lead's acting login, from its persona manifest — NOT
 # BOT_USER, which is pr-review's identity when pr-review calls this scan (#2017).
 # DEV_LEAD_USER overrides; don-petry is the same fail-safe default the dev-lead
@@ -835,7 +1020,10 @@ bcr_automation_logins() {
 # where a second dispatch would supersede the first while it is still pending —
 # the exact loss this scan exists to recover. Remaining comments are picked up on
 # later scans. Dedup (pending / completed / edited / attempt cap) lives in the
-# pure bcr_retry_decisions. Prints only the number of dispatches to stdout; all
+# pure bcr_retry_decisions, which is also told what the Actions API says about
+# the runs earlier retries recorded on their markers (#2262): a run cancelled
+# before it started is not a pending retry, and a run still queued or running
+# holds every comment on the PR. Prints only the number of dispatches to stdout; all
 # other output goes to stderr. Fails closed (0 dispatches) on any read failure.
 # It never minimizes anything: the pass posts a disposition, which the harness
 # verifies as usual.
@@ -899,9 +1087,21 @@ scan_pr_for_undispositioned_bot_comments() {
 
   local automation
   automation=$(bcr_automation_logins)
+  local info_patterns now_epoch
+  info_patterns=$(_maintainer_gate_info_patterns_json) || true
+  now_epoch=$(get_now_epoch) || true
+  # #2262: an earlier retry's run can be cancelled in the PR's lane before it
+  # starts. Read the runs recorded on the retry markers whose state could change
+  # a decision. Every unreadable step leaves the map without that run, which is
+  # the time-based behaviour.
+  local run_ids run_states='{}'
+  if run_ids=$(bcr_retry_run_ids "$comments" "$trusted" "$info_patterns" "$now_epoch" "$automation") \
+     && jq -e 'length > 0' <<< "$run_ids" >/dev/null 2>&1; then
+    run_states=$(fetch_bot_comment_retry_run_states "$repo" "$run_ids") || run_states='{}'
+  fi
   local decisions
   if ! decisions=$(bcr_retry_decisions "$comments" "$trusted" \
-       "$(_maintainer_gate_info_patterns_json)" "$(get_now_epoch)" "$automation"); then
+       "$info_patterns" "$now_epoch" "$automation" "$run_states"); then
     echo "  [warn] bot-comment retry: could not evaluate PR ${pr_number} comments — skipping (fail closed)" >&2
     echo "0"; return 0
   fi
@@ -1020,11 +1220,24 @@ scan_pr_for_undispositioned_bot_comments() {
       echo "0"; return 0
     fi
   fi
+  # The run this dispatch creates cannot predate it. Two seconds of allowance
+  # cover a runner clock slightly ahead of GitHub's (run times have 1 s
+  # resolution); a wider window would only add other PRs' runs as candidates.
+  local dispatch_since=""
+  dispatch_since=$(date -u -d "@$(( $(get_now_epoch) - 2 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || dispatch_since=""
   if ! dispatch_bot_comment_retry "$repo" "$pr_number" "$head_sha" "$cid"; then
     # Nothing was dispatched, so withdraw the marker — left in place it would read
     # as a pending retry and block the next attempt for the whole pending window.
     withdraw_bot_comment_retry_marker "$repo" "$marker_id"
     echo "0"; return 0
+  fi
+  if [ "$DRY_RUN" != "true" ]; then
+    if [ -n "$dispatch_since" ]; then
+      record_bot_comment_retry_run "$repo" "$pr_number" "$marker_id" "$cid" "$version" \
+        "$attempt" "$now_iso" "$dispatch_since" || true
+    else
+      echo "  ::warning::bot-comment retry: could not compute the dispatch time for PR ${pr_number} in ${repo} — the retry marker records no run and keeps the time-based pending window" >&2
+    fi
   fi
   echo "1"
 }

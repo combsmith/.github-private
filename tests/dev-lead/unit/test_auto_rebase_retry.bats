@@ -39,12 +39,12 @@ GHEOF
   GITHUB_STEP_SUMMARY="$(mktemp)"
 
   # Sensible defaults for a failing run on its first attempt.
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export RUN_ID="123456"
   export RUN_ATTEMPT="1"
   export CONCLUSION="failure"
   export WORKFLOW_NAME="Auto-rebase non-Dependabot PRs"
-  export HTML_URL="https://github.com/petry-projects/.github-private/actions/runs/123456"
+  export HTML_URL="https://github.com/combsmith/.github-private/actions/runs/123456"
   export MAX_ATTEMPTS="3"
   unset GH_STUB_RERUN_FAILS DRY_RUN
 }
@@ -83,7 +83,7 @@ _dispatched() { [ -f "$DISPATCH_MARKER" ]; }
   export RUN_ATTEMPT="3"
   run bash "$RETRY_SCRIPT"
   [ "$status" -eq 0 ]
-  ! _reran
+  ! _reran || false
   [[ "$output" == *"::warning::"* ]]
   grep -qi "exhaust\|gave up\|giving up\|manual" "$GITHUB_STEP_SUMMARY"
 }
@@ -121,7 +121,7 @@ _dispatched() { [ -f "$DISPATCH_MARKER" ]; }
   export DRY_RUN="true"
   run bash "$RETRY_SCRIPT"
   [ "$status" -eq 0 ]
-  ! _reran
+  ! _reran || false
   [[ "$output" == *"dry-run"* ]]
 }
 
@@ -149,7 +149,7 @@ _dispatched() { [ -f "$DISPATCH_MARKER" ]; }
   export PR_NUMBER="1799"
   run bash "$RETRY_SCRIPT"
   [ "$status" -eq 0 ]
-  ! _reran
+  ! _reran || false
   _dispatched
   grep -q "dev-lead-reviews-retry" "$DISPATCH_MARKER"
   grep -q "1799" "$DISPATCH_MARKER"
@@ -161,8 +161,8 @@ _dispatched() { [ -f "$DISPATCH_MARKER" ]; }
   export PR_NUMBER=""
   run bash "$RETRY_SCRIPT"
   [ "$status" -eq 0 ]
-  ! _reran
-  ! _dispatched
+  ! _reran || false
+  ! _dispatched || false
   [[ "$output" == *"::warning::"* ]]
 }
 
@@ -172,7 +172,7 @@ _dispatched() { [ -f "$DISPATCH_MARKER" ]; }
   export DRY_RUN="true"
   run bash "$RETRY_SCRIPT"
   [ "$status" -eq 0 ]
-  ! _dispatched
+  ! _dispatched || false
   [[ "$output" == *"dry-run"* ]]
 }
 

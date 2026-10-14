@@ -14,7 +14,7 @@ setup() {
 teardown() { rm -rf "$TMP"; }
 
 @test "upsert-queue (DRY_RUN) logs the intended upsert with a non-empty body" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     QUEUE_BODY_PATH="$BODY" run bash "$TRIAGE_DIR/upsert-queue.sh"
   [ "$status" -eq 0 ]
   grep -q '"op":"upsert_queue"' "$LOG"
@@ -23,7 +23,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "upsert-queue fails on a missing/empty body" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     QUEUE_BODY_PATH="$TMP/does-not-exist.md" run bash "$TRIAGE_DIR/upsert-queue.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"missing or empty"* ]]
@@ -62,7 +62,7 @@ EOF
   grep -qF -- "name=widgets" "$GH_LOG"
   # Open-epics lookup runs against the target repo, not .github-private.
   grep -qF -- "--repo acme/widgets" "$GH_LOG"
-  ! grep -qF -- ".github-private" "$GH_LOG"
+  ! grep -qF -- ".github-private" "$GH_LOG" || false
   # The assembled context records the target repo.
   [ "$(jq -r '.repo' "$CTX")" = "acme/widgets" ]
 }

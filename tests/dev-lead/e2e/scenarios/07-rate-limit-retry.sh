@@ -25,11 +25,14 @@ FIX_REVIEWS_SCRIPT="${REPO_ROOT}/scripts/dev-lead-fix-reviews.sh"
 RETRY_SCRIPT="${REPO_ROOT}/scripts/dev-lead-retry.sh"
 STUB_ENGINE_DIR=""
 GITHUB_ENV_FILE=""
+# The real writers run below; give them a private sidecar directory so this
+# scenario does not share /tmp/dev-lead-* with other sessions (#2271).
+DEV_LEAD_SIDECAR_DIR="$(mktemp -d)" || exit 1
+export DEV_LEAD_SIDECAR_DIR
 
 cleanup() {
   rm -f "$GITHUB_ENV_FILE" 2>/dev/null || true
-  rm -rf "$STUB_ENGINE_DIR" 2>/dev/null || true
-  rm -f /tmp/dev-lead-rate-limit-reset 2>/dev/null || true
+  rm -rf "$STUB_ENGINE_DIR" "$DEV_LEAD_SIDECAR_DIR" 2>/dev/null || true
 }
 
 trap cleanup EXIT
@@ -116,7 +119,7 @@ main() {
     GITHUB_OUTPUT="/dev/null" \
     PR_NUMBER="42" HEAD_SHA="aaa111bbb222" \
     CHECKS_JSON='[{"name":"test-check","conclusion":"failure","details_url":"","app_slug":"github-actions"}]' \
-    REPO="petry-projects/test-repo" REVIEW_ENGINE="claude" DEV_LEAD_DRY_RUN="false" \
+    REPO="combsmith/test-repo" REVIEW_ENGINE="claude" DEV_LEAD_DRY_RUN="false" \
     PROMPTS_DIR="${REPO_ROOT}/prompts/dev-lead" \
     bash "${FIX_CI_SCRIPT}" 2>&1
   )
@@ -174,7 +177,7 @@ GHEOF
     GITHUB_OUTPUT="/dev/null" \
     PR_NUMBER="42" HEAD_SHA="ccc333new" \
     CHECKS_JSON='[{"name":"test-check","conclusion":"failure","details_url":"","app_slug":"github-actions"}]' \
-    REPO="petry-projects/test-repo" REVIEW_ENGINE="claude" DEV_LEAD_DRY_RUN="false" \
+    REPO="combsmith/test-repo" REVIEW_ENGINE="claude" DEV_LEAD_DRY_RUN="false" \
     MAX_FAIL_ATTEMPTS="2" \
     PROMPTS_DIR="${REPO_ROOT}/prompts/dev-lead" \
     bash "${FIX_CI_SCRIPT}" 2>&1
@@ -224,7 +227,7 @@ GHEOF
     GITHUB_OUTPUT="/dev/null" \
     PR_NUMBER="42" HEAD_SHA="aaa111bbb222" \
     CHECKS_JSON='[{"name":"test-check","conclusion":"failure","details_url":"","app_slug":"github-actions"}]' \
-    REPO="petry-projects/test-repo" REVIEW_ENGINE="claude" DEV_LEAD_DRY_RUN="true" \
+    REPO="combsmith/test-repo" REVIEW_ENGINE="claude" DEV_LEAD_DRY_RUN="true" \
     PROMPTS_DIR="${REPO_ROOT}/prompts/dev-lead" \
     bash "${FIX_CI_SCRIPT}" 2>&1
   )
@@ -262,7 +265,7 @@ GHEOF
     GITHUB_OUTPUT="/dev/null" \
     INTENT_TYPE="fix-reviews" \
     PR_NUMBER="54" HEAD_SHA="ddd444eee555" \
-    REPO="petry-projects/test-repo" REVIEW_ENGINE="claude" DEV_LEAD_DRY_RUN="false" \
+    REPO="combsmith/test-repo" REVIEW_ENGINE="claude" DEV_LEAD_DRY_RUN="false" \
     PROMPTS_DIR="${REPO_ROOT}/prompts/dev-lead" \
     bash "${FIX_REVIEWS_SCRIPT}" 2>&1
   )
@@ -301,7 +304,7 @@ GHEOF
     INTENT_TYPE="on-mention" \
     PR_NUMBER="54" HEAD_SHA="ddd444eee555" ACTOR="donpetry" \
     USER_INSTRUCTION="Please fix the tests" \
-    REPO="petry-projects/test-repo" REVIEW_ENGINE="claude" DEV_LEAD_DRY_RUN="false" \
+    REPO="combsmith/test-repo" REVIEW_ENGINE="claude" DEV_LEAD_DRY_RUN="false" \
     PROMPTS_DIR="${REPO_ROOT}/prompts/dev-lead" \
     bash "${FIX_REVIEWS_SCRIPT}" 2>&1
   )
@@ -342,7 +345,7 @@ GHEOF
 #!/usr/bin/env bash
 case "$*" in
   *"repo list"*)
-    echo '["petry-projects/test-repo"]' ;;
+    echo '["combsmith/test-repo"]' ;;
   *"pulls?state=open"*)
     echo '[{"number":99,"head":{"sha":"fff666ggg777"}}]' ;;
   *"pulls/99"*".head.sha"*)
@@ -364,7 +367,7 @@ GHEOF
     PATH="${STUB_ENGINE_DIR}:${PATH}" \
     GITHUB_ENV="${GITHUB_ENV_FILE}" \
     GITHUB_OUTPUT="/dev/null" \
-    TARGET_ORG="petry-projects" \
+    TARGET_ORG="combsmith" \
     DRY_RUN="true" \
     DISPATCH_DELAY_SEC="0" \
     NOW_ISO="2026-05-16T20:00:00Z" \
@@ -397,7 +400,7 @@ GHEOF
 #!/usr/bin/env bash
 case "$*" in
   *"repo list"*)
-    echo '["petry-projects/test-repo"]' ;;
+    echo '["combsmith/test-repo"]' ;;
   *"pulls?state=open"*)
     echo '[{"number":99,"head":{"sha":"fff666ggg777"}}]' ;;
   *"pulls/99"*".head.sha"*)
@@ -417,7 +420,7 @@ GHEOF
     PATH="${STUB_ENGINE_DIR}:${PATH}" \
     GITHUB_ENV="${GITHUB_ENV_FILE}" \
     GITHUB_OUTPUT="/dev/null" \
-    TARGET_ORG="petry-projects" \
+    TARGET_ORG="combsmith" \
     DRY_RUN="true" \
     DISPATCH_DELAY_SEC="0" \
     NOW_ISO="2026-05-16T20:00:00Z" \
@@ -459,7 +462,7 @@ GHEOF
 #!/usr/bin/env bash
 case "$*" in
   *"repo list"*)
-    echo '[{"nameWithOwner":"petry-projects/test-repo","isFork":false}]' ;;
+    echo '[{"nameWithOwner":"combsmith/test-repo","isFork":false}]' ;;
   *"pulls?state=open"*)
     echo '[{"number":42,"head":{"sha":"aaa111bbb222"}}]' ;;
   *"pulls/42"*)
@@ -479,7 +482,7 @@ GHEOF
     PATH="${STUB_ENGINE_DIR}:${PATH}" \
     GITHUB_ENV="${GITHUB_ENV_FILE}" \
     GITHUB_OUTPUT="/dev/null" \
-    TARGET_ORG="petry-projects" \
+    TARGET_ORG="combsmith" \
     DRY_RUN="true" \
     DISPATCH_DELAY_SEC="0" \
     NOW_ISO="2026-05-16T20:00:00Z" \
@@ -512,7 +515,7 @@ GHEOF
 #!/usr/bin/env bash
 case "$*" in
   *"repo list"*)
-    echo '[{"nameWithOwner":"petry-projects/test-repo","isFork":false}]' ;;
+    echo '[{"nameWithOwner":"combsmith/test-repo","isFork":false}]' ;;
   *startswith*)
     # open_issue_pr_exists probe → no existing PR for the issue
     echo "0" ;;
@@ -536,7 +539,7 @@ GHEOF
     PATH="${STUB_ENGINE_DIR}:${PATH}" \
     GITHUB_ENV="${GITHUB_ENV_FILE}" \
     GITHUB_OUTPUT="/dev/null" \
-    TARGET_ORG="petry-projects" \
+    TARGET_ORG="combsmith" \
     DRY_RUN="true" \
     DISPATCH_DELAY_SEC="0" \
     NOW_ISO="2026-05-16T20:00:00Z" \
@@ -572,7 +575,7 @@ GHEOF
 #!/usr/bin/env bash
 case "$*" in
   *"repo list"*)
-    echo '["petry-projects/test-repo"]' ;;
+    echo '["combsmith/test-repo"]' ;;
   *"pulls?state=open"*)
     echo '[{"number":88,"head":{"sha":"blk111blk222"}}]' ;;
   *"pulls/88"*".head.sha"*)
@@ -592,7 +595,7 @@ GHEOF
     PATH="${STUB_ENGINE_DIR}:${PATH}" \
     GITHUB_ENV="${GITHUB_ENV_FILE}" \
     GITHUB_OUTPUT="/dev/null" \
-    TARGET_ORG="petry-projects" \
+    TARGET_ORG="combsmith" \
     DRY_RUN="true" \
     DISPATCH_DELAY_SEC="0" \
     NOW_ISO="2026-05-16T20:00:00Z" \
@@ -625,7 +628,7 @@ GHEOF
 #!/usr/bin/env bash
 case "$*" in
   *"repo list"*)
-    echo '["petry-projects/test-repo"]' ;;
+    echo '["combsmith/test-repo"]' ;;
   *"pulls?state=open"*)
     echo '[{"number":77,"head":{"sha":"rl111rl222"}}]' ;;
   *"pulls/77"*".head.sha"*)
@@ -645,7 +648,7 @@ GHEOF
     PATH="${STUB_ENGINE_DIR}:${PATH}" \
     GITHUB_ENV="${GITHUB_ENV_FILE}" \
     GITHUB_OUTPUT="/dev/null" \
-    TARGET_ORG="petry-projects" \
+    TARGET_ORG="combsmith" \
     DRY_RUN="true" \
     DISPATCH_DELAY_SEC="0" \
     NOW_ISO="2026-05-16T20:00:00Z" \

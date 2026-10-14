@@ -1,9 +1,9 @@
 # Persona Runtime — Reusable (dispatch side of the mention framework).
 # This file is the source of truth. Caller: .github/workflows/persona-runner.yml.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md (§4.1)
+# Standard: https://github.com/combsmith/.github/blob/main/standards/persona-standards.md (§4.1)
 #
-# The router (petry-projects/.github persona-mention-reusable.yml) resolves an
-# `@petry-projects/<role>` mention and fires a `persona-mention`
+# The router (combsmith/.github persona-mention-reusable.yml) resolves an
+# `@combsmith/<role>` mention and fires a `persona-mention`
 # repository_dispatch at this repo. This workflow receives it and runs the
 # addressed persona's advisory prompt (prompts/<id>/advisory.md), posting exactly
 # one advisory comment that carries the '<!-- persona:<id> -->' recursion marker.
@@ -76,11 +76,11 @@ on:
       surface:
         # Which surface the dispatch came from. Defaults to 'mention' so existing
         # mention dispatches are unchanged. When 'pull_request', the persona's
-        # event pre-gate runs before the engine (#1905). The local
-        # qa-lead-pr-advisory.yml advise job now sets 'pull_request' too, so both
-        # its run and the router-served run share this workflow's per-(persona,
-        # repo,PR) concurrency group and the same already-advised marker check —
-        # the serialization that prevents the two paths double-posting.
+        # event pre-gate runs before the engine (#1905). The persona-mention
+        # router is the only caller that sets 'pull_request' (#2243); its runs
+        # serialize on this workflow's per-(persona,repo,PR) concurrency group
+        # and re-check the already-advised marker, so opened + ready_for_review
+        # on one PR cannot double-post.
         required: false
         type: string
         default: 'mention'
@@ -123,6 +123,9 @@ concurrency:
 
 jobs:
   run:
+    # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
+    # (neutral, not red) and `fleet-paused` below reports why.
+    if: vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -183,10 +186,10 @@ jobs:
         # #1905. The router serves qa-lead's pull_request advisory here with
         # surface=pull_request, but binds only the GENERIC brakes — it does NOT
         # carry the persona-specific suppressors (no-test-surface, budget-
-        # exhausted, already-advised) the local qa-lead gate enforces. Run the
+        # exhausted, already-advised) qa-lead's gate enforces. Run the
         # persona's event pre-gate BEFORE the engine so a router-served PR
-        # dispatch is suppressed with the SAME fidelity as the local surface;
-        # otherwise the engine runs and posts on every trusted PR. For a mention
+        # dispatch is suppressed with the SAME fidelity as the retired local
+        # surface (#2243); otherwise the engine runs and posts on every trusted PR. For a mention
         # dispatch (surface defaults to 'mention') the gate is a no-op ('run'),
         # so existing mention behaviour is unchanged. Fails CLOSED: an unreadable
         # signal yields a skip (no engine, no post) with a ::error naming it.
@@ -467,3 +470,22 @@ jobs:
           path: ${{ steps.post.outputs.body_file }}
           if-no-files-found: ignore
           retention-days: 30
+
+  # Fleet pause notice (#2249). With AGENTS_PAUSED=true the `run` job above is
+  # skipped by its `if:`, and a skipped job cannot log. This job runs instead, on
+  # the same events, and says why in one line. Inventory and rules: AGENTS.md
+  # "Pausing the agent fleet" and scripts/lib/fleet-pause-registry.tsv.
+  fleet-paused:
+    if: vars.AGENTS_PAUSED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    env:
+      PAUSE_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
+      PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
+    steps:
+      - name: Report the fleet pause
+        run: |
+          echo "::notice title=Agent fleet paused::Persona Runtime: not run, the agent fleet is paused (AGENTS_PAUSED=true)." \
+            "Pause source: ${PAUSE_SOURCE:-not set (paused by hand)}." \
+            "Paused until: ${PAUSE_UNTIL:-not set}."

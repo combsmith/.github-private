@@ -56,6 +56,9 @@
 #     deprecating Fable 5: the engine no longer depends on Fable, which opus-5-5
 #     outperforms at lower cost, so reviews run one current model family end to
 #     end. Both keep opus-4-8 as the known-good 2nd hop and opus-4-7 as the last.
+#   - Action's last (cross-family) hop swapped opus-4-8 → opus-5-5 (#1900, epic
+#     #1895 Phase 3) once the deep-tier canary passed (#1899): the writer's last
+#     resort is the cheaper, proven model.
 #   - opus-5-5's CLI/API default reasoning effort is `medium` (levels
 #     low/medium/high/xhigh/max); the deep, audit and single tiers pin
 #     `--effort high` in engine.sh's run_agentic so moving off Fable does not
@@ -72,7 +75,7 @@ ai_models_default() {
     claude:triage) printf '%s' "claude-haiku-4-5-20251001,claude-sonnet-5-5,claude-sonnet-5" ;;
     claude:deep)   printf '%s' "claude-opus-5-5,claude-opus-4-8,claude-sonnet-5-5" ;;
     claude:audit)  printf '%s' "claude-opus-5-5,claude-opus-4-8,claude-opus-4-7" ;;
-    claude:action) printf '%s' "claude-sonnet-5-5,claude-sonnet-5,claude-opus-4-8" ;;
+    claude:action) printf '%s' "claude-sonnet-5-5,claude-sonnet-5,claude-opus-5-5" ;;
     claude:single) printf '%s' "claude-opus-5-5,claude-opus-4-8,claude-opus-4-7" ;;
     claude:duck)   printf '%s' "claude-sonnet-5-5" ;;
     # gemini-2.5-pro is withdrawn for new keys ("no longer available to new
@@ -286,7 +289,7 @@ ai_models_fable_deprecation() {
 
 # ai_model_for_family <family> — the current concrete model id for a Claude model
 # FAMILY (opus|sonnet|haiku), so callers name a family and never pin a version
-# (#1979, companion petry-projects/.github#1199). The families map to the tiers
+# (#1979, companion combsmith/.github#1199). The families map to the tiers
 # whose primary is that family, and the id is that tier's chain FIRST model — the
 # existing chains stay the single source of truth:
 #     opus   → deep    (default primary claude-opus-5-5)

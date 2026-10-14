@@ -48,7 +48,7 @@ esac
 GHEOF
   chmod +x "$MOCK_BIN/gh"
 
-  export REPO="petry-projects/demo"
+  export REPO="combsmith/demo"
   export PR_NUMBER="860"
 
   source "$RESUME_SCRIPT"
@@ -68,8 +68,8 @@ teardown() {
 
 # ── (b) an exhausted budget suppresses the resume ─────────────────────────────
 @test "resume: exhausted per-PR automation budget suppresses the resume" {
-  # 10 bot commits since the last human interaction → budget exhausted (#926).
-  COMMITS_JSON="$(jq -nc '[range(10) | {commit:{author:{date:"2026-08-08T00:00:00Z"}}, author:{login:"donpetry-bot"}}]')"
+  # 50 bot commits since the last human interaction → budget exhausted (#926; cap set in #2224).
+  COMMITS_JSON="$(jq -nc '[range(50) | {commit:{author:{date:"2026-08-08T00:00:00Z"}}, author:{login:"donpetry-bot"}}]')"
 
   run resume_main
 

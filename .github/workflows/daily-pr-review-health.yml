@@ -42,7 +42,10 @@ jobs:
         with:
           node-version: '20'
 
+      # AGENTS_PAUSED (#2249): the three CLI setup steps are skipped with the fleet
+      # paused, like the two model-calling steps they serve (see "Run health check").
       - name: Resolve claude-code version
+        if: vars.AGENTS_PAUSED != 'true'
         # A literal "latest" cache key never changes, so the first CLI ever cached
         # was reused indefinitely (2.1.138 outlived the Opus 5.5 launch — #1957).
         # Resolve it to the concrete npm version so a new release misses the cache,
@@ -68,12 +71,14 @@ jobs:
           echo "install=$install" >> "$GITHUB_OUTPUT"
 
       - name: Cache claude-code CLI
+        if: vars.AGENTS_PAUSED != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.npm-global
           key: claude-code-${{ steps.claude_code_version.outputs.version }}-${{ runner.os }}
 
       - name: Install Claude Code CLI
+        if: vars.AGENTS_PAUSED != 'true'
         env:
           CLAUDE_CODE_VERSION: ${{ steps.claude_code_version.outputs.install || vars.CLAUDE_CODE_VERSION || 'latest' }}
         run: |
@@ -87,7 +92,14 @@ jobs:
             npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" # NOSONAR — install scripts required for native binary setup; version intentionally uses CLAUDE_CODE_VERSION var (same pattern as pr-review.yml)
           fi
 
+      # AGENTS_PAUSED (#2249): this job is a monitor, so it keeps running through
+      # a fleet pause, but its two model calls do not. The pr-review log analysis
+      # (this step) and the MCP connectivity probe (last step) are skipped with
+      # the fleet paused; the runaway, stall and merge-ready scans below make no
+      # model call and still run. Before this gate a quota outage failed this
+      # step and took those scans down with it.
       - name: Run health check
+        if: vars.AGENTS_PAUSED != 'true'
         env:
           GH_TOKEN: ${{ secrets.DON_PETRY_BOT_GH_PAT }}
           # Export the model override variable so ai_model_for_family honours
@@ -145,7 +157,9 @@ jobs:
             core.notice(`Issue created: ${issue.data.html_url}`);
 
       - name: Annotate clean run
-        if: env.HAS_FAILURES != 'true'
+        # Not while paused (#2249): the health check did not run, so there is
+        # no clean result to announce.
+        if: vars.AGENTS_PAUSED != 'true' && env.HAS_FAILURES != 'true'
         run: |
           echo "::notice::Health check passed — all runs in the last ${LOOKBACK_DAYS} day(s) are healthy."
 
@@ -348,7 +362,24 @@ jobs:
       # hashFiles guard makes this a no-op for non-MCP repos. REVIEW_MCP_DEBUG=1
       # reuses the #892 knob so the affirmative ::notice::[mcp] is the success signal.
       - name: Assert MCP connectivity
-        if: hashFiles('.github/review-mcp.json') != ''
+        if: vars.AGENTS_PAUSED != 'true' && hashFiles('.github/review-mcp.json') != ''
         env:
           REVIEW_MCP_DEBUG: '1'
         run: bash scripts/mcp_connectivity_check.sh
+
+      # Fleet pause notice (#2249): one line saying which steps the pause skipped.
+      # `always()` so a scan failing above does not silence it, which is also why
+      # it does not claim the scans ran: it only says they are not paused. The job-level
+      # Claude credential is blanked: this step only prints a line.
+      - name: Report the fleet pause
+        if: always() && vars.AGENTS_PAUSED == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ''
+          PAUSE_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
+          PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
+        run: |
+          echo "::notice title=Agent fleet paused::Daily PR Review Health Check: the agent fleet is paused (AGENTS_PAUSED=true)," \
+            "so the pr-review log analysis and the MCP connectivity probe were skipped." \
+            "The runaway, stall and merge-ready scans are not paused; see their own steps for whether they ran." \
+            "Pause source: ${PAUSE_SOURCE:-not set (paused by hand)}." \
+            "Paused until: ${PAUSE_UNTIL:-not set}."

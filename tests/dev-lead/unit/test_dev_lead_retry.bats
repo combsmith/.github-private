@@ -57,7 +57,7 @@ _marker() {
 @test "retry: failed marker, attempt 1, no PR → dispatches" {
   COMMENTS_JSON="$(jq -nc --arg m "$(_marker failed 1)" '[$m]')"
 
-  run scan_issue_for_retry "petry-projects/.github" 478
+  run scan_issue_for_retry "combsmith/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"would dispatch dev-lead-issue-retry"* ]]
@@ -67,7 +67,7 @@ _marker() {
 @test "retry: rate-limited marker with reset in the future → skips" {
   COMMENTS_JSON="$(jq -nc --arg m "$(_marker rate-limited 1 2026-06-19T06:00:00Z)" '[$m]')"
 
-  run scan_issue_for_retry "petry-projects/.github" 478
+  run scan_issue_for_retry "combsmith/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"not yet cleared"* ]]
@@ -77,7 +77,7 @@ _marker() {
 @test "retry: rate-limited marker with reset in the past → dispatches" {
   COMMENTS_JSON="$(jq -nc --arg m "$(_marker rate-limited 1 2026-06-18T00:00:00Z)" '[$m]')"
 
-  run scan_issue_for_retry "petry-projects/.github" 478
+  run scan_issue_for_retry "combsmith/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"would dispatch dev-lead-issue-retry"* ]]
@@ -86,7 +86,7 @@ _marker() {
 @test "retry: attempt at the ceiling (attempt=3, MAX=3) → skips" {
   COMMENTS_JSON="$(jq -nc --arg m "$(_marker failed 3)" '[$m]')"
 
-  run scan_issue_for_retry "petry-projects/.github" 478
+  run scan_issue_for_retry "combsmith/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"attempts exhausted"* ]]
@@ -98,7 +98,7 @@ _marker() {
     --arg a "$(_marker failed 1)" \
     --arg b "$(_marker failed 2)" '[$a, $b]')"
 
-  run scan_issue_for_retry "petry-projects/.github" 478
+  run scan_issue_for_retry "combsmith/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"would dispatch dev-lead-issue-retry"* ]]
@@ -108,7 +108,7 @@ _marker() {
 @test "retry: non-retryable marker (status=needs-human) → skips" {
   COMMENTS_JSON="$(jq -nc --arg m "$(_marker needs-human 2)" '[$m]')"
 
-  run scan_issue_for_retry "petry-projects/.github" 478
+  run scan_issue_for_retry "combsmith/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"not retryable"* ]]
@@ -119,7 +119,7 @@ _marker() {
   COMMENTS_JSON="$(jq -nc --arg m "$(_marker failed 1)" '[$m]')"
   OPEN_PR_COUNT="1"
 
-  run scan_issue_for_retry "petry-projects/.github" 478
+  run scan_issue_for_retry "combsmith/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"open dev-lead PR already exists"* ]]
@@ -129,7 +129,7 @@ _marker() {
 @test "retry: no failure marker → no dispatch (returns 0)" {
   COMMENTS_JSON='["just a normal human comment"]'
 
-  run scan_issue_for_retry "petry-projects/.github" 478
+  run scan_issue_for_retry "combsmith/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" != *"would dispatch"* ]]
@@ -140,7 +140,7 @@ _marker() {
 @test "dispatch: issue-retry payload carries event_type + issue_number + attempt" {
   export DRY_RUN="false"
 
-  run dispatch_issue_retry "petry-projects/.github" 478 2
+  run dispatch_issue_retry "combsmith/.github" 478 2
 
   [ "$status" -eq 0 ]
   [ -f "$PAYLOAD_FILE" ]
@@ -153,7 +153,7 @@ _marker() {
   export DRY_RUN="true"
   rm -f "$PAYLOAD_FILE"
 
-  run dispatch_issue_retry "petry-projects/.github" 478 1
+  run dispatch_issue_retry "combsmith/.github" 478 1
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"[dry-run] would dispatch"* ]]
@@ -165,9 +165,10 @@ _marker() {
 # Architecture finding). dev-lead only fires on CREATED comments, and the caller
 # stub's `on:` is standards-owned, so the safety-net sweep re-dispatches a
 # fix-reviews pass when a RESOLVED bot comment was edited after its latest
-# dev-lead disposition. It is deduplicated against dev-lead's own run markers: a
-# fix-reviews run marker posted at/after the edit means a pass already saw the
-# edited body, so CodeRabbit's frequent progress edits don't each spawn a run.
+# dev-lead disposition. #2166: it is deduplicated on a disposition NEWER than the
+# edit, not on a run marker — a pass that ran after the edit but wrote no fresh
+# disposition left the gate blocked forever. Passes that started after the edit
+# only bound it (STALE_DISPOSITION_MAX_PASSES), so it never loops unattended.
 
 # _sweep_nodes <lastEditedAt> <disposition_createdAt> [run_marker_createdAt] [run_marker_association] [run_marker_read_at]
 _sweep_nodes() {
@@ -194,37 +195,66 @@ _sweep_nodes() {
   [ "$status" -eq 1 ]
 }
 
-@test "sweep(#2008): deduplicated — a dev-lead run marker posted after the edit suppresses the dispatch" {
+@test "sweep(#2166): a fix-reviews marker after the edit is not proof — only a disposition newer than the edit clears" {
+  # One pass ran after the edit but wrote no fresh disposition: still stale, so
+  # dispatch again (PRs empower-personal-dashboard#65/#66/#67 held forever here).
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z)" 2000
-  [ "$status" -eq 1 ]
-  # A run marker that PREDATES the edit does not suppress it.
+  [ "$status" -eq 0 ]
+  # A run marker that PREDATES the edit does not suppress it either.
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T19:24:23Z)" 2000
   [ "$status" -eq 0 ]
+  # A disposition newer than the edit is the dedup key: nothing to dispatch.
+  run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T20:36:00Z 2026-10-01T20:36:15Z)" 2000
+  [ "$status" -eq 1 ]
+}
+
+@test "sweep(#2166): bounded — after STALE_DISPOSITION_MAX_PASSES passes since the edit it holds (rc 3) instead of looping" {
+  local nodes
+  nodes=$(jq -c '. + [ .[] | select(.id == "IC_run") | .id = "IC_run2" | .createdAt = "2026-10-01T20:50:00Z" ]' \
+    <<< "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z)")
+  run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 3 ]
+  STALE_DISPOSITION_MAX_PASSES=3 run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 0 ]
+  # A non-numeric cap falls back to the default (2).
+  STALE_DISPOSITION_MAX_PASSES=x run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 3 ]
+}
+
+@test "sweep(#2166): the stale-disposition hold comment names the real gate and no dead-end advice" {
+  local body
+  body=$(sed -n '/stale bot comment disposition needs human action/,/\$hold_marker/p' "$RETRY_SCRIPT")
+  [[ "$body" == *'undispositioned-pr-comment'* ]]
+  [[ "$body" != *'required_review_thread_resolution'* ]]
+  [[ "$body" != *'@mention dev-lead'* ]]
 }
 
 @test "sweep(#2008): a run marker for a DIFFERENT PR does not suppress the dispatch" {
+  export STALE_DISPOSITION_MAX_PASSES=1  # one counted pass reaches the cap
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z)" 20
   [ "$status" -eq 0 ]
 }
 
 @test "sweep(#2008): a run marker from an untrusted author does not suppress the dispatch" {
+  export STALE_DISPOSITION_MAX_PASSES=1  # one counted pass reaches the cap
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z NONE)" 2000
   [ "$status" -eq 0 ]
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z CONTRIBUTOR)" 2000
   [ "$status" -eq 0 ]
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z MEMBER)" 2000
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 3 ]
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z COLLABORATOR)" 2000
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 3 ]
 }
 
 @test "sweep(#2008): a pass that STARTED before the edit does not suppress the dispatch, even if it finished after" {
+  export STALE_DISPOSITION_MAX_PASSES=1  # one counted pass reaches the cap
   # Marker posted after the edit (20:36:15) by a pass that read the comments at 20:30.
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z OWNER 2026-10-01T20:30:00Z)" 2000
   [ "$status" -eq 0 ]
-  # A pass that started after the edit does suppress it.
+  # A pass that started after the edit counts toward the cap.
   run stale_disposition_needs_dispatch "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z 2026-10-01T20:36:15Z OWNER 2026-10-01T20:35:30Z)" 2000
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 3 ]
 }
 
 @test "sweep(#2008): unreadable comment data never dispatches (no guessing)" {
@@ -255,7 +285,7 @@ _scan_with_hold() {
   fetch_pr_comment_nodes() { echo '[{"id":"IC_cr"}]'; }
   stale_disposition_needs_dispatch() { return 0; }
   dispatch_reviews_retry() { echo "DISPATCH intent=$4" >&2; }
-  run scan_pr_for_rate_limits "petry-projects/.github-private" 2000
+  run scan_pr_for_rate_limits "combsmith/.github-private" 2000
 }
 
 @test "sweep(#2008): an active rate-limit hold also holds the edit re-dispatch" {
@@ -269,6 +299,25 @@ _scan_with_hold() {
   _scan_with_hold "2026-06-18T23:00:00Z"
   [ "${lines[-1]}" = "1" ]
   [ "$(grep -c 'DISPATCH' <<< "$output")" -eq 1 ]
+}
+
+@test "sweep(#2166): a stale disposition past its pass cap is held with a warning, not dispatched" {
+  gh() {
+    case "$*" in
+      *"/pulls/2000"*) echo '{"state":"open","head":{"sha":"abc"},"labels":[]}' ;;
+      *) echo '[]' ;;
+    esac
+  }
+  pr_resume_suppressed() { return 1; }
+  post_dispatch_guard() { echo "GUARD" >&2; }
+  fetch_pr_comment_nodes() { echo '[{"id":"IC_cr"}]'; }
+  stale_disposition_needs_dispatch() { return 3; }
+  dispatch_reviews_retry() { echo "DISPATCH intent=$4" >&2; }
+  run scan_pr_for_rate_limits "combsmith/.github-private" 2000
+  [ "${lines[-1]}" = "0" ]
+  [[ "$output" != *"DISPATCH"* ]]
+  [[ "$output" != *"GUARD"* ]]
+  [[ "$output" == *"::warning::"*"#2166"* ]]
 }
 
 # _scan_with_markers <json-array-of-bodies>: scan a PR whose comments are exactly those.
@@ -286,7 +335,7 @@ _scan_with_markers() {
   fetch_pr_comment_nodes() { echo '[]'; }
   stale_disposition_needs_dispatch() { return 1; }
   dispatch_reviews_retry() { echo "DISPATCH intent=$4" >&2; }
-  run scan_pr_for_rate_limits "petry-projects/.github-private" 2000
+  run scan_pr_for_rate_limits "combsmith/.github-private" 2000
 }
 
 @test "retry(#2089): a dev-lead:hands-off PR with a reset hold neither guards nor dispatches" {
@@ -305,7 +354,7 @@ _scan_with_markers() {
   fetch_pr_comment_nodes() { echo '[{"id":"IC_cr"}]'; }
   stale_disposition_needs_dispatch() { return 0; }
   dispatch_reviews_retry() { echo "DISPATCH intent=$4" >&2; }
-  run scan_pr_for_rate_limits "petry-projects/.github-private" 2000
+  run scan_pr_for_rate_limits "combsmith/.github-private" 2000
   [ "${lines[-1]}" = "0" ]
   [[ "$output" != *"DISPATCH"* ]]
   [[ "$output" != *"GUARD"* ]]
@@ -362,7 +411,7 @@ _scan_with_markers() {
   fetch_pr_comment_nodes() { echo '[{"id":"x"}]'; }
   stale_disposition_needs_dispatch() { return 0; }
   dispatch_reviews_retry() { echo "DISPATCH intent=$4" >&2; }
-  run scan_pr_for_rate_limits "petry-projects/.github-private" 2000
+  run scan_pr_for_rate_limits "combsmith/.github-private" 2000
   [[ "$output" != *"DISPATCH"* ]]
   [[ "$output" == *"ESCALATE 2000"* ]]
 }
@@ -388,4 +437,51 @@ _scan_with_markers() {
 @test "retry: unrelated-histories after history-unavailable is terminal" {
   _scan_with_markers '["<!-- dev-lead-fix-reviews pr=2000 sha=abc intent=fix-reviews status=history-unavailable -->","<!-- dev-lead-fix-reviews pr=2000 sha=abc intent=fix-reviews status=unrelated-histories -->"]'
   [[ "$output" != *"DISPATCH"* ]]
+}
+
+# ── #2262: the run a bot-comment retry dispatched ────────────────────────────
+# The decision matrix and the sweep wiring are covered in
+# test_bot_comment_retry.bats; these pin the two properties the recording rests on.
+
+@test "retry(#2262): the retry marker records its run by an EDIT, and the caller stub starts no run on a comment edit" {
+  local body types
+  body="$(declare -f record_bot_comment_retry_run)"
+  [ -n "$body" ]
+  # The run is recorded on the marker the scan already posted…
+  [[ "$body" == *'--method PATCH "repos/${repo}/issues/comments/${marker_id}"'* ]]
+  # …never by posting another comment: an issue_comment `created` event starts a
+  # dev-lead run in the PR's lane, and that run would cancel the retry just sent.
+  if grep -q -- '--method POST' <<< "$body"; then echo "$body"; return 1; fi
+  # The caller stub (copied verbatim into every repo) subscribes to `created`
+  # only. If it ever subscribes to `edited`, the edit above cancels the retry it
+  # describes, and the run has to be recorded some other way.
+  types="$(awk '/^  issue_comment:/ {found=1; next}
+                found && /^    types:/ {print; exit}
+                found && /^  [a-z_]+:/ {exit}' "$BATS_TEST_DIRNAME/../../../.github/workflows/dev-lead.yml")"
+  [ "$(tr -d '[:space:]' <<< "$types")" = "types:[created]" ]
+}
+
+@test "retry(#2262): an Actions run that cannot be read is left out of the run states, never guessed" {
+  local out="$MOCK_BIN/out" err="$MOCK_BIN/err"
+  # Every read fails: an empty map (all retries keep the time-based window), rc 0.
+  gh() { return 1; }
+  fetch_bot_comment_retry_run_states "combsmith/.github" '["501","502"]' > "$out" 2> "$err"
+  [ "$(cat "$out")" = "{}" ]
+  [ "$(grep -c '::warning::.*could not read Actions run 50[12] ' "$err")" -eq 2 ]
+  # One readable live run and one unreadable: only the readable one is reported.
+  gh() {
+    case "$*" in
+      *"/actions/runs/501") echo '{"id":501,"event":"repository_dispatch","status":"in_progress","conclusion":null}' ;;
+      *) return 1 ;;
+    esac
+  }
+  fetch_bot_comment_retry_run_states "combsmith/.github" '["501","502"]' > "$out" 2> "$err"
+  [ "$(cat "$out")" = '{"501":{"status":"in_progress","conclusion":null,"started":null}}' ]
+  grep -q '::warning::.*could not read Actions run 502 ' "$err"
+  # Ids that are not run ids are never sent to the API.
+  gh() { echo "CALLED $*" >&2; return 1; }
+  run fetch_bot_comment_retry_run_states "combsmith/.github" '["../x","5 01",7,null]'
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"CALLED"* ]]
+  [ "${lines[-1]}" = "{}" ]
 }

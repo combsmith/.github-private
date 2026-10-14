@@ -549,7 +549,7 @@ _disp() {
 # finding still blocks until it gets a real disposition.
 # ────────────────────────────────────────────────────────────────────
 
-# The live body of petry-projects/.github PR #1269, comment IC_kwDORyesfc8AAAABauHIXQ.
+# The live body of combsmith/.github PR #1269, comment IC_kwDORyesfc8AAAABauHIXQ.
 _codeant_low_risk_body() {
   printf '%s' '## CodeAnt PR Risk: Low Risk
 
@@ -893,4 +893,76 @@ _relative_ws() {
   run bash -c "source '$lib/maintainer-comment-gate.sh'; cd /; _maintainer_gate_finding_re; echo; _maintainer_gate_registered_logins_json; echo; _maintainer_gate_info_patterns_json"
   [ "$status" -eq 0 ]
   [ "$output" = $'[\\s\\S]\nnull\n{}' ]
+}
+
+# ────────────────────────────────────────────────────────────────────
+# #2166 — the harness, not the model, decides which bot comments have a stale
+# disposition (edited after the newest trusted disposition) and states it in the
+# prompt. On .github PR 1276 the model read an old `informational` disposition
+# as still current and posted nothing, so the gate held the PR on every pass.
+# ────────────────────────────────────────────────────────────────────
+
+# _stale_nodes <lastEditedAt> <disposition json array> [isMinimized] — the
+# fetch_pr_comment_nodes / bcr_fetch_pr_comments node shape.
+_stale_nodes() {
+  jq -cn --arg e "$1" --argjson r "$2" --argjson m "${3:-true}" '
+    [ {id:"IC_cr", author:{login:"coderabbitai", __typename:"Bot"}, authorAssociation:"NONE",
+       body:"Review limit reached.", createdAt:"2026-10-10T12:00:00Z", isMinimized:$m,
+       minimizedReason:(if $m then "RESOLVED" else null end), lastEditedAt:$e} ] + $r'
+}
+
+@test "#2166: the stale list carries the stale disposition time and the author" {
+  run bash -c "source '$GATE'; maintainer_gate_stale_dispositions \"\$1\"" _ \
+    "$(_stale_nodes 2026-10-10T13:03:53Z "$(_disp 2026-10-10T12:18:39Z informational)")"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.[0].id' <<< "$output")" = "IC_cr" ]
+  [ "$(jq -r '.[0].lastEditedAt' <<< "$output")" = "2026-10-10T13:03:53Z" ]
+  [ "$(jq -r '.[0].dispositionAt' <<< "$output")" = "2026-10-10T12:18:39Z" ]
+  [ "$(jq -r '.[0].login' <<< "$output")" = "coderabbitai" ]
+}
+
+@test "#2166: the facts name the comment id, its edit time and the stale disposition time" {
+  run bash -c "source '$GATE'; maintainer_gate_stale_disposition_facts \"\$1\"" _ \
+    "$(_stale_nodes 2026-10-10T13:03:53Z "$(_disp 2026-10-10T12:18:39Z informational)" false)"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | grep -c .)" -eq 1 ]
+  [[ "$output" == *'`IC_cr`'* ]]
+  [[ "$output" == *"coderabbitai"* ]]
+  [[ "$output" == *"edited 2026-10-10T13:03:53Z"* ]]
+  [[ "$output" == *"2026-10-10T12:18:39Z"* ]]
+}
+
+@test "#2166: no facts when the newest disposition postdates the edit" {
+  local replies
+  replies=$(jq -cn --argjson a "$(_disp 2026-10-10T12:18:39Z informational)" \
+    --argjson b "$(_disp 2026-10-10T13:10:00Z informational)" '$a + $b')
+  run bash -c "source '$GATE'; maintainer_gate_stale_disposition_facts \"\$1\"" _ \
+    "$(_stale_nodes 2026-10-10T13:03:53Z "$replies")"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "#2166: unreadable comment data yields no facts and a non-zero status (never a guessed 'none')" {
+  run bash -c "source '$GATE'; maintainer_gate_stale_disposition_facts 'not json'"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "#2166 AC4: disposition, bot edit, fresh disposition from the pass — the gate clears" {
+  local before after snapshot
+  # 1. dispositioned and minimized RESOLVED; 2. CodeRabbit edits the comment.
+  before=$(_stale_nodes 2026-10-10T13:03:53Z "$(_disp 2026-10-10T12:18:39Z informational)")
+  _run_check "$(jq -c '{reviews:[], comments:.}' <<< "$before")"
+  [ "$status" -eq 1 ]
+  # The harness hands the model the stale comment as a fact before it runs.
+  run bash -c "source '$GATE'; maintainer_gate_stale_disposition_facts \"\$1\"" _ "$before"
+  [[ "$output" == *'`IC_cr`'* ]]
+  # 3. the pass posts a fresh disposition for the current body.
+  after=$(jq -c --argjson d "$(_disp 2026-10-10T13:20:00Z informational)" '. + $d' <<< "$before")
+  run bash -c "source '$GATE'; maintainer_gate_stale_disposition_facts \"\$1\"" _ "$after"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  # 4. the gate clears.
+  _run_check "$(jq -c '{reviews:[], comments:.}' <<< "$after")"
+  [ "$status" -eq 0 ]
 }

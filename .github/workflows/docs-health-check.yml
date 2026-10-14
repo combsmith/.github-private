@@ -23,16 +23,19 @@ concurrency:
 
 jobs:
   health-check:
+    # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
+    # (neutral, not red) and `fleet-paused` below reports why.
+    if: vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       # Operator model override for the family resolver (ai_model_for_family, #1979).
       AI_MODELS_CLAUDE: ${{ vars.AI_MODELS_CLAUDE || '' }}
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      ORG: ${{ vars.ORG || 'petry-projects' }}
+      ORG: ${{ vars.ORG || 'combsmith' }}
       STALE_DAYS: ${{ inputs.stale_days || vars.DOCS_STALE_DAYS || '90' }}
       DOCS_STALENESS_IGNORE: ${{ vars.DOCS_STALENESS_IGNORE || '' }}
-      REPORT_REPO: ${{ vars.ORG || 'petry-projects' }}/.github-private
+      REPORT_REPO: ${{ vars.ORG || 'combsmith' }}/.github-private
       # Pin via vars.CLAUDE_CODE_VERSION for reproducible caching; mirrors pr-review.yml.
       CLAUDE_CODE_VERSION: ${{ vars.CLAUDE_CODE_VERSION || 'latest' }}
 
@@ -147,3 +150,22 @@ jobs:
         if: env.HAS_STALE_DOCS != 'true'
         run: |
           echo "::notice::Docs health check passed — no stale files found (threshold: ${STALE_DAYS} days)."
+
+  # Fleet pause notice (#2249). With AGENTS_PAUSED=true the `health-check` job above is
+  # skipped by its `if:`, and a skipped job cannot log. This job runs instead, on
+  # the same events, and says why in one line. Inventory and rules: AGENTS.md
+  # "Pausing the agent fleet" and scripts/lib/fleet-pause-registry.tsv.
+  fleet-paused:
+    if: vars.AGENTS_PAUSED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    env:
+      PAUSE_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
+      PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
+    steps:
+      - name: Report the fleet pause
+        run: |
+          echo "::notice title=Agent fleet paused::Docs Health Check: not run, the agent fleet is paused (AGENTS_PAUSED=true)." \
+            "Pause source: ${PAUSE_SOURCE:-not set (paused by hand)}." \
+            "Paused until: ${PAUSE_UNTIL:-not set}."

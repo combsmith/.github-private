@@ -3,7 +3,7 @@
 # org-standard stub the PR exists to sync (#2185).
 #
 # WHAT IS WRONG WITHOUT THIS
-#   On petry-projects/incubator#164 (a `standards-sync` PR) CodeAnt asked for a
+#   On combsmith/incubator#164 (a `standards-sync` PR) CodeAnt asked for a
 #   `pull_request: [review_requested]` trigger on the synced persona-mention.yml
 #   stub. A fix-bot-comment pass added it and deleted the NOTE explaining why the
 #   template omits it. dev-lead replied "Fixed", the thread was resolved, and
@@ -13,7 +13,7 @@
 #
 # THE RULE
 #   A synced stub is a file whose header (first _SSG_HEADER_LINES lines) reads
-#   `SOURCE OF TRUTH: petry-projects/.github/standards/<path>`. On a PR labeled
+#   `SOURCE OF TRUTH: combsmith/.github/standards/<path>`. On a PR labeled
 #   `standards-sync`, a pass that changes or deletes one is:
 #     clean    the stub ends byte-identical to the content the PR's first commit
 #              touching it wrote (the sync commit), i.e. a restore to the template;
@@ -23,14 +23,18 @@
 #   the header (standards/workflows/dev-lead.yml has none), so on a labeled PR
 #   every path the PR's own commits changed before the pass (<merge-base>..<pre>)
 #   is synced content too, header or not, under the same restore rule. Other
-#   header-less files, or a SOURCE OF TRUTH outside petry-projects/.github/standards/,
+#   header-less files, or a SOURCE OF TRUTH outside combsmith/.github/standards/,
 #   are out of scope, and so are PRs without the label.
 #
 # PURITY / TESTABILITY (ADR-0004)
 #   ssg_template_path, ssg_has_sync_label and ssg_declined_body are PURE.
 #   ssg_pass_touches_stubs, ssg_scan_pass and ssg_evaluate are the impure
-#   gatherers (git only — the caller reads the PR from the API). Sourced under
+#   gatherers (git only); ssg_read_pr reads the PR from the API. Sourced under
 #   `set -euo pipefail`; helpers only `return`, never `exit`.
+#
+# WHO RUNS IT
+#   fix-bot-comment / fix-reviews (commit_and_push) and fix-ci
+#   (dev-lead-fix-ci.sh, #2212).
 
 set -euo pipefail
 
@@ -42,14 +46,14 @@ fi
 
 # The header sits at the top of the stub; a mention deeper in the body is not one.
 readonly _SSG_HEADER_LINES=20
-readonly _SSG_TEMPLATE_REPO="petry-projects/.github"
-readonly _SSG_SOT_RE='SOURCE OF TRUTH:[[:space:]]*petry-projects/\.github/(standards/[^[:space:]]+)'
+readonly _SSG_TEMPLATE_REPO="combsmith/.github"
+readonly _SSG_SOT_RE='SOURCE OF TRUTH:[[:space:]]*combsmith/\.github/(standards/[^[:space:]]+)'
 
 # The label the sync generator applies (scripts/aw-standards-sync.sh).
 : "${SSG_SYNC_LABEL:=standards-sync}"
 
 # ssg_template_path <content>
-#   Echoes the template path in petry-projects/.github (e.g.
+#   Echoes the template path in combsmith/.github (e.g.
 #   `standards/workflows/persona-mention.yml`) when <content>'s header names a
 #   SOURCE OF TRUTH under standards/; returns 1 otherwise. Pure.
 ssg_template_path() {
@@ -229,4 +233,22 @@ ssg_evaluate() {
     mb=$(ttg_resolve_merge_base "$base" "$pre" "$head_ref" 2>/dev/null) || mb=""
   fi
   ssg_scan_pass "$pre" "$head" "$mb"
+}
+
+# ssg_read_pr <repo> <pr_number>
+#   Echoes the GitHub pulls API object, retrying up to three times (sleeping
+#   SSG_RETRY_SLEEP between tries). Echoes nothing when it stays unreadable, so
+#   ssg_evaluate applies the unreadable-PR rule. Always returns 0. Impure.
+ssg_read_pr() {
+  local repo="${1:-}" pr="${2:-}" json="" try
+  [[ -n "$repo" && -n "$pr" ]] || return 0
+  for try in 1 2 3; do
+    json=$(gh api "repos/${repo}/pulls/${pr}" 2>/dev/null) || json=""
+    if jq -e 'type == "object"' <<<"$json" >/dev/null 2>&1; then
+      printf '%s\n' "$json"
+      return 0
+    fi
+    (( try < 3 )) && sleep "${SSG_RETRY_SLEEP:-2}"
+  done
+  return 0
 }

@@ -19,6 +19,8 @@ setup() {
   export GITHUB_OUTPUT="$BATS_TEST_TMPDIR/github_output"
   : > "$GITHUB_ENV"
   : > "$GITHUB_OUTPUT"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 
   unset GEMINI_FLASH_MODEL GEMINI_PRO_MODEL
   unset GEMINI_FLASH_MODEL_CHAIN GEMINI_PRO_MODEL_CHAIN

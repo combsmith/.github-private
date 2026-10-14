@@ -80,7 +80,7 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "canary_report: OK report names the path and the discussion" {
-  run canary_report "OK" "petry-projects/.github-private" "42" "https://x/run/1" "2026-06-20"
+  run canary_report "OK" "combsmith/.github-private" "42" "https://x/run/1" "2026-06-20"
   [ "$status" -eq 0 ]
   [[ "$output" == *"idea:approved"* ]]
   [[ "$output" == *"#42"* ]]
@@ -88,7 +88,7 @@ setup() {
 }
 
 @test "canary_report: the unsupported-event status surfaces the regression hint" {
-  run canary_report "UNSUPPORTED_EVENT" "petry-projects/.github-private" "42" "https://x/run/1"
+  run canary_report "UNSUPPORTED_EVENT" "combsmith/.github-private" "42" "https://x/run/1"
   [[ "$output" == *"Unsupported event type: discussion"* ]]
   [[ "$output" == *"https://x/run/1"* ]]
 }
@@ -131,7 +131,7 @@ teardown() {
 
 @test "main: dispatches the planner in DRY-RUN and exits OK on a clean run" {
   _install_gh_mock
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export CANARY_DISCUSSION="42"
   export GH_TOKEN="pat"
   export CANARY_POLL_TIMEOUT="5"
@@ -151,14 +151,14 @@ teardown() {
 
   # Status surfaced for the workflow alert step.
   grep -qF "CANARY_STATUS=OK" "$GITHUB_ENV"
-  ! grep -qF "CANARY_FAILED=true" "$GITHUB_ENV"
+  ! grep -qF "CANARY_FAILED=true" "$GITHUB_ENV" || false
 
   rm -f "$CANARY_OUT" "$GITHUB_ENV"
 }
 
 @test "main: a non-numeric CANARY_DISCUSSION is rejected before any dispatch" {
   _install_gh_mock
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export CANARY_DISCUSSION="42; rm -rf /"
   export GH_TOKEN="pat"
 
@@ -169,7 +169,7 @@ teardown() {
 
 @test "main: INITIATIVE_CANARY_DISCUSSION is used when CANARY_DISCUSSION is unset" {
   _install_gh_mock
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   unset CANARY_DISCUSSION
   export INITIATIVE_CANARY_DISCUSSION="99"
   export GH_TOKEN="pat"
@@ -190,7 +190,7 @@ teardown() {
 
 @test "main: exits with error when neither CANARY_DISCUSSION nor INITIATIVE_CANARY_DISCUSSION is set" {
   _install_gh_mock
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   unset CANARY_DISCUSSION
   unset INITIATIVE_CANARY_DISCUSSION
   export GH_TOKEN="pat"
@@ -222,7 +222,7 @@ esac
 EOF
   chmod +x "$MOCK_BIN/gh"
 
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export CANARY_DISCUSSION="42"
   export GH_TOKEN="pat"
   export CANARY_POLL_TIMEOUT="5"

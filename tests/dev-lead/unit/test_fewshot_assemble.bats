@@ -105,9 +105,9 @@ teardown() {
   [ "$status" -eq 0 ]
   [ -f "$OUT_FILE" ]
   # The raw sensitive strings must be gone.
-  ! grep -q "alice@example.com" "$OUT_FILE"
-  ! grep -q "$FAKE_PAT" "$OUT_FILE"
-  ! grep -q "db01.internal" "$OUT_FILE"
+  ! grep -q "alice@example.com" "$OUT_FILE" || false
+  ! grep -q "$FAKE_PAT" "$OUT_FILE" || false
+  ! grep -q "db01.internal" "$OUT_FILE" || false
   # A redaction marker is present in their place.
   grep -q "REDACTED" "$OUT_FILE"
   # Non-sensitive few-shot signal survives (the title / decision is still there).

@@ -130,7 +130,7 @@ teardown() {
 
   export SAFETY_CHECKS_ENABLED=false
   { printf '# triage\n'; safety_checks_triage_section "$SC_FILE"; } > "$prompt_off"
-  ! grep -q "SAFETY_CHECKS" "$prompt_off"
+  ! grep -q "SAFETY_CHECKS" "$prompt_off" || false
   # With the flag off the prompt is exactly the pre-feature content.
   [ "$(cat "$prompt_off")" = "$(printf '# triage\n')" ]
 }

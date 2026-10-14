@@ -32,6 +32,8 @@ setup() {
   export GITHUB_OUTPUT="$BATS_TEST_TMPDIR/github_output"
   : > "$GITHUB_ENV"
   : > "$GITHUB_OUTPUT"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 
   unset GEMINI_API_KEY GOOGLE_API_KEY GOOGLE_API_KEY_2 GOOGLE_API_KEY_3 GOOGLE_API_KEY_4
   unset GEMINI_FLASH_MODEL GEMINI_PRO_MODEL GEMINI_FLASH_MODEL_CHAIN GEMINI_PRO_MODEL_CHAIN
@@ -64,7 +66,6 @@ STUB
 }
 
 teardown() {
-  rm -f /tmp/dev-lead-failure-reason
   unset STUB_ENGINE_EXIT_BY_KEY STUB_ENGINE_RESPONSE_BY_KEY STUB_ENGINE_RECORD_KEYS
 }
 
@@ -413,7 +414,10 @@ _attempt_at() {
 }
 
 @test "rotation: an unknown key is still tried (no new hard block)" {
-  export GEMINI_QUOTA_CAPS="$SCRIPT_DIR/scripts/lib/gemini-quota-caps.tsv"
+  # The shipped caps are filled (#2146), so edit every row of a copy back to `unknown`.
+  awk -F'\t' -v OFS='\t' '!/^[[:space:]]*#/ && NF >= 6 && $1 != "setting" { $3 = $4 = $5 = $6 = "unknown" }
+    { print }' "$SCRIPT_DIR/scripts/lib/gemini-quota-caps.tsv" > "$GEMINI_QUOTA_CAPS"
+  grep -q "unknown" "$GEMINI_QUOTA_CAPS"
   export GOOGLE_API_KEY="fake-secret-a"
   export STUB_ENGINE_EXIT=0
   _source_engine gemini
@@ -816,8 +820,8 @@ jsonschema.validate(json.load(open(sys.argv[1])), json.load(open(sys.argv[2])))'
   [ "$status" -eq 0 ]
   [[ "$output" != *"evil.example"* ]]
   [[ "$output" != *"click"* ]]
-  ! grep -q 'evil.example' "$dir/history.jsonl"
-  ! grep -q '"key_index":{' "$dir/history.jsonl"
+  ! grep -q 'evil.example' "$dir/history.jsonl" || false
+  ! grep -q '"key_index":{' "$dir/history.jsonl" || false
   # The well-formed records survive.
   grep -q '"key_index":1' "$dir/history.jsonl"
   grep -q '"key_index":"2b"' "$dir/history.jsonl"

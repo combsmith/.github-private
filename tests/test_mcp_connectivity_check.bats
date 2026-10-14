@@ -173,7 +173,7 @@ teardown() {
   grep -qF -- "mcp__context7__*" "$CLAUDE_LOG"
 
   grep -qF "MCP_STATUS=CONNECTED" "$GITHUB_ENV"
-  ! grep -qF "MCP_FAILED=true" "$GITHUB_ENV"
+  ! grep -qF "MCP_FAILED=true" "$GITHUB_ENV" || false
   rm -f "$GITHUB_ENV"
 }
 

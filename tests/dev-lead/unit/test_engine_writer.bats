@@ -8,6 +8,8 @@ STUB_ENGINES_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/engines"
 setup() {
   export GITHUB_ENV="$(mktemp)"
   export GITHUB_OUTPUT="$(mktemp)"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
   # Create a temp bin dir with stub engines
   STUB_BIN_DIR="$(mktemp -d)"
   cp "$STUB_ENGINES_DIR/stub-claude" "$STUB_BIN_DIR/claude"
@@ -188,7 +190,7 @@ STUB
 @test "writer: run_writer writes reset time to /tmp/dev-lead-rate-limit-reset on rate-limit" {
   _source_engine "claude"
   export DEV_LEAD_DRY_RUN=false
-  rm -f /tmp/dev-lead-rate-limit-reset
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
   cat > "$STUB_BIN_DIR/claude" << 'STUB'
 #!/usr/bin/env bash
 echo "You've hit your limit · resets 11:20pm (UTC)"
@@ -199,7 +201,7 @@ STUB
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 2 ]
-  [ -f /tmp/dev-lead-rate-limit-reset ]
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" ]
 }
 
 @test "writer: run_writer_with_fallback retries all engines and returns 2 when all rate-limited" {
@@ -282,27 +284,27 @@ STUB
 
 @test "parse_reset_time: extracts H:MMpm from 'resets 11:20pm (UTC)'" {
   _source_engine "claude"
-  rm -f /tmp/dev-lead-rate-limit-reset
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
 
   parse_reset_time "You've hit your limit · resets 11:20pm (UTC)"
 
-  [ -f /tmp/dev-lead-rate-limit-reset ]
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" ]
   # Should contain a non-empty ISO timestamp
   local result
-  result=$(cat /tmp/dev-lead-rate-limit-reset)
+  result=$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset")
   [ -n "$result" ]
   [[ "$result" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
 }
 
 @test "parse_reset_time: writes empty string when no reset time found" {
   _source_engine "claude"
-  rm -f /tmp/dev-lead-rate-limit-reset
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
 
   parse_reset_time "some error without a reset time"
 
-  [ -f /tmp/dev-lead-rate-limit-reset ]
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" ]
   local result
-  result=$(cat /tmp/dev-lead-rate-limit-reset)
+  result=$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset")
   [ -z "$result" ]
 }
 
@@ -649,7 +651,7 @@ STUB
   [ -z "$(jq -c 'select(.kind != "rate_limit_sample")' < "$log")" ]
 }
 
-@test "writer: run_writer persists session output to /tmp/dev-lead-session-output.txt" {
+@test "writer: run_writer persists session output to the session-output sidecar" {
   _source_engine "claude"
   export DEV_LEAD_DRY_RUN=false
   cat > "$STUB_BIN_DIR/claude" << 'STUB'
@@ -659,13 +661,13 @@ echo "session output line two"
 STUB
   chmod +x "$STUB_BIN_DIR/claude"
 
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
-  [ -f /tmp/dev-lead-session-output.txt ]
-  grep -q "session output line" /tmp/dev-lead-session-output.txt
-  rm -f /tmp/dev-lead-session-output.txt
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" ]
+  grep -q "session output line" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }
 
 @test "writer: GITHUB_STEP_SUMMARY appends HTML-escaped session output" {
@@ -686,16 +688,16 @@ STUB
 
   [ "$status" -eq 0 ]
   # Literal </details> must be HTML-escaped → only the wrapping closer remains
-  ! grep -F "danger zone </details>" "$summary"
+  ! grep -F "danger zone </details>" "$summary" || false
   grep -F "danger zone &lt;/details&gt;" "$summary"
-  rm -f "$summary" /tmp/dev-lead-session-output.txt
+  rm -f "$summary" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }
 
-@test "writer: run_writer overwrites stale /tmp/dev-lead-session-output.txt from prior run" {
+@test "writer: run_writer overwrites a stale session-output sidecar from a prior run" {
   _source_engine "claude"
   export DEV_LEAD_DRY_RUN=false
   # Pre-populate with content from a hypothetical previous run
-  echo "STALE_CONTENT_FROM_PRIOR_RUN" > /tmp/dev-lead-session-output.txt
+  echo "STALE_CONTENT_FROM_PRIOR_RUN" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   cat > "$STUB_BIN_DIR/claude" << 'STUB'
 #!/usr/bin/env bash
@@ -706,11 +708,11 @@ STUB
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
-  [ -f /tmp/dev-lead-session-output.txt ]
+  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" ]
   # Stale content from prior run must not leak into this run's session output
-  ! grep -q "STALE_CONTENT_FROM_PRIOR_RUN" /tmp/dev-lead-session-output.txt
-  grep -q "fresh session output" /tmp/dev-lead-session-output.txt
-  rm -f /tmp/dev-lead-session-output.txt
+  ! grep -q "STALE_CONTENT_FROM_PRIOR_RUN" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" || false
+  grep -q "fresh session output" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }
 
 @test "writer: persisted /tmp file has GitHub tokens redacted" {
@@ -723,14 +725,16 @@ echo "ok"
 STUB
   chmod +x "$STUB_BIN_DIR/claude"
 
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
   # Raw token must not survive to /tmp; only the redacted marker remains
-  ! grep -F "ghp_abcdefghijklmnopqrstuvwxyz1234567890ABCD" /tmp/dev-lead-session-output.txt
-  grep -F "***REDACTED-GH-TOKEN***" /tmp/dev-lead-session-output.txt
-  rm -f /tmp/dev-lead-session-output.txt
+  # The fake token is written as two adjacent strings so this line holds no literal
+  # token pattern (gitleaks flags a changed line that does, #2263).
+  ! grep -F "ghp_abcdefgh""ijklmnopqrstuvwxyz1234567890ABCD" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" || false
+  grep -F "***REDACTED-GH-TOKEN***" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }
 
 @test "writer: GITHUB_STEP_SUMMARY has secrets redacted before HTML escape" {
@@ -748,9 +752,9 @@ STUB
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
-  ! grep -F "sk-ant-secretkey1234567890abcdefghij" "$summary"
+  ! grep -F "sk-ant-secretkey1234567890abcdefghij" "$summary" || false
   grep -F "***REDACTED-API-KEY***" "$summary"
-  rm -f "$summary" /tmp/dev-lead-session-output.txt
+  rm -f "$summary" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }
 
 @test "writer: PEM private key block fully redacted in /tmp persistence" {
@@ -773,7 +777,7 @@ echo "after-key"
 STUB
   chmod +x "$STUB_BIN_DIR/claude"
 
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   run run_writer "$TEST_PROMPT"
 
   [ "$status" -eq 0 ]
@@ -782,11 +786,11 @@ STUB
   # delimiters still fails the assertion. Safe vs. gitleaks: the substring
   # alone does not satisfy the private-key rule's `-----BEGIN ... -----`
   # regex.
-  ! grep -F "BEGIN RSA PRIVATE KEY" /tmp/dev-lead-session-output.txt
-  ! grep -F "uVERYSENSITIVEKEYBODY" /tmp/dev-lead-session-output.txt
-  ! grep -F "END RSA PRIVATE KEY" /tmp/dev-lead-session-output.txt
-  grep -F "***REDACTED-PRIVATE-KEY***" /tmp/dev-lead-session-output.txt
+  ! grep -F "BEGIN RSA PRIVATE KEY" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" || false
+  ! grep -F "uVERYSENSITIVEKEYBODY" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" || false
+  ! grep -F "END RSA PRIVATE KEY" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" || false
+  grep -F "***REDACTED-PRIVATE-KEY***" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   # Content outside the PEM block survives
-  grep -F "after-key" /tmp/dev-lead-session-output.txt
-  rm -f /tmp/dev-lead-session-output.txt
+  grep -F "after-key" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 }

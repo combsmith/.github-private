@@ -67,7 +67,7 @@ impact/effort, suggested acceptance criteria). Bot-authored ideas are skipped �
 they are already AI-generated. It never approves, labels, or promotes — that
 stays with triage and the human gates.
 
-The enhancement logic lives in the **central** reusable `petry-projects/.github`
+The enhancement logic lives in the **central** reusable `combsmith/.github`
 (`feature-ideation-reusable.yml`); `.github-private` ships only the thin
 `feature-ideation.yml` caller stub (pinned to the `@feature-ideation/next`
 dogfood ring), which exposes the enhancement modes as `workflow_dispatch`
@@ -119,7 +119,7 @@ impact/effort, suggested acceptance criteria). Bot-authored ideas are skipped �
 they are already AI-generated. It never approves, labels, or promotes — that
 stays with triage and the human gates.
 
-The enhancement logic lives in the **central** reusable `petry-projects/.github`
+The enhancement logic lives in the **central** reusable `combsmith/.github`
 (`feature-ideation-reusable.yml`); `.github-private` ships only the thin
 `feature-ideation.yml` caller stub (pinned to the `@feature-ideation/next`
 dogfood ring), which exposes the enhancement modes as `workflow_dispatch`
@@ -212,7 +212,7 @@ inputs.
 
 The pipeline runs for any BMAD-enabled org repo, not just this one. The BMAD
 frameworks, the planner, and the triage/enhancer tooling stay vendored **once**
-here; each fleet repo ships only thin **caller stubs** (copied from petry-projects/.github/standards/workflows/{initiative-planner,idea-triage,feature-ideation}.yml into their local .github/workflows/ directory).
+here; each fleet repo ships only thin **caller stubs** (copied from combsmith/.github/standards/workflows/{initiative-planner,idea-triage,feature-ideation}.yml into their local .github/workflows/ directory).
 
 ```
 fleet repo: ★ human adds idea:approved to an Ideas Discussion
@@ -222,7 +222,7 @@ initiative-planner.yml (stub) ──> initiative-planner-reusable.yml (@initiati
    │   (claude-code-action can't run on `discussion` events, so the reusable
    │    re-DISPATCHES the central planner instead of planning inline)
    ▼
-petry-projects/.github-private  initiative-planner.yml  -f target_repo=<fleet repo> -f dry_run=false
+combsmith/.github-private  initiative-planner.yml  -f target_repo=<fleet repo> -f dry_run=false
    │   reads the fleet repo's Discussion, writes the epic + DAG THERE
    │   (cross-repo writes use GH_PAT_WORKFLOWS; self path uses GITHUB_TOKEN)
    ▼
@@ -237,7 +237,7 @@ initiative-driver.yml (stub) ──> initiative-driver-reusable.yml (@stable)
    │    fleet repo's issues:[labeled initiative:auto] / issues:[closed] event to
    │    the central driver instead of running the release logic inline)
    ▼
-petry-projects/.github-private  initiative-driver.yml  -f target_repo=<fleet repo>
+combsmith/.github-private  initiative-driver.yml  -f target_repo=<fleet repo>
    │   sweeps the fleet repo's initiative:auto epics, resolves each ready story's
    │   blocked_by DAG, and applies the `dev-lead` label THERE
    │   (cross-repo writes use GH_PAT_WORKFLOWS; self path uses GITHUB_TOKEN)
@@ -254,14 +254,14 @@ thin per-repo stub and dispatch the central workflow with `target_repo`.
   driver**; empty ⇒ the dogfood/self path (`.github-private` plans + drives its
   own issues), non-empty ⇒ the named fleet repo.
 - **Project-board funnel (hybrid):** epics in **consumer (fleet) repos** land on
-  that repo's own project; epics in **`petry-projects/.github` and
-  `petry-projects/.github-private`** land on the org-level "Initiatives" project
-  (`orgs/petry-projects/projects/1`).
+  that repo's own project; epics in **`combsmith/.github` and
+  `combsmith/.github-private`** land on the org-level "Initiatives" project
+  (`orgs/combsmith/projects/1`).
 - **Regression detection:** `initiative-planner-canary.yml` smoke-tests the live
   `idea:approved` → dispatch path and `initiative-driver-canary.yml` smoke-tests the
   symmetric cross-repo release path (a dry-run `target_repo` dispatch of the driver),
   while Fleet Monitor watches each adopted stub for drift — so a silent revert of
-  either trigger (the [#655](https://github.com/petry-projects/.github-private/issues/655)
+  either trigger (the [#655](https://github.com/combsmith/.github-private/issues/655)
   class) surfaces immediately rather than on a maintainer noticing nothing planned or released.
 - **Adoption + the full enrollment runbook:** see
-  `petry-projects/.github` → `standards/ci-standards.md` §10 (Idea → Initiative pipeline).
+  `combsmith/.github` → `standards/ci-standards.md` §10 (Idea → Initiative pipeline).

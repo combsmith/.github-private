@@ -21,7 +21,7 @@ setup() {
   # so the scrubbing path is exercised exactly as before.
   local tok_prefix='ghp_'
   local fake_pat="${tok_prefix}NOTAREALTOKEN1234"
-  MISS="{\"repo\":\"petry-projects/.github\",\"pr\":\"https://github.com/petry-projects/.github/pull/995\",\"bot\":\"coderabbitai\",\"finding\":\"ADR asserts a rolling 5-hour window while also asserting utilization is monotonic — a self-contradiction. cc @don-petry https://internal.example.com/x token ${fake_pat}\"}"
+  MISS="{\"repo\":\"combsmith/.github\",\"pr\":\"https://github.com/combsmith/.github/pull/995\",\"bot\":\"coderabbitai\",\"finding\":\"ADR asserts a rolling 5-hour window while also asserting utilization is monotonic — a self-contradiction. cc @don-petry https://internal.example.com/x token ${fake_pat}\"}"
 }
 
 # ---------------------------------------------------------------------------
@@ -110,9 +110,9 @@ setup() {
   run mh_build_case "$MISS"
   [ "$status" -eq 0 ]
   # No raw URL, @mention, or ghp_ token survives into the committed case.
-  ! grep -q "https://" <<<"$output"
-  ! grep -q "@don-petry" <<<"$output"
-  ! grep -q "ghp_" <<<"$output"
+  ! grep -q "https://" <<<"$output" || false
+  ! grep -q "@don-petry" <<<"$output" || false
+  ! grep -q "ghp_" <<<"$output" || false
   # Still valid JSON with the expected shape.
   run jq -e '.id and .input and .expected' <<<"$output"
   [ "$status" -eq 0 ]

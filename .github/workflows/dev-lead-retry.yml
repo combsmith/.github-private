@@ -65,12 +65,15 @@ concurrency:
 
 env:
   GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || secrets.GITHUB_TOKEN }}
-  TARGET_ORG: ${{ vars.TARGET_ORG || 'petry-projects' }}
+  TARGET_ORG: ${{ vars.TARGET_ORG || 'combsmith' }}
   DRY_RUN: ${{ inputs.dry_run || 'false' }}
   DISPATCH_DELAY_SEC: ${{ inputs.dispatch_delay_sec || '30' }}
 
 jobs:
   retry:
+    # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
+    # (neutral, not red) and `fleet-paused` below reports why.
+    if: vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -117,3 +120,25 @@ jobs:
           # Turns on the per-target payload-field gate (#2086).
           SWEEP_AGENT_REF: ${{ steps.channel.outputs.agent_ref }}
         run: bash scripts/dev-lead-retry.sh
+
+  # Fleet pause notice (#2249). With AGENTS_PAUSED=true the `retry` job above is
+  # skipped by its `if:`, and a skipped job cannot log. This job runs instead, on
+  # the same events, and says why in one line. Inventory and rules: AGENTS.md
+  # "Pausing the agent fleet" and scripts/lib/fleet-pause-registry.tsv.
+  fleet-paused:
+    if: vars.AGENTS_PAUSED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      # This workflow sets GH_TOKEN (a personal access token) for every job in its
+      # top-level `env:`. `permissions:` does not remove an inherited env value,
+      # so blank it: this job only prints a line.
+      GH_TOKEN: ''
+      PAUSE_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
+      PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
+    steps:
+      - name: Report the fleet pause
+        run: |
+          echo "::notice title=Agent fleet paused::Dev-Lead Retry: not run, the agent fleet is paused (AGENTS_PAUSED=true)." \
+            "Pause source: ${PAUSE_SOURCE:-not set (paused by hand)}." \
+            "Paused until: ${PAUSE_UNTIL:-not set}."

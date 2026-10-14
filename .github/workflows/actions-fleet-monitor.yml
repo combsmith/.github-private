@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/actions-fleet-monitor.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md
+# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/actions-fleet-monitor.yml
+# Standard:        combsmith/.github/standards/ci-standards.md
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This is the canonical fleet-monitor implementation; there is no external
@@ -26,7 +26,7 @@ on:
       org:
         description: "GitHub org to scan"
         required: false
-        default: "petry-projects"
+        default: "combsmith"
         type: string
       lookback_days:
         description: "Days of run history to inspect"
@@ -50,7 +50,7 @@ on:
       org:
         description: "GitHub org to scan"
         required: false
-        default: "petry-projects"
+        default: "combsmith"
         type: string
       lookback_days:
         description: "Days of run history to inspect"
@@ -63,7 +63,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: actions-fleet-monitor-${{ inputs.org || 'petry-projects' }}
+  group: actions-fleet-monitor-${{ inputs.org || 'combsmith' }}
   cancel-in-progress: true
 
 jobs:
@@ -71,14 +71,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      ORG: ${{ inputs.org || 'petry-projects' }}
+      ORG: ${{ inputs.org || 'combsmith' }}
       LOOKBACK_DAYS: ${{ inputs.lookback_days || '1' }}
 
     steps:
       - name: Checkout agent repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          repository: petry-projects/.github-private
+          repository: combsmith/.github-private
           ref: main  # Always checkout .github-private@main; workflow_call callers target @main per docs
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
 
@@ -95,7 +95,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
-          REPO: petry-projects/.github-private
+          REPO: combsmith/.github-private
           LOOKBACK_DAYS: ${{ env.LOOKBACK_DAYS }}
         run: |
           set -euo pipefail
@@ -651,8 +651,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
           ORG: ${{ env.ORG }}
           LOOKBACK_DAYS: ${{ env.LOOKBACK_DAYS }}
-          # Collected Gemini ledger records for the per-tier availability report (#2041).
+          # Collected Gemini ledger records for the per-tier availability report (#2041):
+          # only those traceable to a trusted run (#2147), with a report of what was
+          # ignored and what could not be read.
           GEMINI_RECORDS_OUT: ${{ runner.temp }}/gemini-records.jsonl
+          GEMINI_COLLECTION_OUT: ${{ runner.temp }}/gemini-collection.json
         run: bash scripts/token_report.sh >> "$GITHUB_STEP_SUMMARY"
 
       # Gemini availability per task tier (#2041). The per-day history store survives
@@ -662,18 +665,21 @@ jobs:
       # it, and every step is non-blocking. The cache and artifact steps use
       # continue-on-error (a storage hiccup must not fail the fleet monitor); the
       # report step warns on failure instead.
+      # The cache name carries `v2` (#2147): the store now holds only records from
+      # trusted runs, so a store filled before that filter existed is not restored.
       - name: Restore Gemini tier history
         continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .gemini-tier-state
-          key: gemini-tier-history-${{ env.ORG }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: gemini-tier-history-v2-${{ env.ORG }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            gemini-tier-history-${{ env.ORG }}-
+            gemini-tier-history-v2-${{ env.ORG }}-
 
       - name: Gemini availability per task tier
         env:
           GEMINI_RECORDS_IN: ${{ runner.temp }}/gemini-records.jsonl
+          GEMINI_COLLECTION_IN: ${{ runner.temp }}/gemini-collection.json
           GEMINI_TIER_STATE_DIR: .gemini-tier-state
           # The tier chains come from ai_models_gemini_chain: the same variables the
           # engine callers export (dev-lead-reusable.yml, pr-review.yml).
@@ -692,7 +698,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .gemini-tier-state
-          key: gemini-tier-history-${{ env.ORG }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: gemini-tier-history-v2-${{ env.ORG }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload Gemini tier snapshot
         if: always()

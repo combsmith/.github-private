@@ -1,6 +1,6 @@
 # Initiative: MCP-Powered CI Review Enrichment
 
-**Status:** Reference — recommended server set + enablement knob (Phase 2 of epic [#676](https://github.com/petry-projects/.github-private/issues/676))
+**Status:** Reference — recommended server set + enablement knob (Phase 2 of epic [#676](https://github.com/combsmith/.github-private/issues/676))
 **Author:** dev-lead / Claude Code
 **Date:** 2026-06-14
 **Scope (confirmed):** The self-hosted Claude review engine (`scripts/engine.sh`, invoked by
@@ -10,7 +10,7 @@ strictly opt-in and inert when unconfigured.
 **Constraints (confirmed):** GitHub-native + the existing engine only — no new infrastructure. MCP is
 opt-in via committed env knobs (no thin-caller workflow edit required). Security-first: a downstream
 pilot happens **only after** the in-flight security-hardening work lands. Claims about server
-availability are grounded in discussion [#650](https://github.com/petry-projects/.github-private/discussions/650)
+availability are grounded in discussion [#650](https://github.com/combsmith/.github-private/discussions/650)
 (body + the 2026-06-13 weekly update) and must not overstate maturity.
 
 ---
@@ -24,7 +24,7 @@ Context Protocol) servers let a review pull **real-time** documentation and exte
 signal at review time instead of relying on stale training data alone.
 
 This work delivers the MCP *plumbing* (the engine knob + graceful degradation) independently of the
-broader review-engine rework tracked in epic [#610](https://github.com/petry-projects/.github-private/issues/610)
+broader review-engine rework tracked in epic [#610](https://github.com/combsmith/.github-private/issues/610)
 (generalize `pr-review` into a context-adaptive review agent). The MCP knob lands on its own so it does
 not wait on the artifact-contract changes in #610.
 
@@ -48,8 +48,9 @@ security/quality signal on top.
 >
 > **Plan caveat for this repo (#816).** GitHub MCP secret scanning's `run_secret_scanning` tool is a
 > content-scan API gated on the repository's **`advanced_security`** flag (full GitHub Advanced
-> Security) — a *different* flag than Secret Protection / push protection — and that flag is **not
-> available on this private repo's plan** (confirmed identically from two independent tokens). So on
+> Security) — a *different* flag than Secret Protection / push protection — and that flag was **not
+> available on this repo's plan** when the pilot ran (confirmed identically from two independent tokens;
+> not re-checked since). So on
 > `.github-private` the GitHub-MCP secret-scanning starter only ever emits an "unavailable" degradation
 > warning; the **actual pilot starter here is Context7** (zero-auth). Interim secret coverage stays
 > intact via the existing `Secret scan (gitleaks)` CI check. See §5.
@@ -145,7 +146,7 @@ implemented in `scripts/engine.sh` (`_emit_mcp_failure_warning`) and regression-
 ## 5. Security-first sequencing & the revised starter
 
 **Sequencing.** The organization's immediate priorities are security hardening (action allowlisting,
-input sanitization). A downstream MCP pilot ([#681](https://github.com/petry-projects/.github-private/issues/681))
+input sanitization). A downstream MCP pilot ([#681](https://github.com/combsmith/.github-private/issues/681))
 happens **only after** that in-flight security work lands — not before.
 
 **Revised starter recommendation (2026-06-13 weekly update).** The original #650 proposal (2026-05-29)
@@ -159,8 +160,8 @@ the actual pilot starter.** The MCP plumbing was proven end-to-end — #809's en
 `REVIEW_MCP_ALLOWED_TOOLS` reaches the live job env, the GitHub MCP server connects, and its tools are
 reachable. But the recommended `run_secret_scanning` tool is a content-scan API gated on the repo's
 **`advanced_security`** flag (full GitHub Advanced Security) — a *different* flag than Secret Protection
-/ push protection — and **that flag is not available on this private repo's plan** (confirmed
-identically from two independent tokens). Keeping the GitHub entry configured therefore only emits an
+/ push protection — and **that flag was not available on this repo's plan** when the pilot ran (confirmed
+identically from two independent tokens; not re-checked since). Keeping the GitHub entry configured therefore only emits an
 "unavailable" degradation warning on every review. #681 closed **not-planned** on that starter, and
 both the pilot doc and #681's AC #1 already named **Context7 as the zero-auth fallback**. #816 executes
 that path:
@@ -241,12 +242,12 @@ human decision.** Revisit the GitHub-MCP secret-scanning starter only if/when th
 
 ## 6. References
 
-- Discussion [#650](https://github.com/petry-projects/.github-private/discussions/650) — proposal body
+- Discussion [#650](https://github.com/combsmith/.github-private/discussions/650) — proposal body
   - 2026-06-13 weekly update (server availability + revised starter).
-- Epic [#676](https://github.com/petry-projects/.github-private/issues/676) — MCP-powered review
+- Epic [#676](https://github.com/combsmith/.github-private/issues/676) — MCP-powered review
   enrichment; stories #677 (engine knob), #678 (graceful degradation), #679 (workflow surface),
   #680 (this doc), #681 (downstream pilot).
-- Epic [#610](https://github.com/petry-projects/.github-private/issues/610) — broader context-adaptive
+- Epic [#610](https://github.com/combsmith/.github-private/issues/610) — broader context-adaptive
   review-engine rework (MCP plumbing lands independently of this).
 - `scripts/engine.sh` — `REVIEW_MCP_CONFIG` / `REVIEW_MCP_ALLOWED_TOOLS` threading and
   `_emit_mcp_failure_warning`.

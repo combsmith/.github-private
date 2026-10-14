@@ -17,7 +17,7 @@ other than `.github-private` can serve it by adopting that stub. The
 it checks this repo out and `source`s `scripts/qa-lead-advisory-gate.sh` (a
 script that exists only here), it calls the **local** reusable
 `./.github/workflows/persona-runner-reusable.yml` rather than an org-published
-one, and there is no `standards/workflows/` template in `petry-projects/.github`
+one, and there is no `standards/workflows/` template in `combsmith/.github`
 for the standards sweep to carry. So the surface cannot simply be listed as
 deployable: copying the file into another repo would reference a gate script and
 a reusable that do not exist there.
@@ -32,7 +32,7 @@ path so the event reaches the one shared runtime; or **(c)** keep the surface
 
 The solution-architect advisory on #1869 (2026-09-23) decided **(b)** and
 directed that it be implemented. The router change itself is **cross-repo**
-(it lives in `petry-projects/.github`) and is filed separately; this ADR records
+(it lives in `combsmith/.github`) and is filed separately; this ADR records
 the decision and its consequences for this repo. This ADR does not supersede any
 existing ADR — it applies ADR-0007's governing rule to a concrete surface.
 
@@ -70,26 +70,27 @@ persona runtime or stand up a second agent-ingress path to serve this surface.
 The checkable boundaries:
 
 - **No second ingress path.** The `pull_request` event is absorbed by the
-  already-published router (the cross-repo change in `petry-projects/.github`),
+  already-published router (the cross-repo change in `combsmith/.github`),
   reaching the one shared runtime ADR-0006 records. Option (a)'s separate
   `persona-runner/v1-*` ingress path is rejected on ADR-0007 grounds.
 - **The router change is out of scope for this repo.** It is cross-repo and
   filed separately. **No caller stub is edited here**, consistent with #1869
   AC #5 (deployment goes through the standards sweep, not a hand-edited stub).
-- **`.github/workflows/qa-lead-pr-advisory.yml` is NOT retired in this change.**
-  It is the only thing serving the advisory today. Retiring it before the router
+- **`.github/workflows/qa-lead-pr-advisory.yml` is NOT retired in this change**
+  (original decision state; retired later, see the 2026-10-11 record under
+  Consequences). It was the only thing serving the advisory then. Retiring it before the router
   change is released to its channel would leave the surface dead — the same
   ordering failure as landing a fail-closed validator ahead of its data.
   Retirement is sequenced as a **follow-up gated on the router change reaching
   the `persona-mention/v1-next` channel** this repo pins, and on the
   stop-marker verification below.
 - **The interim contract states the truth.** While both the local workflow and
-  the pending router serve the surface, `personas/qa-lead/persona.yml`,
-  `personas/qa-lead/interaction.yml`, and `personas/qa-lead/README.md` say the
-  `pull_request` surface is served **locally in `.github-private` today** and by
-  the shared router after the pending cross-repo change — the #1647 rule that a
-  declared surface must be a served one. The surface stays `enabled: true`
-  because it is served today.
+  the pending router served the surface (historical, pre-2026-10-11),
+  `personas/qa-lead/persona.yml`, `personas/qa-lead/interaction.yml`, and
+  `personas/qa-lead/README.md` said the `pull_request` surface was served
+  **locally in `.github-private` at that time** and by the shared router after
+  the pending cross-repo change — the #1647 rule that a declared surface must be
+  a served one. The surface stayed `enabled: true` because it was served then.
 
 The hard precondition on retirement:
 
@@ -114,14 +115,32 @@ The hard precondition on retirement:
   per-surface staging — a repo that adopts the router reaches this surface with
   no per-surface lever to narrow it beyond the per-item `qa-lead:hands-off`
   opt-out.
-- **A sequencing debt is created and must be paid in order.** The surface is now
-  served by *two* things — the local workflow and the pending router — until the
+- **A sequencing debt is created and must be paid in order.** (Historical — paid
+  2026-10-11, see below.) The surface was then served by *two* things — the local
+  workflow and the pending router — until the
   router change lands on `persona-mention/v1-next` and the stop-marker
   verification passes. Only then is `qa-lead-pr-advisory.yml` retired. Removing
   it earlier re-opens #1869 by leaving the surface dead; leaving it forever is
   duplicate serving. This ADR is the record that retirement is a deliberate,
   gated follow-up, not an oversight.
-- **The event model changes.** Today `qa-lead-pr-advisory.yml` subscribes to
+- **Retired 2026-10-11 (#2243).** The debt above is paid:
+  `qa-lead-pr-advisory.yml` is deleted and the `persona-mention` router serves
+  qa-lead's `pull_request` advisory alone, on `[opened, ready_for_review]`.
+  Every precondition was met first — the router serves the event
+  (combsmith/.github#1167, live on `persona-mention/v1-next`); this repo's
+  stub subscribes it (#2188); the runner's pre-gate applies qa-lead's
+  suppressors on a router dispatch (#1909); a router run against a real PR
+  carrying `needs-human-review` logged `skip stop-marker needs-human-review`
+  (the #1745 stop-marker verification this ADR requires); the router path keeps
+  a finished advisory (#2198); and the two paths did not double-post (PR #2210:
+  the router-served run logged `skip:already-advised`). The gate scripts
+  (`scripts/qa-lead-pr-gate.sh`, `scripts/persona-pr-pregate.sh`,
+  `scripts/qa-lead-advisory-gate.sh`, `scripts/lib/qa-lead-test-surface.sh`) and
+  their tests stay — the runner uses them on every router-served dispatch. The
+  soak signal now comes from the `persona-mention` router runs (`skip …` /
+  `Routing to` lines) and the `persona-runner` pre-gate line
+  (`persona pre-gate for 'qa-lead' … : run|skip:<reason>`).
+- **The event model changes.** At decision time `qa-lead-pr-advisory.yml` subscribed to
   `pull_request: [opened, ready_for_review]` directly and gates in
   `scripts/qa-lead-advisory-gate.sh`. Under the router the `pull_request` event
   reaches the shared dispatch path, so the gate's suppression logic (test
@@ -153,7 +172,7 @@ The hard precondition on retirement:
   reaching `persona-mention/v1-next`.
 - ADR-0001 (thin-caller / reusable two-tier) — why `qa-lead-pr-advisory.yml`,
   being self-contained rather than a thin caller stub, has no deployable form.
-- Issue petry-projects/.github-private#1869 and its solution-architect advisory
+- Issue combsmith/.github-private#1869 and its solution-architect advisory
   (2026-09-23) that decided option (b) — the decision thread.
 - Related history: #1646 (built this surface), #1647 (declared surfaces must
   match served ones), #1745 (stop markers), #1643 (epic).

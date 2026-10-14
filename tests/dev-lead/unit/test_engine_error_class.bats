@@ -16,6 +16,8 @@ STUB_ENGINES_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/engines"
 setup() {
   export GITHUB_ENV="$(mktemp)"
   export GITHUB_OUTPUT="$(mktemp)"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
   unset CLAUDE_TRIAGE_MODEL_CHAIN CLAUDE_DEEP_MODEL_CHAIN CLAUDE_AUDIT_MODEL_CHAIN
   unset CLAUDE_ACTION_MODEL_CHAIN CLAUDE_SINGLE_MODEL_CHAIN
 
@@ -189,7 +191,7 @@ teardown() {
   [ "$status" -eq 0 ]
   grep -q '"api_error_status":400' "$CLAUDE_CHAIN_HOP_LOG"
   grep -q "REDACTED-GH-TOKEN" "$CLAUDE_CHAIN_HOP_LOG"
-  ! grep -qF "$_tok" "$CLAUDE_CHAIN_HOP_LOG"
+  ! grep -qF "$_tok" "$CLAUDE_CHAIN_HOP_LOG" || false
   # Envelope metadata beyond the error fields (model, usage) is not copied.
   ! grep -q '"usage"' "$CLAUDE_CHAIN_HOP_LOG"
 }
