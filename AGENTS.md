@@ -885,11 +885,13 @@ Then read the state, one variable at a time (no list, so no page can be missed):
 
 ```bash
 if p=$(gh api orgs/petry-projects/actions/variables/AGENTS_PAUSED --jq '"\(.value) (\(.visibility))"' 2>/dev/null); then echo "AGENTS_PAUSED=$p"; else echo "AGENTS_PAUSED could not be read"; fi
-if v=$(gh api orgs/petry-projects/actions/variables/AGENTS_PAUSE_SOURCE --jq .value 2>/dev/null); then echo "AGENTS_PAUSE_SOURCE=$v"; else echo "no AGENTS_PAUSE_SOURCE"; fi
+if v=$(gh api orgs/petry-projects/actions/variables/AGENTS_PAUSE_SOURCE --jq .value 2>&1); then echo "AGENTS_PAUSE_SOURCE=$v"
+elif grep -q 'HTTP 404' <<< "$v"; then echo "no AGENTS_PAUSE_SOURCE"; else echo "AGENTS_PAUSE_SOURCE could not be read"; fi
 ```
 
 The answer must be exactly `AGENTS_PAUSED=true (all)` and `no AGENTS_PAUSE_SOURCE`; any other
-answer, including an error from the first read, is a failed check. **If it
+answer, including "could not be read" for either variable, is a failed check (only a 404
+counts as "no source"; a rate limit or an expired login does not). **If it
 is anything else, run the three calls, the wait and the check again, until it is.** The wait
 and the check are part of the procedure, not extras.
 
