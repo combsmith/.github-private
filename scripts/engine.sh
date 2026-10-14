@@ -91,7 +91,11 @@ _ENGINE_CHAIN_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-chain.sh"
 # shellcheck source=lib/engine-chain.sh
 [ -f "$_ENGINE_CHAIN_LIB" ] && source "$_ENGINE_CHAIN_LIB"
 unset _ENGINE_CHAIN_LIB
-if declare -F ai_engine_primary >/dev/null 2>&1; then
+if [ -n "${REVIEW_ENGINE_FORCE:-}" ] && [[ "${REVIEW_ENGINE:-}" =~ ^(claude|gemini|copilot)$ ]]; then
+  # Model A/B evals pin the engine regardless of provider enablement: scoring a
+  # Claude model on the configured non-Claude primary would invalidate the run.
+  :
+elif declare -F ai_engine_primary >/dev/null 2>&1; then
   _requested_engine="${REVIEW_ENGINE:-}"
   REVIEW_ENGINE="$(ai_engine_primary "$_requested_engine")"
   if [ -n "$_requested_engine" ] && [ "$_requested_engine" != "$REVIEW_ENGINE" ]; then
