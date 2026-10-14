@@ -60,10 +60,11 @@ def load_json(path: Path, what: str):
         sys.exit(1)
 
 
-def price_globs(path: Path) -> list:
-    """The model_glob column of the model-pricing.tsv rows in effect today (comments
-    and short rows skipped, as scripts/lib/model-pricing.sh does)."""
-    globs = []
+def price_rows(path: Path) -> list:
+    """(model_glob, effective_from, well_formed) for each model-pricing.tsv row in
+    effect today (comments and short rows skipped, as scripts/lib/model-pricing.sh
+    does). Malformed rows are kept, flagged, because price_for can still select one."""
+    rows = []
     today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -74,19 +75,33 @@ def price_globs(path: Path) -> list:
         if re.match(r"^\s*#", line):
             continue
         cols = line.split("\t")
-        if len(cols) >= 6 and cols[0]:
-            # model-pricing.sh's price_for ignores a row until its effective_from
-            # date, so a future-dated row does not price a model running today.
-            # A malformed date or non-numeric rate would price the model as zero in
-            # cost_usd, so only well-formed rows count.
-            try:
-                datetime.date.fromisoformat(cols[1].strip())
-                rates = [float(c) for c in cols[2:6]]
-            except ValueError:
-                continue
-            if all(math.isfinite(r) and r >= 0 for r in rates) and cols[1].strip() <= today:
-                globs.append(cols[0])
-    return globs
+        # price_for ignores a row until its effective_from date, so a future-dated
+        # row does not price a model running today.
+        if len(cols) < 6 or cols[1] > today:
+            continue
+        # A malformed date or non-numeric rate would price the model as zero in
+        # cost_usd, so only a well-formed row counts as pricing it.
+        try:
+            datetime.date.fromisoformat(cols[1].strip())
+            rates = [float(c) for c in cols[2:6]]
+            ok = all(math.isfinite(r) and r >= 0 for r in rates)
+        except ValueError:
+            ok = False
+        rows.append((cols[0], cols[1], ok))
+    return rows
+
+
+def is_priced(rows: list, model: str) -> bool:
+    """True when the row price_for would select for `model` (most-specific glob, ties
+    to the latest effective_from, then the first row) is well formed."""
+    best = None
+    for glob, eff, ok in rows:
+        if not glob_matches(glob, model):
+            continue
+        key = (len(re.sub(r"[*?]", "", glob)), eff)
+        if best is None or key > best[0]:
+            best = (key, ok)
+    return best is not None and best[1]
 
 
 def glob_matches(glob: str, model: str) -> bool:
@@ -109,7 +124,7 @@ def check_schema(config, schema) -> list:
     return problems
 
 
-def check_references(config, globs) -> list:
+def check_references(config, rows) -> list:
     problems = []
     models = config["models"]
     providers = config["providers"]
@@ -159,7 +174,7 @@ def check_references(config, globs) -> list:
             continue
         # Only the Copilot path strips a vendor prefix before pricing a run.
         bare = model.split("/", 1)[1] if entry["provider"] == "copilot" and "/" in model else model
-        if not any(glob_matches(g, bare) for g in globs):
+        if not is_priced(rows, bare):
             problems.append(
                 f"models.{model}: provider {entry['provider']} is enabled but the model has "
                 f"no price row in scripts/lib/model-pricing.tsv")
@@ -176,7 +191,7 @@ def main(argv) -> int:
     problems = check_schema(config, schema)
     # The reference checks index into the shape the schema guarantees.
     if not problems:
-        problems = check_references(config, price_globs(pricing_path))
+        problems = check_references(config, price_rows(pricing_path))
     for p in problems:
         error(p)
     if problems:
