@@ -61,7 +61,7 @@
 # Space-separated logins of the Dependabot merge pipeline. Their events are
 # flagged `mechanical` on a PR authored by dependabot[bot], and nowhere else.
 # Set but empty turns the exemption off (hence `=`, not `:=`).
-: "${PR_BUDGET_MECHANICAL_LOGINS=dependabot[bot] petry-projects-dependabot-automrg[bot]}"
+: "${PR_BUDGET_MECHANICAL_LOGINS=dependabot[bot] combsmith-dependabot-automrg[bot]}"
 _PR_BUDGET_DEPENDABOT_AUTHOR="dependabot[bot]"
 
 # Regex (jq `test`) for a body one of our agents wrote. The registered list is

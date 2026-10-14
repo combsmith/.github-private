@@ -23,7 +23,7 @@
 #
 # To adopt: copy this file to .github/workflows/add-to-project.yml in your
 # repo. Requires the org secrets INITIATIVES_APP_ID and
-# INITIATIVES_APP_PRIVATE_KEY (the petry-projects-planner GitHub App), and the
+# INITIATIVES_APP_PRIVATE_KEY (the combsmith-planner GitHub App), and the
 # app installation must include this repo. See combsmith/.github#387.
 #
 # Tracking: combsmith/.github#387, #415
