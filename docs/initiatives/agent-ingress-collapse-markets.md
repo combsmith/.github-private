@@ -52,12 +52,29 @@ ingress `pr-review` job from `@pr-review/stable` to `@pr-review/v1-stable`
 (markets `62587ec`, 2026-10-10), in both `uses:` and `agent_ref`. §3 carries
 that pin. The row above still records the pre-collapse stub pin. See §5a.
 
+### 1a. Measured baseline (billed runs)
+
+- **Window:** `2026-09-15T00:00:00Z..2026-09-22T00:00:00Z`, 7 days, bounded at
+  both ends. Each count is a per-workflow `total_count` from
+  `actions/workflows/<stub>.yml/runs?created=<window>`.
+
+| Stub | Workflow runs |
+| --- | --- |
+| `dev-lead.yml` | 584 |
+| `pr-review-mention.yml` | 330 |
+| `pr-auto-review.yml` | 208 |
+| `pr-review.yml` | 187 |
+| `ci-failure-analyst.yml` | 33 |
+| **Total** | **1342** |
+
+The post-collapse comparison against this baseline is in §7a.
+
 > **Gap (named, not silently carried):** the delivery brief cites a baseline doc
 > at `docs/initiatives/agent-ingress-collapse-baseline.md`. That file **does not
 > exist** on `main`. The authoritative baseline is the pair above (the canonical
-> reference for structure + the live pre-collapse stubs for behavior). If a
-> dedicated baseline doc is wanted, it should be filed separately; this package
-> does not fabricate one.
+> reference for structure + the live pre-collapse stubs for behavior), plus the
+> measured run counts in §1a. This package does not fabricate a separate
+> baseline doc.
 
 The collapse is **behavior-preserving**: each job in the ingress copies its
 source stub's pin, `permissions:`, `secrets:`, and event subscription verbatim,
@@ -645,6 +662,48 @@ in its source stub, so no `paths:` filter moves down a tier and no per-event
 runner cost is incurred. The billing profile is therefore strictly
 event-filtered, no-runner skips.
 
+### 7a. Measured (post-collapse)
+
+**Method:**
+
+- Post-collapse window: `2026-10-10T01:16:00Z..2026-10-14T01:16:00Z`, 4 days,
+  from the markets#513 merge.
+- `agent-ingress.yml` had 382 runs. Each of the five deleted stubs had 0.
+- A job counts as **billed** when `runner_name` is non-empty. Billed minutes are
+  per job, each rounded up to a whole minute.
+- Job sample: 1340 of the 1342 baseline runs (§1a; 2 returned no jobs), and all
+  382 post-collapse runs.
+
+**Per-day figures:**
+
+| Role | Billed jobs/day, before → after | Billed min/day, before → after |
+| --- | --- | --- |
+| dev-lead | 44.4 → 41.8 | 60.3 → 49.8 |
+| pr-auto-review | 29.7 → 23.8 | 29.7 → 24.8 |
+| pr-review | 4.7 → 4.5 | 4.7 → 4.5 |
+| pr-review-mention | 0 → 0.25 | 0 → 0.25 |
+| ci-failure-analyst | 0 → 0 | 0 → 0 |
+| **Total** | **78.9 → 70.2 (−11%)** | **94.7 → 79.2 (−16%)** |
+
+**Other figures:**
+
+- Workflow runs/day: 191.7 → 95.5 (−50%).
+- Jobs evaluated/day, including skipped: 358.6 → 626.0 (+75%). These are all
+  kind (a): **0 jobs concluded `skipped` with a runner assigned**, in either
+  window.
+- PRs opened: 5 in the baseline window (0.7/day) and 7 in the post-collapse
+  window (1.75/day). Post-collapse traffic was not lighter.
+- Raw totals: baseline 552 billed jobs and 663 billed minutes; post-collapse 281
+  billed jobs and 317 billed minutes.
+
+**Conclusion:** the collapse is cost-neutral to slightly cheaper for markets.
+The per-event `if:` filters skip union events before a runner is assigned. The
+main saving is pr-auto-review: the old stub gave a runner to every run
+(208/208), while the ingress job is billed for 95 of 382.
+
+Source: the #1729 finalization comment
+(https://github.com/petry-projects/.github-private/issues/1729#issuecomment-6159791868).
+
 ---
 
 ## 8. Pre-merge gate + rollback for both half-landed states (AC3 / AC8)
@@ -825,10 +884,11 @@ docs/initiatives/agent-ingress-collapse-markets.md
 
 | Item | Status | Reason |
 | --- | --- | --- |
-| markets PR (add ingress + delete 5 stubs) | **Not done — cannot be** | Cross-repo write; only markets' dev-lead can author it. Driven by §10. |
-| Companion issue filed in markets | **Prepared, not filed** | Cross-repo write from `.github-private` not available in this run. Body is committed in §10. |
-| Canonical `agent-ingress.yml` template published | **Deferred (§9b)** | Write to `petry-projects/.github`; cross-repo. |
-| `STUB_REGISTRY` rows activated in fleet_monitor.sh | **Prepared, not applied (§9a)** | Would 404 against an unpublished canonical path and can't be ALIGNED-verified pre-collapse (§9c). |
+| markets PR (add ingress + delete 5 stubs) | **Done — markets#513** | Authored by markets' dev-lead, driven by §10. |
+| Companion issue filed in markets | **Filed — markets#506** | Body as committed in §10. |
+| Canonical `agent-ingress.yml` template published | **Published — petry-projects/.github#1316 (`452ea69`)** | Outside `DEPLOYABLE_WORKFLOWS` (§9b). |
+| `STUB_REGISTRY` rows activated in fleet_monitor.sh | **Applied — #2182** | ALIGNED run observed: Fleet Monitor run 38193525415 (§9a/§9c). |
 | §4 job-level concurrency schema ruling | **Ratified — ADR-0010, accepted** | ADR-0010 admits bounded job-level `concurrency:`. §3 was re-rendered to the bounds (#2038), and §4b states the non-PR-event behavior change. |
 | pin corrections (§5a/§5b) | **§5a resolved by markets#521; §5b resolved by markets#523** | Behavior-preserving collapse must not change pins; separate follow-ups. |
-| Dedicated baseline doc at the brief's cited path | **Does not exist (§1)** | Not fabricated; real baseline is the reference file + live stubs. |
+| Dedicated baseline doc at the brief's cited path | **Resolved in §1 (#2327)** | The measured run-count baseline is recorded in §1a. The cited path is still not fabricated. |
+| AC7 `ci-failure-analyst` live execution | **Not observed — accepted** | GitHub Actions' own check runs deliver no `check_run` event (#2235), and no third-party check failed on markets in the window. Accepted by the maintainer when #1729 was finalized. The guard is verified by markets' bats test and by package §3/§3a. |
