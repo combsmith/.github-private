@@ -15,7 +15,7 @@
 #
 # THE RULE
 #   A channel-pinned file is a `.github/workflows/*.yml|*.yaml` file that, at the
-#   pre-pass head, has a first-party `uses: petry-projects/…@<ref>` or an
+#   pre-pass head, has a first-party `uses: combsmith/…@<ref>` or an
 #   `agent_ref: <ref>` whose <ref> is a moving channel tag (cpg_is_channel_ref).
 #   A pass that changes that file's pin list (cpg_pins) is:
 #     clean    the pin list is unchanged (comment/body edits are fine), or equals
@@ -45,7 +45,7 @@ if [[ -z "${_CPG_CHANNEL_RE:-}" ]]; then
   # <agent>/v<N>-<tier> (dev-lead/v139-ring0, pr-review/v1-next) and the legacy
   # un-majored <agent>/<tier> (dev-lead/stable).
   readonly _CPG_CHANNEL_RE='^[A-Za-z0-9._-]+/(v[0-9]+-)?[A-Za-z0-9]+$'
-  readonly _CPG_USES_RE='^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*["'"'"']?(petry-projects/[^@[:space:]"'"'"']+@[^[:space:]"'"'"'#]+)'
+  readonly _CPG_USES_RE='^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*["'"'"']?(combsmith/[^@[:space:]"'"'"']+@[^[:space:]"'"'"'#]+)'
   readonly _CPG_AGENT_REF_RE='^[[:space:]]*agent_ref:[[:space:]]*["'"'"']?([^[:space:]"'"'"'#]+)'
 fi
 
@@ -166,7 +166,7 @@ cpg_refused_body() {
   else
     printf 'The `%s` pass changed a workflow file, and whether it kept every first-party channel pin could not be verified (the pre-pass head could not be read).\n\n' "$intent"
   fi
-  printf 'dev-lead **did not push** this pass (#2220). A caller stub'"'"'s `uses:` ref and `agent_ref` select which dev-lead/pr-review release runs; they move only when a maintainer moves the channel tag (`scripts/cut-release.sh`) or edits the stub in a reviewed PR. Never repin a stub to clear a check — a red `template-drift` concerns `petry-projects/repo-template`, not this repository'"'"'s stubs.\n'
+  printf 'dev-lead **did not push** this pass (#2220). A caller stub'"'"'s `uses:` ref and `agent_ref` select which dev-lead/pr-review release runs; they move only when a maintainer moves the channel tag (`scripts/cut-release.sh`) or edits the stub in a reviewed PR. Never repin a stub to clear a check — a red `template-drift` concerns `combsmith/repo-template`, not this repository'"'"'s stubs.\n'
   printf '\nAuto-merge has been disabled.\n'
 }
 

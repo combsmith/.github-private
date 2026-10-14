@@ -740,7 +740,7 @@ _usage() {
 }
 
 main() {
-  local repo="petry-projects/.github-private"
+  local repo="combsmith/.github-private"
   local candidate="${CANARY_CANDIDATE-}" incumbent="${CANARY_INCUMBENT-}"
   local workflow="pr-review" tier="deep"
   local since="" until=""

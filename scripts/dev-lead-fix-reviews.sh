@@ -592,7 +592,7 @@ ${summary}"
 # window, body inside the kept window would otherwise leak plaintext key
 # material).
 read_session_summary() {
-  local log="/tmp/dev-lead-session-output.txt"
+  local log="$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   [[ -f "$log" ]] || return 0
   local redacted
   redacted="$(redact_secrets < "$log")"
@@ -1361,7 +1361,7 @@ resolve_addressed_bot_threads() {
     fi
     # #2013: the claimed commit must be one THIS pass produced — not the PR's first
     # commit or any other pre-pass ancestor, which passes the on-head + intersection
-    # checks trivially (the petry-projects/.github#1220 `571a3b8` case). Parity with
+    # checks trivially (the combsmith/.github#1220 `571a3b8` case). Parity with
     # the issue-comment `fixed` check in resolve_dispositioned_comments (#1813).
     in_base=$(printf '%s' "$facts" | jq -r 'if .in_base == false then "false" else "true" end' 2>/dev/null || echo "true")
     if ! in_pass=$(acv_claim_in_pass "${RESOLUTION_BASE_SHA:-}" "$on_head" "$in_base"); then
@@ -3270,7 +3270,7 @@ commit_and_push() {
         ;;
     esac
     # Sync-stub guard (#2185): on a `standards-sync` PR, a bot-driven pass must not
-    # change a stub copied verbatim from petry-projects/.github/standards/ (the
+    # change a stub copied verbatim from combsmith/.github/standards/ (the
     # incubator#164 shape). Restoring a stub to what the sync commit wrote is
     # allowed. Maintainer-driven intents (review-changes/human-pr, on-mention,
     # human) are the explicit override and are not guarded. The PR is read only
@@ -3315,15 +3315,18 @@ commit_and_push() {
         ;;
     esac
     # Test-tamper guard (#2013): a bot-driven fix pass must not silently rewrite an
-    # existing test to make its own change pass (the petry-projects/.github#1220
+    # existing test to make its own change pass (the combsmith/.github#1220
     # `13927fc` shape). Refuse the push and escalate, like the no-op guard (rc 3).
     # "Existing" means present at the merge base with the PR's base branch (#2141):
     # tests the PR itself added are free to revise. The merge base is resolved only
     # when the pass touches a test file; an unresolvable one leaves ttg_mb empty,
-    # which ttg_scan_pass then refuses (fail closed).
+    # which ttg_scan_pass then refuses (fail closed). ttg_umb is the pass result's
+    # merge base with the base branch (#2254): when a rebase or merge of the base
+    # moved it, test changes the base brought in are not the pass's. Unresolvable,
+    # it stays empty and the stricter pre-pass comparison applies.
     case "$intent" in
       fix-reviews|fix-bot-comment|review-changes|human-pr)
-        local ttg_out ttg_rc=0 ttg_files ttg_mb=""
+        local ttg_out ttg_rc=0 ttg_files ttg_mb="" ttg_umb=""
         if ttg_pass_touches_tests "${RESOLUTION_BASE_SHA:-}"; then
           # Several intents default BASE_REF to `main` before the PR is read, so ask
           # the API for the PR's real target; an unreadable base leaves ttg_mb empty.
@@ -3333,9 +3336,10 @@ commit_and_push() {
           fi
           if [ -n "$ttg_base" ]; then
             ttg_mb=$(ttg_resolve_merge_base "$ttg_base" "${RESOLUTION_BASE_SHA:-}" "${HEAD_REF:-}") || ttg_mb=""
+            [ -n "$ttg_mb" ] && { ttg_umb=$(git merge-base HEAD "origin/${ttg_base}" 2>/dev/null) || ttg_umb=""; }
           fi
         fi
-        ttg_out=$(ttg_scan_pass "${RESOLUTION_BASE_SHA:-}" HEAD "$ttg_mb") || ttg_rc=$?
+        ttg_out=$(ttg_scan_pass "${RESOLUTION_BASE_SHA:-}" HEAD "$ttg_mb" "$ttg_umb") || ttg_rc=$?
         ttg_files=$(printf '%s\n' "$ttg_out" | sed '1d' | paste -sd ',' - | sed 's/,/, /g')
         if [ "$ttg_rc" -eq 1 ]; then
           echo "::error::Test-tamper guard: the ${intent} pass changed or skipped existing test(s) [${ttg_files:-skip added}] with no Test-Change-Justification trailer — refusing to push (#2013)"
@@ -3920,7 +3924,7 @@ If the test really is wrong, a human should make that call, or the fix should ca
 # flag_sync_stub_drift <intent> <rows> — the sync-stub guard refused the push
 # (#2185). <rows> are `path\ttemplate` lines (empty when the scan was unknown).
 # Same escalation as flag_test_tamper; the comment answers the bot suggestion as
-# declined and points at each template in petry-projects/.github.
+# declined and points at each template in combsmith/.github.
 flag_sync_stub_drift() {
   local intent="$1" rows="$2"
   _AM_NEEDS_RESTORE=0

@@ -224,7 +224,7 @@ solution-architect:hands-off label.
   calibrated in step 4. Never leave the tier implied. Escalate = no is the
   default for a change that fits an accepted ADR or drifts in a way the ADR
   already corrects.
-- **Never write a literal `@petry-projects/<role>`** anywhere in the body. Naming
+- **Never write a literal `@combsmith/<role>`** anywhere in the body. Naming
   a live persona handle in your own output is a way to self-trigger the fleet.
   Refer to roles in prose ("the dev-lead persona"), never as a handle.
 - **Advisory only.** No writes of any kind. Every `gh` call is read-only.

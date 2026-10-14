@@ -16,7 +16,7 @@ FIX_REVIEWS_SCRIPT="$SCRIPT_DIR/scripts/dev-lead-fix-reviews.sh"
 LIB_DIR="$SCRIPT_DIR/scripts/lib"
 
 setup() {
-  export BOT_USER="don-petry" PR_NUMBER=54 REPO="petry-projects/.github-private"
+  export BOT_USER="don-petry" PR_NUMBER=54 REPO="combsmith/.github-private"
   STATE="$BATS_TEST_TMPDIR/state"
   NODES="$STATE/nodes"
   mkdir -p "$NODES"

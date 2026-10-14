@@ -9,7 +9,7 @@ after you create your repo from the template:
 
 `.github/dependabot.yml` ships with the `frontend` (npm) stack by default.
 Replace it with the stack that matches your project — the canonical stacks live
-in `petry-projects/.github` under `standards/dependabot/<stack>.yml`. Available
+in `combsmith/.github` under `standards/dependabot/<stack>.yml`. Available
 stacks: `frontend` (npm), `backend-go`, `backend-python`, `backend-rust`,
 `fullstack` (npm + Go + Terraform), and `infra-terraform`.
 
@@ -28,7 +28,7 @@ If you enable the `sonarcloud` workflow, set `sonar.projectKey` /
 
 ## 4. Contributing & Commercial Support
 
-All repositories in `petry-projects` automatically inherit the organization's canonical `CONTRIBUTING.md` from `petry-projects/.github` (do not add a bespoke `CONTRIBUTING.md` unless repo-specific overrides are strictly necessary). Ensure your repository's `README.md` includes the org-standard **Commercial Support & Integration** section referencing [CombSmith LLC](https://combsmith.com) per `standards/commercial-support-standard.md`.
+All repositories in `combsmith` automatically inherit the organization's canonical `CONTRIBUTING.md` from `combsmith/.github` (do not add a bespoke `CONTRIBUTING.md` unless repo-specific overrides are strictly necessary). Ensure your repository's `README.md` includes the org-standard **Commercial Support & Integration** section referencing [CombSmith LLC](https://combsmith.com) per `standards/commercial-support-standard.md`.
 
 ---
 
@@ -38,7 +38,7 @@ Two onboarding questions are resolved here so they are not left implicit:
 
 - **Framework subtrees (`frameworks/`) are opt-in — they are not seeded by this
   template.** The agentic frameworks (`bmad-method`, `spec-kit`, `gsd`) are
-  `git subtree` development tooling maintained in `petry-projects/.github-private`;
+  `git subtree` development tooling maintained in `combsmith/.github-private`;
   a product repo does not need them on day 0. If your project uses one, add it on
   demand with `git subtree add` against its upstream — see that repo's `AGENTS.md`.
 

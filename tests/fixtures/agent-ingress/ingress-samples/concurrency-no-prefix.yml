@@ -13,6 +13,6 @@ jobs:
     concurrency:
       group: "ci-${{ github.event.check_run.head_sha }}"
       cancel-in-progress: false
-    uses: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable
+    uses: combsmith/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable
     permissions:
       checks: read
