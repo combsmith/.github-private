@@ -115,6 +115,7 @@ cat >"$JUDGE_SHIM" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 export REVIEW_ENGINE=claude
+export REVIEW_ENGINE_FORCE=1
 export CLAUDE_TRIAGE_MODEL_CHAIN="$AB_JUDGE_MODEL"
 base="$EVAL_JUDGE_CMD"
 if command -v "\$base" >/dev/null 2>&1; then
@@ -138,6 +139,7 @@ run_arm() {
   local skill="$1" model="$2" out rc=0
   if out="$(
         REVIEW_ENGINE=claude \
+        REVIEW_ENGINE_FORCE=1 \
         CLAUDE_TRIAGE_MODEL_CHAIN="$model" \
         EVAL_ENGINE_CMD="$EVAL_ENGINE_CMD" \
         EVAL_JUDGE_CMD="$JUDGE_SHIM" \

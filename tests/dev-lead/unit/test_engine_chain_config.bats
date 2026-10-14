@@ -732,3 +732,11 @@ EOS
   run _preflight
   [ "$status" -eq 1 ]
 }
+
+@test "engine.sh: REVIEW_ENGINE_FORCE pins REVIEW_ENGINE past a disabled provider (model A/B)" {
+  export AI_ENGINES="gemini"
+  run bash -c "REVIEW_ENGINE=claude; source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1; echo \$REVIEW_ENGINE"
+  [ "${lines[-1]}" = "gemini" ]
+  run bash -c "REVIEW_ENGINE=claude REVIEW_ENGINE_FORCE=1; source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1; echo \$REVIEW_ENGINE"
+  [ "${lines[-1]}" = "claude" ]
+}
