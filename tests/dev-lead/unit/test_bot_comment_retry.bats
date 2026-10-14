@@ -306,7 +306,7 @@ $(_ours '<!-- dev-lead-bot-comment-retry id=IC_cr version=2026-10-01T23:05:43Z a
 
 @test "bcr_fetch_pr_comments: a GraphQL response carrying errors fails closed" {
   gh() { printf '%s' '{"errors":[{"message":"rate limited"}],"data":{"repository":{"pullRequest":{"comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}'; }
-  run --separate-stderr bcr_fetch_pr_comments "combsmith/.github-private" 2009
+  run --separate-stderr bcr_fetch_pr_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 1 ]
   [ -z "$output" ]
   [[ "$stderr" == *"GraphQL errors"* ]]
@@ -314,7 +314,7 @@ $(_ours '<!-- dev-lead-bot-comment-retry id=IC_cr version=2026-10-01T23:05:43Z a
 
 @test "bcr_fetch_pr_comments: hasNextPage true without a cursor fails closed" {
   gh() { printf '%s' '{"data":{"repository":{"pullRequest":{"comments":{"pageInfo":{"hasNextPage":true,"endCursor":null},"nodes":[]}}}}}'; }
-  run --separate-stderr bcr_fetch_pr_comments "combsmith/.github-private" 2009
+  run --separate-stderr bcr_fetch_pr_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 1 ]
   [ -z "$output" ]
   [[ "$stderr" == *"pagination"* ]]
@@ -322,7 +322,7 @@ $(_ours '<!-- dev-lead-bot-comment-retry id=IC_cr version=2026-10-01T23:05:43Z a
 
 @test "bcr_fetch_pr_comments: a non-boolean hasNextPage fails closed" {
   gh() { printf '%s' '{"data":{"repository":{"pullRequest":{"comments":{"pageInfo":{"endCursor":null},"nodes":[]}}}}}'; }
-  run --separate-stderr bcr_fetch_pr_comments "combsmith/.github-private" 2009
+  run --separate-stderr bcr_fetch_pr_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 1 ]
   [ -z "$output" ]
   [[ "$stderr" == *"pagination"* ]]
@@ -332,7 +332,7 @@ $(_ours '<!-- dev-lead-bot-comment-retry id=IC_cr version=2026-10-01T23:05:43Z a
 # own reason, so a fetch failure is distinguishable from a parse failure.
 @test "bcr_fetch_pr_comments: a failed API call fails closed with a fetch reason" {
   gh() { return 1; }
-  run --separate-stderr bcr_fetch_pr_comments "combsmith/.github-private" 2009
+  run --separate-stderr bcr_fetch_pr_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 1 ]
   [ -z "$output" ]
   [[ "$stderr" == *"API request failed"* ]]
@@ -340,7 +340,7 @@ $(_ours '<!-- dev-lead-bot-comment-retry id=IC_cr version=2026-10-01T23:05:43Z a
 
 @test "bcr_fetch_pr_comments: an unparseable page fails closed with a parse reason" {
   gh() { printf '%s' '<html>502 Bad Gateway</html>'; }
-  run --separate-stderr bcr_fetch_pr_comments "combsmith/.github-private" 2009
+  run --separate-stderr bcr_fetch_pr_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 1 ]
   [ -z "$output" ]
   [[ "$stderr" == *"unparseable"* ]]
@@ -351,7 +351,7 @@ $(_ours '<!-- dev-lead-bot-comment-retry id=IC_cr version=2026-10-01T23:05:43Z a
 # would loop on the same page forever; it fails closed instead.
 @test "bcr_fetch_pr_comments: a repeated non-empty endCursor fails closed" {
   gh() { printf '%s' '{"data":{"repository":{"pullRequest":{"comments":{"pageInfo":{"hasNextPage":true,"endCursor":"same"},"nodes":[]}}}}}'; }
-  run --separate-stderr bcr_fetch_pr_comments "combsmith/.github-private" 2009
+  run --separate-stderr bcr_fetch_pr_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 1 ]
   [ -z "$output" ]
   [[ "$stderr" == *"did not advance"* ]]
@@ -362,10 +362,10 @@ $(_ours '<!-- dev-lead-bot-comment-retry id=IC_cr version=2026-10-01T23:05:43Z a
   export TMPDIR="$BATS_TEST_TMPDIR/tmp"
   mkdir -p "$TMPDIR"
   gh() { printf '%s' '{"data":{"repository":{"pullRequest":{"comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}'; }
-  run bcr_fetch_pr_comments "combsmith/.github-private" 2009
+  run bcr_fetch_pr_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 0 ]
   gh() { return 1; }
-  run bcr_fetch_pr_comments "combsmith/.github-private" 2009
+  run bcr_fetch_pr_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 1 ]
   [ -z "$(ls -A "$TMPDIR")" ]
 }
@@ -398,7 +398,7 @@ $(_ours '<!-- dev-lead-bot-comment-retry id=IC_cr version=2026-10-01T23:05:43Z a
     cat "$PAGES_DIR/$cursor.json"
   }
   local out_file="$BATS_TEST_TMPDIR/out.json" err_file="$BATS_TEST_TMPDIR/err.txt"
-  bcr_fetch_pr_comments "combsmith/.github-private" 1953 > "$out_file" 2> "$err_file"
+  bcr_fetch_pr_comments "petry-projects/.github-private" 1953 > "$out_file" 2> "$err_file"
   [ ! -s "$err_file" ]
   # Well over ARG_MAX, so it could never have been passed as one argument.
   [ "$(wc -c < "$out_file")" -gt "$(getconf ARG_MAX)" ]
@@ -421,7 +421,7 @@ _setup_sweep() {
   export GH_LOG="$MOCK_BIN/gh.log"
   export BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC=0
   if [ -z "${PR_JSON:-}" ]; then
-    export PR_JSON='{"state":"open","head":{"sha":"abc","ref":"dev-lead/issue-2008-x","repo":{"full_name":"combsmith/.github-private"}},"user":{"login":"don-petry"},"labels":[]}'
+    export PR_JSON='{"state":"open","head":{"sha":"abc","ref":"dev-lead/issue-2008-x","repo":{"full_name":"petry-projects/.github-private"}},"user":{"login":"don-petry"},"labels":[]}'
   fi
   cat > "$MOCK_BIN/gh" <<'GHEOF'
 #!/usr/bin/env bash
@@ -457,7 +457,7 @@ _graphql_page() {
     "$(_bot IC_cr coderabbitai 'Walkthrough body \$(rm -rf /)')" \
     "$(_bot IC_ca codeant-ai 'Nitpicks' 2026-10-01T23:08:08Z)")"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "1" ]
   # Exactly ONE dispatch per PR per scan (a second would supersede the first
@@ -488,7 +488,7 @@ _graphql_page() {
   dcg_target_pin() { echo dev-lead/v1-stable; }
   dcg_fields_read_at() { printf '%s\n' checks head_sha intent_type issue_number pr_number; }
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "0" ]
   [[ "$output" == *"::warning::"*"comment_node_id"* ]]
@@ -497,13 +497,13 @@ _graphql_page() {
 
   # Once that channel reads the field, the same scan dispatches.
   dcg_fields_read_at() { printf '%s\n' checks comment_node_id head_sha intent_type issue_number pr_number; }
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "1" ]
   [ "$(grep -c '/dispatches' "$GH_LOG")" -eq 1 ]
 }
 
 @test "sweep(#2089): a dev-lead:hands-off PR gets no retry marker and no dispatch" {
-  export PR_JSON='{"state":"open","head":{"sha":"abc","ref":"dev-lead/issue-2008-x","repo":{"full_name":"combsmith/.github-private"}},"user":{"login":"don-petry"},"labels":[{"name":"dev-lead:hands-off"}]}'
+  export PR_JSON='{"state":"open","head":{"sha":"abc","ref":"dev-lead/issue-2008-x","repo":{"full_name":"petry-projects/.github-private"}},"user":{"login":"don-petry"},"labels":[{"name":"dev-lead:hands-off"}]}'
   _setup_sweep
   # Use the REAL resume gate (the default harness stubs it to "proceed").
   # shellcheck source=/dev/null
@@ -512,7 +512,7 @@ _graphql_page() {
   export GRAPHQL_RESPONSE
   GRAPHQL_RESPONSE="$(_graphql_page "$(_bot IC_cr coderabbitai 'Walkthrough')")"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2085
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2085
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
@@ -529,7 +529,7 @@ _graphql_page() {
     "$(_ours '<!-- dev-lead:comment-disposition id=IC_cr disposition=informational -->
 ok')")"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
@@ -543,7 +543,7 @@ ok')")"
     "$(_bot IC_cr coderabbitai 'Walkthrough')" \
     "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_cr version=2026-10-01T23:05:43Z attempt=1 at=2026-10-02T00:50:00Z -->' 2026-10-02T00:50:00Z)")"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
@@ -573,7 +573,7 @@ esac
 GHEOF
   chmod +x "$MOCK_BIN/gh"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "1" ]
   [ "$(grep -c '/dispatches' "$GH_LOG")" -eq 1 ]
@@ -582,13 +582,13 @@ GHEOF
 }
 
 @test "sweep: a dev-lead/issue-* branch name alone is not ownership (author is someone else)" {
-  export PR_JSON='{"state":"open","head":{"sha":"abc","ref":"dev-lead/issue-2008-x","repo":{"full_name":"combsmith/.github-private"}},"user":{"login":"mallory"},"labels":[]}'
+  export PR_JSON='{"state":"open","head":{"sha":"abc","ref":"dev-lead/issue-2008-x","repo":{"full_name":"petry-projects/.github-private"}},"user":{"login":"mallory"},"labels":[]}'
   _setup_sweep
   export TRUSTED_BOTS="$TRUSTED"
   export GRAPHQL_RESPONSE
   GRAPHQL_RESPONSE="$(_graphql_page "$(_bot IC_cr coderabbitai 'Walkthrough')")"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
   if grep -q 'api graphql' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
@@ -601,7 +601,7 @@ GHEOF
   export GRAPHQL_RESPONSE
   GRAPHQL_RESPONSE="$(_graphql_page "$(_bot IC_cr coderabbitai 'Walkthrough')")"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
@@ -612,7 +612,7 @@ GHEOF
   export GRAPHQL_RESPONSE
   GRAPHQL_RESPONSE="$(_graphql_page "$(_bot IC_cr coderabbitai 'Walkthrough')")"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "1" ]
   listing="$(grep 'comments?per_page' "$GH_LOG" | head -1)"
   [[ "$listing" == *'.user.login'* ]]
@@ -648,10 +648,10 @@ GHEOF
   # Our marker (777) does not come back from the trusted-author listing.
   _claim_gh ""
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
-  grep -q -- '-X DELETE repos/combsmith/.github-private/issues/comments/777' "$GH_LOG"
+  grep -q -- '-X DELETE repos/petry-projects/.github-private/issues/comments/777' "$GH_LOG"
   [[ "$output" == *"does not trust"* ]]
   # The listing requires a trusted association as well as an automation login.
   grep -q 'author_association' "$GH_LOG"
@@ -664,10 +664,10 @@ GHEOF
   GRAPHQL_RESPONSE="$(_graphql_page "$(_bot IC_cr coderabbitai 'Walkthrough')")"
   _claim_gh FAIL
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
-  grep -q -- '-X DELETE repos/combsmith/.github-private/issues/comments/777' "$GH_LOG"
+  grep -q -- '-X DELETE repos/petry-projects/.github-private/issues/comments/777' "$GH_LOG"
 }
 
 @test "sweep: a marker posted with an unreadable id is never dispatched over" {
@@ -677,10 +677,10 @@ GHEOF
   GRAPHQL_RESPONSE="$(_graphql_page "$(_bot IC_cr coderabbitai 'Walkthrough')")"
   _claim_gh "777" ""
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
-  if grep -q -- '-X DELETE repos/combsmith/.github-private/issues/comments/$' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
+  if grep -q -- '-X DELETE repos/petry-projects/.github-private/issues/comments/$' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
 
 @test "dispatch helpers report a failed dispatch, and only accepted ones are counted" {
@@ -688,10 +688,10 @@ GHEOF
   source "$RETRY_SCRIPT"
   export DRY_RUN="false"
   gh() { return 1; }
-  run dispatch_reviews_retry "combsmith/.github-private" 2009 abc fix-reviews
+  run dispatch_reviews_retry "petry-projects/.github-private" 2009 abc fix-reviews
   [ "$status" -eq 1 ]
   lookup_check_run_details() { echo '{}'; }
-  run dispatch_ci_retry "combsmith/.github-private" 2009 abc "CI failure"
+  run dispatch_ci_retry "petry-projects/.github-private" 2009 abc "CI failure"
   [ "$status" -eq 1 ]
   # The rate-limit scan increments its count only inside `if dispatch_…; then`.
   ! grep -qE '^\s*dispatch_(ci|reviews)_retry ' "$RETRY_SCRIPT"
@@ -706,7 +706,7 @@ GHEOF
   export GRAPHQL_RESPONSE
   GRAPHQL_RESPONSE="$(_graphql_page "$(_bot IC_cr coderabbitai 'Walkthrough')")"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
@@ -718,7 +718,7 @@ GHEOF
   export GRAPHQL_RESPONSE
   GRAPHQL_RESPONSE="$(_graphql_page "$(_bot IC_cr coderabbitai 'Walkthrough')")"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
@@ -730,7 +730,7 @@ GHEOF
   export GRAPHQL_RESPONSE
   GRAPHQL_RESPONSE="$(_graphql_page "$(_bot IC_cr coderabbitai 'Walkthrough')")"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "1" ]
   [[ "$output" == *"would dispatch dev-lead-reviews-retry"*"fix-bot-comment"* ]]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
@@ -742,7 +742,7 @@ GHEOF
   export TRUSTED_BOTS="$TRUSTED"
   export GRAPHQL_RESPONSE='{"errors":[{"message":"boom"}]}'
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "0" ]
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
@@ -772,12 +772,12 @@ esac
 GHEOF
   chmod +x "$MOCK_BIN/gh"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "0" ]
   # It reached (and failed) the dispatch — not the concurrent-scan back-off path.
   grep -q '/dispatches' "$GH_LOG"
   [[ "$output" != *"a concurrent scan already recorded a retry"* ]]
-  grep -q -- '-X DELETE repos/combsmith/.github-private/issues/comments/777' "$GH_LOG"
+  grep -q -- '-X DELETE repos/petry-projects/.github-private/issues/comments/777' "$GH_LOG"
 }
 
 # ── AC3: pr-review acts on its own undispositioned-pr-comment verdict ─────────
@@ -818,7 +818,7 @@ GHEOF
   scan_repo_issues() { :; }
   gh() { echo '[{"number":2009,"head_sha":"abc"}]'; }
 
-  run scan_repo "combsmith/.github-private"
+  run scan_repo "petry-projects/.github-private"
   [[ "$output" != *"CALLED"* ]]
   [[ "$output" == *"dispatched 1 PR retries"* ]]
 }
@@ -830,7 +830,7 @@ GHEOF
   scan_repo_issues() { :; }
   gh() { echo '[{"number":2009,"head_sha":"abc"}]'; }
 
-  run scan_repo "combsmith/.github-private"
+  run scan_repo "petry-projects/.github-private"
   [[ "$output" == *"CALLED"* ]]
   [[ "$output" == *"dispatched 1 PR retries"* ]]
 }
@@ -844,7 +844,7 @@ GHEOF
   export BOT_COMMENT_RETRY_CLAIM_SETTLE_SEC=3
   sleep() { echo "sleep $*" >> "$GH_LOG"; }
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "1" ]
   # The wait comes after the marker POST and before the re-list.
   order="$(grep -n -e '--method POST' -e '^sleep 3' -e 'comments?per_page' "$GH_LOG" | cut -d: -f2- | cut -c1-12)"
@@ -855,7 +855,7 @@ GHEOF
   # shellcheck source=/dev/null
   source "$RETRY_SCRIPT"
   gh() { return 1; }
-  run withdraw_bot_comment_retry_marker "combsmith/.github-private" 777
+  run withdraw_bot_comment_retry_marker "petry-projects/.github-private" 777
   [ "$status" -eq 0 ]
   [[ "$output" == *"::warning::"*"777"* ]]
 }
@@ -866,7 +866,7 @@ GHEOF
   export GRAPHQL_RESPONSE
   GRAPHQL_RESPONSE="$(_graphql_page "$(_bot "IC_x' or true" coderabbitai 'Walkthrough')")"
 
-  run scan_pr_for_undispositioned_bot_comments "combsmith/.github-private" 2009
+  run scan_pr_for_undispositioned_bot_comments "petry-projects/.github-private" 2009
   [ "${lines[-1]}" = "0" ]
   if grep -q -- '--method POST' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi

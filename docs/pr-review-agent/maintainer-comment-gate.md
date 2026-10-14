@@ -1,7 +1,7 @@
 # Maintainer issue-comment gate (issues #1290, #1813, #1918, #2008)
 
-> **Redesigned in [#1813](https://github.com/combsmith/.github-private/issues/1813)
-> and [#1918](https://github.com/combsmith/.github-private/issues/1918).** The
+> **Redesigned in [#1813](https://github.com/petry-projects/.github-private/issues/1813)
+> and [#1918](https://github.com/petry-projects/.github-private/issues/1918).** The
 > original gate (#1290) judged a comment *addressed* by comparing timestamps — a push
 > at/after the comment cleared it. GitHub now always returns the head push timestamp as
 > `null`, so that model failed closed on every open PR (the #1813 outage), and a push
@@ -31,7 +31,7 @@ The same words, posted two ways, have opposite force. One is a blocking, actiona
 signal; the other was — before this gate — a diary entry. Worse, `gh pr comment` is
 the *ergonomic default*: the obvious verb an agent or human reaches for first. **The
 easy path was the silent one.** This shipped a regression to `main` (the incident in
-[#1290](https://github.com/combsmith/.github-private/issues/1290)): a maintainer
+[#1290](https://github.com/petry-projects/.github-private/issues/1290)): a maintainer
 posted a "fails open" finding as a PR comment, dev-lead never saw it, pr-review
 approved, and the PR auto-merged eight minutes later with the defect intact.
 
@@ -163,8 +163,8 @@ minimized with classifier `RESOLVED`. In practice:
 
 ### Fails closed
 
-The [#1290](https://github.com/combsmith/.github-private/issues/1290) /
-[#1813](https://github.com/combsmith/.github-private/issues/1813) acceptance
+The [#1290](https://github.com/petry-projects/.github-private/issues/1290) /
+[#1813](https://github.com/petry-projects/.github-private/issues/1813) acceptance
 criterion is that an inability to determine whether a finding was addressed must
 **not** read as "no findings" — that is exactly the bug that shipped the regression.
 So:
@@ -208,7 +208,7 @@ shared identity removes *both* of the owner's mechanically-blocking review paths
    can *resolve the maintainer's own threads*. Observed on PR #1413: four maintainer
    threads, all `resolvedBy: don-petry`, gate cleared, auto-merge enabled.
 
-This is [#860](https://github.com/combsmith/.github-private/issues/860)
+This is [#860](https://github.com/petry-projects/.github-private/issues/860)
 normative rule 2 applied to review gates: **a gate whose reset is reachable by the
 agent is not a gate** (`docs/agentic-interaction-model.md` §7 rule 2, extended in
 §12 to review/merge gates).

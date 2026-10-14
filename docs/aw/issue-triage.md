@@ -1,6 +1,6 @@
 # Issue Triage — Agentic Workflow
 
-Part of the GitHub Agentic Workflows rollout (internal discussion: [combsmith/.github-private#228](https://github.com/combsmith/.github-private/discussions/228) — requires repo access).
+Part of the GitHub Agentic Workflows rollout (internal discussion: [petry-projects/.github-private#228](https://github.com/petry-projects/.github-private/discussions/228) — requires repo access).
 
 ## What it does
 
@@ -90,8 +90,8 @@ ISSUE_NUMBER=<n> \
 ISSUE_TITLE="Login button is broken" \
 ISSUE_BODY="When I click nothing happens." \
 ISSUE_LABELS="" \
-ISSUE_URL="https://github.com/combsmith/.github-private/issues/<n>" \
-GITHUB_REPOSITORY="combsmith/.github-private" \
+ISSUE_URL="https://github.com/petry-projects/.github-private/issues/<n>" \
+GITHUB_REPOSITORY="petry-projects/.github-private" \
 bash scripts/aw.sh run issue-triage --staged
 ```
 

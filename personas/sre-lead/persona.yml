@@ -1,12 +1,12 @@
 # Persona manifest — SRE Lead (Site Reliability & Operations Advisor).
-# Worked example for standards/persona-standards.md (in combsmith/.github):
+# Worked example for standards/persona-standards.md (in petry-projects/.github):
 # the wrap-a-vendored-framework-agent, advisory-everywhere path.
 #
 # Naming: this persona is `sre-lead` — the ROLE (persona-standards.md §1.6).
 # The vendored agent it wraps carries a person-name upstream; that stays
 # upstream. We point at it only by its technical skill id (`framework.skill`).
 #
-# Validate against: combsmith/.github standards/personas/persona.schema.json
+# Validate against: petry-projects/.github standards/personas/persona.schema.json
 
 schema_version: 1
 
@@ -23,7 +23,7 @@ summary: >-
 # dedicated advisory workflow + release are added.
 status: draft
 
-owner: combsmith/org-leads
+owner: petry-projects/org-leads
 
 # --- How humans address this persona (§4.1) --------------------------------
 # An org TEAM handle, never a user account: '@sre-lead' is a real, live GitHub
@@ -35,7 +35,7 @@ owner: combsmith/org-leads
 #   privacy: closed                               (secret teams are unmentionable)
 #   notification_setting: notifications_disabled  (routes a webhook, not a page)
 address:
-  handle: combsmith/sre-lead
+  handle: petry-projects/sre-lead
 
 definition:
   layers:
@@ -46,7 +46,7 @@ definition:
       path: frameworks/bmad-bgreat-suite/src/agents/bgr-agent-morgan-sre
       framework:
         name: bmad-bgreat-suite
-        upstream_repo: combsmith/bmad-bgreat-suite
+        upstream_repo: petry-projects/bmad-bgreat-suite
         vendor_pin: ae8914e84b87    # matches frameworks/bmad-bgreat-suite/VENDOR.md
         skill: bgr-agent-morgan-sre
       # No local_overrides today. When sre-lead gains an org-specific advisory
@@ -66,7 +66,7 @@ triggers:
       events: [created]
       enabled: true
       mode: advisory
-      notes: "Direct invocation: '@combsmith/sre-lead assess reliability risk on this change'."
+      notes: "Direct invocation: '@petry-projects/sre-lead assess reliability risk on this change'."
 
     - surface: issues
       events: [labeled, commented]
@@ -104,4 +104,4 @@ evals:
 
 references:
   - "frameworks/bmad-bgreat-suite/VENDOR.md"
-  - "combsmith/.github standards/persona-standards.md"
+  - "petry-projects/.github standards/persona-standards.md"

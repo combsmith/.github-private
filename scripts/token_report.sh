@@ -15,10 +15,10 @@
 #   * main() does the network I/O: repo discovery, artifact download, extraction.
 #
 # Usage:
-#   ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN=<pat> bash scripts/token_report.sh > report.md
+#   ORG=petry-projects LOOKBACK_DAYS=7 GH_TOKEN=<pat> bash scripts/token_report.sh > report.md
 #
 # Environment:
-#   ORG            — GitHub org to scan (default: combsmith)
+#   ORG            — GitHub org to scan (default: petry-projects)
 #   LOOKBACK_DAYS  — rolling window of artifact history to include (default: 7)
 #   GH_TOKEN       — PAT with actions:read across the org (artifacts are per-repo)
 #   TOKEN_REPORT_OUT — optional path; when set, the report is written there in addition
@@ -39,7 +39,7 @@
 
 set -euo pipefail
 
-ORG="${ORG:-combsmith}"
+ORG="${ORG:-petry-projects}"
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-7}"
 
 # ---------------------------------------------------------------------------

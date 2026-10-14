@@ -42,14 +42,14 @@ teardown() {
 
 @test "wrapper: a human PR (no label, no marker) passes — guard does not apply (AC4)" {
   _install_gh_mock '[{"name":"bug"}]' "a normal human PR body"
-  PR_NUMBER=42 REPO="combsmith/.github-private" run bash "$SCRIPT"
+  PR_NUMBER=42 REPO="petry-projects/.github-private" run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   [[ "$output" == *"scope check does not apply"* ]]
 }
 
 @test "wrapper: a labelled sync PR with NO path manifest FAILS closed (#1523)" {
   _install_gh_mock '[{"name":"standards-sync"}]' "regenerate me — no declared-paths marker here"
-  PR_NUMBER=99 REPO="combsmith/.github-private" run bash "$SCRIPT"
+  PR_NUMBER=99 REPO="petry-projects/.github-private" run bash "$SCRIPT"
   [ "$status" -eq 1 ]
   [[ "$output" == *"::error::"* ]]
   [[ "$output" == *"declares no path manifest"* ]]
@@ -58,7 +58,7 @@ teardown() {
 @test "wrapper: a sync PR whose diff stays inside its declared manifest passes" {
   body=$'syncing one stub\n<!-- standards-sync:declared-paths\n.github/workflows/claude.yml\n-->\n'
   _install_gh_mock '[{"name":"standards-sync"}]' "$body" $'.github/workflows/claude.yml\n'
-  PR_NUMBER=7 REPO="combsmith/.github-private" run bash "$SCRIPT"
+  PR_NUMBER=7 REPO="petry-projects/.github-private" run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   [[ "$output" == *"within the declared sync scope"* ]]
 }
@@ -66,7 +66,7 @@ teardown() {
 @test "wrapper: a sync PR whose diff strays outside its declared manifest FAILS" {
   body=$'syncing one stub\n<!-- standards-sync:declared-paths\n.github/workflows/claude.yml\n-->\n'
   _install_gh_mock '[{"name":"standards-sync"}]' "$body" $'.github/workflows/claude.yml\npackage.json\n'
-  PR_NUMBER=8 REPO="combsmith/.github-private" run bash "$SCRIPT"
+  PR_NUMBER=8 REPO="petry-projects/.github-private" run bash "$SCRIPT"
   [ "$status" -eq 1 ]
   [[ "$output" == *"out of scope: package.json"* ]]
 }

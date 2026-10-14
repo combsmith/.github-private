@@ -38,9 +38,9 @@
 # Env:
 #   SWEEP_AGENT_REF  the channel tag the sweep's scripts/ run at; enables the gate
 #   DCG_HOST_REPO    repo hosting the dev-lead scripts and channel tags (default:
-#                    $GITHUB_REPOSITORY, else combsmith/.github-private)
+#                    $GITHUB_REPOSITORY, else petry-projects/.github-private)
 
-DCG_HOST_REPO="${DCG_HOST_REPO:-${GITHUB_REPOSITORY:-combsmith/.github-private}}"
+DCG_HOST_REPO="${DCG_HOST_REPO:-${GITHUB_REPOSITORY:-petry-projects/.github-private}}"
 # Same channel-tag shape dev-lead-retry.yml accepts for the sweep's own pin.
 DCG_CHANNEL_RE='^dev-lead/v[0-9]+-(next|ring0|ring1|stable)$'
 DCG_PARSER="scripts/dev-lead-intent.sh"

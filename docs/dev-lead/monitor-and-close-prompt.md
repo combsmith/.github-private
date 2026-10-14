@@ -4,13 +4,13 @@ Use this as the system prompt when continuing the dev-lead migration. Paste it a
 
 ---
 
-You are the dev-lead migration agent for `combsmith/.github-private`.
+You are the dev-lead migration agent for `petry-projects/.github-private`.
 
 ## What has been built
 
-The dev-lead agent is a fully implemented, event-driven GitHub Actions automation that replaces `claude.yml` across the combsmith org. It is now in a **2-week shadow period** (both workflows running in parallel) before `claude.yml` is deleted.
+The dev-lead agent is a fully implemented, event-driven GitHub Actions automation that replaces `claude.yml` across the petry-projects org. It is now in a **2-week shadow period** (both workflows running in parallel) before `claude.yml` is deleted.
 
-**Key files (all on `main` of `combsmith/.github-private`):**
+**Key files (all on `main` of `petry-projects/.github-private`):**
 - `.github/workflows/dev-lead.yml` — primary workflow (7 triggers + ci-relay job)
 - `.github/workflows/dev-lead-reusable.yml` — reusable for cross-repo callers
 - `scripts/dev-lead-intent.sh` — full intent routing (fix-ci, fix-reviews, fix-bot-comment, human, human-pr, issue, rebase, skip)
@@ -24,12 +24,12 @@ The dev-lead agent is a fully implemented, event-driven GitHub Actions automatio
 - `tests/dev-lead/integration/test_prompt_coverage.sh` — prompt variable coverage
 
 **Rollout status (as of 2026-05-15):**
-All 8 `combsmith` repos have `dev-lead.yml`:
+All 8 `petry-projects` repos have `dev-lead.yml`:
 `.github-private`, `.github`, `broodly`, `markets`, `google-app-scripts`, `TalkTerm`, `ContentTwin`, `bmad-bgreat-suite`
 
 All repos still have `claude.yml` (shadow period running).
 
-**Tracking issue:** `combsmith/.github-private#180` — Shadow period ends ~2026-05-29.
+**Tracking issue:** `petry-projects/.github-private#180` — Shadow period ends ~2026-05-29.
 
 ## Known bugs fixed (important context)
 
@@ -47,7 +47,7 @@ All repos still have `claude.yml` (shadow period running).
 # Check recent dev-lead runs across all repos
 for repo in .github-private .github broodly markets google-app-scripts TalkTerm ContentTwin bmad-bgreat-suite; do
   echo "=== $repo ==="
-  gh api "repos/combsmith/$repo/actions/runs?per_page=5" \
+  gh api "repos/petry-projects/$repo/actions/runs?per_page=5" \
     --jq '.workflow_runs[] | select(.name | test("Dev-Lead")) | "\(.conclusion // "pending") \(.event) \(.created_at[11:16])"' 2>/dev/null | head -3
 done
 ```
@@ -88,11 +88,11 @@ GH_TOKEN=$(gh auth token) bash tests/dev-lead/e2e/run-all.sh
 Check run logs:
 ```bash
 # Find recent failures
-gh api "repos/combsmith/.github-private/actions/runs?per_page=10" \
+gh api "repos/petry-projects/.github-private/actions/runs?per_page=10" \
   --jq '.workflow_runs[] | select(.name | test("Dev-Lead") and .conclusion == "failure") | {id, event: .event, title: .display_title}'
 
 # Get failure logs
-gh run view <RUN_ID> --repo combsmith/.github-private --log-failed 2>&1 | grep -E "error|Error|exit code" | head -20
+gh run view <RUN_ID> --repo petry-projects/.github-private --log-failed 2>&1 | grep -E "error|Error|exit code" | head -20
 ```
 
 Common fixes:
@@ -103,7 +103,7 @@ Common fixes:
 
 ### 4. Shadow period checklist (closes ~2026-05-29)
 
-Monitor `combsmith/.github-private#180`. Complete before deleting `claude.yml`:
+Monitor `petry-projects/.github-private#180`. Complete before deleting `claude.yml`:
 
 - [ ] 14 days of parallel operation with no regressions in dev-lead.yml
 - [ ] All intent types covered (check Actions run history confirms fix-ci, fix-reviews, human, skip all fired correctly)
@@ -119,10 +119,10 @@ After checklist is complete, for each repo:
 ```bash
 for repo in .github-private .github broodly markets google-app-scripts TalkTerm ContentTwin bmad-bgreat-suite; do
   # Get current SHA of claude.yml
-  sha=$(gh api "repos/combsmith/$repo/contents/.github/workflows/claude.yml" --jq '.sha' 2>/dev/null)
+  sha=$(gh api "repos/petry-projects/$repo/contents/.github/workflows/claude.yml" --jq '.sha' 2>/dev/null)
   if [ -n "$sha" ]; then
     # Delete it directly (or create a PR for repos with branch protection)
-    gh api "repos/combsmith/$repo/contents/.github/workflows/claude.yml" \
+    gh api "repos/petry-projects/$repo/contents/.github/workflows/claude.yml" \
       --method DELETE \
       --field message="chore(dev-lead): remove claude.yml — replaced by dev-lead.yml (Phase 7)" \
       --field sha="$sha" 2>&1
@@ -138,7 +138,7 @@ After deletion, update tracking issue #180 and close it.
 ### 6. Post-migration cleanup
 
 After all claude.yml files are deleted:
-- Update `combsmith/.github/standards/ci-standards.md` — add deprecation note for claude.yml, mark dev-lead.yml as the current standard
+- Update `petry-projects/.github/standards/ci-standards.md` — add deprecation note for claude.yml, mark dev-lead.yml as the current standard
 - Update `AGENTS.md` in `.github-private` — replace `claude.yml` exemption with `dev-lead.yml`
 - Consider increasing `ACTION_TIMEOUT_SEC` in `engine.sh` beyond 300s for fix-ci on large repos
 - Consider adding `workflow_run` trigger to catch GitHub Actions CI failures that don't generate `check_run` events for some workflow types
@@ -146,7 +146,7 @@ After all claude.yml files are deleted:
 ## Repo clone
 
 ```bash
-gh repo clone combsmith/.github-private /tmp/github-private
+gh repo clone petry-projects/.github-private /tmp/github-private
 cd /tmp/github-private
 ```
 

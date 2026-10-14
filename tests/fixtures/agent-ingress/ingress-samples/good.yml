@@ -19,7 +19,7 @@ jobs:
         && github.event.pull_request.base.ref == 'main')
       || github.event_name == 'issue_comment'
       || (github.event_name == 'issues' && github.event.label.name == 'agent-ready')
-    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable
+    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable
     with:
       agent_ref: dev-lead/v139-stable
     permissions:
@@ -27,6 +27,6 @@ jobs:
 
   pr-review-mention:
     if: github.event_name == 'pull_request' && github.event.action == 'review_requested'
-    uses: combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-next
+    uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-next
     permissions:
       pull-requests: write

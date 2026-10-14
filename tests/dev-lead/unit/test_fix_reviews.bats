@@ -22,10 +22,10 @@ setup() {
   # Default env
   export PR_NUMBER="54"
   export HEAD_SHA="ddd444eee555"
-  export REPO="combsmith/.github-private"
+  export REPO="petry-projects/.github-private"
   export REVIEW_ENGINE="claude"
   export DEV_LEAD_DRY_RUN="true"
-  export GITHUB_REPOSITORY="combsmith/.github-private"
+  export GITHUB_REPOSITORY="petry-projects/.github-private"
   export BASE_REF="main"
   export ACTOR="donpetry"
 
@@ -331,7 +331,7 @@ GHEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=rebase DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 HEAD_REF=feat REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 HEAD_REF=feat REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -384,7 +384,7 @@ GHEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=rebase DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 HEAD_REF=feat REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 HEAD_REF=feat REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -815,7 +815,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -835,7 +835,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -859,7 +859,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -880,7 +880,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -913,7 +913,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -948,7 +948,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -968,7 +968,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -1127,7 +1127,7 @@ GITEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH='$STUB_BIN_DIR:$PATH'
     bash '$FIX_REVIEWS_SCRIPT'
@@ -1154,7 +1154,7 @@ GITEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH='$STUB_BIN_DIR:$PATH'
     bash '$FIX_REVIEWS_SCRIPT'
@@ -1174,7 +1174,7 @@ GITEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='chatgpt-codex-connector[bot]' COMMENT_BODY='something'
     export PATH='$STUB_BIN_DIR:$PATH'
@@ -1245,7 +1245,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$base_sha REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$base_sha REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='chatgpt-codex-connector[bot]' COMMENT_BODY='something'
     export PATH='$STUB_BIN_DIR:$PATH'
@@ -1269,7 +1269,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     unset ACTOR TRIGGERING_REVIEWER
     export PATH='$STUB_BIN_DIR:$PATH'
@@ -1406,7 +1406,7 @@ GITEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$base_sha REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$base_sha REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='gemini-code-assist[bot]'
     export BOT_USER='donpetry-bot'
@@ -1469,7 +1469,7 @@ STUB
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='gemini-code-assist[bot]'
     export BOT_USER='donpetry-bot'
@@ -1526,7 +1526,7 @@ STUB
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='gemini-code-assist[bot]'
     export BOT_USER='donpetry-bot'
@@ -1592,7 +1592,7 @@ STUB
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='gemini-code-assist[bot]'
     export BOT_USER='donpetry-bot'
@@ -1682,7 +1682,7 @@ GITEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$base_sha REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$base_sha REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='codeant-ai[bot]'
     export BOT_USER='donpetry-bot'
@@ -1796,14 +1796,14 @@ case "\$ARGS" in
       cat "$fx/threads.json"
     fi
     ;;
-  *"repos/combsmith/.github-private/issues/2050/comments"*)
+  *"repos/petry-projects/.github-private/issues/2050/comments"*)
     if [ -n "\${DEFER_ISSUE_COMMENTS_FAIL:-}" ]; then echo '{"message":"Server Error"}'; exit 1; fi
     cat "$fx/issue-comments.json"
     ;;
-  *"repos/combsmith/.github-private/issues/2050"*)
+  *"repos/petry-projects/.github-private/issues/2050"*)
     if [ -s "$fx/issue.json" ]; then cat "$fx/issue.json"; else echo '{"message":"Not Found"}'; exit 1; fi
     ;;
-  *"repos/combsmith/.github-private/issues/9999"*) echo '{"message":"Not Found"}'; exit 1 ;;
+  *"repos/petry-projects/.github-private/issues/9999"*) echo '{"message":"Not Found"}'; exit 1 ;;
   *"check-runs"*) echo '{"check_runs":[]}' ;;
   *"statuses"*) echo '[]' ;;
   *"pulls/"*"reviews"*) echo '[]' ;;
@@ -1851,7 +1851,7 @@ GITEOF
   run timeout "${DEFER_RUN_TIMEOUT:-0}" bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=${DEFER_INTENT:-fix-reviews} DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$base_sha REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$base_sha REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='chatgpt-codex-connector[bot]' COMMENT_BODY='P2: finding'
     export BOT_USER='donpetry-bot'
@@ -1865,7 +1865,7 @@ GITEOF
   _2045_BASE_SHA="$base_sha"
 }
 
-_2045_LINK='https://github.com/combsmith/.github-private/pull/54#discussion_r2401234567'
+_2045_LINK='https://github.com/petry-projects/.github-private/pull/54#discussion_r2401234567'
 
 # Thread comments: the Codex finding, then our deferral reply carrying $1 as body.
 _2045_comments() {
@@ -2057,7 +2057,7 @@ _2045_open_issue() {
   _2045_run_case
   [ "$_HARNESS_STATUS" -eq 1 ]
   [[ "$_HARNESS_OUTPUT" == *"holding auto-merge OFF"* ]]
-  grep -q "pr merge 54 --repo combsmith/.github-private --disable-auto" "$BATS_TEST_TMPDIR/gh-calls"
+  grep -q "pr merge 54 --repo petry-projects/.github-private --disable-auto" "$BATS_TEST_TMPDIR/gh-calls"
   run grep -E "pr merge.*--auto( |$)" "$BATS_TEST_TMPDIR/gh-calls"
   [ "$status" -eq 1 ]
 }
@@ -2353,7 +2353,7 @@ GITEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$base_sha REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$base_sha REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='gemini-code-assist[bot]'
     export BOT_USER='donpetry-bot'
@@ -2410,7 +2410,7 @@ _run_claim_fix_reviews() {
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$base_sha REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$base_sha REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='gemini-code-assist[bot]'
     export BOT_USER='donpetry-bot'
@@ -2666,7 +2666,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$GATE_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$GATE_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='gemini-code-assist[bot]' BOT_USER='donpetry-bot'
     export PATH='$STUB_BIN_DIR:$PATH'
@@ -2688,7 +2688,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$GATE_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$GATE_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='gemini-code-assist[bot]' BOT_USER='donpetry-bot' COMMENT_BODY='something'
     export PATH='$STUB_BIN_DIR:$PATH'
@@ -2709,7 +2709,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$GATE_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$GATE_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='gemini-code-assist[bot]' BOT_USER='donpetry-bot'
     export PR_TITLE='Test PR' PR_DESCRIPTION='A test PR'
@@ -2744,7 +2744,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$stale_sha REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$stale_sha REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='gemini-code-assist[bot]' BOT_USER='donpetry-bot'
     export PATH='$STUB_BIN_DIR:$PATH'
@@ -2857,7 +2857,7 @@ readonly JQ_DEDUP_REVIEWS='[ [.[].[] | select(.user != null)] | group_by(.user.l
 }
 
 @test "has_reviews_rate_limited_marker: a blocked marker does not dedup a resolve-failed hold (reason-aware, #2045)" {
-  export PR_NUMBER=54 REPO="combsmith/.github-private" HEAD_SHA="ddd444eee555"
+  export PR_NUMBER=54 REPO="petry-projects/.github-private" HEAD_SHA="ddd444eee555"
   export REVIEWS_MARKER_PREFIX="<!-- dev-lead-fix-reviews pr="
   cat > "$STUB_BIN_DIR/gh" << 'GHEOF'
 #!/usr/bin/env bash
@@ -3192,7 +3192,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -3218,7 +3218,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export COMMENT_BODY='SonarQube found issues'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
@@ -3243,7 +3243,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export PR_TITLE='Test PR' PR_DESCRIPTION='A test pull request'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
@@ -3288,7 +3288,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -3342,7 +3342,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -3391,7 +3391,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -3444,7 +3444,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -3493,7 +3493,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -3546,7 +3546,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -3624,7 +3624,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -3665,7 +3665,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -3727,7 +3727,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -3786,7 +3786,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -3846,7 +3846,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -3892,7 +3892,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export COMMENT_BODY='SonarQube found issues'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
@@ -3954,7 +3954,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4001,7 +4001,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4053,7 +4053,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4110,7 +4110,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4156,7 +4156,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4200,7 +4200,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4249,7 +4249,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4300,7 +4300,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4349,7 +4349,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4410,7 +4410,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4471,7 +4471,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=422 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export COMMENT_BODY='bot feedback' ACTOR='copilot-pull-request-reviewer[bot]'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
@@ -4519,7 +4519,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4579,7 +4579,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4625,7 +4625,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4687,7 +4687,7 @@ STUB
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4733,7 +4733,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4793,7 +4793,7 @@ STUB
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4839,7 +4839,7 @@ GHEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -4900,7 +4900,7 @@ STUB
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=abc123 REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -5002,7 +5002,7 @@ GITEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH="$STUB_BIN_DIR:\$PATH"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -5037,7 +5037,7 @@ GITEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='github-copilot[bot]' COMMENT_BODY='This PR overview describes the diff.'
     export PATH="$STUB_BIN_DIR:\$PATH"
@@ -5069,7 +5069,7 @@ GITEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH="$STUB_BIN_DIR:\$PATH"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -5101,7 +5101,7 @@ GITEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH="$STUB_BIN_DIR:\$PATH"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -5163,7 +5163,7 @@ GITEOF
 _residue_run_fix_bot_comment() {
   run bash -c "
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='github-copilot[bot]' COMMENT_BODY='template-drift is failing.'
     export PATH="$STUB_BIN_DIR:\$PATH"
@@ -5378,7 +5378,7 @@ GITEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$EV_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$EV_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead' ACTOR=humanreviewer
     export PATH="$STUB_BIN_DIR:\$PATH"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -5401,7 +5401,7 @@ GITEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$EV_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$EV_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead' ACTOR=humanreviewer
     export PATH="$STUB_BIN_DIR:\$PATH"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -5424,7 +5424,7 @@ GITEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$EV_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$EV_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead' ACTOR=humanreviewer
     export PATH="$STUB_BIN_DIR:\$PATH"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -5449,7 +5449,7 @@ GITEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$EV_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$EV_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead' ACTOR=humanreviewer
     export PATH="$STUB_BIN_DIR:\$PATH"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -5475,7 +5475,7 @@ GITEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$EV_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$EV_HEAD_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead' ACTOR=humanreviewer
     export PATH="$STUB_BIN_DIR:\$PATH"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -5484,7 +5484,7 @@ GITEOF
   [ "$status" -eq 0 ]
   # A needs-human label was applied (REST labels API, #2142) and an escalation
   # comment posted.
-  grep -q "api -X POST repos/combsmith/.github-private/issues/54/labels" "$comment_file"
+  grep -q "api -X POST repos/petry-projects/.github-private/issues/54/labels" "$comment_file"
   grep -q "labels\[\]=needs-human-review" "$comment_file"
   grep -qi "not converging" "$comment_file"
   # Auto-merge is disabled and never re-enabled on the escalation path.
@@ -5514,7 +5514,7 @@ GITEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=review-changes DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA REPO='petry-projects/.github-private'
     export ACTOR='humanreviewer'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
@@ -5573,7 +5573,7 @@ GITEOF
   cd "$git_repo"
   run bash -c "
     export INTENT_TYPE=rebase DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA HEAD_REF=feat REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$NOOP_HEAD_SHA HEAD_REF=feat REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
     bash '$FIX_REVIEWS_SCRIPT'
@@ -5673,7 +5673,7 @@ GHEOF
   export DEV_LEAD_DRY_RUN="false"
   export PR_NUMBER="54"
   export HEAD_SHA="abc123"
-  export REPO="combsmith/.github-private"
+  export REPO="petry-projects/.github-private"
   export REVIEW_ENGINE="claude"
   export BASE_REF="main"
   export PROMPTS_DIR="$SCRIPT_DIR/prompts/dev-lead"
@@ -5912,7 +5912,7 @@ _resolved_bot_comment() {
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=true PASS_STARTED_AT=2026-10-02T21:00:00Z
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export COMMENT_BODY='Walkthrough' COMMENT_NODE_ID='IC_kwDOabc123'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
@@ -5935,7 +5935,7 @@ _resolved_bot_comment() {
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export COMMENT_BODY='Walkthrough' COMMENT_NODE_ID='IC_kwDOabc123'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
@@ -5953,7 +5953,7 @@ _resolved_bot_comment() {
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export COMMENT_BODY='Walkthrough' COMMENT_NODE_ID='IC_kwDOabc123' COMMENT_VERSION='2026-10-01T23:40:00Z'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
@@ -5971,7 +5971,7 @@ _resolved_bot_comment() {
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export COMMENT_BODY='Walkthrough' COMMENT_NODE_ID='IC_kwDOabc123' COMMENT_VERSION='2026-10-01 --> x'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
@@ -6029,7 +6029,7 @@ _resolved_bot_comment() {
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-bot-comment DEV_LEAD_DRY_RUN=true
-    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=ddd444eee555 REPO='petry-projects/.github-private'
     export COMMENT_BODY='Walkthrough' COMMENT_NODE_ID='IC x --> injected'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export PATH=\"$STUB_BIN_DIR:\$PATH\"
@@ -6113,7 +6113,7 @@ _target_state() {
 }
 
 # ── #2013: claims must be produced by THIS pass and must have landed ─────────
-# On combsmith/.github#1220 dev-lead posted "Fixed in …" replies whose claim
+# On petry-projects/.github#1220 dev-lead posted "Fixed in …" replies whose claim
 # named the PR's FIRST commit (the pre-pass head the model read before it had
 # committed anything). The thread gate accepted it — the commit was on head and
 # <sha>^..HEAD touched the file — and a failed/aborted push left the reply
@@ -6235,7 +6235,7 @@ _run_2013() {
   run bash -c "
     cd '$T2013_DIR'
     export INTENT_TYPE=\${1:-fix-reviews} DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=$T2013_BASE REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$T2013_BASE REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='coderabbitai[bot]' COMMENT_BODY='finding'
     export BOT_USER='donpetry-bot'
@@ -6306,7 +6306,7 @@ _run_2013() {
   _run_2013 fix-reviews
 
   [ ! -s "$T2013_PUSH" ]
-  grep -qF "api -X POST repos/combsmith/.github-private/issues/54/labels" "$BATS_TEST_TMPDIR/label_posts"
+  grep -qF "api -X POST repos/petry-projects/.github-private/issues/54/labels" "$BATS_TEST_TMPDIR/label_posts"
   grep -qF "labels[]=needs-human-review" "$BATS_TEST_TMPDIR/label_posts"
   [[ "$output" != *"PR_EDIT:"*"--add-label"* ]]
   [[ "$output" != *"could not be held"* ]]
@@ -6400,7 +6400,7 @@ _run_2013() {
 # Criterion 2: `review-changes` (and human-pr, which runs as review-changes) gets the
 # same claim-landing and test-tamper protection as fix-reviews. Criterion 3: a pass
 # that breaks a test that passed on the pre-pass head is never pushed (the 15a919e
-# shape from combsmith/.github#1220: new test added, existing test broken,
+# shape from petry-projects/.github#1220: new test added, existing test broken,
 # existing test file untouched).
 
 @test "#2013: review-changes — a claim citing the commit THIS pass produced is kept and its thread resolves" {
@@ -6692,7 +6692,7 @@ GITEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=$intent DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=1953 HEAD_SHA=abc REPO='combsmith/.github-private'
+    export PR_NUMBER=1953 HEAD_SHA=abc REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='chatgpt-codex-connector[bot]'
     export PATH='$STUB_BIN_DIR:$PATH'
@@ -6849,7 +6849,7 @@ _run_2004() {
   run bash -c "
     cd '$T2004_REPO'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 HEAD_SHA=\$(git rev-parse HEAD) REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=\$(git rev-parse HEAD) REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export BOT_USER=donpetry-bot MINLOG='$MINLOG' POSTLOG='$POSTLOG' NODES_FILE='$NODES_FILE'
     unset COPILOT_GITHUB_TOKEN
@@ -6986,7 +6986,7 @@ case "\$*" in
 esac
 GHEOF
   chmod +x "$STUB_BIN_DIR/gh"
-  run env REPO=combsmith/.github-private PR_NUMBER=54 BOT_USER=donpetry-bot PATH="$STUB_BIN_DIR:$PATH" bash "$snip"
+  run env REPO=petry-projects/.github-private PR_NUMBER=54 BOT_USER=donpetry-bot PATH="$STUB_BIN_DIR:$PATH" bash "$snip"
 }
 
 _fbc_reply() {  # $1=disposition-tail $2=createdAt
@@ -7124,7 +7124,7 @@ GITEOF
   run bash -c "
     cd '$tmpdir'
     export INTENT_TYPE=fix-reviews DEV_LEAD_DRY_RUN=false NC_MODE='$mode'
-    export PR_NUMBER=54 HEAD_SHA=$NC_BASE_SHA REPO='combsmith/.github-private'
+    export PR_NUMBER=54 HEAD_SHA=$NC_BASE_SHA REPO='petry-projects/.github-private'
     export REVIEW_ENGINE=claude BASE_REF=main PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='gemini-code-assist[bot]'
     export BOT_USER='don-petry'

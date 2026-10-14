@@ -25,7 +25,7 @@
 #   A ref that genuinely can't be resolved SOFT-PASSES with a logged `::warning::`
 #   — never silently. Exception: a same-repo ref for an ingress job that declares a
 #   concurrency group FAILS closed, since the collision rule could not be checked. Cross-repo refs (reusables hosted in another repo, e.g.
-#   combsmith/.github) are treated as unresolved here unless
+#   petry-projects/.github) are treated as unresolved here unless
 #   VCI_RESOLVE_CROSS_REPO=1 opts in; the warning keeps the skip visible.
 #
 # USAGE
@@ -38,7 +38,7 @@
 #
 # ENV
 #   VCI_ROOT             Repo root to scan (default: the repo containing this script).
-#   VCI_SELF_REPO        This repo's <owner>/<repo> slug (default combsmith/.github-private).
+#   VCI_SELF_REPO        This repo's <owner>/<repo> slug (default petry-projects/.github-private).
 #   VCI_RESOLVE_DIR      Test hook: resolve any ref to <dir>/<wf-basename> instead of via git.
 #   VCI_RESOLVE_CROSS_REPO  Set to 1 to attempt anonymous git fetch of cross-repo reusables.
 
@@ -319,7 +319,7 @@ vci_check_concurrency_collision() {
 # could not be resolved (caller then soft-passes with a warning).
 vci_resolve_reusable() {
   local repo_slug="$1" wf_path="$2" ref="$3" out="$4"
-  local self="${VCI_SELF_REPO:-combsmith/.github-private}"
+  local self="${VCI_SELF_REPO:-petry-projects/.github-private}"
 
   if [ -n "${VCI_RESOLVE_DIR:-}" ]; then
     local base
@@ -396,7 +396,7 @@ vci_scan_repo() {
         warned=$((warned + 1))
         # Fail closed only for a same-repo ref, which must be resolvable; cross-repo
         # reusables stay soft-pass (see header) since they are never fetched by default.
-        if [ -n "$group" ] && [ "$repo_slug" = "${VCI_SELF_REPO:-combsmith/.github-private}" ]; then
+        if [ -n "$group" ] && [ "$repo_slug" = "${VCI_SELF_REPO:-petry-projects/.github-private}" ]; then
           echo "::error::caller-inputs: ingress job '${job}' declares a concurrency group but ${repo_slug}/${wf_path}@${ref} could not be resolved — the ADR-0010 collision rule cannot be checked"
           rc=1
         fi
