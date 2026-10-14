@@ -4,7 +4,7 @@
 # file per the §8.2 location decision (option b). Story 2 / #1404.
 #
 # qa-lead is an advisory persona served on two surfaces:
-#   1. Mention-routed: a human @petry-projects/qa-lead mention is parsed by the
+#   1. Mention-routed: a human @combsmith/qa-lead mention is parsed by the
 #      shared router .github/workflows/persona-mention.yml and bridged
 #      (repository_dispatch:persona-mention) to persona-runner.
 #   2. Event-driven PR advisory (#1646 — [qa-lead S3]): served by BOTH
@@ -34,7 +34,7 @@
 # (pull_request_review, issues, discussion, check_run) are `enabled: false` there,
 # kept with notes as intended-future surfaces. The contract records what is
 # actually deployed, not the aspiration (persona-standards finding 10 /
-# petry-projects/.github#755); the validator's surface-liveness invariant (#1647)
+# combsmith/.github#755); the validator's surface-liveness invariant (#1647)
 # now makes the two files unable to silently diverge again.
 schema_version: 1
 role: qa-lead

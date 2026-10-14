@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Agent Ingress — petry-projects/markets (ADR-0007, epic #1723, story #1729)
+# Agent Ingress — combsmith/markets (ADR-0007, epic #1723, story #1729)
 #
 # ONE ingress for this repo's eligible Class-1 event-driven agentic roles. The
 # on: block is the UNION of the collapsed roles' triggers; each job below is ONE
@@ -68,7 +68,7 @@ jobs:
       || github.event_name == 'check_run'
       || (github.event_name == 'repository_dispatch'
           && contains(fromJSON('["dev-lead-ci-failure","dev-lead-reviews-retry","dev-lead-issue-retry"]'), github.event.action))
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     with:
       agent_ref: dev-lead/v139-stable
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable
@@ -106,7 +106,7 @@ jobs:
       pull-requests: read
       checks: read
       actions: read
-    uses: petry-projects/.github/.github/workflows/pr-auto-review-reusable.yml@pr-auto-review/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/pr-auto-review-reusable.yml@pr-auto-review/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets:
       GH_PAT_WORKFLOWS: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
 
@@ -142,7 +142,7 @@ jobs:
       contents: read
       pull-requests: write
       checks: read
-    uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/stable  # NOSONAR(githubactions:S7637) first-party channel ref  # DEFECTIVE PIN — see §5
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/stable  # NOSONAR(githubactions:S7637) first-party channel ref  # DEFECTIVE PIN — see §5
     with:
       agent_ref: pr-review/stable
       pr_url: ${{ inputs.pr_url || '' }}
@@ -161,7 +161,7 @@ jobs:
       && github.event.sender.type != 'Bot'
     permissions:
       pull-requests: write
-    uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable
 
   # ── ci-failure-analyst ─────────────────────────────────────────────────────────
@@ -179,6 +179,6 @@ jobs:
       actions: read
       contents: read
       checks: read
-    uses: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@b58510275dd1cbbd13c0733c15265d51fd63b992  # DEFECTIVE PIN — bare SHA, see §5
+    uses: combsmith/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@b58510275dd1cbbd13c0733c15265d51fd63b992  # DEFECTIVE PIN — bare SHA, see §5
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

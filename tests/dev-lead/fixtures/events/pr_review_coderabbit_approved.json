@@ -19,18 +19,18 @@
       "sha": "03b4349fda588edd13a7a78b823d9a7a9973f5e2",
       "ref": "dev-lead/issue-46-20260508-1409",
       "repo": {
-        "full_name": "petry-projects/.github-private"
+        "full_name": "combsmith/.github-private"
       }
     },
     "base": {
       "ref": "main",
       "repo": {
-        "full_name": "petry-projects/.github-private"
+        "full_name": "combsmith/.github-private"
       }
     }
   },
   "repository": {
-    "full_name": "petry-projects/.github-private"
+    "full_name": "combsmith/.github-private"
   },
   "sender": {
     "login": "coderabbitai[bot]",

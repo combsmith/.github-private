@@ -116,7 +116,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "apply-plan (DRY_RUN) creates epic + stories + edges and posts comment" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -127,7 +127,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "apply-plan threads distinct issue numbers in dry-run" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     bash "$PLANNER_DIR/apply-plan.sh"
   # 4 distinct synthetic issue numbers (epic + 3 stories), not all the same
@@ -136,7 +136,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "apply-plan NEVER applies initiative:auto to any created issue" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     bash "$PLANNER_DIR/apply-plan.sh"
   created_labels="$(grep '"op":"create_issue"' "$LOG" | jq -r '.labels[]')"
@@ -144,7 +144,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "apply-plan marks hands_off story with hold + hands-off labels" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     bash "$PLANNER_DIR/apply-plan.sh"
   grep '"op":"create_issue"' "$LOG" | grep -q 'dev-lead:hands-off'
@@ -152,7 +152,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "existing-issue prerequisite edge references the real issue number" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     bash "$PLANNER_DIR/apply-plan.sh"
   grep '"op":"add_blocked_by"' "$LOG" | grep -q '"blocked_by":195'
@@ -160,7 +160,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "apply-plan gates on a blocking open question: creates zero issues and exits 0" {
   jq '.open_questions = [{"question":"Confirm scope X before planning","blocking":true}]' "$PLAN" >"$TMP/blocking.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/blocking.json" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -171,7 +171,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "apply-plan blocking gate posts the open questions back to the discussion" {
   jq '.open_questions = [{"question":"Confirm scope X before planning","blocking":true}]' "$PLAN" >"$TMP/blocking.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/blocking.json" \
     bash "$PLANNER_DIR/apply-plan.sh"
   grep -q '"op":"comment_on_discussion"' "$LOG"
@@ -183,7 +183,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "apply-plan does NOT gate on a non-blocking open question" {
   jq '.open_questions = [{"question":"Nice to confirm pricing later","blocking":false}]' "$PLAN" >"$TMP/nonblock.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/nonblock.json" \
     bash "$PLANNER_DIR/apply-plan.sh"
   [ "$(grep -c '"op":"create_issue"' "$LOG")" -eq 4 ]
@@ -193,7 +193,7 @@ teardown() { rm -rf "$TMP"; }
   # DRY_RUN_EXISTING_EPIC simulates find_existing_epic finding a prior epic
   # offline (the idempotency guard); no issues must be created.
   DRY_RUN=1 DRY_RUN_LOG="$LOG" DRY_RUN_EXISTING_EPIC=777 \
-    REPO="petry-projects/.github-private" \
+    REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -205,7 +205,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "apply-plan still creates the full DAG when no existing epic is found" {
   # No DRY_RUN_EXISTING_EPIC => find_existing_epic returns empty => normal path.
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -214,7 +214,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "epic body carries the Untracked prerequisites checklist when the array is present" {
   jq '.epic.untracked_prerequisites = ["Resolve the data-retention discussion", "Provision the staging cluster"]' "$PLAN" >"$TMP/prereqs.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/prereqs.json" \
     bash "$PLANNER_DIR/apply-plan.sh"
   epic_body="$(grep '"op":"create_issue"' "$LOG" | jq -r 'select(.title|startswith("Initiative:")) | .body')"
@@ -225,7 +225,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "Untracked prerequisites section appears before the idempotency footer in the epic body" {
   jq '.epic.untracked_prerequisites = ["Resolve the data-retention discussion"]' "$PLAN" >"$TMP/prereqs_order.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/prereqs_order.json" \
     bash "$PLANNER_DIR/apply-plan.sh"
   epic_body="$(grep '"op":"create_issue"' "$LOG" | jq -r 'select(.title|startswith("Initiative:")) | .body')"
@@ -237,7 +237,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "epic body omits the Untracked prerequisites section when the array is absent" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     bash "$PLANNER_DIR/apply-plan.sh"
   epic_body="$(grep '"op":"create_issue"' "$LOG" | jq -r 'select(.title|startswith("Initiative:")) | .body')"
@@ -245,7 +245,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "story bodies are rendered in the BMAD create-story template" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     bash "$PLANNER_DIR/apply-plan.sh"
   # the rendered Phase-1 story body carries the canonical BMAD sections
@@ -261,7 +261,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "idempotency skip posts an 'already planned' discussion comment with a force_replan hint" {
   DRY_RUN_EXISTING_EPIC=727 \
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -276,7 +276,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "force_replan supersedes: creates the new plan AND closes the old epic + sub-issues" {
   DRY_RUN_EXISTING_EPIC=727 DRY_RUN_EXISTING_SUBISSUES="728 729 730" FORCE_REPLAN=1 \
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -292,7 +292,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "force_replan with no existing epic just plans normally (nothing to supersede)" {
   FORCE_REPLAN=1 \
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -361,7 +361,7 @@ EOF
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
   grep -qF -- "api repos/acme/widgets/issues" "$GH_LOG"
-  ! grep -qF -- "repos/petry-projects/.github-private/issues" "$GH_LOG"
+  ! grep -qF -- "repos/combsmith/.github-private/issues" "$GH_LOG"
 }
 
 # ── reviewed-plan apply path (#604) ───────────────────────────────────────────
@@ -369,7 +369,7 @@ EOF
 # is validated then handed straight to apply-plan.sh — no LLM planning step runs.
 
 @test "apply-reviewed-plan validates then applies the supplied plan (DRY_RUN)" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -eq 0 ]
@@ -381,7 +381,7 @@ EOF
 
 @test "apply-reviewed-plan rejects an invalid supplied plan before applying anything" {
   jq '.stories[1].blocked_by = [3] | .stories[2].blocked_by = [2]' "$PLAN" >"$TMP/cycle.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/cycle.json" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -ne 0 ]
@@ -390,7 +390,7 @@ EOF
 }
 
 @test "apply-reviewed-plan errors on a missing supplied plan file" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/does-not-exist.json" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -ne 0 ]
@@ -398,7 +398,7 @@ EOF
 }
 
 @test "apply-reviewed-plan errors when PLAN_PATH is a directory, not a regular file" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -ne 0 ]
@@ -408,7 +408,7 @@ EOF
 
 @test "apply-reviewed-plan honors the blocking open-questions gate from apply-plan" {
   jq '.open_questions = [{"question":"Confirm scope X before planning","blocking":true}]' "$PLAN" >"$TMP/blocking.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/blocking.json" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -eq 0 ]
@@ -417,7 +417,7 @@ EOF
 
 @test "apply-reviewed-plan rejects a plan whose source_discussion mismatches DISCUSSION_NUMBER" {
   # plan.json carries source_discussion:413; dispatcher says 999 — must abort before creating anything.
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=999 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -ne 0 ]
@@ -428,7 +428,7 @@ EOF
 }
 
 @test "apply-reviewed-plan passes when source_discussion matches DISCUSSION_NUMBER" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -eq 0 ]
@@ -439,7 +439,7 @@ EOF
   # Reviewed plans must have an explicit source_discussion — they are applied
   # out-of-band and must be self-contained about their origin.
   jq 'del(.source_discussion)' "$PLAN" >"$TMP/no_src.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=999 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/no_src.json" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -ne 0 ]

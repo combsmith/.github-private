@@ -1,6 +1,6 @@
 # QA Lead — Master Test Architect & Quality Advisor
 
-Worked example for the [Agentic Persona Standard](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).
+Worked example for the [Agentic Persona Standard](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
 `qa-lead` is the reference for the **wrap-a-vendored-framework-agent,
 advisory-everywhere** path.
 
@@ -19,8 +19,8 @@ This manifest makes it a first-class, addressable persona.
 ## Why `qa-lead` and not the upstream agent's name
 
 The vendored agent has a person-name upstream. We do not use it. A persona is
-named for its **role** ([§1.6](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md)):
-`@petry-projects/qa-lead` tells a reader in a PR comment who is being addressed
+named for its **role** ([§1.6](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md)):
+`@combsmith/qa-lead` tells a reader in a PR comment who is being addressed
 and why; the upstream cast list does not. It also means swapping the agent
 underneath — or replacing it with a first-party layer — never changes how this
 persona is addressed. Upstream is referenced only by its technical skill id
@@ -29,15 +29,15 @@ persona is addressed. Upstream is referenced only by its technical skill id
 ## How it is addressed
 
 ```text
-@petry-projects/qa-lead please assess test risk on this PR
+@combsmith/qa-lead please assess test risk on this PR
 ```
 
-The handle is the org **team** `petry-projects/qa-lead`, not a user account —
+The handle is the org **team** `combsmith/qa-lead`, not a user account —
 `@qa-lead` is a real GitHub account owned by an unrelated person, so a bare
 role mention would notify a stranger on every use. The team is `privacy: closed`
 with `notification_setting: notifications_disabled`: it exists to route a
 webhook, not to page anyone. See
-[§4.1](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).
+[§4.1](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
 
 ## Served surface: pull_request advisory (event-driven)
 
@@ -104,8 +104,8 @@ Nothing about serving `qa-lead` is persona-specific — it rides the **one share
 router → one shared runner** path §4.1 mandates, and its only persona-owned
 runtime surface is a prompt:
 
-1. A human `@petry-projects/qa-lead …` comment is parsed by the **one shared
-   mention router** — `persona-mention-reusable.yml` in `petry-projects/.github`,
+1. A human `@combsmith/qa-lead …` comment is parsed by the **one shared
+   mention router** — `persona-mention-reusable.yml` in `combsmith/.github`,
    pinned here through the thin caller stub
    [`.github/workflows/persona-mention.yml`](../../.github/workflows/persona-mention.yml).
    There is deliberately **no qa-lead workflow**: one stub per persona is the
