@@ -102,7 +102,7 @@ Same taxonomy as `prompts/deep-review.md` / shared.md:
 **Trusted first-party stub / standards-sync carve-out** (from `prompts/deep-review.md`
 / shared.md, applies at this tier too): a workflow-only, bot-authored/standards-sync
 caller-stub PR that merely *forwards* `secrets: inherit` (or a `secrets:`/`with:`/`env:`
-map) to a pinned `petry-projects/*` reusable — with no secret piped into a `run:` step
+map) to a pinned `combsmith/*` reusable — with no secret piped into a `run:` step
 and no third-party reusable added, or a `SAFETY_CHECKS` block reporting
 `TRUSTED_STUB_SYNC: true` — is **not** HIGH on the "secrets"/"GitHub Actions"/"standards
 violation" grounds, and its missing linked issue / terse description do not fail the

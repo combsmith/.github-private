@@ -127,7 +127,7 @@ export COPILOT_API_MODEL
 # so the tiers can never silently exceed the job backstop. Raising a tier here
 # requires lowering another or raising the job cap, or the guardrail fails CI.
 #
-# Fleet note: petry-projects/.github leaves `vars.DEEP_TIMEOUT_SEC` (and
+# Fleet note: combsmith/.github leaves `vars.DEEP_TIMEOUT_SEC` (and
 # ACTION_TIMEOUT_SEC) UNSET, so the workflow passes an empty value through and
 # these engine defaults take effect. The raised DEEP default (was 600, now 2400)
 # therefore applies fleet-wide unless a repo overrides it via its own `vars`.

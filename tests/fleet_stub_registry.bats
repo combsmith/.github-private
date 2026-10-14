@@ -2,14 +2,14 @@
 # Tests for the collapsed-role STUB_REGISTRY rows (#1729 AC11(b)) and the AC4
 # no-resurrection proof.
 #
-# The five petry-projects/markets roles that collapsed into agent-ingress.yml
+# The five combsmith/markets roles that collapsed into agent-ingress.yml
 # (markets#513) are registered in BOTH scripts/fleet_monitor.sh and
 # scripts/fleet_stub_remediate.sh. These tests drive the real fleet_monitor.sh
 # and fleet_stub_remediate.sh drivers against a `gh` shim that serves files from
 # a fixture tree, so no live API call is made. Run:
 #   bats tests/fleet_stub_registry.bats
 #
-# tests/fixtures/agent-ingress/markets-agent-ingress.yml is petry-projects/markets
+# tests/fixtures/agent-ingress/markets-agent-ingress.yml is combsmith/markets
 # .github/workflows/agent-ingress.yml verbatim at 5fe86cbc (the merged collapse).
 
 MONITOR="${BATS_TEST_DIRNAME}/../scripts/fleet_monitor.sh"
@@ -28,7 +28,7 @@ setup() {
   # an absent file answers HTTP 404, exactly like the contents API.
   FAKE_ROOT="${WORK}/root"; export FAKE_ROOT
   CALLS="${WORK}/calls.log"; export CALLS
-  ORG="petry-projects"; export ORG
+  ORG="combsmith"; export ORG
   STUB_BIN="${WORK}/bin"
   mkdir -p "$FAKE_ROOT" "$STUB_BIN"
   export PATH="$STUB_BIN:$PATH"
@@ -102,13 +102,13 @@ drop_job() {
 }
 
 # publish_canonicals — the canonical ingress (the markets file) plus the three
-# per-role legacy canonicals petry-projects/.github publishes.
+# per-role legacy canonicals combsmith/.github publishes.
 publish_canonicals() {
-  put_file "petry-projects/.github" "$INGRESS_CANON" < "$MARKETS_INGRESS"
+  put_file "combsmith/.github" "$INGRESS_CANON" < "$MARKETS_INGRESS"
   local r
   for r in dev-lead pr-auto-review pr-review-mention; do
     printf 'name: %s canonical legacy stub\n' "$r" \
-      | put_file "petry-projects/.github" "standards/workflows/${r}.yml"
+      | put_file "combsmith/.github" "standards/workflows/${r}.yml"
   done
 }
 
@@ -175,14 +175,14 @@ registry_rows() {
 # ---------------------------------------------------------------------------
 
 @test "fleet_monitor: a 404 canonical agent-ingress skips every role row with a warning and stays green" {
-  put_file "petry-projects/markets" "$INGRESS_STUB" < "$MARKETS_INGRESS"
-  printf 'name: legacy\n' | put_file "petry-projects/legacy" ".github/workflows/dev-lead.yml"
+  put_file "combsmith/markets" "$INGRESS_STUB" < "$MARKETS_INGRESS"
+  printf 'name: legacy\n' | put_file "combsmith/legacy" ".github/workflows/dev-lead.yml"
 
-  run_monitor petry-projects/legacy petry-projects/markets
+  run_monitor combsmith/legacy combsmith/markets
   [ "$status" -eq 0 ]
   local role label
   for role in "${ROLES[@]}"; do
-    [[ "$output" == *"::warning::Canonical agent-ingress not found (petry-projects/.github/${INGRESS_CANON}) — skipping ${role} (${role}) stub drift detection."* ]]
+    [[ "$output" == *"::warning::Canonical agent-ingress not found (combsmith/.github/${INGRESS_CANON}) — skipping ${role} (${role}) stub drift detection."* ]]
   done
   [[ "$output" == *"=== Fleet monitor complete ==="* ]]
 
@@ -191,7 +191,7 @@ registry_rows() {
   for label in Dev-lead Pr-auto-review Pr-review Pr-review-mention Ci-failure-analyst; do
     [ -z "$(role_counts "$label")" ]
   done
-  run grep -E "repos/petry-projects/(markets|legacy)/contents/" "$CALLS"
+  run grep -E "repos/combsmith/(markets|legacy)/contents/" "$CALLS"
   [ "$status" -eq 1 ]
 }
 
@@ -204,9 +204,9 @@ registry_rows() {
   publish_canonicals
   # Same job blocks, different header comment: the comparison is per block.
   sed '2s/.*/# Agent Ingress (repo-local header)/' "$MARKETS_INGRESS" \
-    | put_file "petry-projects/markets" "$INGRESS_STUB"
+    | put_file "combsmith/markets" "$INGRESS_STUB"
 
-  run_monitor petry-projects/markets
+  run_monitor combsmith/markets
   [ "$status" -eq 0 ]
   local label
   for label in Dev-lead Pr-auto-review Pr-review Pr-review-mention Ci-failure-analyst; do
@@ -219,31 +219,31 @@ registry_rows() {
   publish_canonicals
   # Collapsed without pr-review; stale standalone files are still on disk and
   # differ from their legacy canonicals, so reading them would show DRIFTED.
-  drop_job pr-review < "$MARKETS_INGRESS" | put_file "petry-projects/markets" "$INGRESS_STUB"
-  printf 'name: stale\n' | put_file "petry-projects/markets" ".github/workflows/pr-review.yml"
-  printf 'name: stale\n' | put_file "petry-projects/markets" ".github/workflows/dev-lead.yml"
+  drop_job pr-review < "$MARKETS_INGRESS" | put_file "combsmith/markets" "$INGRESS_STUB"
+  printf 'name: stale\n' | put_file "combsmith/markets" ".github/workflows/pr-review.yml"
+  printf 'name: stale\n' | put_file "combsmith/markets" ".github/workflows/dev-lead.yml"
 
-  run_monitor petry-projects/markets
+  run_monitor combsmith/markets
   [ "$status" -eq 0 ]
   [ "$(role_counts Pr-review)" = "$(counts_line 0 0 1)" ]
   [ "$(role_counts Dev-lead)" = "$(counts_line 1 0 0)" ]
   [ "$(jq -c . "${WORK}/fleet_stub_drift.json")" = "[]" ]
   local role
   for role in "${ROLES[@]}"; do
-    run grep -F "repos/petry-projects/markets/contents/.github/workflows/${role}.yml" "$CALLS"
+    run grep -F "repos/combsmith/markets/contents/.github/workflows/${role}.yml" "$CALLS"
     [ "$status" -eq 1 ]
   done
 }
 
 @test "AC4(b): remediation of a collapsed repo never creates or restores .github/workflows/<role>.yml" {
   publish_canonicals
-  drop_job pr-review < "$MARKETS_INGRESS" | put_file "petry-projects/markets" "$INGRESS_STUB"
+  drop_job pr-review < "$MARKETS_INGRESS" | put_file "combsmith/markets" "$INGRESS_STUB"
   # Every role reported DRIFTED, including pr-review, whose block was removed.
   drift_json="${WORK}/drift.json"
   local role
   for role in "${ROLES[@]}"; do
     jq -n --arg r "$role" --arg sf "$INGRESS_STUB" \
-      '{repo: "petry-projects/markets", status: "DRIFTED", repo_sha: "1", canonical_sha: "2",
+      '{repo: "combsmith/markets", status: "DRIFTED", repo_sha: "1", canonical_sha: "2",
         stub: $r, stub_file: $sf, role: $r}'
   done | jq -s . > "$drift_json"
 
@@ -254,7 +254,7 @@ registry_rows() {
   [ "$(printf '%s' "$plan" | jq -r '[.[].stub_file] | unique | join(",")')" = "$INGRESS_STUB" ]
 
   # A live run: the four present blocks already match canon; pr-review is refused.
-  run env DRY_RUN=false REMEDIATE_PILOT_REPO=petry-projects/markets bash "$REMEDIATE" "$drift_json"
+  run env DRY_RUN=false REMEDIATE_PILOT_REPO=combsmith/markets bash "$REMEDIATE" "$drift_json"
   [[ "$output" == *"has no 'pr-review' job block — refusing to recreate a removed stub"* ]]
   for role in "${ROLES[@]}"; do
     run grep -F "contents/.github/workflows/${role}.yml" "$CALLS"
@@ -271,18 +271,18 @@ registry_rows() {
 
 @test "AC4(c): a repo without agent-ingress.yml still classifies from its legacy <role>.yml" {
   publish_canonicals
-  put_file "petry-projects/legacy" ".github/workflows/dev-lead.yml" \
-    < "${FAKE_ROOT}/petry-projects/.github/standards/workflows/dev-lead.yml"
-  printf 'name: drifted\n' | put_file "petry-projects/legacy" ".github/workflows/pr-auto-review.yml"
+  put_file "combsmith/legacy" ".github/workflows/dev-lead.yml" \
+    < "${FAKE_ROOT}/combsmith/.github/standards/workflows/dev-lead.yml"
+  printf 'name: drifted\n' | put_file "combsmith/legacy" ".github/workflows/pr-auto-review.yml"
   # No published legacy canonical for pr-review: cannot be compared, so MISSING.
-  printf 'name: anything\n' | put_file "petry-projects/legacy" ".github/workflows/pr-review.yml"
+  printf 'name: anything\n' | put_file "combsmith/legacy" ".github/workflows/pr-review.yml"
 
-  run_monitor petry-projects/legacy
+  run_monitor combsmith/legacy
   [ "$status" -eq 0 ]
   [ "$(role_counts Dev-lead)" = "$(counts_line 1 0 0)" ]
   [ "$(role_counts Pr-auto-review)" = "$(counts_line 0 1 0)" ]
   [ "$(role_counts Pr-review)" = "$(counts_line 0 0 1)" ]
   [ "$(role_counts Pr-review-mention)" = "$(counts_line 0 0 1)" ]
   [ "$(role_counts Ci-failure-analyst)" = "$(counts_line 0 0 1)" ]
-  grep -qF "repos/petry-projects/legacy/contents/.github/workflows/dev-lead.yml" "$CALLS"
+  grep -qF "repos/combsmith/legacy/contents/.github/workflows/dev-lead.yml" "$CALLS"
 }

@@ -104,7 +104,7 @@ _run_retry_pass() {
     cd '$AGENT'
     unset HEAD_SHA
     export INTENT_TYPE=fix-bot-comment INTENT_REASON=bot-comment-retry-dispatch DEV_LEAD_DRY_RUN=false
-    export PR_NUMBER=54 REPO='petry-projects/.github-private' GITHUB_REPOSITORY='petry-projects/.github-private'
+    export PR_NUMBER=54 REPO='combsmith/.github-private' GITHUB_REPOSITORY='combsmith/.github-private'
     export REVIEW_ENGINE=claude PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export ACTOR='coderabbitai[bot]' COMMENT_BODY='walkthrough summary' COMMENT_NODE_ID='IC_kwDOtest2211'
     export PATH='$STUB_BIN_DIR:$PATH'

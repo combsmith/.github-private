@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/lib/test-tamper-guard.sh (#2013).
 #
-# On petry-projects/.github#1220 a cubic finding said, literally, "update the
+# On combsmith/.github#1220 a cubic finding said, literally, "update the
 # older test to assert failure precedence so the Bats suite can pass", and
 # dev-lead rewrote an existing test (#1023 "success precedence …") to match its
 # own change — inverting deliberate behavior. "Don't edit tests to make them pass"

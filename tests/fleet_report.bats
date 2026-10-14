@@ -51,27 +51,27 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "confidence filter: CRITICAL with fewer than 5 runs → LOW-CONF" {
-  local row="0	petry-projects/x	wf.yml	2	0	2	0	100%	5	6	CRITICAL	100"
+  local row="0	combsmith/x	wf.yml	2	0	2	0	100%	5	6	CRITICAL	100"
   run bash -c "source '${BATS_TEST_DIRNAME}/../scripts/fleet_report.sh' && printf '%s\n' '$row' | apply_confidence_filter"
   [[ "$output" =~ "LOW-CONF" ]]
 }
 
 @test "confidence filter: CRITICAL with 5 or more runs is unchanged" {
-  local row="0	petry-projects/x	ci.yml	23	3	20	0	87%	67	206	CRITICAL	87"
+  local row="0	combsmith/x	ci.yml	23	3	20	0	87%	67	206	CRITICAL	87"
   run bash -c "source '${BATS_TEST_DIRNAME}/../scripts/fleet_report.sh' && printf '%s\n' '$row' | apply_confidence_filter"
   [[ "$output" =~ "CRITICAL" ]]
   [[ ! "$output" =~ "LOW-CONF" ]]
 }
 
 @test "confidence filter: non-CRITICAL statuses are never changed" {
-  local row="2	petry-projects/x	wf.yml	2	2	0	0	0%	5	6	WARNING	0"
+  local row="2	combsmith/x	wf.yml	2	2	0	0	0%	5	6	WARNING	0"
   run bash -c "source '${BATS_TEST_DIRNAME}/../scripts/fleet_report.sh' && printf '%s\n' '$row' | apply_confidence_filter"
   [[ "$output" =~ "WARNING" ]]
   [[ ! "$output" =~ "LOW-CONF" ]]
 }
 
 @test "confidence filter: LOW-CONF rows get sort_key 5 (sorted last)" {
-  local row="0	petry-projects/x	wf.yml	2	0	2	0	100%	5	6	CRITICAL	100"
+  local row="0	combsmith/x	wf.yml	2	0	2	0	100%	5	6	CRITICAL	100"
   run bash -c "source '${BATS_TEST_DIRNAME}/../scripts/fleet_report.sh' && printf '%s\n' '$row' | apply_confidence_filter"
   [[ "${output:0:1}" == "5" ]]
 }
@@ -96,8 +96,8 @@ setup() {
   local tmpfile
   tmpfile=$(mktemp)
   printf '%s\n' \
-    "0	petry-projects/a	wf.yml	10	0	10	0	100%	1	2	CRITICAL	100" \
-    "0	petry-projects/b	wf.yml	10	0	10	0	100%	1	2	CRITICAL	100" \
+    "0	combsmith/a	wf.yml	10	0	10	0	100%	1	2	CRITICAL	100" \
+    "0	combsmith/b	wf.yml	10	0	10	0	100%	1	2	CRITICAL	100" \
     > "$tmpfile"
   run detect_systemic_failures "$tmpfile"
   [ -z "$output" ]
@@ -297,7 +297,7 @@ _mk_metrics() {
 @test "filter_high_failure: gate workflow over 10% is excluded from tracking" {
   local m
   m="$(_mk_metrics \
-    $'2\tpetry-projects/.github-private\t.github/workflows/test-deletion-guard.yml\t18\t16\t2\t0\t11.1%\t11\t82\tWARNING\t11')"
+    $'2\tcombsmith/.github-private\t.github/workflows/test-deletion-guard.yml\t18\t16\t2\t0\t11.1%\t11\t82\tWARNING\t11')"
   run filter_high_failure "$m"
   [ "$status" -eq 0 ]
   [ "$(echo "$output" | jq 'length')" -eq 0 ]
@@ -307,7 +307,7 @@ _mk_metrics() {
 @test "filter_high_failure: gate matched by bare basename is excluded" {
   local m
   m="$(_mk_metrics \
-    $'2\tpetry-projects/.github-private\ttest-deletion-guard.yml\t18\t16\t2\t0\t11.1%\t11\t82\tWARNING\t11')"
+    $'2\tcombsmith/.github-private\ttest-deletion-guard.yml\t18\t16\t2\t0\t11.1%\t11\t82\tWARNING\t11')"
   run filter_high_failure "$m"
   [ "$status" -eq 0 ]
   [ "$(echo "$output" | jq 'length')" -eq 0 ]
@@ -317,7 +317,7 @@ _mk_metrics() {
 @test "filter_high_failure: non-gate workflow over 10% is still tracked" {
   local m
   m="$(_mk_metrics \
-    $'0\tpetry-projects/.github-private\tci.yml\t23\t3\t20\t0\t87.0%\t67\t206\tCRITICAL\t87')"
+    $'0\tcombsmith/.github-private\tci.yml\t23\t3\t20\t0\t87.0%\t67\t206\tCRITICAL\t87')"
   run filter_high_failure "$m"
   [ "$status" -eq 0 ]
   [ "$(echo "$output" | jq 'length')" -eq 1 ]
@@ -328,7 +328,7 @@ _mk_metrics() {
 @test "filter_high_failure: ERROR row for a gate workflow is still surfaced" {
   local m
   m="$(_mk_metrics \
-    $'6\tpetry-projects/.github-private\t.github/workflows/test-deletion-guard.yml\t?\t\t\t\terror\t0\t0\tERROR\t0')"
+    $'6\tcombsmith/.github-private\t.github/workflows/test-deletion-guard.yml\t?\t\t\t\terror\t0\t0\tERROR\t0')"
   run filter_high_failure "$m"
   [ "$status" -eq 0 ]
   [ "$(echo "$output" | jq 'length')" -eq 1 ]
@@ -339,7 +339,7 @@ _mk_metrics() {
 @test "filter_high_failure: CRITICAL with under 5 runs is dropped as LOW-CONF" {
   local m
   m="$(_mk_metrics \
-    $'0\tpetry-projects/.github-private\tflaky.yml\t3\t0\t3\t0\t100%\t5\t5\tCRITICAL\t100')"
+    $'0\tcombsmith/.github-private\tflaky.yml\t3\t0\t3\t0\t100%\t5\t5\tCRITICAL\t100')"
   run filter_high_failure "$m"
   [ "$status" -eq 0 ]
   [ "$(echo "$output" | jq 'length')" -eq 0 ]
@@ -349,9 +349,9 @@ _mk_metrics() {
 @test "filter_high_failure: mixed rows keep only the tracked non-gate workflow" {
   local m
   m="$(_mk_metrics \
-    $'0\tpetry-projects/.github-private\tci.yml\t23\t3\t20\t0\t87.0%\t67\t206\tCRITICAL\t87' \
-    $'2\tpetry-projects/.github-private\t.github/workflows/test-deletion-guard.yml\t18\t16\t2\t0\t11.1%\t11\t82\tWARNING\t11' \
-    $'3\tpetry-projects/.github-private\thealthy.yml\t50\t50\t0\t0\t0%\t10\t20\tHEALTHY\t0')"
+    $'0\tcombsmith/.github-private\tci.yml\t23\t3\t20\t0\t87.0%\t67\t206\tCRITICAL\t87' \
+    $'2\tcombsmith/.github-private\t.github/workflows/test-deletion-guard.yml\t18\t16\t2\t0\t11.1%\t11\t82\tWARNING\t11' \
+    $'3\tcombsmith/.github-private\thealthy.yml\t50\t50\t0\t0\t0%\t10\t20\tHEALTHY\t0')"
   run filter_high_failure "$m"
   [ "$status" -eq 0 ]
   [ "$(echo "$output" | jq 'length')" -eq 1 ]
@@ -417,13 +417,13 @@ _mk_metrics() {
   f="$(mktemp "$BATS_TEST_TMPDIR/fr.XXXXXX")"
   # timeouts 2+1=3; total runs 60+40=100 → prevalence 3/100 = 3%
   printf '%s\n' \
-    $'petry-projects/a\t2\t1\t4\t60' \
-    $'petry-projects/b\t1\t1\t3\t40' \
+    $'combsmith/a\t2\t1\t4\t60' \
+    $'combsmith/b\t1\t1\t3\t40' \
     > "$f"
   run generate_dev_lead_timeout_report "$f" 100
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "petry-projects/a" ]]
-  [[ "$output" =~ "petry-projects/b" ]]
+  [[ "$output" =~ "combsmith/a" ]]
+  [[ "$output" =~ "combsmith/b" ]]
   # Fleet totals: timeout 3, engine-error 2, markers 7 (composition breakdown retained)
   [[ "$output" =~ "Fleet total" ]]
   [[ "$output" =~ "reason=timeout" ]]
@@ -442,7 +442,7 @@ _mk_metrics() {
   # dev-lead runs total — repo b had 90 all-success runs (no markers, absent from
   # the file). Prevalence MUST be 2/100 = 2%, not 2/10 = 20% (the marker-repo-only
   # denominator bug). The passed-in fleet total is the denominator.
-  printf '%s\n' $'petry-projects/a\t2\t0\t2\t10' > "$f"
+  printf '%s\n' $'combsmith/a\t2\t0\t2\t10' > "$f"
   run generate_dev_lead_timeout_report "$f" 100
   [ "$status" -eq 0 ]
   [[ "$output" =~ "2 / 100" ]]
@@ -454,7 +454,7 @@ _mk_metrics() {
   local f
   f="$(mktemp "$BATS_TEST_TMPDIR/fr.XXXXXX")"
   # K=3 timeouts over N=8 total runs → 37.5%
-  printf '%s\n' $'petry-projects/a	3	0	3	8' > "$f"
+  printf '%s\n' $'combsmith/a	3	0	3	8' > "$f"
   run generate_dev_lead_timeout_report "$f" 8
   [ "$status" -eq 0 ]
   [[ "$output" =~ "37.5%" ]]
@@ -466,7 +466,7 @@ _mk_metrics() {
   local f
   f="$(mktemp "$BATS_TEST_TMPDIR/fr.XXXXXX")"
   # 1 timeout over 2 total runs → 50%
-  printf '%s\n' $'petry-projects/a	1	1	2	2' > "$f"
+  printf '%s\n' $'combsmith/a	1	1	2	2' > "$f"
   run generate_dev_lead_timeout_report "$f" 2
   [[ "$output" =~ "50%" ]]
   [[ ! "$output" =~ "50.0%" ]]
@@ -476,7 +476,7 @@ _mk_metrics() {
 @test "dev-lead timeout report: zero total runs yields n/a (no divide-by-zero)" {
   local f
   f="$(mktemp "$BATS_TEST_TMPDIR/fr.XXXXXX")"
-  printf '%s\n' $'petry-projects/a	1	0	1	0' > "$f"
+  printf '%s\n' $'combsmith/a	1	0	1	0' > "$f"
   run generate_dev_lead_timeout_report "$f" 0
   [ "$status" -eq 0 ]
   [[ "$output" =~ "n/a" ]]
@@ -487,7 +487,7 @@ _mk_metrics() {
   local f
   f="$(mktemp "$BATS_TEST_TMPDIR/fr.XXXXXX")"
   # 5th column is the ERROR sentinel '?' — must not crash or divide-by-zero
-  printf '%s\n' $'petry-projects/a	1	0	1	?' > "$f"
+  printf '%s\n' $'combsmith/a	1	0	1	?' > "$f"
   run generate_dev_lead_timeout_report "$f" '?'
   [ "$status" -eq 0 ]
   [[ "$output" =~ "n/a" ]]
@@ -688,8 +688,8 @@ _mk_metrics() {
   local f
   f="$(mktemp "$BATS_TEST_TMPDIR/sr.XXXXXX")"
   printf '%s\n' \
-    $'petry-projects/broodly\tnightly.yml\t24\t0\t0%\t24\tSTALLED' \
-    $'petry-projects/.github\tdaily.yml\t1\t1\t100%\t0\tSTABLE' \
+    $'combsmith/broodly\tnightly.yml\t24\t0\t0%\t24\tSTALLED' \
+    $'combsmith/.github\tdaily.yml\t1\t1\t100%\t0\tSTABLE' \
     > "$f"
   run generate_schedule_reliability_report "$f"
   [ "$status" -eq 0 ]
@@ -707,8 +707,8 @@ _mk_metrics() {
   local f
   f="$(mktemp "$BATS_TEST_TMPDIR/sr.XXXXXX")"
   printf '%s\n' \
-    $'petry-projects/a\tstable.yml\t1\t1\t100%\t0\tSTABLE' \
-    $'petry-projects/b\tstalled.yml\t24\t0\t0%\t24\tSTALLED' \
+    $'combsmith/a\tstable.yml\t1\t1\t100%\t0\tSTABLE' \
+    $'combsmith/b\tstalled.yml\t24\t0\t0%\t24\tSTALLED' \
     > "$f"
   run generate_schedule_reliability_report "$f"
   local stalled_line stable_line
@@ -780,7 +780,7 @@ YAML
 
 @test "persona_optout_row: repo with the full family is COMPLETE (no missing)" {
   local exp; exp="$(printf 'a:hands-off\nb:hands-off\nc:hands-off')"
-  run persona_optout_row "petry-projects/x" "$exp" "$exp"
+  run persona_optout_row "combsmith/x" "$exp" "$exp"
   [ "$status" -eq 0 ]
   IFS=$'\t' read -r repo status present total missing <<< "$output"
   [ "$status" = "COMPLETE" ]
@@ -793,7 +793,7 @@ YAML
   local exp act
   exp="$(printf 'a:hands-off\nb:hands-off\nc:hands-off')"
   act="$(printf 'a:hands-off')"
-  run persona_optout_row "petry-projects/x" "$exp" "$act"
+  run persona_optout_row "combsmith/x" "$exp" "$act"
   [ "$status" -eq 0 ]
   IFS=$'\t' read -r repo st present total missing <<< "$output"
   [ "$st" = "INCOMPLETE" ]
@@ -805,7 +805,7 @@ YAML
 
 @test "persona_optout_row: repo carrying none of the family is INCOMPLETE (missing all)" {
   local exp; exp="$(printf 'a:hands-off\nb:hands-off')"
-  run persona_optout_row "petry-projects/x" "$exp" ""
+  run persona_optout_row "combsmith/x" "$exp" ""
   [ "$status" -eq 0 ]
   IFS=$'\t' read -r repo st present total missing <<< "$output"
   [ "$st" = "INCOMPLETE" ]
@@ -816,7 +816,7 @@ YAML
   local exp act
   exp="$(printf 'a:hands-off\nb:hands-off')"
   act="$(printf 'a:hands-off\nb:hands-off\nbug\nenhancement')"
-  run persona_optout_row "petry-projects/x" "$exp" "$act"
+  run persona_optout_row "combsmith/x" "$exp" "$act"
   IFS=$'\t' read -r repo st present total missing <<< "$output"
   [ "$st" = "COMPLETE" ]
   [ -z "$missing" ]
@@ -825,8 +825,8 @@ YAML
 @test "generate_persona_optout_report: lists INCOMPLETE repos with the missing label named" {
   local f; f="$(mktemp "$BATS_TEST_TMPDIR/po.XXXXXX")"
   printf '%s\n' \
-    $'petry-projects/.github-private\tCOMPLETE\t9\t9\t' \
-    $'petry-projects/TalkTerm\tINCOMPLETE\t1\t9\tqa-lead:hands-off,sre-lead:hands-off' \
+    $'combsmith/.github-private\tCOMPLETE\t9\t9\t' \
+    $'combsmith/TalkTerm\tINCOMPLETE\t1\t9\tqa-lead:hands-off,sre-lead:hands-off' \
     > "$f"
   run generate_persona_optout_report "$f" 9
   [ "$status" -eq 0 ]
@@ -835,13 +835,13 @@ YAML
   [[ "$output" =~ "TalkTerm" ]]
   [[ "$output" =~ "qa-lead:hands-off" ]]
   # A COMPLETE repo is not in the drift table.
-  ! [[ "$output" =~ "\`petry-projects/.github-private\`" ]]
+  ! [[ "$output" =~ "\`combsmith/.github-private\`" ]]
 }
 
 @test "generate_persona_optout_report: all-COMPLETE reports a clean state" {
   local f; f="$(mktemp "$BATS_TEST_TMPDIR/po.XXXXXX")"
   printf '%s\n' \
-    $'petry-projects/.github-private\tCOMPLETE\t9\t9\t' \
+    $'combsmith/.github-private\tCOMPLETE\t9\t9\t' \
     > "$f"
   run generate_persona_optout_report "$f" 9
   [ "$status" -eq 0 ]
@@ -862,13 +862,13 @@ YAML
 @test "persona_optout_alert_json: emits only INCOMPLETE repos with their missing labels" {
   local f; f="$(mktemp "$BATS_TEST_TMPDIR/po.XXXXXX")"
   printf '%s\n' \
-    $'petry-projects/.github-private\tCOMPLETE\t9\t9\t' \
-    $'petry-projects/TalkTerm\tINCOMPLETE\t1\t9\tqa-lead:hands-off,sre-lead:hands-off' \
+    $'combsmith/.github-private\tCOMPLETE\t9\t9\t' \
+    $'combsmith/TalkTerm\tINCOMPLETE\t1\t9\tqa-lead:hands-off,sre-lead:hands-off' \
     > "$f"
   run persona_optout_alert_json "$f"
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq 'length')" -eq 1 ]
-  [ "$(printf '%s' "$output" | jq -r '.[0].repo')" = "petry-projects/TalkTerm" ]
+  [ "$(printf '%s' "$output" | jq -r '.[0].repo')" = "combsmith/TalkTerm" ]
   [ "$(printf '%s' "$output" | jq -r '.[0].missing | length')" -eq 2 ]
   [ "$(printf '%s' "$output" | jq -r '.[0].missing[0]')" = "qa-lead:hands-off" ]
 }
