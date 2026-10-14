@@ -1,7 +1,7 @@
-# Agent-ingress collapse package — `petry-projects/markets` (pilot, ADR-0007 Phase 3)
+# Agent-ingress collapse package — `combsmith/markets` (pilot, ADR-0007 Phase 3)
 
 > **What this document is.** A reviewable *collapse package* for the pilot repo
-> `petry-projects/markets`, produced by dev-lead in `.github-private` under
+> `combsmith/markets`, produced by dev-lead in `.github-private` under
 > issue #1729. It is **not** the markets pull request and cannot be — a
 > `.github-private` agent has no write path into `markets`. Everything here is
 > built by *reading* markets' live stubs (`gh api …/contents/.github/workflows`),
@@ -171,7 +171,7 @@ reconstructs that role's original subscription.
 
 ```yaml
 # ─────────────────────────────────────────────────────────────────────────────
-# Agent Ingress — petry-projects/markets (ADR-0007, epic #1723, story #1729)
+# Agent Ingress — combsmith/markets (ADR-0007, epic #1723, story #1729)
 #
 # ONE ingress for this repo's eligible Class-1 event-driven agentic roles. The
 # on: block is the UNION of the collapsed roles' triggers; each job below is ONE
@@ -240,7 +240,7 @@ jobs:
       || github.event_name == 'check_run'
       || (github.event_name == 'repository_dispatch'
           && contains(fromJSON('["dev-lead-ci-failure","dev-lead-reviews-retry","dev-lead-issue-retry"]'), github.event.action))
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     with:
       agent_ref: dev-lead/v139-stable
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable
@@ -278,7 +278,7 @@ jobs:
       pull-requests: read
       checks: read
       actions: read
-    uses: petry-projects/.github/.github/workflows/pr-auto-review-reusable.yml@pr-auto-review/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/pr-auto-review-reusable.yml@pr-auto-review/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets:
       GH_PAT_WORKFLOWS: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
 
@@ -314,7 +314,7 @@ jobs:
       contents: read
       pull-requests: write
       checks: read
-    uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     with:
       agent_ref: pr-review/v1-stable
       pr_url: ${{ inputs.pr_url || '' }}
@@ -333,7 +333,7 @@ jobs:
       && github.event.sender.type != 'Bot'
     permissions:
       pull-requests: write
-    uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable
 
   # ── ci-failure-analyst ─────────────────────────────────────────────────────────
@@ -351,7 +351,7 @@ jobs:
       actions: read
       contents: read
       checks: read
-    uses: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 ```
@@ -549,7 +549,7 @@ been resolved: §5a by markets#521 and §5b by markets#523.
   `workflow_call.inputs` that §3 forwards (`agent_ref`/`pr_url`/`dry_run`/
   `force_review`), so there is no channel skew, and the §4a collision result
   is unchanged. `pr-review` has run on the new pin:
-  https://github.com/petry-projects/markets/actions/runs/38055494293/job/114222972939.
+  https://github.com/combsmith/markets/actions/runs/38055494293/job/114222972939.
   The history below is kept as the record of the defect.
 
 - **Defect:** every other first-party pin rides a `<name>/v<MAJOR>-<tier>`
@@ -623,7 +623,7 @@ Reusable internal job names, read on 2026-09-29:
 | ci-failure-analyst | `analyze` (ci-failure-analyst-reusable.yml) | `analyze / analyze` | `ci-failure-analyst / analyze` |
 
 > **KEY FINDING — no required-status-check edit is coupled to this merge.**
-> markets' branch ruleset (`GET /repos/petry-projects/markets/rules/branches/main`,
+> markets' branch ruleset (`GET /repos/combsmith/markets/rules/branches/main`,
 > read 2026-09-29) requires exactly:
 >
 > ```
@@ -671,7 +671,7 @@ event-filtered, no-runner skips.
 - `agent-ingress.yml` had 382 runs. Each of the five deleted stubs had 0.
 - A job counts as **runner-assigned** when `runner_name` is non-empty. Runner
   minutes are per job, each rounded up to a whole minute. This measures runner
-  usage, not billing: `petry-projects/markets` is a public repository, and
+  usage, not billing: `combsmith/markets` is a public repository, and
   public-repository Actions jobs accrue no billable minutes. Read the figures
   below as a proxy for runner load.
 - Job sample: 1340 of the 1342 baseline runs (§1a; 2 returned no jobs), and all
@@ -709,7 +709,7 @@ so `workflow_run`/`check_suite` traffic may differ. They show the filter
 working, not a measured saving attributable to the collapse.
 
 Source: the #1729 finalization comment
-(https://github.com/petry-projects/.github-private/issues/1729#issuecomment-6159791868).
+(https://github.com/combsmith/.github-private/issues/1729#issuecomment-6159791868).
 
 ---
 
@@ -817,9 +817,9 @@ $'ci-failure-analyst\tCI-Failure-Analyst\t.github/workflows/agent-ingress.yml\t<
 
 The canonical, per-repo-parameterized `agent-ingress.yml` template that markets'
 copy must byte-match lives in the canonical stub repo
-(`CANONICAL_STUB_REPO`, default `petry-projects/.github`). **Publishing it was a
+(`CANONICAL_STUB_REPO`, default `combsmith/.github`). **Publishing it was a
 write to another repo and could not be done from `.github-private`; it has since
-been published (petry-projects/.github#1316, `452ea69`, §11).** The §3 content
+been published (combsmith/.github#1316, `452ea69`, §11).** The §3 content
 is the pilot instance; the generalized template (repo-agnostic pins, the
 role-superset `on:` union, adopter notes) is authored in the canonical repo by
 its owner.
@@ -845,11 +845,11 @@ the snapshots are refreshed.
 
 ---
 
-## 10. Companion issue for `petry-projects/markets` (filed as markets#506)
+## 10. Companion issue for `combsmith/markets` (filed as markets#506)
 
 `.github-private` dev-lead cannot open the markets PR, and this package cannot
 file cross-repo either from here. The companion-issue body below is the committed
-artifact; it has been **filed in `petry-projects/markets` as markets#506**, and
+artifact; it has been **filed in `combsmith/markets` as markets#506**, and
 the markets PR it drove is markets#513 (§11).
 
 ```markdown
@@ -897,7 +897,7 @@ docs/initiatives/agent-ingress-collapse-markets.md
 | --- | --- | --- |
 | markets PR (add ingress + delete 5 stubs) | **Done — markets#513** | Authored by markets' dev-lead, driven by §10. |
 | Companion issue filed in markets | **Filed — markets#506** | Body as committed in §10. |
-| Canonical `agent-ingress.yml` template published | **Published — petry-projects/.github#1316 (`452ea69`)** | Outside `DEPLOYABLE_WORKFLOWS` (§9b). |
+| Canonical `agent-ingress.yml` template published | **Published — combsmith/.github#1316 (`452ea69`)** | Outside `DEPLOYABLE_WORKFLOWS` (§9b). |
 | `STUB_REGISTRY` rows activated in fleet_monitor.sh | **Applied — #2182** | ALIGNED run observed: Fleet Monitor run 38193525415 (§9a/§9c). |
 | §4 job-level concurrency schema ruling | **Ratified — ADR-0010, accepted** | ADR-0010 admits bounded job-level `concurrency:`. §3 was re-rendered to the bounds (#2038), and §4b states the non-PR-event behavior change. |
 | pin corrections (§5a/§5b) | **§5a resolved by markets#521; §5b resolved by markets#523** | Behavior-preserving collapse must not change pins; separate follow-ups. |

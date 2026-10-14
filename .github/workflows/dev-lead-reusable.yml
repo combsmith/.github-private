@@ -9,11 +9,11 @@ on:
         required: false
         default: ""
       agent_ref:
-        # Ref of petry-projects/.github-private to check out for the dev-lead
+        # Ref of combsmith/.github-private to check out for the dev-lead
         # scripts. A trigger-stub caller passes its pinned channel (dev-lead/stable)
         # so the agent runs at the pinned version, not main — the self-host pin
         # (#535/#506). Defaults to "main" → unchanged behaviour.
-        description: "Ref of petry-projects/.github-private to check out for dev-lead scripts"
+        description: "Ref of combsmith/.github-private to check out for dev-lead scripts"
         type: string
         required: false
         default: "main"
@@ -36,8 +36,8 @@ on:
         # callers that haven't set the new secret yet still authenticate. Remove once
         # GH_PAT_DON_PETRY is confirmed everywhere.
         # Required for cross-repo callers: the default github.token cannot read
-        # petry-projects/.github-private from another repo. Callers must pass a
-        # PAT that has read access to petry-projects/.github-private.
+        # combsmith/.github-private from another repo. Callers must pass a
+        # PAT that has read access to combsmith/.github-private.
         required: false
       GOOGLE_API_KEY:
         required: false
@@ -58,7 +58,7 @@ permissions: {}
 # and can no longer drift into — their own concurrency group. Separate per-issue
 # and per-PR lanes ensure issue pickups are NEVER cancelled by unrelated PR
 # follow-up traffic (reviews, comments, ci-relay) — the root cause of issue
-# pickups being cancelled before they could open a PR. See petry-projects/.github#402.
+# pickups being cancelled before they could open a PR. See combsmith/.github#402.
 #
 # Routing (first match wins):
 #   check_run                        -> dev-lead-ci-relay-<sha>  (per-SHA relay lane)
@@ -250,7 +250,7 @@ jobs:
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: petry-projects/.github-private
+          repository: combsmith/.github-private
           # Pinned channel (e.g. dev-lead/stable) when a trigger stub passes it;
           # defaults to "main" → unchanged behaviour (#535/#506).
           ref: ${{ inputs.agent_ref }}
@@ -791,7 +791,7 @@ jobs:
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: petry-projects/.github-private
+          repository: combsmith/.github-private
           ref: ${{ inputs.agent_ref }}
           path: .dev-lead
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
@@ -842,7 +842,7 @@ jobs:
   # ── ci-relay ──────────────────────────────────────────────────────────────────
   # Handles check_run completed failure events. No LLM — resolves PR number and
   # fires repository_dispatch dev-lead-ci-failure back to the calling repo.
-  # `template-drift` is never relayed (#2220): it checks petry-projects/repo-template,
+  # `template-drift` is never relayed (#2220): it checks combsmith/repo-template,
   # is not required, and nothing in a PR can clear it — "fixing" it led passes to
   # repin their own dev-lead.yml. Keep in sync with FIX_CI_IGNORED_CHECKS in
   # scripts/dev-lead-fix-ci.sh.
@@ -1010,7 +1010,7 @@ jobs:
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: petry-projects/.github-private
+          repository: combsmith/.github-private
           # Pinned channel (e.g. dev-lead/stable) when a trigger stub passes it;
           # defaults to "main" → unchanged behaviour (#535/#506).
           ref: ${{ inputs.agent_ref }}

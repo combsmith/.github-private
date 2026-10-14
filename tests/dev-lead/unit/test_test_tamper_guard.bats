@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/lib/test-tamper-guard.sh (#2013).
 #
-# On petry-projects/.github#1220 a cubic finding said, literally, "update the
+# On combsmith/.github#1220 a cubic finding said, literally, "update the
 # older test to assert failure precedence so the Bats suite can pass", and
 # dev-lead rewrote an existing test (#1023 "success precedence …") to match its
 # own change — inverting deliberate behavior. "Don't edit tests to make them pass"
@@ -399,4 +399,132 @@ _mk_remote() {
   run ttg_scan_pass "$BASE" HEAD "$MB"
   [[ "$status" -eq 1 ]]
   [[ "$(printf '%s' "$output" | head -1)" == "tampered" ]]
+}
+
+# ---------------------------------------------------------------------------
+# Base-side changes a rebase or merge brings in are not the pass's (#2254)
+#
+# On PR #2252 a review-changes pass rebased onto main to clear a stale-base
+# failure. main had changed tests/test_persona_pr_pregate.bats after the branch
+# point, so the pre-pass head..result diff showed those lines as removed, and the
+# guard refused the push and held the PR. With the UPDATED merge base (the pass
+# result's merge base with the base branch) the guard compares the result against
+# what a plain rebase would give, so only the pass's own edits count.
+# ---------------------------------------------------------------------------
+
+# _mk_moved_base [main_cmd]: on top of _mk_pr, the base branch moves on: by default
+# it rewrites an assertion of tests/canary.bats that exists at the merge base.
+# NEW_MAIN is the moved base tip; the PR branch (feat) is left checked out at BASE.
+_mk_moved_base() {
+  _mk_pr
+  git checkout -q --detach "$MB"
+  eval "${1:-sed -i 's/= success/= SUCCESS/' tests/canary.bats}"
+  git add -A; git commit -q -m "main: moves on"
+  NEW_MAIN="$(git rev-parse HEAD)"
+  git checkout -q feat
+}
+
+# _rebase_pass: the pass rebases the PR branch onto the moved base.
+_rebase_pass() {
+  git rebase -q "$NEW_MAIN"
+  UMB="$(git merge-base HEAD "$NEW_MAIN")"
+}
+
+@test "ttg_scan_pass (#2254): a pass that only rebases onto a base with changed tests -> clean" {
+  _mk_moved_base
+  _rebase_pass
+  run ttg_scan_pass "$BASE" HEAD "$MB" "$UMB"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "clean" ]]
+}
+
+@test "ttg_scan_pass (#2254): a pass that merges the moved base in -> clean" {
+  _mk_moved_base
+  git merge -q --no-edit "$NEW_MAIN"
+  run ttg_scan_pass "$BASE" HEAD "$MB" "$(git merge-base HEAD "$NEW_MAIN")"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "clean" ]]
+}
+
+@test "ttg_scan_pass (#2254): rebase + an edit to an existing test -> tampered, file named" {
+  _mk_moved_base
+  _rebase_pass
+  sed -i 's/^  run f$/  run g/' tests/canary.bats
+  git commit -q -am "fix(reviews): address review comments"
+  run ttg_scan_pass "$BASE" HEAD "$MB" "$UMB"
+  [[ "$status" -eq 1 ]]
+  [[ "$(printf '%s' "$output" | head -1)" == "tampered" ]]
+  [[ "$output" == *"tests/canary.bats"* ]]
+}
+
+@test "ttg_scan_pass (#2254): rebase + reverting the base's own change to a test -> tampered" {
+  _mk_moved_base
+  _rebase_pass
+  sed -i 's/= SUCCESS/= success/' tests/canary.bats
+  printf '@test "new" {\n  run g\n}\n' >> tests/canary.bats
+  git commit -q -am "fix(reviews): address review comments"
+  run ttg_scan_pass "$BASE" HEAD "$MB" "$UMB"
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"tests/canary.bats"* ]]
+}
+
+@test "ttg_scan_pass (#2254): rebase + an edit to a test file the base added after the branch point -> tampered" {
+  _mk_moved_base "printf '@test \"main only\" {\n  run m\n  [ \"\$output\" = m ]\n}\n' > tests/main_added.bats"
+  _rebase_pass
+  sed -i 's/= m ]/= z ]/' tests/main_added.bats
+  git commit -q -am "fix(reviews): address review comments"
+  run ttg_scan_pass "$BASE" HEAD "$MB" "$UMB"
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"tests/main_added.bats"* ]]
+}
+
+@test "ttg_scan_pass (#2254): rebase + editing a test case the PR added -> clean" {
+  _mk_moved_base
+  _rebase_pass
+  sed -i 's/"\$status" -eq 0/"$status" -eq 1/' tests/canary.bats
+  git commit -q -am "fix(reviews): address review comments"
+  run ttg_scan_pass "$BASE" HEAD "$MB" "$UMB"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "clean" ]]
+}
+
+@test "ttg_scan_pass (#2254): a skip the base added comes in clean; a skip the pass adds is still caught" {
+  _mk_moved_base "sed -i 's/^  run f\$/  skip \"base skip\"\n  run f/' tests/canary.bats"
+  _rebase_pass
+  run ttg_scan_pass "$BASE" HEAD "$MB" "$UMB"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "clean" ]]
+  sed -i 's/^@test "success precedence" {$/@test "success precedence" {\n  skip "pass skip"/' tests/canary.bats
+  run ttg_scan_pass "$BASE" HEAD "$MB" "$UMB"
+  [[ "$status" -eq 1 ]]
+  [[ "$(printf '%s' "$output" | head -1)" == "tampered" ]]
+}
+
+@test "ttg_scan_pass (#2254): an updated merge base that does not resolve fails closed -> unknown" {
+  _mk_moved_base
+  _rebase_pass
+  run ttg_scan_pass "$BASE" HEAD "$MB" "0000000000000000000000000000000000000000"
+  [[ "$status" -eq 2 ]]
+  [[ "$output" == "unknown" ]]
+}
+
+@test "ttg_scan_pass (#2254): an updated merge base equal to the pre-pass one changes nothing" {
+  _mk_pr
+  sed -i 's/= success/= failure/' tests/canary.bats
+  git commit -q -am "fix(reviews): address review comments"
+  run ttg_scan_pass "$BASE" HEAD "$MB" "$MB"
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"tests/canary.bats"* ]]
+}
+
+@test "ttg_scan_pass (#2254): a binary test fixture the base changed comes in clean; one the pass changes is caught" {
+  _mk_moved_base "printf 'v2\0' > tests/fixture.bin"
+  _rebase_pass
+  run ttg_scan_pass "$BASE" HEAD "$MB" "$UMB"
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == "clean" ]]
+  printf 'v3\0' > tests/fixture.bin
+  run ttg_scan_pass "$BASE" HEAD "$MB" "$UMB"
+  [[ "$status" -eq 1 ]]
+  [[ "$output" == *"tests/fixture.bin"* ]]
 }
