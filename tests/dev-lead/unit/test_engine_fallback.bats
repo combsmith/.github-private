@@ -38,10 +38,6 @@ setup() {
   unset TOKEN_LOG_FILE ENGINE_USAGE_JSON
 }
 
-teardown() {
-  rm -f /tmp/dev-lead-session-output.txt
-}
-
 # Helper: source engine with a given engine type (suppresses info line)
 _source_engine() {
   local engine="${1:-claude}"
@@ -748,8 +744,8 @@ STUB
 
   [ "$status" -eq 2 ]
   # Persisted session output exists and contains the engine output
-  [ -s /tmp/dev-lead-session-output.txt ]
-  grep -q "RLPROBE" /tmp/dev-lead-session-output.txt
+  [ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" ]
+  grep -q "RLPROBE" "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   # Step summary received the session-output block even on the rate-limit path
   grep -q "Dev-Lead session output" "$GITHUB_STEP_SUMMARY"
 

@@ -22,13 +22,3 @@
 # Helpers that no test sources. Give them a per-test directory before using them.
 $BATS_TMPDIR/stub-bins	tests/dev-lead/helpers/stub-engine.bash	helper sourced by no test; the engine suites build their own stub directory
 $BATS_TMPDIR/mock-gh-bins	tests/dev-lead/helpers/mock-gh.bash	helper sourced by no test; the suites copy the gh stub themselves
-
-# NOT isolated yet: the redacted session log run_writer keeps for the handlers.
-# It moves under $DEV_LEAD_SIDECAR_DIR with the other sidecars in the next
-# change, which deletes these rows.
-/tmp/dev-lead-session-output.txt	scripts/engine.sh	written by run_writer; relocation pending
-/tmp/dev-lead-session-output.txt	scripts/dev-lead-fix-issue.sh	read by session_snippet; relocation pending
-/tmp/dev-lead-session-output.txt	scripts/dev-lead-fix-reviews.sh	read by read_session_summary; relocation pending
-/tmp/dev-lead-session-output.txt	tests/dev-lead/unit/test_engine_writer.bats	asserts on the session log; relocation pending
-/tmp/dev-lead-session-output.txt	tests/dev-lead/unit/test_engine_fallback.bats	asserts on the session log; relocation pending
-/tmp/dev-lead-session-output.txt	tests/dev-lead/unit/test_fix_reviews.bats	seeds the session log; relocation pending
