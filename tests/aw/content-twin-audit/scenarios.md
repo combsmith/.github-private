@@ -7,8 +7,8 @@ ContentTwin content pipeline. It opens a GitHub issue if content is stale,
 the queue is empty, or publishing errors are detected in recent workflow runs.
 
 **Trigger:** `schedule` (daily at 07:00 UTC)
-**Repo scope:** `petry-projects/ContentTwin` only
-**Outputs:** GitHub issue in `petry-projects/ContentTwin` when problems are detected
+**Repo scope:** `combsmith/ContentTwin` only
+**Outputs:** GitHub issue in `combsmith/ContentTwin` when problems are detected
 
 ---
 

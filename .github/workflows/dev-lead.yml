@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Dev-Lead Agent — thin caller stub
-# Standard:  petry-projects/.github/standards/ci-standards.md#5-dev-lead-agent
-# Reusable:  petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml
+# Standard:  combsmith/.github/standards/ci-standards.md#5-dev-lead-agent
+# Reusable:  combsmith/.github-private/.github/workflows/dev-lead-reusable.yml
 #
 # ADOPTING THIS WORKFLOW:
 #   1. Copy this file verbatim to .github/workflows/dev-lead.yml in your repo.
@@ -48,7 +48,7 @@ jobs:
     # fix (the circular dependency). Promotion = moving the dev-lead/stable tag
     # centrally; this caller is never edited on release. agent_ref pins the
     # dev-lead scripts/prompts checkout to the same channel.
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable
     with:
       agent_ref: dev-lead/stable
     secrets: inherit

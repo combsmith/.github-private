@@ -43,7 +43,7 @@ setup() {
 }
 
 @test "dependabot-automerge.yml pins the reusable at @v1 (compliance-audit check)" {
-  grep -qE '^\s*uses:[[:space:]]*petry-projects/\.github/\.github/workflows/dependabot-automerge-reusable\.yml@v1[[:space:]]*$' "$AUTOMERGE_YML"
+  grep -qE '^\s*uses:[[:space:]]*combsmith/\.github/\.github/workflows/dependabot-automerge-reusable\.yml@v1[[:space:]]*$' "$AUTOMERGE_YML"
 }
 
 @test "dependabot-automerge.yml does not reference a non-v1 pin" {

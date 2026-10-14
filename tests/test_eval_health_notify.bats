@@ -60,7 +60,7 @@ for a in "$@"; do
 done
 case "$1 $2" in
   "issue list")   printf '%s' "${GH_LIST_JSON:-[]}" ;;
-  "issue create") echo "https://github.com/petry-projects/.github-private/issues/123" ;;
+  "issue create") echo "https://github.com/combsmith/.github-private/issues/123" ;;
 esac
 exit 0
 SH
@@ -74,7 +74,7 @@ teardown() { rm -rf "$TMP"; }
 # through `env` so they take effect even though they are runtime-expanded args.
 run_notify() {
   run env "PATH=$BIN:$PATH" "GH_LOG=$GH_LOG" \
-    "REPO=petry-projects/.github-private" "SKILL=triage" \
+    "REPO=combsmith/.github-private" "SKILL=triage" \
     "REPORT_PATH=$REPORT" "RUN_URL=https://github.com/o/r/actions/runs/999" \
     "$@" bash "$NOTIFY"
 }

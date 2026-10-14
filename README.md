@@ -1,10 +1,10 @@
 # .github-private
 
-Org-wide Copilot custom agents, Claude Code skills, and agentic workflow infrastructure for `petry-projects`.
+Org-wide Copilot custom agents, Claude Code skills, and agentic workflow infrastructure for `combsmith`.
 
 ## What This Repo Does
 
-This is the [`.github-private` convention](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/create-custom-agents) repo for the petry-projects org. Agent profiles in `/agents/` are available org-wide — invocable from GitHub.com, VS Code, JetBrains, and Copilot CLI.
+This is the [`.github-private` convention](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/create-custom-agents) repo for the combsmith org. Agent profiles in `/agents/` are available org-wide — invocable from GitHub.com, VS Code, JetBrains, and Copilot CLI.
 
 It also contains the scheduled PR review automation (workflows + scripts + prompts) that runs hourly across the org.
 
@@ -34,13 +34,13 @@ frameworks/              # Installed agentic frameworks (git subtree)
 
 ## PR Review Automation
 
-The scheduled workflow reviews all open PRs across `petry-projects` hourly:
+The scheduled workflow reviews all open PRs across `combsmith` hourly:
 - Classifies risk (LOW/MEDIUM/HIGH) via cascading tiers
 - Auto-approves LOW/MEDIUM risk PRs with passing CI
 - Cross-engine adversarial review (Claude + Copilot rubber duck)
 - Escalates HIGH risk or failing PRs to human review
 
-Trigger manually: `gh workflow run pr-review.yml --repo petry-projects/.github-private`
+Trigger manually: `gh workflow run pr-review.yml --repo combsmith/.github-private`
 
 Mention trigger: Comment `@petry-review-bot` on any org PR for immediate review.
 

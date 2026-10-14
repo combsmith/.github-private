@@ -4,7 +4,7 @@
 #   - Issue Triage: dispatches when an issue is labeled by an org member
 #   - CI Failure Analyst: dispatches when a check run fails on a non-fork PR
 #
-# All logic lives in petry-projects/.github-private (gh-aw-cross-org.yml).
+# All logic lives in combsmith/.github-private (gh-aw-cross-org.yml).
 # This stub is intentionally minimal — do not add business logic here.
 #
 # Requires:
@@ -81,7 +81,7 @@ jobs:
             }')
           echo "$payload" | gh api \
             --method POST \
-            "repos/petry-projects/.github-private/dispatches" \
+            "repos/combsmith/.github-private/dispatches" \
             --input -
           echo "::notice::Dispatched gh-aw-issue-triage for issue #${ISSUE_NUMBER} in ${SOURCE_REPO}"
 
@@ -168,6 +168,6 @@ jobs:
             }')
           echo "$payload" | gh api \
             --method POST \
-            "repos/petry-projects/.github-private/dispatches" \
+            "repos/combsmith/.github-private/dispatches" \
             --input -
           echo "::notice::Dispatched gh-aw-ci-failure for PR #${PR_NUMBER} in ${SOURCE_REPO}"

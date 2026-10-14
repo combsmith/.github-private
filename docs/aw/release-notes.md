@@ -4,7 +4,7 @@ A GitHub Action that auto-generates CHANGELOG entries on every push to `main`.
 Finds merged PRs labeled `feat` or `fix`, uses Claude to write structured
 Keep-a-Changelog entries, and opens a PR updating `CHANGELOG.md`.
 
-Part of the [GitHub Agentic Workflows rollout](https://github.com/petry-projects/.github-private/discussions/228).
+Part of the [GitHub Agentic Workflows rollout](https://github.com/combsmith/.github-private/discussions/228).
 
 ## How it works
 

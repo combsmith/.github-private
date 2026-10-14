@@ -22,7 +22,7 @@ setup() {
   export MOCK_BIN FIXTURE_DIR GH_LOG
   export PATH="$MOCK_BIN:$PATH"
   export SWEEP_PRS_FILE="$PRS_FILE"
-  export AGENT_REPO="petry-projects/.github-private"
+  export AGENT_REPO="combsmith/.github-private"
 
   cat > "$MOCK_BIN/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -69,7 +69,7 @@ ROLLUP_FAIL='[{"name":"CI","status":"COMPLETED","conclusion":"FAILURE"}]'
 # Own pr-review check still pending alongside a green external check.
 ROLLUP_OWN_PENDING='[{"name":"review","status":"IN_PROGRESS","conclusion":null},{"name":"CI","status":"COMPLETED","conclusion":"SUCCESS"}]'
 
-url_for() { echo "https://github.com/petry-projects/demo/pull/$1"; }
+url_for() { echo "https://github.com/combsmith/demo/pull/$1"; }
 
 @test "stuck-green PR (REVIEW_REQUIRED + passing + no marker) is dispatched" {
   write_pr 569 "REVIEW_REQUIRED" "$ROLLUP_PASS"
@@ -78,7 +78,7 @@ url_for() { echo "https://github.com/petry-projects/demo/pull/$1"; }
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   grep -qF "workflow run pr-review-trigger.yml" "$GH_LOG"
-  grep -qF -- "--repo petry-projects/.github-private" "$GH_LOG"
+  grep -qF -- "--repo combsmith/.github-private" "$GH_LOG"
   grep -qF -- "-f pr_url=$(url_for 569)" "$GH_LOG"
 }
 

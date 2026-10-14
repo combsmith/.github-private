@@ -51,27 +51,27 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "confidence filter: CRITICAL with fewer than 5 runs → LOW-CONF" {
-  local row="0	petry-projects/x	wf.yml	2	0	2	0	100%	5	6	CRITICAL	100"
+  local row="0	combsmith/x	wf.yml	2	0	2	0	100%	5	6	CRITICAL	100"
   run bash -c "source '${BATS_TEST_DIRNAME}/../scripts/fleet_report.sh' && printf '%s\n' '$row' | apply_confidence_filter"
   [[ "$output" =~ "LOW-CONF" ]]
 }
 
 @test "confidence filter: CRITICAL with 5 or more runs is unchanged" {
-  local row="0	petry-projects/x	ci.yml	23	3	20	0	87%	67	206	CRITICAL	87"
+  local row="0	combsmith/x	ci.yml	23	3	20	0	87%	67	206	CRITICAL	87"
   run bash -c "source '${BATS_TEST_DIRNAME}/../scripts/fleet_report.sh' && printf '%s\n' '$row' | apply_confidence_filter"
   [[ "$output" =~ "CRITICAL" ]]
   [[ ! "$output" =~ "LOW-CONF" ]]
 }
 
 @test "confidence filter: non-CRITICAL statuses are never changed" {
-  local row="2	petry-projects/x	wf.yml	2	2	0	0	0%	5	6	WARNING	0"
+  local row="2	combsmith/x	wf.yml	2	2	0	0	0%	5	6	WARNING	0"
   run bash -c "source '${BATS_TEST_DIRNAME}/../scripts/fleet_report.sh' && printf '%s\n' '$row' | apply_confidence_filter"
   [[ "$output" =~ "WARNING" ]]
   [[ ! "$output" =~ "LOW-CONF" ]]
 }
 
 @test "confidence filter: LOW-CONF rows get sort_key 5 (sorted last)" {
-  local row="0	petry-projects/x	wf.yml	2	0	2	0	100%	5	6	CRITICAL	100"
+  local row="0	combsmith/x	wf.yml	2	0	2	0	100%	5	6	CRITICAL	100"
   run bash -c "source '${BATS_TEST_DIRNAME}/../scripts/fleet_report.sh' && printf '%s\n' '$row' | apply_confidence_filter"
   [[ "${output:0:1}" == "5" ]]
 }
@@ -96,8 +96,8 @@ setup() {
   local tmpfile
   tmpfile=$(mktemp)
   printf '%s\n' \
-    "0	petry-projects/a	wf.yml	10	0	10	0	100%	1	2	CRITICAL	100" \
-    "0	petry-projects/b	wf.yml	10	0	10	0	100%	1	2	CRITICAL	100" \
+    "0	combsmith/a	wf.yml	10	0	10	0	100%	1	2	CRITICAL	100" \
+    "0	combsmith/b	wf.yml	10	0	10	0	100%	1	2	CRITICAL	100" \
     > "$tmpfile"
   run detect_systemic_failures "$tmpfile"
   [ -z "$output" ]

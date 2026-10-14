@@ -35,10 +35,10 @@ GHEOF
 
   # Default env
   export ISSUE_NUMBER="100"
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export REVIEW_ENGINE="claude"
   export DEV_LEAD_DRY_RUN="true"
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
 
   cd "$SCRIPT_DIR"
 }

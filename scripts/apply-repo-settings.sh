@@ -13,14 +13,14 @@
 # Environment:
 #   GH_TOKEN          — GitHub token (must be a classic PAT with repo scope;
 #                       OAuth app tokens are rejected by the check-suites API)
-#   ORG               — GitHub org (default: petry-projects)
+#   ORG               — GitHub org (default: combsmith)
 #   DEV_LEAD_DRY_RUN  — if "true", print intent but make no API calls
 #
 # Standards:
-#   https://github.com/petry-projects/.github/blob/main/standards/push-protection.md
-#   https://github.com/petry-projects/.github/blob/main/standards/github-settings.md#check-suite-auto-trigger-preferences
+#   https://github.com/combsmith/.github/blob/main/standards/push-protection.md
+#   https://github.com/combsmith/.github/blob/main/standards/github-settings.md#check-suite-auto-trigger-preferences
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

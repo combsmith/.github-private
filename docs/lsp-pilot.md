@@ -1,11 +1,11 @@
 # LSP Pilot — Scoping Doc
 
 **Status:** Contract — the single agreed definition of done that every later story in
-epic [#839](https://github.com/petry-projects/.github-private/issues/839) grounds in.
+epic [#839](https://github.com/combsmith/.github-private/issues/839) grounds in.
 **Author:** dev-lead / Claude Code
 **Date:** 2026-06-20
-**Story:** [#840](https://github.com/petry-projects/.github-private/issues/840) (Phase 1)
-**Scope (confirmed from discussion [#578](https://github.com/petry-projects/.github-private/discussions/578)):**
+**Story:** [#840](https://github.com/combsmith/.github-private/issues/840) (Phase 1)
+**Scope (confirmed from discussion [#578](https://github.com/combsmith/.github-private/discussions/578)):**
 Pilot Language Server Protocol (LSP) code intelligence as MCP tools in the **pr-review**
 agent, **Shell** language, **this repo**, scoped to **finding-verification** in the
 deep/audit tiers — measured against a frozen baseline for a human go/no-go.
@@ -13,10 +13,10 @@ deep/audit tiers — measured against a frozen baseline for a human go/no-go.
 This doc is the contract, not a vendor survey: it fixes the pilot's language, the specific
 agent actions it covers, the cold-start SLA, the success metric, the cost cap, and the
 candidate-server shortlist so the downstream wiring and measurement stories
-([#841](https://github.com/petry-projects/.github-private/issues/841)–[#846](https://github.com/petry-projects/.github-private/issues/846))
+([#841](https://github.com/combsmith/.github-private/issues/841)–[#846](https://github.com/combsmith/.github-private/issues/846))
 share one unambiguous scope instead of each re-deciding it. It **reuses**, and does not
 re-describe, the MCP mechanism that already shipped (epic
-[#676](https://github.com/petry-projects/.github-private/issues/676); see §6).
+[#676](https://github.com/combsmith/.github-private/issues/676); see §6).
 
 ---
 
@@ -63,7 +63,7 @@ auto-approving reviewer.
 - **dev-lead code-writing.** LSP-assisted code *authoring/fixing* (safe `rename`,
   `definition`-on-first-pass, pre-push `diagnostics`) is **not** part of this pilot. It is
   considered only after a positive go/no-go on the pr-review surface (epic Phase 3,
-  [#845](https://github.com/petry-projects/.github-private/issues/845)).
+  [#845](https://github.com/combsmith/.github-private/issues/845)).
 
 ---
 
@@ -84,7 +84,7 @@ annotation on a server connect/init failure and leaves the verdict and exit code
 auto-skip is the same "Fail Loud, Never Fake" contract applied to the new cold-start budget:
 skip visibly, continue, never abort. Cold-start measurement and the SLA enforcement /
 index-caching live in story
-[#846](https://github.com/petry-projects/.github-private/issues/846); this doc only fixes the
+[#846](https://github.com/combsmith/.github-private/issues/846); this doc only fixes the
 SLA number and the auto-skip policy.
 
 ---
@@ -92,7 +92,7 @@ SLA number and the auto-skip policy.
 ## 4. Success metric & cost cap
 
 These are transcribed verbatim from the epic
-([#839](https://github.com/petry-projects/.github-private/issues/839)) body so the doc and
+([#839](https://github.com/combsmith/.github-private/issues/839)) body so the doc and
 the epic stay one source of truth. If the epic changes, update this section to match.
 
 ### Initiative success metric
@@ -104,7 +104,7 @@ the epic stay one source of truth. If the epic changes, update this section to m
 > win on tokens that costs precision is a *no-go*, not a win.
 
 The frozen corpus and the immutable LSP-off baseline are established in story
-[#841](https://github.com/petry-projects/.github-private/issues/841).
+[#841](https://github.com/combsmith/.github-private/issues/841).
 
 ### Cost cap (explicit)
 
@@ -122,13 +122,13 @@ The cost cap is structural (run-count and tier-gating), not a dollar ceiling.
 ## 5. Candidate LSP-MCP servers & selection rule
 
 Three candidate LSP-MCP servers are compared in the pilot. **Final selection is decided by
-the comparative pilot ([#844](https://github.com/petry-projects/.github-private/issues/844))
+the comparative pilot ([#844](https://github.com/combsmith/.github-private/issues/844))
 on the frozen corpus — it is NOT pre-chosen here.** Per
-[@don-petry](https://github.com/petry-projects/.github-private/discussions/578) the choice is
+[@don-petry](https://github.com/combsmith/.github-private/discussions/578) the choice is
 made from measured **speed, quality, and cost** with and without LSP, not from the vendor
 narrative.
 
-| Candidate | Distribution | Notes (from research, [#578](https://github.com/petry-projects/.github-private/discussions/578)) |
+| Candidate | Distribution | Notes (from research, [#578](https://github.com/combsmith/.github-private/discussions/578)) |
 |---|---|---|
 | **agent-lsp** ([blackwell-systems/agent-lsp](https://github.com/blackwell-systems/agent-lsp)) | Single Go binary (pin a GitHub release tag) | Persistent daemon (~10s first index), `--non-interactive` + `--http` CI modes, GCF token compression, 30-language CI matrix. CI-first design. |
 | **Serena** ([oraios/serena](https://github.com/oraios/serena)) | Python wheel via `uv` (pin an exact PyPI version) | Has the production benchmark (Project AEGIS); use its results as the bar to beat. |
@@ -142,7 +142,7 @@ which is **also pinned** to an exact version for the pilot.
 Each candidate (and `bash-language-server`) is a **third-party, non-org-owned dependency**
 and **must be pinned to an exact version for a reproducible pilot** (epic untracked
 prerequisite). The exact pins are **locked when the server is wired** (story
-[#842](https://github.com/petry-projects/.github-private/issues/842)) and recorded back into
+[#842](https://github.com/combsmith/.github-private/issues/842)) and recorded back into
 the table below — they are not invented in this scoping doc, consistent with the repo rule
 that pins (SHAs / release tags) are looked up from the source of truth, never guessed
 ([CLAUDE.md](../CLAUDE.md), [AGENTS.md](../AGENTS.md)).
@@ -187,10 +187,10 @@ rebuild the gating, the graceful-degradation path, or the Token Cost Observatory
 
 ## 7. References
 
-- Epic [#839](https://github.com/petry-projects/.github-private/issues/839) — LSP pilot;
+- Epic [#839](https://github.com/combsmith/.github-private/issues/839) — LSP pilot;
   stories #840 (this doc), #841 (corpus + baseline), #842 (wire server), #843
   (finding-verification step), #844 (run comparison), #845 (go/no-go), #846 (cache + SLA).
-- Discussion [#578](https://github.com/petry-projects/.github-private/discussions/578) —
+- Discussion [#578](https://github.com/combsmith/.github-private/discussions/578) —
   idea body, the LSP-MCP server-selection weekly update, and the enhancement comment whose
   suggested `docs/lsp-pilot.md` this mirrors.
 - [`docs/initiatives/mcp-powered-review.md`](./initiatives/mcp-powered-review.md) — the MCP

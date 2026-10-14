@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/token-report.yml
+# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/token-report.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • Weekly Token Cost Observatory report. The org-wide collection + aggregation
@@ -23,7 +23,7 @@ on:
       org:
         description: "GitHub org to scan"
         required: false
-        default: "petry-projects"
+        default: "combsmith"
         type: string
       lookback_days:
         description: "Days of token-usage history to include"
@@ -36,7 +36,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: token-report-${{ inputs.org || 'petry-projects' }}
+  group: token-report-${{ inputs.org || 'combsmith' }}
   cancel-in-progress: true
 
 jobs:
@@ -44,14 +44,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      ORG: ${{ inputs.org || 'petry-projects' }}
+      ORG: ${{ inputs.org || 'combsmith' }}
       LOOKBACK_DAYS: ${{ inputs.lookback_days || '7' }}
 
     steps:
       - name: Checkout agent repo
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with:
-          repository: petry-projects/.github-private
+          repository: combsmith/.github-private
           ref: main
           token: ${{ secrets.GH_PAT_WORKFLOWS }}
 

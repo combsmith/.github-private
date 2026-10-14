@@ -16,7 +16,7 @@ set -euo pipefail
 #
 # Env (required):
 #   GH_TOKEN            — PAT with repo + contents:write scopes
-#   TARGET_ORG          — GitHub org to scan (default: petry-projects)
+#   TARGET_ORG          — GitHub org to scan (default: combsmith)
 #
 # Env (optional):
 #   DELEGATION_ORGS     — space-separated additional orgs to scan
@@ -34,7 +34,7 @@ set -euo pipefail
 #   triggering event, which cannot be reconstructed from the PR's current
 #   state. Users are asked to re-trigger manually.
 
-TARGET_ORG="${TARGET_ORG:-petry-projects}"
+TARGET_ORG="${TARGET_ORG:-combsmith}"
 DELEGATION_ORGS="${DELEGATION_ORGS:-}"
 DISPATCH_DELAY_SEC="${DISPATCH_DELAY_SEC:-30}"
 DRY_RUN="${DRY_RUN:-false}"

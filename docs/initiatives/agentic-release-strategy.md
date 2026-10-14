@@ -10,7 +10,7 @@ and adopt the pattern later.
 **Constraints (confirmed):** GitHub-native only (tags/releases, `@ref` pinning, Environments,
 matrix-staged deploys) — no new repos, no external infrastructure. Canary / ring-0 = `.github-private`
 itself (dogfood-first).
-**GitHub Project:** [Initiatives](https://github.com/orgs/petry-projects/projects/1) →
+**GitHub Project:** [Initiatives](https://github.com/orgs/combsmith/projects/1) →
 Initiative field **“Release Strategy”**.
 
 ---
@@ -195,9 +195,9 @@ The GitHub-native way to get the same "one knob, no caller edits" outcome is a *
 - Every caller pins **once** to a per-agent floating channel tag and is then never touched again:
   ```yaml
   # pr-review caller — pins to pr-review's own channel tag
-  uses: petry-projects/.github-private/.github/workflows/pr-review-reusable.yml@pr-review/stable
+  uses: combsmith/.github-private/.github/workflows/pr-review-reusable.yml@pr-review/stable
   # dev-lead caller — pins to dev-lead's own channel tag
-  uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable
+  uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable
   ```
 - Promotion / rollback is a single **central** operation in `.github-private`, performed only by the
   gated promotion workflow. Using per-agent channel names means each agent advances independently:
@@ -353,7 +353,7 @@ Scale: ✅ strong · 🟡 partial · ❌ none. (Effort/overhead: lower = better.
    on: [pull_request, ...]
    jobs:
      pr-review:
-       uses: petry-projects/.github-private/.github/workflows/pr-review-reusable.yml@pr-review/stable
+       uses: combsmith/.github-private/.github/workflows/pr-review-reusable.yml@pr-review/stable
    ```
    Without this step, a merge to `main` still changes the self-review/dev-duty workflow logic
    immediately, and SC2 is not achieved. Consumer repos that already use the reusable need only

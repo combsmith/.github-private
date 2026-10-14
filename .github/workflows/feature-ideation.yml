@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/feature-ideation.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md#8-feature-ideation-feature-ideationyml--bmad-method-repos
-# Reusable:        petry-projects/.github/.github/workflows/feature-ideation-reusable.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/feature-ideation.yml
+# Standard:        combsmith/.github/standards/ci-standards.md#8-feature-ideation-feature-ideationyml--bmad-method-repos
+# Reusable:        combsmith/.github/.github/workflows/feature-ideation-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. The 5-phase ideation pipeline, the
@@ -19,7 +19,7 @@
 # Feature Ideation workflow stub — for BMAD Method-enabled repos.
 #
 # This is a thin caller for the org-wide reusable workflow at
-# petry-projects/.github/.github/workflows/feature-ideation-reusable.yml
+# combsmith/.github/.github/workflows/feature-ideation-reusable.yml
 # All ideation logic, the multi-skill pipeline, the Opus 4.6 model
 # selection, and the github_token override live in the reusable workflow.
 #
@@ -29,7 +29,7 @@
 #      of your project, its target users, and the competitive landscape Mary
 #      should research. This is the only required customisation.
 #   3. (Optional) Copy standards/feature-ideation-sources.md from
-#      petry-projects/.github to .github/feature-ideation-sources.md in your
+#      combsmith/.github to .github/feature-ideation-sources.md in your
 #      repo and trim/extend it for your project. Mary uses YOUR copy — not the
 #      central template — so each repo controls its own source list.
 #      Pass `sources_file: path/to/your-list.md` to the reusable workflow if
@@ -38,7 +38,7 @@
 #   5. Ensure GitHub Discussions is enabled with an "Ideas" category.
 #   6. Confirm the org-level secret CLAUDE_CODE_OAUTH_TOKEN is accessible.
 #
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md#8-feature-ideation-feature-ideationyml--bmad-method-repos
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md#8-feature-ideation-feature-ideationyml--bmad-method-repos
 name: Feature Research & Ideation (BMAD Analyst)
 
 on:
@@ -100,7 +100,7 @@ jobs:
       discussions: write
       id-token: write
       actions: read
-    uses: petry-projects/.github/.github/workflows/feature-ideation-reusable.yml@897e4dede3518cdd7273b9dc63e607d0d05cbdda # v1
+    uses: combsmith/.github/.github/workflows/feature-ideation-reusable.yml@897e4dede3518cdd7273b9dc63e607d0d05cbdda # v1
     with:
       # On the `discussion: created` trigger this carries the new Discussion's
       # number → the reusable runs single-idea enhancement mode. Empty on
@@ -108,14 +108,14 @@ jobs:
       target_discussion: ${{ github.event.discussion.number }}
       # === CUSTOMISE THIS PER REPO — the only required edit ===
       project_context: |
-        petry-projects/.github-private is the org-level private automation
-        repository for the petry-projects GitHub organisation. It owns the org's
+        combsmith/.github-private is the org-level private automation
+        repository for the combsmith GitHub organisation. It owns the org's
         agentic CI/CD operations: the dev-lead autonomous engineering agent, the
         multi-stage PR-review pipeline, scheduled health and actions-fleet
         monitors, dependency-audit and release-notes automation, Copilot custom
         agent profiles (agents/), prompt libraries (prompts/), and the shell
         orchestration (scripts/) executed by GitHub Actions. It complements the
-        public petry-projects/.github standards repo by hosting the private
+        public combsmith/.github standards repo by hosting the private
         execution logic and the self-hosting agent harness — engine.sh tier
         routing and channel-tag release rings. Downstream consumers are internal
         product repos (Broodly, TalkTerm, markets) plus the org's own agent

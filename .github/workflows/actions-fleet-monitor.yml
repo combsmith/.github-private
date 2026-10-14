@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/actions-fleet-monitor.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md
+# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/actions-fleet-monitor.yml
+# Standard:        combsmith/.github/standards/ci-standards.md
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This is the canonical fleet-monitor implementation; there is no external
@@ -25,7 +25,7 @@ on:
       org:
         description: "GitHub org to scan"
         required: false
-        default: "petry-projects"
+        default: "combsmith"
         type: string
       lookback_days:
         description: "Days of run history to inspect"
@@ -37,7 +37,7 @@ on:
       org:
         description: "GitHub org to scan"
         required: false
-        default: "petry-projects"
+        default: "combsmith"
         type: string
       lookback_days:
         description: "Days of run history to inspect"
@@ -50,7 +50,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: actions-fleet-monitor-${{ inputs.org || 'petry-projects' }}
+  group: actions-fleet-monitor-${{ inputs.org || 'combsmith' }}
   cancel-in-progress: true
 
 jobs:
@@ -58,14 +58,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      ORG: ${{ inputs.org || 'petry-projects' }}
+      ORG: ${{ inputs.org || 'combsmith' }}
       LOOKBACK_DAYS: ${{ inputs.lookback_days || '1' }}
 
     steps:
       - name: Checkout agent repo
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with:
-          repository: petry-projects/.github-private
+          repository: combsmith/.github-private
           ref: main  # Always checkout .github-private@main; workflow_call callers target @main per docs
           token: ${{ secrets.GH_PAT_WORKFLOWS }}
 

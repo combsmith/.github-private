@@ -1,14 +1,14 @@
 # AGENTS.md — .github-private
 
 This repository follows the organization-wide development standards defined in
-[`petry-projects/.github/AGENTS.md`](https://github.com/petry-projects/.github/blob/main/AGENTS.md).
+[`combsmith/.github/AGENTS.md`](https://github.com/combsmith/.github/blob/main/AGENTS.md).
 Read that file before making changes that touch CI, agent configuration, repo settings, or labels.
 
 ---
 
 ## Repository Context
 
-This is the `.github-private` org infrastructure repo for `petry-projects`. It contains:
+This is the `.github-private` org infrastructure repo for `combsmith`. It contains:
 
 - **`agents/`** — Copilot custom agent profiles (org-wide, invocable from GitHub.com, VS Code, JetBrains)
 - **`frameworks/`** — Agentic frameworks installed via `git subtree` (bmad-method, spec-kit, gsd)
@@ -20,13 +20,13 @@ This is the `.github-private` org infrastructure repo for `petry-projects`. It c
 ### Workflow Files
 
 - Do **not** modify `.github/workflows/agent-shield.yml` — this is exempted from agent modification per
-  [`standards/agent-standards.md`](https://github.com/petry-projects/.github/blob/main/standards/agent-standards.md).
+  [`standards/agent-standards.md`](https://github.com/combsmith/.github/blob/main/standards/agent-standards.md).
 - `.github/workflows/dev-lead.yml` is a thin caller stub that delegates to
   `dev-lead-reusable.yml` (the canonical org standard). To change behavior for
   all org repos, edit `dev-lead-reusable.yml`. Repo-specific trigger adjustments
   may be made to `dev-lead.yml` per the stub's header comment.
 - All other workflow changes must use templates from
-  [`standards/workflows/`](https://github.com/petry-projects/.github/tree/main/standards/workflows) verbatim.
+  [`standards/workflows/`](https://github.com/combsmith/.github/tree/main/standards/workflows) verbatim.
 - **Exception:** `.github/workflows/auto-rebase.yml` deliberately pins the reusable workflow at `@v2`, ahead of the
   canonical org stub in `standards/workflows/auto-rebase.yml` (which still pins `@v1`). The `@v2` reusable workflow posts a
   base-SHA-keyed conflict sentinel that triggers dev-lead's agentic rebase (the `rebase` intent in
@@ -93,7 +93,7 @@ This is the `.github-private` org infrastructure repo for `petry-projects`. It c
 
 - Every agent profile must have YAML frontmatter with `name`, `description`, and `tools`.
 - Agent names must be kebab-case and match the filename.
-- Profiles are org-wide — changes affect all `petry-projects` repos.
+- Profiles are org-wide — changes affect all `combsmith` repos.
 
 ### Framework Subtrees (`frameworks/`)
 
@@ -152,7 +152,7 @@ HTTP 406 above that limit.
 - Prices are data, not code: keep per-model rates in `scripts/lib/model-pricing.tsv`
   (effective-dated) — never hardcode dollar rates in scripts.
 - **Promotion:** this is currently a repo-local standard. To make it org-wide,
-  lift it into [`petry-projects/.github`](https://github.com/petry-projects/.github/blob/main/AGENTS.md)
+  lift it into [`combsmith/.github`](https://github.com/combsmith/.github/blob/main/AGENTS.md)
   (the org AGENTS.md / `standards/`) and have repos defer to it.
 
 ### Release channel tags & the mutable-ref exception

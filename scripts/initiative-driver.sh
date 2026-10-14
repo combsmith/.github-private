@@ -38,7 +38,7 @@
 #     (cost / blast radius).
 #
 # Env:
-#   REPO            owner/repo (default: petry-projects/.github-private)
+#   REPO            owner/repo (default: combsmith/.github-private)
 #   EPIC            epic issue number, or empty to sweep all gated epics
 #   CLOSED_ISSUE    issue number from an issues:closed event (optional; each
 #                   epic is skipped early if it is not one of its sub-issues)
@@ -51,7 +51,7 @@
 #
 set -euo pipefail
 
-REPO="${REPO:-petry-projects/.github-private}"
+REPO="${REPO:-combsmith/.github-private}"
 EPIC="${EPIC:-}"
 CLOSED_ISSUE="${CLOSED_ISSUE:-}"
 DEV_LEAD_LABEL="${DEV_LEAD_LABEL:-dev-lead}"

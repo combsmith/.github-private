@@ -3,7 +3,7 @@
 **Workflow:** `content-twin-audit.yml`
 **Priority:** P3
 **Trigger:** `schedule` — daily at 07:00 UTC
-**Repo scope:** `petry-projects/ContentTwin` only
+**Repo scope:** `combsmith/ContentTwin` only
 **Scenario spec:** [`tests/aw/content-twin-audit/scenarios.md`](../../tests/aw/content-twin-audit/scenarios.md)
 
 ---
@@ -55,7 +55,7 @@ schedule (daily)
 
 | Variable | Source | Default | Description |
 |----------|--------|---------|-------------|
-| `CONTENT_TWIN_REPO` | `vars.CONTENT_TWIN_REPO` | `petry-projects/ContentTwin` | Target repo |
+| `CONTENT_TWIN_REPO` | `vars.CONTENT_TWIN_REPO` | `combsmith/ContentTwin` | Target repo |
 | `STALE_DAYS` | `vars.CONTENT_STALE_DAYS` or `inputs.stale_days` | `7` | Days without commit threshold |
 | `PUBLISH_WORKFLOW` | `vars.CONTENT_TWIN_PUBLISH_WORKFLOW` | `publish.yml` | Workflow file to check for failures |
 | `GH_TOKEN` | `secrets.DON_PETRY_BOT_GH_PAT` | — | PAT with `repo` and `actions:read` scopes |
@@ -77,7 +77,7 @@ schedule (daily)
 
 ### When issues are detected
 
-A GitHub issue is opened in `petry-projects/ContentTwin`:
+A GitHub issue is opened in `combsmith/ContentTwin`:
 
 - **Title:** `ContentTwin Audit — content pipeline issues YYYY-MM-DD`
 - **Labels:** `content-audit`, `automated-report`

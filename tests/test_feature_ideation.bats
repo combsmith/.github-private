@@ -10,8 +10,8 @@
 FEATURE_IDEATION_YML=".github/workflows/feature-ideation.yml"
 
 # Canonical reusable + v1 pin from
-# petry-projects/.github/standards/workflows/feature-ideation.yml
-REUSABLE="petry-projects/.github/.github/workflows/feature-ideation-reusable.yml"
+# combsmith/.github/standards/workflows/feature-ideation.yml
+REUSABLE="combsmith/.github/.github/workflows/feature-ideation-reusable.yml"
 V1_SHA="897e4dede3518cdd7273b9dc63e607d0d05cbdda"
 # The superseded pin the audit flagged (#629).
 V2_SHA="376a4fcb1117444595e3e702fa450873d0e54310"

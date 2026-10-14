@@ -4,7 +4,7 @@
 AGENTS.md §"Release channel tags & the mutable-ref exception" exempts first-party
 reusable workflows from the SHA-pin standard. The correct reference for the
 auto-rebase reusable is the versioned tag `@v2`, matching the canonical stub at
-standards/workflows/auto-rebase.yml in petry-projects/.github.
+standards/workflows/auto-rebase.yml in combsmith/.github.
 
 Regression guard: a SHA-pinned reference is a compliance violation (issue #139).
 """
@@ -19,7 +19,7 @@ except ImportError:
     yaml = None
 
 WORKFLOW = ".github/workflows/auto-rebase.yml"
-REUSABLE = "petry-projects/.github/.github/workflows/auto-rebase-reusable.yml"
+REUSABLE = "combsmith/.github/.github/workflows/auto-rebase-reusable.yml"
 EXPECTED_REF = "@v2"
 SHA_PATTERN = re.compile(r"@[0-9a-f]{40}\b")
 

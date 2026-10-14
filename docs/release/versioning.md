@@ -51,8 +51,8 @@ central move of the channel tag (see the initiative doc §5.1):
 
 ```yaml
 # A consumer / self-host caller pins once to the per-agent channel:
-uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/stable
-uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable
+uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/stable
+uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable
 ```
 
 > Shorthand: the initiative doc writes `@stable`; the concrete tag is the **per-agent** channel

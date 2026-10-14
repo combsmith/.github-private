@@ -147,7 +147,7 @@ teardown() {
 
 # ---------------------------------------------------------------------------
 # secret_scan_ci_job_present — ci.yml must use gitleaks/gitleaks-action
-# (mirrors the org compliance check in petry-projects/.github/standards/
+# (mirrors the org compliance check in combsmith/.github/standards/
 # push-protection.md#compliance-audit-checks)
 # ---------------------------------------------------------------------------
 
