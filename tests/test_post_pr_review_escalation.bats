@@ -19,7 +19,7 @@ setup() {
   export POST_SCRIPT="$REPO_ROOT/scripts/post-pr-review.sh"
 
   export SHA="d53a7fc6b0718dd3d672fed4eec8394e5d372900"
-  export PR_URL="https://github.com/combsmith/.github-private/pull/1703"
+  export PR_URL="https://github.com/petry-projects/.github-private/pull/1703"
 
   export TEST_DIR="$BATS_TEST_TMPDIR"
   mkdir -p "$TEST_DIR/bin"

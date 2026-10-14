@@ -76,7 +76,7 @@ teardown() {
 }
 
 @test "ref-kind: a PR comment URL is recognised as a url ref" {
-  run bash -c "source '$MRC'; mrc_ref_kind 'https://github.com/combsmith/.github-private/pull/42#issuecomment-999'"
+  run bash -c "source '$MRC'; mrc_ref_kind 'https://github.com/petry-projects/.github-private/pull/42#issuecomment-999'"
   [ "$status" -eq 0 ]
   [ "$output" = "url" ]
 }
@@ -89,7 +89,7 @@ teardown() {
 # PR-only: a bare /issues/ comment URL must NOT be accepted — this path may only
 # target a pull-request comment (#1910 self-scope hardening).
 @test "ref-kind: a non-PR /issues/ comment URL is rejected (fail closed)" {
-  run bash -c "source '$MRC'; mrc_ref_kind 'https://github.com/combsmith/.github-private/issues/42#issuecomment-999'"
+  run bash -c "source '$MRC'; mrc_ref_kind 'https://github.com/petry-projects/.github-private/issues/42#issuecomment-999'"
   [ "$status" -eq 1 ]
 }
 
@@ -111,9 +111,9 @@ teardown() {
 }
 
 @test "url-parse: owner/repo extracted from URL" {
-  run bash -c "source '$MRC'; mrc_repo_from_url 'https://github.com/combsmith/.github-private/pull/42#issuecomment-1'"
+  run bash -c "source '$MRC'; mrc_repo_from_url 'https://github.com/petry-projects/.github-private/pull/42#issuecomment-1'"
   [ "$status" -eq 0 ]
-  [ "$output" = "combsmith/.github-private" ]
+  [ "$output" = "petry-projects/.github-private" ]
 }
 
 # AC #1 / self-scope — only the invoking user's OWN comment may be resolved here.

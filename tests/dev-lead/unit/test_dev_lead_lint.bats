@@ -206,7 +206,7 @@ MD
   mkdir -p "$WORK_DIR/.github"
   cat > "$WORK_DIR/.github/CODEOWNERS" <<'CO'
 # Default owner
-* @combsmith/org-leads
+* @petry-projects/org-leads
 CO
   run bash "$LINT_SCRIPT"
   [ "$status" -eq 0 ]
@@ -215,8 +215,8 @@ CO
 @test "lint: passes when CODEOWNERS lists org-leads first with additional owners" {
   mkdir -p "$WORK_DIR/.github"
   cat > "$WORK_DIR/.github/CODEOWNERS" <<'CO'
-* @combsmith/org-leads @combsmith/backend
-docs/ @combsmith/org-leads @combsmith/docs
+* @petry-projects/org-leads @petry-projects/backend
+docs/ @petry-projects/org-leads @petry-projects/docs
 CO
   run bash "$LINT_SCRIPT"
   [ "$status" -eq 0 ]
@@ -225,7 +225,7 @@ CO
 @test "lint: fails when CODEOWNERS owner line does not list org-leads first" {
   mkdir -p "$WORK_DIR/.github"
   cat > "$WORK_DIR/.github/CODEOWNERS" <<'CO'
-* @combsmith/backend @combsmith/org-leads
+* @petry-projects/backend @petry-projects/org-leads
 CO
   run bash "$LINT_SCRIPT"
   [ "$status" -ne 0 ]
@@ -235,7 +235,7 @@ CO
 @test "lint: fails when CODEOWNERS owner line omits org-leads entirely" {
   mkdir -p "$WORK_DIR/.github"
   cat > "$WORK_DIR/.github/CODEOWNERS" <<'CO'
-* @combsmith/backend
+* @petry-projects/backend
 CO
   run bash "$LINT_SCRIPT"
   [ "$status" -ne 0 ]
@@ -247,7 +247,7 @@ CO
   cat > "$WORK_DIR/.github/CODEOWNERS" <<'CO'
 # This is a comment
 
-* @combsmith/org-leads
+* @petry-projects/org-leads
 CO
   run bash "$LINT_SCRIPT"
   [ "$status" -eq 0 ]
@@ -255,7 +255,7 @@ CO
 
 @test "lint: handles CRLF line endings in CODEOWNERS" {
   mkdir -p "$WORK_DIR/.github"
-  printf '* @combsmith/org-leads\r\ndocs/ @combsmith/org-leads @combsmith/docs\r\n' \
+  printf '* @petry-projects/org-leads\r\ndocs/ @petry-projects/org-leads @petry-projects/docs\r\n' \
     > "$WORK_DIR/.github/CODEOWNERS"
   run bash "$LINT_SCRIPT"
   [ "$status" -eq 0 ]
@@ -263,7 +263,7 @@ CO
 
 @test "lint: handles escaped spaces in CODEOWNERS paths" {
   mkdir -p "$WORK_DIR/.github"
-  printf 'path\\ with\\ spaces/ @combsmith/org-leads @combsmith/backend\n' \
+  printf 'path\\ with\\ spaces/ @petry-projects/org-leads @petry-projects/backend\n' \
     > "$WORK_DIR/.github/CODEOWNERS"
   run bash "$LINT_SCRIPT"
   [ "$status" -eq 0 ]
@@ -271,7 +271,7 @@ CO
 
 @test "lint: fails with CRLF when org-leads is not first" {
   mkdir -p "$WORK_DIR/.github"
-  printf '* @combsmith/backend @combsmith/org-leads\r\n' \
+  printf '* @petry-projects/backend @petry-projects/org-leads\r\n' \
     > "$WORK_DIR/.github/CODEOWNERS"
   run bash "$LINT_SCRIPT"
   [ "$status" -ne 0 ]

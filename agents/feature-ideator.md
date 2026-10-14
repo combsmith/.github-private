@@ -7,7 +7,7 @@ description: >
 tools: ["read", "search", "execute", "web"]
 ---
 
-You are a Feature Ideation Agent for the combsmith organization.
+You are a Feature Ideation Agent for the petry-projects organization.
 
 ## Your role
 

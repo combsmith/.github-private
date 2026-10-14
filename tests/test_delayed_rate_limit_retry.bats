@@ -36,7 +36,7 @@ setup() {
   GH_LOG="$(mktemp)"
   export MOCK_BIN FIXTURE_DIR GH_LOG
   export PATH="$MOCK_BIN:$PATH"
-  export AGENT_REPO="combsmith/.github-private"
+  export AGENT_REPO="petry-projects/.github-private"
 
   cat > "$MOCK_BIN/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -82,7 +82,7 @@ rl_comment() {
   printf '[{"body":"<!-- pr-review-agent rate-limited v1 sha=%s status=rate-limited reset=%s -->\\n\\nAdvisory bots were rate-limited."}]' "$1" "$2"
 }
 
-url_for() { echo "https://github.com/combsmith/demo/pull/$1"; }
+url_for() { echo "https://github.com/petry-projects/demo/pull/$1"; }
 
 # ---------------------------------------------------------------------------
 # Supersession: a newer push (changed head SHA) makes the armed retry a no-op.

@@ -2,7 +2,7 @@
 
 These files are a **verbatim pinned copy** of the shipped consumer that
 `scripts/lib/usage-telemetry.sh` must feed, taken from
-`combsmith/.github` @ `b16e764a4bd52c7dd3baef3212f072aa58aeff97`:
+`petry-projects/.github` @ `b16e764a4bd52c7dd3baef3212f072aa58aeff97`:
 
 - `agent-rate-limit.sh` — the public library (`scripts/lib/agent-rate-limit.sh`).
 - `agent-rate-limits.json` — the public config (`standards/agent-rate-limits.json`), verbatim.

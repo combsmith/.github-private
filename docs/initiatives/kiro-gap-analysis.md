@@ -1,10 +1,10 @@
 # Initiative: Kiro Capability Reconciliation & Gap Decision Record
 
-**Status:** Decision record — Phase 0 reconciliation for epic [#1142](https://github.com/combsmith/.github-private/issues/1142) (story [#1143](https://github.com/combsmith/.github-private/issues/1143))
+**Status:** Decision record — Phase 0 reconciliation for epic [#1142](https://github.com/petry-projects/.github-private/issues/1142) (story [#1143](https://github.com/petry-projects/.github-private/issues/1143))
 **Author:** dev-lead / Claude Code
 **Date:** 2026-07-14
 **Scope (confirmed):** Reconcile every capability row and gap from the Kiro gap analysis
-([Discussion #1118](https://github.com/combsmith/.github-private/discussions/1118), enhancement
+([Discussion #1118](https://github.com/petry-projects/.github-private/discussions/1118), enhancement
 comment) against what this repo already ships, and record a **build / already-covered / drop** verdict
 for each — grounded in a concrete repo artifact. This is a documentation/decision story only: no
 scripts, workflows, or evals change. Its output tells a human which Kiro-inspired gaps are worth
@@ -69,8 +69,8 @@ The source analysis proposed "MCP curation" as its lowest-risk Phase 1 experimen
 shipped, and it already has a measured result — so it is `already-covered`, not a gap.**
 
 - **Plumbing:** `scripts/engine.sh` threads `REVIEW_MCP_CONFIG` + `REVIEW_MCP_ALLOWED_TOOLS` into the
-  deep/rubber-duck tiers with graceful degradation (epic [#676](https://github.com/combsmith/.github-private/issues/676)).
-- **Curation + measurement:** [#816](https://github.com/combsmith/.github-private/issues/816)
+  deep/rubber-duck tiers with graceful degradation (epic [#676](https://github.com/petry-projects/.github-private/issues/676)).
+- **Curation + measurement:** [#816](https://github.com/petry-projects/.github-private/issues/816)
   wired the zero-auth Context7 endpoint and ran a controlled A/B; it found **≈0 review-quality lift** on
   this repo's Bash/YAML PRs, because the base model's knowledge already covers mainstream library
   versions. See `docs/initiatives/mcp-powered-review.md` §5.1.
@@ -166,13 +166,13 @@ Concretely, all three are marked **drop** as dependencies:
 
 ## 7. References
 
-- Discussion [#1118](https://github.com/combsmith/.github-private/discussions/1118) — Kiro gap
+- Discussion [#1118](https://github.com/petry-projects/.github-private/discussions/1118) — Kiro gap
   analysis (enhancement comment: the capability comparison + options table reproduced here).
-- Epic [#1142](https://github.com/combsmith/.github-private/issues/1142) — Kiro gap-closure
-  initiative; this doc is Phase 0 story [#1143](https://github.com/combsmith/.github-private/issues/1143).
+- Epic [#1142](https://github.com/petry-projects/.github-private/issues/1142) — Kiro gap-closure
+  initiative; this doc is Phase 0 story [#1143](https://github.com/petry-projects/.github-private/issues/1143).
 - `docs/initiatives/mcp-powered-review.md` — MCP plumbing + the #816 A/B result (MCP `already-covered`), and the initiative-doc header shape this doc follows.
-- Epics [#676](https://github.com/combsmith/.github-private/issues/676) /
-  [#816](https://github.com/combsmith/.github-private/issues/816) — MCP enrichment + curation A/B.
+- Epics [#676](https://github.com/petry-projects/.github-private/issues/676) /
+  [#816](https://github.com/petry-projects/.github-private/issues/816) — MCP enrichment + curation A/B.
 - `scripts/engine.sh` — multi-provider routing + `REVIEW_MCP_CONFIG` threading.
 - `scripts/initiative-planner/plan.schema.json`, `scripts/initiative-driver.sh` — spec-driven planning +
   release path (G1 / G3 grounding).

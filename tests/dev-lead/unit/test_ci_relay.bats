@@ -15,10 +15,10 @@ setup() {
   chmod +x "$STUB_BIN_DIR/gh"
   export PATH="$STUB_BIN_DIR:$PATH"
   export STUB_BIN_DIR
-  export REPO_FULL_NAME="combsmith/.github-private"
+  export REPO_FULL_NAME="petry-projects/.github-private"
   export CHECK_RUN_HEAD_SHA="abc123def456"
   export GH_STUB_PR_NUMBER="42"
-  export GH_STUB_PR_HEAD_REPO="combsmith/.github-private"
+  export GH_STUB_PR_HEAD_REPO="petry-projects/.github-private"
 }
 
 teardown() {
@@ -31,7 +31,7 @@ _out() { grep "^${1}=" "$GITHUB_OUTPUT" | cut -d= -f2- | head -1; }
 # ── non-empty pull_requests (GitHub Actions check_run) ────────────────────────
 
 @test "ci-relay: non-empty pull_requests, same repo → should_relay=true" {
-  export CHECK_RUN_PRS='[{"number":42,"head":{"repo":{"url":"https://api.github.com/repos/combsmith/.github-private"}}}]'
+  export CHECK_RUN_PRS='[{"number":42,"head":{"repo":{"url":"https://api.github.com/repos/petry-projects/.github-private"}}}]'
 
   run bash "$CI_RELAY_SCRIPT"
 
@@ -54,7 +54,7 @@ _out() { grep "^${1}=" "$GITHUB_OUTPUT" | cut -d= -f2- | head -1; }
 @test "ci-relay: empty pull_requests, API returns open PR → should_relay=true" {
   export CHECK_RUN_PRS='[]'
   export GH_STUB_PR_NUMBER="99"
-  export GH_STUB_PR_HEAD_REPO="combsmith/.github-private"
+  export GH_STUB_PR_HEAD_REPO="petry-projects/.github-private"
 
   run bash "$CI_RELAY_SCRIPT"
 
@@ -96,7 +96,7 @@ GHEOF
   cat > "$STUB_BIN_DIR/gh" <<'GHEOF'
 #!/usr/bin/env bash
 case "$*" in
-  *"commits/"*"/pulls"*) echo '[{"number":33,"state":"closed","head":{"repo":{"full_name":"combsmith/.github-private"}}}]' ;;
+  *"commits/"*"/pulls"*) echo '[{"number":33,"state":"closed","head":{"repo":{"full_name":"petry-projects/.github-private"}}}]' ;;
   *) echo "{}" ;;
 esac
 GHEOF

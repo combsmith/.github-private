@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/initiative-planner-canary.yml
+# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/initiative-planner-canary.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • Post-merge canary for the idea:approved → initiative-planner dispatch path

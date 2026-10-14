@@ -6,8 +6,8 @@ top level (even if just `permissions: {}`) so that GitHub's default
 write-all grant is never silently inherited.  The single `dismiss` job then
 overrides with its own scoped block (`pull-requests: write`).
 
-Compliance: missing-permissions-dismiss-stale-bot-reviews.yml (combsmith/.github-private#1291)
-Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md#permissions-policy
+Compliance: missing-permissions-dismiss-stale-bot-reviews.yml (petry-projects/.github-private#1291)
+Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md#permissions-policy
 """
 from __future__ import annotations
 

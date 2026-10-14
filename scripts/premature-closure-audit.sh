@@ -20,7 +20,7 @@
 # Env vars consumed:
 #   GH_TOKEN            — repo read (issues + timeline); issues:write in live mode
 #   GH_PAT_FALLBACK     — optional secondary token if the primary can't read REPO
-#   REPO / AGENT_REPO   — target repo (default: combsmith/.github-private)
+#   REPO / AGENT_REPO   — target repo (default: petry-projects/.github-private)
 #   DRY_RUN             — "true" (default) reports only; "false" applies actions
 #   PC_LOOKBACK_DAYS    — how far back to scan closed issues (default: 7)
 #   PC_MAX_OPEN_MINUTES — the "closed within N minutes of open" window (default: 30)
@@ -33,7 +33,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/premature-closure-detect.sh
 source "${SCRIPT_DIR}/lib/premature-closure-detect.sh"
 
-REPO="${REPO:-${AGENT_REPO:-combsmith/.github-private}}"
+REPO="${REPO:-${AGENT_REPO:-petry-projects/.github-private}}"
 DRY_RUN="${DRY_RUN:-true}"
 PC_LOOKBACK_DAYS=$(_pc_threshold "${PC_LOOKBACK_DAYS:-}" 7)
 NEEDS_HUMAN_LABEL="${NEEDS_HUMAN_LABEL:-dev-lead:needs-human}"

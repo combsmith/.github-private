@@ -26,7 +26,7 @@ env:
   GH_TOKEN: ${{ secrets.DON_PETRY_BOT_GH_PAT }}
 ```
 
-The PAT is a fine-grained token scoped to the `combsmith` organization with 90-day expiry. See [MACHINE_USER_SETUP.md](machine-user-setup.md) for rotation instructions.
+The PAT is a fine-grained token scoped to the `petry-projects` organization with 90-day expiry. See [MACHINE_USER_SETUP.md](machine-user-setup.md) for rotation instructions.
 
 ## PR Enumeration
 

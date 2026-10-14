@@ -1,8 +1,8 @@
 # dev-lead — persona
 
-Formalized under the [Agentic Persona Standard](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
+Formalized under the [Agentic Persona Standard](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).
 This manifest brings the existing `dev-lead` agent under the standard and makes it
-addressable as `@combsmith/dev-lead` (an org **team** handle, never a user
+addressable as `@petry-projects/dev-lead` (an org **team** handle, never a user
 account — §4.1).
 
 Status: **draft**. The manifest, advisory prompt (`prompts/dev-lead/advisory.md`),

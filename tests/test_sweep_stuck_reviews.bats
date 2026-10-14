@@ -22,7 +22,7 @@ setup() {
   export MOCK_BIN FIXTURE_DIR GH_LOG
   export PATH="$MOCK_BIN:$PATH"
   export SWEEP_PRS_FILE="$PRS_FILE"
-  export AGENT_REPO="combsmith/.github-private"
+  export AGENT_REPO="petry-projects/.github-private"
 
   cat > "$MOCK_BIN/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -70,7 +70,7 @@ ROLLUP_FAIL='[{"name":"CI","status":"COMPLETED","conclusion":"FAILURE"}]'
 # Own pr-review check still pending alongside a green external check.
 ROLLUP_OWN_PENDING='[{"name":"review","status":"IN_PROGRESS","conclusion":null},{"name":"CI","status":"COMPLETED","conclusion":"SUCCESS"}]'
 
-url_for() { echo "https://github.com/combsmith/demo/pull/$1"; }
+url_for() { echo "https://github.com/petry-projects/demo/pull/$1"; }
 
 @test "stuck-green PR (REVIEW_REQUIRED + passing + no marker) is dispatched" {
   write_pr 569 "REVIEW_REQUIRED" "$ROLLUP_PASS"
@@ -79,7 +79,7 @@ url_for() { echo "https://github.com/combsmith/demo/pull/$1"; }
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   grep -qF "workflow run pr-review-trigger.yml" "$GH_LOG"
-  grep -qF -- "--repo combsmith/.github-private" "$GH_LOG"
+  grep -qF -- "--repo petry-projects/.github-private" "$GH_LOG"
   grep -qF -- "-f pr_url=$(url_for 569)" "$GH_LOG"
 }
 
@@ -532,12 +532,12 @@ write_event() {
 # In the event path the script derives the PR url as
 # https://github.com/<repo>/pull/<N>; the gh mock keys the fixture off the
 # trailing <N>, so pr_<N>.json must exist.
-ghp_event_url() { echo "https://github.com/combsmith/.github-private/pull/$1"; }
+ghp_event_url() { echo "https://github.com/petry-projects/.github-private/pull/$1"; }
 
 @test "workflow_run kick: ci-pending→green PR (REVIEW_REQUIRED + green + no marker) is dispatched, scoped to the event" {
   unset SWEEP_PRS_FILE
   local ev="$FIXTURE_DIR/event.json"
-  write_event "$ev" "combsmith/.github-private" '[898]'
+  write_event "$ev" "petry-projects/.github-private" '[898]'
   export GITHUB_EVENT_NAME=workflow_run
   export GITHUB_EVENT_PATH="$ev"
   write_pr 898 "REVIEW_REQUIRED" "$ROLLUP_PASS" "greensha"
@@ -551,7 +551,7 @@ ghp_event_url() { echo "https://github.com/combsmith/.github-private/pull/$1"; }
 @test "workflow_run kick: empty pull_requests (fork PR / branch push) is a clean no-op" {
   unset SWEEP_PRS_FILE
   local ev="$FIXTURE_DIR/event.json"
-  write_event "$ev" "combsmith/.github-private" '[]'
+  write_event "$ev" "petry-projects/.github-private" '[]'
   export GITHUB_EVENT_NAME=workflow_run
   export GITHUB_EVENT_PATH="$ev"
 
@@ -563,7 +563,7 @@ ghp_event_url() { echo "https://github.com/combsmith/.github-private/pull/$1"; }
 @test "workflow_run kick: event PR with CI still pending is NOT dispatched (too-early fire backstopped by cron)" {
   unset SWEEP_PRS_FILE
   local ev="$FIXTURE_DIR/event.json"
-  write_event "$ev" "combsmith/.github-private" '[899]'
+  write_event "$ev" "petry-projects/.github-private" '[899]'
   export GITHUB_EVENT_NAME=workflow_run
   export GITHUB_EVENT_PATH="$ev"
   write_pr 899 "REVIEW_REQUIRED" "$ROLLUP_PENDING" "pendsha"
@@ -576,7 +576,7 @@ ghp_event_url() { echo "https://github.com/combsmith/.github-private/pull/$1"; }
 @test "workflow_run kick: already-reviewed-at-head event PR is NOT re-dispatched" {
   unset SWEEP_PRS_FILE
   local ev="$FIXTURE_DIR/event.json"
-  write_event "$ev" "combsmith/.github-private" '[900]'
+  write_event "$ev" "petry-projects/.github-private" '[900]'
   export GITHUB_EVENT_NAME=workflow_run
   export GITHUB_EVENT_PATH="$ev"
   local comments='[{"body":"<!-- pr-review-agent v1 sha=donesha --> <!-- decision=fix-requested risk=low -->"}]'
@@ -590,7 +590,7 @@ ghp_event_url() { echo "https://github.com/combsmith/.github-private/pull/$1"; }
 @test "workflow_run kick: multiple PRs on the run are each evaluated" {
   unset SWEEP_PRS_FILE
   local ev="$FIXTURE_DIR/event.json"
-  write_event "$ev" "combsmith/.github-private" '[901,902]'
+  write_event "$ev" "petry-projects/.github-private" '[901,902]'
   export GITHUB_EVENT_NAME=workflow_run
   export GITHUB_EVENT_PATH="$ev"
   write_pr 901 "REVIEW_REQUIRED" "$ROLLUP_PASS" "g901"          # green → dispatch
@@ -669,7 +669,7 @@ ROLLUP_PASS_MIXED='[{"name":"build","workflowName":"CI","status":"COMPLETED","co
   # eventable CI workflow is exactly what the workflow_run path is for.
   unset SWEEP_PRS_FILE
   local ev="$FIXTURE_DIR/event.json"
-  write_event "$ev" "combsmith/.github-private" '[1413]'
+  write_event "$ev" "petry-projects/.github-private" '[1413]'
   export GITHUB_EVENT_NAME=workflow_run
   export GITHUB_EVENT_PATH="$ev"
   write_pr 1413 "REVIEW_REQUIRED" "$ROLLUP_PASS_EVENTABLE" "evt1413"

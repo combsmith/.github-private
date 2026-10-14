@@ -98,7 +98,7 @@ def test_scan_file_captures_line_and_suggestion() -> None:
         "on: [push]\n"
         "jobs:\n"
         "  review:\n"
-        "    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/next\n"
+        "    uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/next\n"
     )
     with tempfile.TemporaryDirectory() as d:
         p = _write(Path(d), "wf.yml", body)
@@ -122,7 +122,7 @@ def test_scan_file_canonical_passes_clean() -> None:
     body = (
         "jobs:\n"
         "  dl:\n"
-        "    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable\n"
+        "    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable\n"
     )
     with tempfile.TemporaryDirectory() as d:
         p = _write(Path(d), "wf.yml", body)
@@ -150,7 +150,7 @@ def test_cli_deprecated_now_fails_after_enforcement_flip() -> None:
     body = (
         "jobs:\n"
         "  review:\n"
-        "    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/next\n"
+        "    uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/next\n"
     )
     with tempfile.TemporaryDirectory() as d:
         summary = Path(d) / "summary.md"
@@ -171,7 +171,7 @@ def test_cli_sha_still_fails() -> None:
     body = (
         "jobs:\n"
         "  dl:\n"
-        "    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@"
+        "    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@"
         + "a" * 40
         + "\n"
     )
@@ -188,7 +188,7 @@ def test_scan_file_rejects_canonical_ref_with_mismatched_name() -> None:
     body = (
         "jobs:\n"
         "  dl:\n"
-        "    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml"
+        "    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml"
         "@pr-review/v1-stable\n"
     )
     with tempfile.TemporaryDirectory() as d:
@@ -209,7 +209,7 @@ def test_scan_file_rejects_legacy_ref_with_mismatched_name() -> None:
     body = (
         "jobs:\n"
         "  dl:\n"
-        "    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml"
+        "    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml"
         "@other-name/next\n"
     )
     with tempfile.TemporaryDirectory() as d:
@@ -227,7 +227,7 @@ def test_scan_file_quoted_job_id_line_mapping() -> None:
         'on: [push]\n'
         'jobs:\n'
         '  "review":\n'
-        '    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/next\n'
+        '    uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/next\n'
     )
     with tempfile.TemporaryDirectory() as d:
         p = _write(Path(d), "wf.yml", body)
@@ -246,7 +246,7 @@ def test_scan_file_deprecated_with_off_channel_comment_classified_deprecation() 
     body = (
         "jobs:\n"
         "  review:\n"
-        "    uses: combsmith/.github-private/.github/workflows/pr-review.yml"
+        "    uses: petry-projects/.github-private/.github/workflows/pr-review.yml"
         "@pr-review/next  # main\n"
     )
     with tempfile.TemporaryDirectory() as d:
@@ -265,7 +265,7 @@ def test_nested_workflow_included_in_inventory() -> None:
     body = (
         "jobs:\n"
         "  dl:\n"
-        "    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/next\n"
+        "    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/next\n"
     )
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
@@ -291,7 +291,7 @@ def test_scan_file_four_space_job_indent_line_mapping_and_comment() -> None:
         "on: [push]\n"
         "jobs:\n"
         "    review:\n"
-        "        uses: combsmith/.github-private/.github/workflows/pr-review.yml"
+        "        uses: petry-projects/.github-private/.github/workflows/pr-review.yml"
         "@pr-review/next\n"
     )
     with tempfile.TemporaryDirectory() as d:
@@ -312,7 +312,7 @@ def test_scan_file_four_space_job_indent_line_mapping_and_comment() -> None:
         "on: [push]\n"
         "jobs:\n"
         "    review:\n"
-        "        uses: combsmith/.github-private/.github/workflows/pr-review.yml"
+        "        uses: petry-projects/.github-private/.github/workflows/pr-review.yml"
         "@pr-review/v1-stable  # main\n"
     )
     with tempfile.TemporaryDirectory() as d:
@@ -334,7 +334,7 @@ def test_scan_file_quoted_root_jobs_key_line_and_comment() -> None:
         'on: [push]\n'
         '"jobs":\n'
         '  review:\n'
-        '    uses: combsmith/.github-private/.github/workflows/pr-review.yml'
+        '    uses: petry-projects/.github-private/.github/workflows/pr-review.yml'
         '@pr-review/next\n'
     )
     with tempfile.TemporaryDirectory() as d:
@@ -355,7 +355,7 @@ def test_scan_file_quoted_root_jobs_key_line_and_comment() -> None:
         'on: [push]\n'
         '"jobs":\n'
         '  review:\n'
-        '    uses: combsmith/.github-private/.github/workflows/pr-review.yml'
+        '    uses: petry-projects/.github-private/.github/workflows/pr-review.yml'
         '@pr-review/v1-stable  # main\n'
     )
     with tempfile.TemporaryDirectory() as d:
@@ -376,7 +376,7 @@ def test_scan_file_commented_root_jobs_key_line_and_comment() -> None:
         "on: [push]\n"
         "jobs:  # source-map test\n"
         "  review:\n"
-        "    uses: combsmith/.github-private/.github/workflows/pr-review.yml"
+        "    uses: petry-projects/.github-private/.github/workflows/pr-review.yml"
         "@pr-review/next\n"
     )
     with tempfile.TemporaryDirectory() as d:
@@ -396,7 +396,7 @@ def test_scan_file_commented_root_jobs_key_line_and_comment() -> None:
         "on: [push]\n"
         "jobs:  # source-map test\n"
         "  review:\n"
-        "    uses: combsmith/.github-private/.github/workflows/pr-review.yml"
+        "    uses: petry-projects/.github-private/.github/workflows/pr-review.yml"
         "@pr-review/v1-stable  # main\n"
     )
     with tempfile.TemporaryDirectory() as d:

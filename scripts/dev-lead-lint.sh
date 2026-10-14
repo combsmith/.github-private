@@ -92,7 +92,7 @@ if [ "${#agent_files[@]}" -gt 0 ]; then
 fi
 
 # ── 3. CODEOWNERS validation ──────────────────────────────────────────────────
-# Checks that every owner line lists @combsmith/org-leads first.
+# Checks that every owner line lists @petry-projects/org-leads first.
 # Standard: standards/codeowners-standard.md (codeowners-org-leads-not-first check)
 codeowners_file=""
 for candidate in ".github/CODEOWNERS" "CODEOWNERS" "docs/CODEOWNERS"; do
@@ -112,8 +112,8 @@ if [ -n "$codeowners_file" ]; then
     clean_line="${line//\\ /}"
     read -r -a parts <<< "$clean_line"
     first_owner="${parts[1]:-}"
-    if [ "$first_owner" != "@combsmith/org-leads" ]; then
-      echo "FAIL: $codeowners_file — @combsmith/org-leads must be the first owner on line: $line"
+    if [ "$first_owner" != "@petry-projects/org-leads" ]; then
+      echo "FAIL: $codeowners_file — @petry-projects/org-leads must be the first owner on line: $line"
       codeowners_fail=1
     fi
   done < "$codeowners_file"

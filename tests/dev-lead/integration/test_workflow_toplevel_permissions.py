@@ -6,7 +6,7 @@ top level (even if just `permissions: {}`) so that GitHub's default
 write-all grant is never silently inherited.  Each job then overrides with its
 own scoped block.
 
-Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md#permissions-policy
+Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md#permissions-policy
 """
 from __future__ import annotations
 

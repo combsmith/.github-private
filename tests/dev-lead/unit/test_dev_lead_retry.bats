@@ -60,7 +60,7 @@ _marker() {
 @test "retry: failed marker, attempt 1, no PR → dispatches" {
   COMMENTS_JSON="$(jq -nc --arg m "$(_marker failed 1)" '[$m]')"
 
-  run scan_issue_for_retry "combsmith/.github" 478
+  run scan_issue_for_retry "petry-projects/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"would dispatch dev-lead-issue-retry"* ]]
@@ -70,7 +70,7 @@ _marker() {
 @test "retry: rate-limited marker with reset in the future → skips" {
   COMMENTS_JSON="$(jq -nc --arg m "$(_marker rate-limited 1 2026-06-19T06:00:00Z)" '[$m]')"
 
-  run scan_issue_for_retry "combsmith/.github" 478
+  run scan_issue_for_retry "petry-projects/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"not yet cleared"* ]]
@@ -80,7 +80,7 @@ _marker() {
 @test "retry: rate-limited marker with reset in the past → dispatches" {
   COMMENTS_JSON="$(jq -nc --arg m "$(_marker rate-limited 1 2026-06-18T00:00:00Z)" '[$m]')"
 
-  run scan_issue_for_retry "combsmith/.github" 478
+  run scan_issue_for_retry "petry-projects/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"would dispatch dev-lead-issue-retry"* ]]
@@ -89,7 +89,7 @@ _marker() {
 @test "retry: attempt at the ceiling (attempt=3, MAX=3) → skips" {
   COMMENTS_JSON="$(jq -nc --arg m "$(_marker failed 3)" '[$m]')"
 
-  run scan_issue_for_retry "combsmith/.github" 478
+  run scan_issue_for_retry "petry-projects/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"attempts exhausted"* ]]
@@ -101,7 +101,7 @@ _marker() {
     --arg a "$(_marker failed 1)" \
     --arg b "$(_marker failed 2)" '[$a, $b]')"
 
-  run scan_issue_for_retry "combsmith/.github" 478
+  run scan_issue_for_retry "petry-projects/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"would dispatch dev-lead-issue-retry"* ]]
@@ -111,7 +111,7 @@ _marker() {
 @test "retry: non-retryable marker (status=needs-human) → skips" {
   COMMENTS_JSON="$(jq -nc --arg m "$(_marker needs-human 2)" '[$m]')"
 
-  run scan_issue_for_retry "combsmith/.github" 478
+  run scan_issue_for_retry "petry-projects/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"not retryable"* ]]
@@ -122,7 +122,7 @@ _marker() {
   COMMENTS_JSON="$(jq -nc --arg m "$(_marker failed 1)" '[$m]')"
   OPEN_PR_COUNT="1"
 
-  run scan_issue_for_retry "combsmith/.github" 478
+  run scan_issue_for_retry "petry-projects/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"open dev-lead PR already exists"* ]]
@@ -132,7 +132,7 @@ _marker() {
 @test "retry: no failure marker → no dispatch (returns 0)" {
   COMMENTS_JSON='["just a normal human comment"]'
 
-  run scan_issue_for_retry "combsmith/.github" 478
+  run scan_issue_for_retry "petry-projects/.github" 478
 
   [ "$status" -eq 0 ]
   [[ "$output" != *"would dispatch"* ]]
@@ -143,7 +143,7 @@ _marker() {
 @test "dispatch: issue-retry payload carries event_type + issue_number + attempt" {
   export DRY_RUN="false"
 
-  run dispatch_issue_retry "combsmith/.github" 478 2
+  run dispatch_issue_retry "petry-projects/.github" 478 2
 
   [ "$status" -eq 0 ]
   [ -f "$PAYLOAD_FILE" ]
@@ -156,7 +156,7 @@ _marker() {
   export DRY_RUN="true"
   rm -f "$PAYLOAD_FILE"
 
-  run dispatch_issue_retry "combsmith/.github" 478 1
+  run dispatch_issue_retry "petry-projects/.github" 478 1
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"[dry-run] would dispatch"* ]]
@@ -655,7 +655,7 @@ _scan_with_hold() {
   fetch_pr_comment_nodes() { echo '[{"id":"IC_cr"}]'; }
   stale_disposition_needs_dispatch() { return 0; }
   dispatch_reviews_retry() { echo "DISPATCH intent=$4" >&2; }
-  run scan_pr_for_rate_limits "combsmith/.github-private" 2000
+  run scan_pr_for_rate_limits "petry-projects/.github-private" 2000
 }
 
 @test "sweep(#2008): an active rate-limit hold also holds the edit re-dispatch" {
@@ -705,7 +705,7 @@ _scan_with_markers() {
   fetch_pr_comment_nodes() { echo '[]'; }
   stale_disposition_needs_dispatch() { return 1; }
   dispatch_reviews_retry() { echo "DISPATCH intent=$4" >&2; }
-  run scan_pr_for_rate_limits "combsmith/.github-private" 2000
+  run scan_pr_for_rate_limits "petry-projects/.github-private" 2000
 }
 
 @test "retry(#2089): a dev-lead:hands-off PR with a reset hold neither guards nor dispatches" {
@@ -724,7 +724,7 @@ _scan_with_markers() {
   fetch_pr_comment_nodes() { echo '[{"id":"IC_cr"}]'; }
   stale_disposition_needs_dispatch() { return 0; }
   dispatch_reviews_retry() { echo "DISPATCH intent=$4" >&2; }
-  run scan_pr_for_rate_limits "combsmith/.github-private" 2000
+  run scan_pr_for_rate_limits "petry-projects/.github-private" 2000
   [ "${lines[-1]}" = "0" ]
   [[ "$output" != *"DISPATCH"* ]]
   [[ "$output" != *"GUARD"* ]]
@@ -781,7 +781,7 @@ _scan_with_markers() {
   fetch_pr_comment_nodes() { echo '[{"id":"x"}]'; }
   stale_disposition_needs_dispatch() { return 0; }
   dispatch_reviews_retry() { echo "DISPATCH intent=$4" >&2; }
-  run scan_pr_for_rate_limits "combsmith/.github-private" 2000
+  run scan_pr_for_rate_limits "petry-projects/.github-private" 2000
   [[ "$output" != *"DISPATCH"* ]]
   [[ "$output" == *"ESCALATE 2000"* ]]
 }

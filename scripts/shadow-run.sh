@@ -24,7 +24,7 @@
 #   STABLE_RUN_ID       stable lane workflow run id (optional)
 #   SHADOW_RUN_ID       shadow lane workflow run id (optional)
 #   SHADOW_SIGNAL_OUT   path to write the JSON signal artifact (optional)
-#   REPO                owner/repo, for run URLs (default combsmith/.github-private)
+#   REPO                owner/repo, for run URLs (default petry-projects/.github-private)
 #
 # Outputs:
 #   - JSON signal to SHADOW_SIGNAL_OUT (if set) — read by the #501 gate.
@@ -41,7 +41,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/shadow-compare.sh
 source "$SCRIPT_DIR/lib/shadow-compare.sh"
 
-REPO="${REPO:-combsmith/.github-private}"
+REPO="${REPO:-petry-projects/.github-private}"
 REUSABLE="${REUSABLE:-dev-lead}"
 SHADOW_CHANNEL="${SHADOW_CHANNEL:-next}"
 
