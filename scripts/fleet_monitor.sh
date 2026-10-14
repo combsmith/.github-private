@@ -12,10 +12,10 @@
 #                     intentionally a PAT (not GITHUB_TOKEN) because the default
 #                     Actions token lacks cross-org actions:read
 #   GH_PAT_FALLBACK — optional secondary token if primary lacks org-level access
-#   ORG             — GitHub org to scan (default: petry-projects)
+#   ORG             — GitHub org to scan (default: combsmith)
 #   LOOKBACK_DAYS   — days of history to consider (default: 1)
 #   BUDGET_POLLER_REPO        — repo whose budget-poller-log artifact is read
-#                               (default: petry-projects/.github-private, #2029)
+#                               (default: combsmith/.github-private, #2029)
 #   BUDGET_POLLER_STALE_HOURS — warn when the last OK poll is older (default: 6)
 #   FLEET_PAUSE_BATCH — runs per jobs read when looking for fleet-paused runs
 #                       (default: 100, #2266)
@@ -36,7 +36,7 @@ source "${SCRIPT_DIR}/lib/budget-poller.sh"
 # shellcheck source=scripts/lib/fleet-pause.sh
 source "${SCRIPT_DIR}/lib/fleet-pause.sh"
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-1}"
 REPORT_FILE="fleet_monitor_report.md"
 TODAY=$(date -u +%Y-%m-%d)
@@ -65,21 +65,21 @@ TODAY=$(date -u +%Y-%m-%d)
 #                       collapsed repo IGNORES it so a deleted per-role stub is never
 #                       resurrected (AC #4). Whole-file compared against ...
 #     legacy_canonical_path — ... this org-template per-role canonical path.
-CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-petry-projects/.github}"
+CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-combsmith/.github}"
 STUB_REGISTRY=(
   $'initiative-planner\tInitiative-planner\t.github/workflows/initiative-planner.yml\tstandards/workflows/initiative-planner.yml\t\t\t'
   $'initiative-driver\tInitiative-driver\t.github/workflows/initiative-driver.yml\tstandards/workflows/initiative-driver.yml\t\t\t'
   # Collapsed agent-ingress.yml roles (#1729 AC11): one row per job in the
-  # petry-projects/markets ingress. These entries register for future drift
+  # combsmith/markets ingress. These entries register for future drift
   # coverage once the canonical standards/workflows/agent-ingress.yml is
-  # published to petry-projects/.github (#1729 AC11). Until then, a canonical
+  # published to combsmith/.github (#1729 AC11). Until then, a canonical
   # 404 gracefully skips these rows with a warning, leaving them without
   # coverage. The monitor and remediation helpers handle this degradation
   # automatically (see the @test "fleet_monitor: a 404 canonical
   # agent-ingress skips every role row with a warning and stays green" in
   # tests/fleet_stub_registry.bats).
   # legacy_canonical_path is empty for pr-review and ci-failure-analyst because
-  # petry-projects/.github publishes no standards/workflows/<role>.yml for them
+  # combsmith/.github publishes no standards/workflows/<role>.yml for them
   # (checked 2026-10-10), so a repo that has not collapsed classifies MISSING
   # for those two roles.
   $'dev-lead\tDev-lead\t.github/workflows/agent-ingress.yml\tstandards/workflows/agent-ingress.yml\tdev-lead\t.github/workflows/dev-lead.yml\tstandards/workflows/dev-lead.yml'
@@ -697,7 +697,7 @@ done
 # artifact or API error renders "no OK record", never fails the monitor.
 # ---------------------------------------------------------------------------
 budget_poller_log_file=$(mktemp) || { echo "::error::budget-poller: failed to create temporary file" >&2; exit 1; }
-if ! bp_download_latest_log "${BUDGET_POLLER_REPO:-petry-projects/.github-private}" "$budget_poller_log_file"; then
+if ! bp_download_latest_log "${BUDGET_POLLER_REPO:-combsmith/.github-private}" "$budget_poller_log_file"; then
   echo "::notice::budget-poller: no readable ${BUDGET_POLLER_ARTIFACT} artifact — reporting no OK record"
   : > "$budget_poller_log_file"
 fi

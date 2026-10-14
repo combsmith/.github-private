@@ -10,9 +10,9 @@ channel tags — so for them a SHA / `@main` pin is the violation and a channel 
 version tag is required.
 
 Scope (AC #1): job-level `uses:` refs pointing at a first-party reusable —
-  petry-projects/.github-private/.github/workflows/*-reusable.yml
-  petry-projects/.github/.github/workflows/*-reusable.yml
-plus the self-host pr-review caller (petry-projects/.github-private/.github/workflows/pr-review.yml)
+  combsmith/.github-private/.github/workflows/*-reusable.yml
+  combsmith/.github/.github/workflows/*-reusable.yml
+plus the self-host pr-review caller (combsmith/.github-private/.github/workflows/pr-review.yml)
 — across .github/workflows/* and templates/*. Local `./` reusable calls carry no
 `@ref` (GitHub uses the caller's own commit) and are out of scope. Third-party
 actions still follow the SHA-pin standard and are untouched.
@@ -58,7 +58,7 @@ DEFAULT_GLOBS = (
 
 # owner/repo/.github/workflows/<file> for a first-party reusable path.
 FIRST_PARTY_PATH_RE = re.compile(
-    r"^petry-projects/(?:\.github|\.github-private)/\.github/workflows/"
+    r"^combsmith/(?:\.github|\.github-private)/\.github/workflows/"
     r"(?P<file>[A-Za-z0-9._-]+\.ya?ml)$"
 )
 

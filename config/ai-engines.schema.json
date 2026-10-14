@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/petry-projects/.github-private/config/ai-engines.schema.json",
+  "$id": "https://github.com/combsmith/.github-private/config/ai-engines.schema.json",
   "title": "AI engine configuration",
   "description": "Providers, model catalog and per-task model chains for the review and dev-lead engines (#1973). Cross-reference checks (catalog membership, retired models, provider match, price rows, one-model chains) live in scripts/validate-ai-engines.py.",
   "type": "object",

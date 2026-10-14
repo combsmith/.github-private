@@ -1,5 +1,5 @@
-# PINNED-USES: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable
-# SNAPSHOT (trimmed) of petry-projects/.github-private
+# PINNED-USES: combsmith/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable
+# SNAPSHOT (trimmed) of combsmith/.github-private
 # .github/workflows/ci-failure-analyst-reusable.yml @ ci-failure-analyst/v1-stable
 # (cc0bc61f70dc44b06059aa0582658939d9b114c6), read 2026-10-12 for #2316
 # (markets#523 repin; was @b58510275dd1cbbd13c0733c15265d51fd63b992, read

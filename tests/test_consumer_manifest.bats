@@ -71,7 +71,7 @@ run_validator() {
 }
 
 @test "consumer entry with non-array refs fails validation" {
-  jq '.consumers = [{"repo": "petry-projects/markets", "refs": "nope"}]' \
+  jq '.consumers = [{"repo": "combsmith/markets", "refs": "nope"}]' \
     "$MANIFEST" > "$FIXTURE"
   run_validator "$FIXTURE"
   [ "$status" -ne 0 ]
@@ -131,7 +131,7 @@ run_validator() {
 {
   "providers": [".github", ".github-private"],
   "consumers": [
-    { "repo": "petry-projects/markets", "refs": [".github-private/.github/workflows/pr-review.yml"] }
+    { "repo": "combsmith/markets", "refs": [".github-private/.github/workflows/pr-review.yml"] }
   ],
   "surface_sources": {
     ".github/workflows/pr-review.yml": ["prompts/single-review.md", "scripts/lib/ci-status.sh"]
@@ -147,7 +147,7 @@ JSON
 # ---------------------------------------------------------------------------
 
 @test "consumer ref not matching a declared provider fails validation" {
-  jq '.consumers = [{"repo": "petry-projects/foo", "refs": ["not-a-provider/.github/workflows/foo.yml"]}]' \
+  jq '.consumers = [{"repo": "combsmith/foo", "refs": ["not-a-provider/.github/workflows/foo.yml"]}]' \
     "$MANIFEST" > "$FIXTURE"
   run_validator "$FIXTURE"
   [ "$status" -ne 0 ]

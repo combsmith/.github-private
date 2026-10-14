@@ -16,11 +16,11 @@ added registered clean info-status bot comments.
 ADR-0008 has the maintainer, dev-lead and the personas all post as `don-petry`.
 So the gate cannot tell a finding from the owner's own words, and three kinds of
 comment held `undispositioned-pr-comment` with nothing able to clear them
-(defect 4 of [#2173](https://github.com/petry-projects/.github-private/issues/2173),
-tracked as [#2209](https://github.com/petry-projects/.github-private/issues/2209)):
+(defect 4 of [#2173](https://github.com/combsmith/.github-private/issues/2173),
+tracked as [#2209](https://github.com/combsmith/.github-private/issues/2209)):
 
 - the owner's `@donpetry-bot please review` comment, so each re-request added
-  one more blocker to the review it asked for. On `petry-projects/.github` PR
+  one more blocker to the review it asked for. On `combsmith/.github` PR
   1276, two of the four blockers were review requests;
 - the `<!-- auto-rebase-conflict: … -->` sentinel, whose marker was not
   registered. The conflict it reports already blocks the merge;

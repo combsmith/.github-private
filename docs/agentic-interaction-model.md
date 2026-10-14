@@ -1,6 +1,6 @@
 # Agentic interaction model
 
-**Status:** normative (repo-local standard) · **Scope:** `petry-projects/.github-private`
+**Status:** normative (repo-local standard) · **Scope:** `combsmith/.github-private`
 · **Anchors:** the per-role interaction contracts (Story 2 / #1404), the CI validator
 `validate-interaction-model` (Story 4 / #1406), the documentation wiring (Story 7).
 
@@ -15,7 +15,7 @@ rule here rather than re-deriving it.
 > pointing back to the governing section here.
 
 It is written **repo-local first** but shaped for promotion into an org-wide
-`standards/agent-standards.md` in [`petry-projects/.github`](https://github.com/petry-projects/.github):
+`standards/agent-standards.md` in [`combsmith/.github`](https://github.com/combsmith/.github):
 the principles and rules are org-general; only the classification table (§4) is
 repo-specific inventory. When promoting, lift §§1–3 and §§6–10 verbatim and regenerate §4
 per consuming repo. This mirrors the promotion pattern already used for the off-peak
@@ -484,7 +484,7 @@ human has applied them. It is **CI-verified, not trusted** — `validate-interac
   universal brake `needs-human-review` — the label `pr_has_escalation_label`
   (`scripts/lib/pr-automation-budget.sh`) checks on the event-driven surface. The mention
   router now reads a persona's `stop_markers` straight from this contract
-  (petry-projects/.github#1133), so a persona that omits the brake is **routed on a mention
+  (combsmith/.github#1133), so a persona that omits the brake is **routed on a mention
   even after a human applies it** — the fail-open asymmetry #1745 fixes. The validator
   derives the marker from the serving script, never re-listing it as a literal (#1745 AC #2).
 - **A declared marker must be honoured somewhere.** The honoured set for a persona is its own
@@ -502,7 +502,7 @@ naming the surface and the reason) rather than leaving the asymmetry implicit. S
 evaluate labels at all (see discussions below) are out of scope for this rule and are handled
 separately by the router's fail-closed refusal.
 
-**Discussions have no labels API (#1318, petry-projects/.github#755 residual).** The
+**Discussions have no labels API (#1318, combsmith/.github#755 residual).** The
 discussion surface exposes no labels, so label-based `stop_markers` **cannot be evaluated
 there** at all. The deployed router states this behaviour deliberately rather than leaving it
 implicit: on a discussion it **routes in read/advisory mode** (where there is no write to gate)
@@ -517,7 +517,7 @@ Two options were considered:
 
 - **(a) Extend `persona.yml`** with an `interaction:` block. Attractive (one manifest per
   role) but **blocked cross-repo**: `personas/validate-personas.py` validates every
-  `persona.yml` against `persona.schema.json` fetched from **`petry-projects/.github`**
+  `persona.yml` against `persona.schema.json` fetched from **`combsmith/.github`**
   (`standards/personas/persona.schema.json`). Adding an `interaction` block to `persona.yml`
   requires that **external schema to permit the fields first** — otherwise validation fails
   the moment the field appears. That is a cross-repo change on another repo's release
@@ -535,7 +535,7 @@ the validator hermetic, and matches this document's "repo-local first" posture.
 
 **Cross-repo implication to sequence (Story 2 / epic `untracked_prerequisites`):** promoting
 the contract into `persona.yml` later is the eventual home, but it is **gated on**
-`petry-projects/.github` extending `persona.schema.json` to allow the `interaction` block.
+`combsmith/.github` extending `persona.schema.json` to allow the `interaction` block.
 Sequence, in order: (1) land the `interaction` object in the org `persona.schema.json`; (2)
 release it on the schema's consumed ref; (3) only then move the contract into `persona.yml`
 and delete the standalone file. Doing (3) first breaks `validate-personas.py` for every
