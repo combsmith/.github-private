@@ -549,7 +549,7 @@ _disp() {
 # finding still blocks until it gets a real disposition.
 # ────────────────────────────────────────────────────────────────────
 
-# The live body of petry-projects/.github PR #1269, comment IC_kwDORyesfc8AAAABauHIXQ.
+# The live body of combsmith/.github PR #1269, comment IC_kwDORyesfc8AAAABauHIXQ.
 _codeant_low_risk_body() {
   printf '%s' '## CodeAnt PR Risk: Low Risk
 

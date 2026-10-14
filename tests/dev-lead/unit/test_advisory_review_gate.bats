@@ -1248,6 +1248,6 @@ _graphite_run() { # <status> <conclusion|null> [head_sha]
 }
 
 @test "Advisory gate: no check-run name is hard-coded — the registry is the source (issue #2005)" {
-  ! grep -q 'AI Reviews' "$SCRIPT_DIR/lib/advisory-review-gate.sh"
+  ! grep -q 'AI Reviews' "$SCRIPT_DIR/lib/advisory-review-gate.sh" || false
   grep -q 'reviewer_sources_check_run_reporters' "$SCRIPT_DIR/lib/advisory-review-gate.sh"
 }

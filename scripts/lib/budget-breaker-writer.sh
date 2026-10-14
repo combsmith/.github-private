@@ -59,13 +59,37 @@
 # value is somebody else's and is left alone, as is an until with no own source.
 #
 # ----------------------------------------------------------------------------
+# The early exit (#2259)
+#
+# Since #2259 the workflow is also woken by `workflow_run`, many times an hour,
+# so a run may skip the organisation scan when an earlier run already made one
+# moments ago. Time is cut into clock slots of BUDGET_BREAKER_MIN_INTERVAL_MIN
+# minutes (bbw_slot_start). A run woken by `workflow_run` on a fleet that is not
+# paused exits before the scan only when BOTH hold:
+#   - an earlier run of this workflow that SUCCEEDED was CREATED in the current
+#     slot (bbw_read_previous_runs, bbw_runs_since; a failed run covers nothing,
+#     it may have ended before its scan), and
+#   - this repository shows no quota marker created in the current slot
+#     (bbw_collect_recent, bbw_markers_since: one listing instead of one per
+#     repository).
+# The rule is slots, not "the previous run finished less than N minutes ago",
+# because a run that exits early is itself a previous run: under a steady
+# stream of wake-ups that rule would exit early for ever. With slots, the first
+# run to look in a slot finds no earlier run created in it and decides, so
+# every slot with a run has a decision. The second condition keeps the exit
+# from hiding news: a wake-up caused by a run that posted a marker here sees
+# that marker and decides.
+# Every unreadable input means NO early exit (the run decides): fail open.
+#
+# ----------------------------------------------------------------------------
 # Credentials
 #
 # Three separate credentials, each used only for its own calls and never
 # exported: bbw_take_credentials moves them out of the environment, so no child
 # process inherits one unless a call here hands it over for that call alone.
 #   write   organisation Variables read and write   state read + variable writes
-#   read    the fleet's read-only scan credential   the collector, secret age
+#   read    the fleet's read-only scan credential   the collector, secret age,
+#                                                   this workflow's earlier runs
 #   notify  this repository's workflow token        the tracking-issue notice,
 #                                                   and the look-up of an
 #                                                   earlier one
@@ -127,6 +151,9 @@ BBW_ROLLBACK_OWN_SOURCE=""
 # The values the current bbw_apply call has written ("" = not written by it).
 _BBW_WROTE_SOURCE=""
 _BBW_WROTE_UNTIL=""
+# This workflow's earlier runs, as bbw_read_previous_runs last read them:
+# [{id, conclusion, created_at, updated_at}].
+BBW_PREV_RUNS="[]"
 # The number of the open tracking issue, as bbw_find_tracking_issue last saw it.
 BBW_TRACKING_NUMBER=""
 # A hold run looks for a pause's missing notice only while the pause switch was
@@ -225,6 +252,18 @@ _bbw_gh() {
 # ---------------------------------------------------------------------------
 bbw_collect() {
   ( export GH_TOKEN="$_BBW_READ_CRED"; bb_collect "$@" )
+}
+
+# ---------------------------------------------------------------------------
+# bbw_collect_recent <repo> <minutes> — ONE repository's quota markers of the
+# last <minutes> minutes, with the READ credential: bb_collect_observations
+# (scripts/lib/budget-breaker.sh) with the evidence window narrowed for this
+# call only (the subshell keeps both the credential and the narrowed window out
+# of this shell). One listing call. Prints the observation array; returns 1
+# when the repository could not be read.
+# ---------------------------------------------------------------------------
+bbw_collect_recent() {
+  ( export GH_TOKEN="$_BBW_READ_CRED"; BUDGET_BREAKER_WINDOW_MIN="${2:-}"; bb_collect_observations "${1:-}" )
 }
 
 # ---------------------------------------------------------------------------
@@ -675,6 +714,96 @@ bbw_secret_updated_at() {
     --jq '.updated_at // empty' || return 1
   [[ "$BBW_OUT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || return 1
   printf '%s' "$BBW_OUT"
+}
+
+# ---------------------------------------------------------------------------
+# bbw_read_previous_runs <repo> <workflow_file> <own_run_id> — READ ONLY, read
+# credential. The earlier runs of this workflow that ran to a conclusion, into
+# BBW_PREV_RUNS: [{id, conclusion, created_at, updated_at}]. One listing of the
+# workflow's last 100 runs. Left out: this run itself, a run still under way,
+# and a run that ended any other way than success or failure (cancelled while
+# it waited in the concurrency group: it never reached the script).
+# Returns 1 when the listing could not be read (BBW_HTTP / BBW_ERR), 2 when it
+# could not be parsed; BBW_PREV_RUNS is then `[]`.
+# Sets globals: call it directly, never inside `$(...)`.
+# ---------------------------------------------------------------------------
+bbw_read_previous_runs() {
+  local repo="${1:-}" file="${2:-}" own="${3:-}" parsed
+  BBW_PREV_RUNS="[]"
+  if ! [[ "$repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ && "$file" =~ ^[A-Za-z0-9._-]+\.ya?ml$ ]]; then
+    BBW_OUT="" BBW_HTTP="" BBW_ERR="the repository or the workflow file is not known"
+    return 1
+  fi
+  _bbw_gh "$_BBW_READ_CRED" api "repos/${repo}/actions/workflows/${file}/runs?per_page=100" \
+    --jq '.workflow_runs[] | {id, conclusion, created_at, updated_at}' || return 1
+  parsed=$(jq -cs --arg own "$own" '
+    def iso: type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$");
+    if all(.[]; type == "object") then
+      map(select((.conclusion == "success" or .conclusion == "failure")
+                 and ((.id | tostring) != $own)
+                 and (.created_at | iso) and (.updated_at | iso)))
+    else error("not a list of runs") end' <<< "$BBW_OUT" 2>/dev/null) || {
+    BBW_ERR="the run listing could not be parsed"
+    return 2
+  }
+  BBW_PREV_RUNS="$parsed"
+}
+
+# ---------------------------------------------------------------------------
+# bbw_previous_run_text <runs_json> <now_epoch> — PURE. One line for the log
+# and the summary: when the latest of those runs finished and how long before
+# now that was. Says so when there is none, or when the input is unreadable.
+# ---------------------------------------------------------------------------
+bbw_previous_run_text() {
+  jq -r --arg now "${2:-}" '
+    if length == 0 then "none among the last 100 runs of this workflow"
+    else max_by(.updated_at) as $r
+      | ([($now | tonumber) - ($r.updated_at | fromdateiso8601), 0] | max) as $ago
+      | "finished \($r.updated_at) (\($r.conclusion)), \($ago / 60 | floor) min before this one"
+    end' <<< "${1:-}" 2>/dev/null || printf 'not readable'
+}
+
+# ---------------------------------------------------------------------------
+# bbw_slot_start <now_epoch> <minutes> — PURE. The start (ISO-8601 UTC) of the
+# clock slot of <minutes> minutes that now falls in; slots are counted from the
+# epoch, so every run agrees on them with nothing kept between runs. Prints
+# nothing and returns 1 when either value is unreadable or <minutes> is 0.
+# ---------------------------------------------------------------------------
+bbw_slot_start() {
+  jq -nre --arg now "${1:-}" --arg min "${2:-}" '
+    if ($now | test("^[0-9]{1,12}$")) and ($min | test("^[0-9]{1,4}$")) and ($min | tonumber) > 0
+    then (($min | tonumber) * 60) as $len
+      | ((($now | tonumber) / $len) | floor) * $len | todate
+    else empty end' 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# bbw_runs_since <runs_json> <iso_time> — PURE. How many of those runs were
+# CREATED at or after the time AND succeeded. A run that failed may have ended
+# before its scan, so it does not cover a slot: counting it would let every
+# later wake-up in that slot exit early with no decision taken. Prints 0 when
+# anything is unreadable: no earlier run known means no early exit.
+# ---------------------------------------------------------------------------
+bbw_runs_since() {
+  jq -r --arg since "${2:-}" '
+    if ($since | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+    then [.[] | select(.conclusion == "success" and .created_at >= $since)] | length else 0 end' <<< "${1:-}" 2>/dev/null \
+    || printf '0'
+}
+
+# ---------------------------------------------------------------------------
+# bbw_markers_since <observations_json> <iso_time> — PURE. How many of those
+# observations were created at or after the time. One whose creation time is
+# not a readable time counts: it may be news. Prints nothing and returns 1
+# when the array or the time is unreadable, so the caller cannot take "could
+# not tell" for "none".
+# ---------------------------------------------------------------------------
+bbw_markers_since() {
+  jq -re --arg since "${2:-}" '
+    def iso: type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$");
+    if type == "array" and ($since | iso)
+    then [.[] | select(((.created? // null) | iso | not) or .created >= $since)] | length | tostring
+    else empty end' <<< "${1:-}" 2>/dev/null
 }
 
 # ---------------------------------------------------------------------------

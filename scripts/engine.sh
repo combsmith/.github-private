@@ -33,6 +33,16 @@ set -euo pipefail
 #   TOKEN_WORKFLOW — workflow label for records (default: "unknown").
 #   Records are written via scripts/lib/token-metrics.sh (estimate-based).
 #   Unset → zero overhead, zero behaviour change.
+#   The path stays in this shell: a model CLI is started without it (_engine_child).
+
+# Sidecar directory (#2271). The writer tier leaves small files here for the
+# dev-lead handlers that source this file to read back: the parsed rate-limit
+# reset, the failure-reason class, the timeout tier/budget/elapsed and the
+# redacted session output. Unset → /tmp, where these files have always been. This is the only definition: every
+# writer and reader names "$DEV_LEAD_SIDECAR_DIR/<file>", so the two sides cannot
+# resolve different paths. The test suites point it at a per-test directory so
+# concurrent runs do not read each other's values.
+DEV_LEAD_SIDECAR_DIR="${DEV_LEAD_SIDECAR_DIR:-/tmp}"
 
 # Configured engine chain (AI_ENGINES): which engines are enabled and in what
 # order. The primary is REVIEW_ENGINE when that is set AND enabled, otherwise
@@ -127,7 +137,7 @@ export COPILOT_API_MODEL
 # so the tiers can never silently exceed the job backstop. Raising a tier here
 # requires lowering another or raising the job cap, or the guardrail fails CI.
 #
-# Fleet note: petry-projects/.github leaves `vars.DEEP_TIMEOUT_SEC` (and
+# Fleet note: combsmith/.github leaves `vars.DEEP_TIMEOUT_SEC` (and
 # ACTION_TIMEOUT_SEC) UNSET, so the workflow passes an empty value through and
 # these engine defaults take effect. The raised DEEP default (was 600, now 2400)
 # therefore applies fleet-wide unless a repo overrides it via its own `vars`.
@@ -802,6 +812,20 @@ is_transient_failure() {
   esac
 }
 
+# _engine_child <command> [args...]
+# Starts a model CLI (behind its `timeout` wrapper) with the token ledger taken
+# out of ITS environment (#2304). Records are written by this shell around the
+# call (_record_engine_tokens, the gq_* ledger writers); the CLI never needs the
+# path. An agent session that inherited it handed it to everything the model ran
+# — this repository's own bats suites included, whose fixture calls, rejections
+# and cooldowns then landed in the run's real ledger. Removed with it:
+# GEMINI_LEDGER_FILE (gemini-quota.sh's override for the same file) and
+# _ENGINE_USAGE_OUT (this call's usage sidecar, which nested engine code would
+# overwrite). TOKEN_WORKFLOW stays: a label, it writes nothing without a path.
+_engine_child() {
+  env -u TOKEN_LOG_FILE -u GEMINI_LEDGER_FILE -u _ENGINE_USAGE_OUT "$@"
+}
+
 # copilot_chat <prompt_file> [timeout_sec] [extra_flags...]
 # Calls the GitHub Copilot CLI for completions and agentic actions.
 #
@@ -831,7 +855,7 @@ copilot_chat() {
 
   # We use -p for the prompt. Redirect /dev/null to stdin to ensure
   # non-interactive mode.
-  timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gh copilot \
+  _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gh copilot \
     --model "$COPILOT_API_MODEL" \
     -p "$prompt_text" \
     -s "$@" < /dev/null
@@ -921,7 +945,7 @@ _gemini_invoke() {
     if [ -n "$_json_tmp" ]; then
       local rc=0
       # stderr intentionally NOT redirected — flows to caller for rate-limit checks.
-      timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gemini --prompt "" --model "$model" "${extra_args[@]}" \
+      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gemini --prompt "" --model "$model" "${extra_args[@]}" \
         --output-format json < "$prompt_file" > "$_json_tmp" || rc=$?
       if [ "$rc" -eq 0 ]; then
         parse_engine_usage gemini "$_json_tmp" || true
@@ -936,7 +960,7 @@ _gemini_invoke() {
   fi
 
   # Estimate path (logging off, or mktemp failed): plain text output.
-  timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gemini --prompt "" --model "$model" "${extra_args[@]}" \
+  _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gemini --prompt "" --model "$model" "${extra_args[@]}" \
     --output-format text < "$prompt_file"
 }
 
@@ -1285,7 +1309,7 @@ _claude_chain_invoke() {
     rc=0
 
     if [ -n "$stdout_tmp" ] && [ -n "$stderr_tmp" ]; then
-      timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
+      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
         < "$prompt_file" > "$stdout_tmp" 2> "$stderr_tmp" || rc=$?
     else
       # mktemp failure (one or both) — clean up the partial tmp before degrading
@@ -1294,7 +1318,7 @@ _claude_chain_invoke() {
       [ -n "$stderr_tmp" ] && rm -f "$stderr_tmp"
       [ -n "$final_stdout" ] && rm -f "$final_stdout"
       [ -n "$final_stderr" ] && rm -f "$final_stderr"
-      timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --model "$model" "${extra_args[@]}" \
+      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --model "$model" "${extra_args[@]}" \
         < "$prompt_file" || rc=$?
       _CLAUDE_CHAIN_MODEL_USED="$model"
       export _CLAUDE_CHAIN_MODEL_USED
@@ -1995,7 +2019,7 @@ run_writer() {
     # regardless of exit code. The rate-limit check further down reads the raw
     # capture ($_tmp), which redaction leaves intact (separate file), so
     # persisting first is safe.
-    rm -f /tmp/dev-lead-session-output.txt
+    rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
     if ! sed -E \
       -e 's/(gh[opsu]|ghr)_[A-Za-z0-9_]{20,}/***REDACTED-GH-TOKEN***/g' \
       -e 's/github_pat_[A-Za-z0-9_]{20,}/***REDACTED-GH-PAT***/g' \
@@ -2006,9 +2030,9 @@ run_writer() {
       -e 's/[Bb]earer [A-Za-z0-9._-]{20,}/Bearer ***REDACTED***/g' \
       -e '/-----BEGIN [A-Z ]*PRIVATE KEY-----/,/-----END [A-Z ]*PRIVATE KEY-----/c\
 ***REDACTED-PRIVATE-KEY***' \
-      "$_tmp" > /tmp/dev-lead-session-output.txt; then
-      : > /tmp/dev-lead-session-output.txt 2>/dev/null || true
-      echo "::warning::Failed to redact/persist /tmp/dev-lead-session-output.txt" >&2
+      "$_tmp" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"; then
+      : > "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" 2>/dev/null || true
+      echo "::warning::Failed to redact/persist $DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" >&2
     fi
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
       # HTML-escape the redacted log so literal </details> or </summary> in
@@ -2019,7 +2043,7 @@ run_writer() {
         echo "<details><summary>Click to expand session logs</summary>"
         echo ""
         echo "<pre>"
-        sed 's|&|\&amp;|g; s|<|\&lt;|g; s|>|\&gt;|g' /tmp/dev-lead-session-output.txt
+        sed 's|&|\&amp;|g; s|<|\&lt;|g; s|>|\&gt;|g' "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
         echo "</pre>"
         echo ""
         echo "</details>"
@@ -2107,10 +2131,10 @@ run_writer_with_fallback() {
   # The timeout-* sidecars (tier/budget/elapsed) are written only on a per-tier
   # timeout (#1018); clear any stale copies here so a later non-timeout failure
   # never surfaces a previous run's timeout context.
-  rm -f /tmp/dev-lead-failure-reason \
-        /tmp/dev-lead-timeout-tier \
-        /tmp/dev-lead-timeout-budget \
-        /tmp/dev-lead-timeout-elapsed
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason" \
+        "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-tier" \
+        "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-budget" \
+        "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-elapsed"
 
   # Engine chain: AI_ENGINES (org/repo variable; DEV_LEAD_ENGINES is the legacy
   # #1546 name) enables engines and orders the fallbacks, so an engine can be
@@ -2244,12 +2268,12 @@ run_writer_with_fallback() {
     # escalation comment surfaces, so the caller escalates to a human on the
     # FIRST occurrence instead of burning a same-budget model call.
     if [ "$rc" -eq 124 ]; then
-      printf 'timeout\n' > /tmp/dev-lead-failure-reason
-      printf 'action\n' > /tmp/dev-lead-timeout-tier
-      printf '%s\n' "${ACTION_TIMEOUT_SEC}" > /tmp/dev-lead-timeout-budget
-      printf '%s\n' "$(( _t_end - _t_start ))" > /tmp/dev-lead-timeout-elapsed
+      printf 'timeout\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
+      printf 'action\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-tier"
+      printf '%s\n' "${ACTION_TIMEOUT_SEC}" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-budget"
+      printf '%s\n' "$(( _t_end - _t_start ))" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-elapsed"
     else
-      printf 'engine-error\n' > /tmp/dev-lead-failure-reason
+      printf 'engine-error\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
     fi
     return "$rc"
   done
@@ -2260,24 +2284,24 @@ run_writer_with_fallback() {
   # configuration/environment problem.  Only return 2 when every failure was a
   # genuine quota/rate-limit so callers know a later retry may succeed.
   if [ "$any_missing" -eq 1 ]; then
-    printf 'missing-binary\n' > /tmp/dev-lead-failure-reason
+    printf 'missing-binary\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
     return 1
   fi
   # A genuine quota/rate-limit anywhere in the chain wins over a config-gap: a
   # later retry could succeed once the limit resets, so keep the retryable
   # rate-limited classification (exit 2).
   if [ "$any_rate_limited" -eq 1 ]; then
-    printf 'rate-limited\n' > /tmp/dev-lead-failure-reason
+    printf 'rate-limited\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
     return 2
   fi
   # Deterministic credential config-gap as the SOLE cause (#1591): a distinct
   # non-retryable `unconfigured` reason (exit 1). Downstream handlers escalate to
   # a human rather than posting a retryable marker — retrying cannot set a secret.
   if [ "$any_unconfigured" -eq 1 ]; then
-    printf 'unconfigured\n' > /tmp/dev-lead-failure-reason
+    printf 'unconfigured\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
     return 1
   fi
-  printf 'engine-error\n' > /tmp/dev-lead-failure-reason
+  printf 'engine-error\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
   return 1
 }
 
@@ -2526,7 +2550,7 @@ run_duck() {
 _emit_reset_iso() {
   local hhmm="$1"
   if [ -z "$hhmm" ]; then
-    printf '' > /tmp/dev-lead-rate-limit-reset
+    printf '' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
     return 0
   fi
   local today iso
@@ -2537,7 +2561,7 @@ _emit_reset_iso() {
     tomorrow=$(date -u -d "tomorrow" +%Y-%m-%d)
     iso=$(date -u -d "${tomorrow} ${hhmm} UTC" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
   fi
-  printf '%s' "${iso:-}" > /tmp/dev-lead-rate-limit-reset
+  printf '%s' "${iso:-}" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
 }
 
 # RATE_LIMIT_SAMPLE_MAX_BYTES — cap on one recorded unparsed rate-limit sample.
@@ -2588,7 +2612,7 @@ parse_reset_time() {
   local time_str
   time_str=$(printf '%s\n' "$text" | grep -oiE 'resets [0-9]{1,2}:[0-9]{2}(am|pm)' | head -1 || true)
   if [ -z "$time_str" ]; then
-    printf '' > /tmp/dev-lead-rate-limit-reset
+    printf '' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
     printf '%s\n' "$text" | _record_unparsed_rate_limit || true
     return 0
   fi
@@ -2610,13 +2634,13 @@ parse_reset_time_files() {
     [ -n "$f" ] && [ -f "$f" ] && files+=("$f")
   done
   if [ "${#files[@]}" -eq 0 ]; then
-    printf '' > /tmp/dev-lead-rate-limit-reset
+    printf '' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
     return 0
   fi
   local time_str
   time_str=$(grep -hoiE 'resets [0-9]{1,2}:[0-9]{2}(am|pm)' "${files[@]}" 2>/dev/null | head -1 || true)
   if [ -z "$time_str" ]; then
-    printf '' > /tmp/dev-lead-rate-limit-reset
+    printf '' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
     cat "${files[@]}" 2>/dev/null | _record_unparsed_rate_limit || true
     return 0
   fi

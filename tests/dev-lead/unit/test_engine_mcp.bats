@@ -66,11 +66,14 @@ _source_engine() {
 # ── Default (knob unset): behavior unchanged ──────────────────────────────────
 
 @test "agentic: no MCP knob → no MCP flags, default allowed-tools unchanged" {
+  # The repo ships .github/review-mcp.json, the conventional default, so "no knob"
+  # means MCP on unless the default path is pointed away from it (#2263).
+  export REVIEW_MCP_CONFIG_DEFAULT_PATH="$(mktemp -u)"  # no conventional file
   _source_engine "claude"
   run run_agentic "$TEST_PROMPT" "claude-opus-5-5" "deep"
   [ "$status" -eq 0 ]
-  ! grep -q -- "--mcp-config" "$ARGS_RECORD"
-  ! grep -q -- "--strict-mcp-config" "$ARGS_RECORD"
+  ! grep -q -- "--mcp-config" "$ARGS_RECORD" || false
+  ! grep -q -- "--strict-mcp-config" "$ARGS_RECORD" || false
   grep -q -- "--allowed-tools Bash,Read,Grep,Glob" "$ARGS_RECORD"
 }
 
@@ -92,7 +95,7 @@ _source_engine() {
   chmod 600 "$unreadable_file"
   rm -f "$unreadable_file"
   [ "$status" -eq 0 ]
-  ! grep -q -- "--mcp-config" "$ARGS_RECORD"
+  ! grep -q -- "--mcp-config" "$ARGS_RECORD" || false
   grep -q -- "--allowed-tools Bash,Read,Grep,Glob" "$ARGS_RECORD"
 }
 
@@ -102,7 +105,7 @@ _source_engine() {
   run run_agentic "$TEST_PROMPT" "claude-opus-5-5" "deep"
   rmdir "$REVIEW_MCP_CONFIG"
   [ "$status" -eq 0 ]
-  ! grep -q -- "--mcp-config" "$ARGS_RECORD"
+  ! grep -q -- "--mcp-config" "$ARGS_RECORD" || false
   grep -q -- "--allowed-tools Bash,Read,Grep,Glob" "$ARGS_RECORD"
 }
 
@@ -140,9 +143,9 @@ _source_engine() {
   [ "$status" -eq 0 ]
   # Exactly Bash: present, and NOT followed by a comma-appended MCP tool.
   grep -q -- "--allowed-tools Bash" "$ARGS_RECORD"
-  ! grep -q -- "--allowed-tools Bash," "$ARGS_RECORD"
+  ! grep -q -- "--allowed-tools Bash," "$ARGS_RECORD" || false
   # And the MCP config flags themselves must not be threaded for persona parity.
-  ! grep -q -- "--mcp-config" "$ARGS_RECORD"
+  ! grep -q -- "--mcp-config" "$ARGS_RECORD" || false
   ! grep -q -- "--strict-mcp-config" "$ARGS_RECORD"
 }
 
@@ -189,7 +192,7 @@ SH
   grep -q '^GITHUB_TOKEN=\[\]$' "$envrec"
   grep -q '^GH_ENTERPRISE_TOKEN=\[\]$' "$envrec"
   grep -q '^GITHUB_ENTERPRISE_TOKEN=\[\]$' "$envrec"
-  ! grep -q 'shouldnotleak' "$envrec"
+  ! grep -q 'shouldnotleak' "$envrec" || false
 
   # The scrub is scoped to the subshell: the parent environment is untouched.
   [ "$GH_TOKEN" = "ghp_shouldnotleak" ]
@@ -257,11 +260,12 @@ SH
 }
 
 @test "duck: no MCP knob → no MCP flags on claude duck call" {
+  export REVIEW_MCP_CONFIG_DEFAULT_PATH="$(mktemp -u)"  # no conventional file (#2263)
   _source_engine "claude"
   export DUCK_ENGINE="claude"
   run run_duck "$TEST_PROMPT" "claude-sonnet-4-6"
   [ "$status" -eq 0 ]
-  ! grep -q -- "--mcp-config" "$ARGS_RECORD"
+  ! grep -q -- "--mcp-config" "$ARGS_RECORD" || false
   grep -q -- "--allowed-tools Bash,Read,Grep,Glob" "$ARGS_RECORD"
 }
 
@@ -285,7 +289,7 @@ SH
   _source_engine "claude"
   run run_agentic "$TEST_PROMPT" "claude-opus-5-5" "deep"
   [ "$status" -eq 0 ]
-  ! grep -q -- "--mcp-config" "$ARGS_RECORD"
+  ! grep -q -- "--mcp-config" "$ARGS_RECORD" || false
   grep -q -- "--allowed-tools Bash,Read,Grep,Glob" "$ARGS_RECORD"
 }
 
@@ -366,9 +370,9 @@ SH
   export REVIEW_MCP_ALLOWED_TOOLS="mcp__context7__*"
   run run_triage "$TEST_PROMPT"
   [ "$status" -eq 0 ]
-  ! grep -q -- "--mcp-config" "$ARGS_RECORD"
-  ! grep -q -- "--strict-mcp-config" "$ARGS_RECORD"
-  ! grep -q -- "--allowed-tools" "$ARGS_RECORD"
+  ! grep -q -- "--mcp-config" "$ARGS_RECORD" || false
+  ! grep -q -- "--strict-mcp-config" "$ARGS_RECORD" || false
+  ! grep -q -- "--allowed-tools" "$ARGS_RECORD" || false
   grep -q -- "--disallowed-tools" "$ARGS_RECORD"
 }
 
@@ -399,7 +403,7 @@ SH
   run run_agentic "$TEST_PROMPT" "claude-opus-5-5" "deep"
   [ "$status" -eq 0 ]
   # No MCP-related warning when MCP was never configured.
-  ! [[ "$output" == *"::warning::[mcp]"* ]]
+  ! [[ "$output" == *"::warning::[mcp]"* ]] || false
   # Verdict still flows through untouched.
   [[ "$output" == *'"decision":"approve"'* ]]
 }
@@ -410,7 +414,7 @@ SH
   export STUB_ENGINE_RESPONSE='{"decision":"approve","summary":"clean run, MCP healthy"}'
   run run_agentic "$TEST_PROMPT" "claude-opus-5-5" "deep"
   [ "$status" -eq 0 ]
-  ! [[ "$output" == *"::warning::[mcp]"* ]]
+  ! [[ "$output" == *"::warning::[mcp]"* ]] || false
   [[ "$output" == *'"decision":"approve"'* ]]
 }
 
@@ -458,7 +462,7 @@ SH
   export REVIEW_MCP_DEBUG=1
   run run_agentic "$TEST_PROMPT" "claude-opus-5-5" "deep"
   [ "$status" -eq 0 ]
-  ! grep -q -- "--debug mcp" "$ARGS_RECORD"
+  ! grep -q -- "--debug mcp" "$ARGS_RECORD" || false
   ! grep -q -- "--mcp-config" "$ARGS_RECORD"
 }
 
@@ -480,7 +484,7 @@ SH
   [[ "$output" == *"::notice::[mcp]"* ]]
   [[ "$output" == *"context7"* ]]
   [[ "$output" == *"Successfully connected"* ]]
-  ! [[ "$output" == *"::warning::[mcp]"* ]]
+  ! [[ "$output" == *"::warning::[mcp]"* ]] || false
   [[ "$output" == *'"decision":"approve"'* ]]
 }
 
@@ -490,6 +494,6 @@ SH
   export STUB_ENGINE_RESPONSE=$'MCP server "context7": Successfully connected (transport: http) in 333ms\n{"decision":"approve","summary":"mcp healthy"}'
   run run_agentic "$TEST_PROMPT" "claude-opus-5-5" "deep"
   [ "$status" -eq 0 ]
-  ! [[ "$output" == *"::notice::[mcp]"* ]]
+  ! [[ "$output" == *"::notice::[mcp]"* ]] || false
   [[ "$output" == *'"decision":"approve"'* ]]
 }

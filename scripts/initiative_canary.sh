@@ -16,10 +16,10 @@
 # Layout mirrors scripts/auto_rebase_health.sh:
 #   * classify_canary_run / canary_is_failure / canary_report are PURE — they
 #     take scalars and write stdout. Unit-tested in tests/test_initiative_canary.bats.
-#   * main() does the network I/O: dispatch, poll, log fetch.
+#   * main() does the network I/O: dispatch, poll, log fetch, jobs read.
 #
 # Env vars consumed:
-#   REPO                 owner/repo hosting the planner (default petry-projects/.github-private)
+#   REPO                 owner/repo hosting the planner (default combsmith/.github-private)
 #   CANARY_DISCUSSION    Ideas Discussion number to dry-run plan (required; positive int)
 #   WORKFLOW_FILE        planner workflow to dispatch (default initiative-planner.yml)
 #   GH_TOKEN             a PAT with workflow scope (a workflow_dispatch fired with
@@ -31,7 +31,11 @@
 
 set -euo pipefail
 
-REPO="${REPO:-petry-projects/.github-private}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/fleet-pause.sh
+source "${SCRIPT_DIR}/lib/fleet-pause.sh"
+
+REPO="${REPO:-combsmith/.github-private}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-initiative-planner.yml}"
 UNSUPPORTED_EVENT_MARKER="Unsupported event type: discussion"
 
@@ -39,18 +43,26 @@ UNSUPPORTED_EVENT_MARKER="Unsupported event type: discussion"
 # Pure helpers (unit-tested; no network)
 # ---------------------------------------------------------------------------
 
-# classify_canary_run <conclusion> <logs>
+# classify_canary_run <conclusion> <logs> [paused]
 # Maps a completed run's conclusion + logs to a canary status:
 #   UNSUPPORTED_EVENT — logs contain the redispatch-regression fingerprint
 #                       (checked first: it is the signal #822 exists to catch,
 #                        even if the run somehow concluded "success")
+#   PAUSED            — conclusion == success and <paused> is "true": the run's
+#                       `fleet-paused` notice job ran, so the planner did not
+#                       (#2266). Neither healthy nor failed: the dispatch path
+#                       was not exercised
 #   OK                — conclusion == success and no fingerprint
 #   NO_RUN            — empty/null conclusion (no completed run was found)
 #   FAILED            — any other conclusion (failure/timed_out/cancelled/…)
 classify_canary_run() {
-  local conclusion="${1:-}" logs="${2:-}"
+  local conclusion="${1:-}" logs="${2:-}" paused="${3:-}"
   if [[ "$logs" == *"$UNSUPPORTED_EVENT_MARKER"* ]]; then
     echo "UNSUPPORTED_EVENT"
+    return 0
+  fi
+  if [ "$conclusion" = "success" ] && [ "$paused" = "true" ]; then
+    echo "PAUSED"
     return 0
   fi
   case "$conclusion" in
@@ -61,9 +73,14 @@ classify_canary_run() {
 }
 
 # canary_is_failure <status>
-# Exit 0 (alert) for any status other than OK; exit 1 for OK.
+# Exit 0 (alert) for any status other than OK or PAUSED; exit 1 for those two.
+# PAUSED does not alert: a maintainer paused the fleet on purpose, and the
+# canary has nothing to say about the dispatch path until it is resumed.
 canary_is_failure() {
-  [ "${1:-}" != "OK" ]
+  case "${1:-}" in
+    OK|PAUSED) return 1 ;;
+    *)         return 0 ;;
+  esac
 }
 
 # canary_report <status> <repo> <discussion> <run_url> [today]
@@ -75,6 +92,7 @@ canary_report() {
   local icon headline
   case "$st" in
     OK)               icon='✅'; headline='canary passed' ;;
+    PAUSED)           icon='⏸️'; headline='agent fleet paused — the planner did not run, so the path was not checked' ;;
     UNSUPPORTED_EVENT) icon='🔴'; headline='REGRESSION — planner rejected the dispatch event' ;;
     NO_RUN)           icon='🟠'; headline='no planner run observed within the poll window' ;;
     *)                icon='🔴'; headline='planner dispatch run failed' ;;
@@ -92,6 +110,10 @@ canary_report() {
     printf '> The planner run surfaced `%s`. This is the exact failure from #655: ' "$UNSUPPORTED_EVENT_MARKER"
     printf 'the `discussion [labeled]` → `workflow_dispatch` redispatch bridge '
     printf '(`scripts/initiative-planner/redispatch.sh`) is missing or broken. Restore it.\n'
+  elif [ "$st" = "PAUSED" ]; then
+    printf '> The dispatched run skipped its `plan` job and ran only the `%s` notice job: ' "$FLEET_PAUSED_JOB"
+    printf 'the fleet pause switch (`AGENTS_PAUSED=true`) was set when it started. '
+    printf 'This is neither a pass nor a failure. The canary checks the path again on its next run after the fleet is resumed.\n'
   elif [ "$st" = "NO_RUN" ]; then
     printf '> No `workflow_dispatch` planner run completed within the poll window. '
     printf 'The dispatch may have been rejected (PAT missing/expired) or the run is still queued.\n'
@@ -168,8 +190,21 @@ main() {
     logs="$(gh run view "$run_id" --repo "$REPO" --log 2>/dev/null || true)"
   fi
 
+  # Did the run only report a fleet pause (#2266)? With AGENTS_PAUSED=true the
+  # planner's `plan` job is skipped and its `fleet-paused` notice job runs, and
+  # the run still ends `success`. The variable's value at that moment is not in
+  # the API, so read what the run recorded: its jobs (one call). Best-effort: an
+  # unreadable jobs list is treated as "not paused".
+  local paused="false"
+  if [ -n "$run_id" ] && [ "$conclusion" = "success" ]; then
+    if gh run view "$run_id" --repo "$REPO" --json jobs --jq '.jobs' 2>/dev/null \
+        | fleet_pause_notice_ran; then
+      paused="true"
+    fi
+  fi
+
   local result
-  result="$(classify_canary_run "$conclusion" "$logs")"
+  result="$(classify_canary_run "$conclusion" "$logs" "$paused")"
 
   local run_url=""
   [ -n "$run_id" ] && run_url="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs/${run_id}"
@@ -192,6 +227,10 @@ main() {
     [ -n "${GITHUB_ENV:-}" ] && echo "CANARY_FAILED=true" >> "$GITHUB_ENV"
     echo "::error::Initiative-planner canary result: ${result}" >&2
     exit 1
+  fi
+  if [ "$result" = "PAUSED" ]; then
+    echo "::notice title=Agent fleet paused::Initiative-planner canary: not checked, the agent fleet is paused (the dispatched run ran only its ${FLEET_PAUSED_JOB} notice job)." >&2
+    return 0
   fi
   echo "::notice::Initiative-planner canary passed (dry-run dispatch concluded success)." >&2
 }

@@ -40,11 +40,9 @@ setup() {
   : > "$BB_TEST_POSTED"
   : > "$BB_TEST_CALLS"
   mkdir -p "$BB_TEST_FLEET"
-}
-
-teardown() {
-  # The dev-lead writers read these fixed sidecar paths; leave none behind.
-  rm -f /tmp/dev-lead-rate-limit-reset /tmp/dev-lead-failure-reason
+  # The dev-lead writers read their sidecars from here, not from the /tmp paths
+  # every other bats session on the machine shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 }
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -121,7 +119,7 @@ run_real() { PATH="$STUB_BIN:$PATH" bash "$1"; }
 # post_fix_ci <pr> <reset|""> — the REAL dev-lead-fix-ci.sh post_rate_limited.
 post_fix_ci() {
   local driver="$BATS_TEST_TMPDIR/fix-ci-driver.sh"
-  printf '%s' "$2" > /tmp/dev-lead-rate-limit-reset
+  printf '%s' "$2" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
   { echo 'set -euo pipefail'
     real_defs "$FIX_CI" MARKER_PREFIX= has_rate_limited_marker post_rate_limited
     echo 'post_rate_limited'
@@ -134,7 +132,7 @@ post_fix_ci() {
 # dev-lead-fix-reviews.sh post_reviews_rate_limited.
 post_fix_reviews() {
   local driver="$BATS_TEST_TMPDIR/fix-reviews-driver.sh"
-  printf '%s' "$4" > /tmp/dev-lead-rate-limit-reset
+  printf '%s' "$4" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
   { echo 'set -euo pipefail'
     echo 'ci_blocking_reason() { :; }   # visible wording only; not part of the marker'
     real_defs "$FIX_REVIEWS" REVIEWS_MARKER_PREFIX= expire_stale_terminal_markers \
@@ -149,8 +147,8 @@ post_fix_reviews() {
 # handle_engine_failure (it exits with the engine's class: 2 = rate-limited).
 post_fix_issue() {
   local driver="$BATS_TEST_TMPDIR/fix-issue-driver.sh" rc=0
-  printf '%s' "$3" > /tmp/dev-lead-rate-limit-reset
-  printf 'engine-error' > /tmp/dev-lead-failure-reason
+  printf '%s' "$3" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
+  printf 'engine-error' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
   { echo 'set -euo pipefail'
     real_defs "$FIX_ISSUE" ISSUE_MARKER_PREFIX= MAX_ATTEMPTS= count_prior_attempts \
       html_escape session_snippet handle_engine_failure

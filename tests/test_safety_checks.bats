@@ -582,7 +582,7 @@ diff --git a/b/unrelated.txt b/b/unrelated.txt
   [ -z "$output" ]
 }
 
-@test "thirdparty-reusable: flags a non-petry-projects reusable workflow call" {
+@test "thirdparty-reusable: flags a non-combsmith reusable workflow call" {
   local diff='--- a/.github/workflows/ci.yml
 +++ b/.github/workflows/ci.yml
 @@ -3,2 +3,3 @@ jobs:
@@ -593,12 +593,12 @@ diff --git a/b/unrelated.txt b/b/unrelated.txt
   echo "$output" | grep -q "third-party reusable workflow call added (owner: some-vendor)"
 }
 
-@test "thirdparty-reusable: does NOT flag a petry-projects reusable call" {
+@test "thirdparty-reusable: does NOT flag a combsmith reusable call" {
   local diff='--- a/.github/workflows/ci.yml
 +++ b/.github/workflows/ci.yml
 @@ -3,2 +3,3 @@ jobs:
    x:
-+    uses: petry-projects/.github/.github/workflows/pr-auto-review.yml@pr-auto-review/v1-stable'
++    uses: combsmith/.github/.github/workflows/pr-auto-review.yml@pr-auto-review/v1-stable'
   run sc_thirdparty_reusable "$diff"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
@@ -616,12 +616,12 @@ diff --git a/b/unrelated.txt b/b/unrelated.txt
 }
 
 @test "trusted-stub-sync: true for a bot-authored workflow-only secrets:inherit sync" {
-  local meta='{"title":"chore: sync 2 org-standard workflow stub(s) from petry-projects/.github","author":{"login":"donpetry-bot"},"files":[{"path":".github/workflows/dev-lead.yml"},{"path":".github/workflows/pr-auto-review.yml"}]}'
+  local meta='{"title":"chore: sync 2 org-standard workflow stub(s) from combsmith/.github","author":{"login":"donpetry-bot"},"files":[{"path":".github/workflows/dev-lead.yml"},{"path":".github/workflows/pr-auto-review.yml"}]}'
   local diff='--- a/.github/workflows/pr-auto-review.yml
 +++ b/.github/workflows/pr-auto-review.yml
 @@ -3,2 +3,4 @@ jobs:
    review:
-+    uses: petry-projects/.github/.github/workflows/pr-auto-review.yml@pr-auto-review/v1-stable
++    uses: combsmith/.github/.github/workflows/pr-auto-review.yml@pr-auto-review/v1-stable
 +    secrets: inherit'
   run sc_trusted_stub_sync "$meta" "$diff"
   [ "$status" -eq 0 ]
@@ -634,7 +634,7 @@ diff --git a/b/unrelated.txt b/b/unrelated.txt
 
 @test "trusted-stub-sync: false for a workflow-only bot edit WITHOUT positive stub proof" {
   # A bot changes workflow metadata (a comment / timeout) but neither calls a
-  # petry-projects reusable nor forwards secrets — no positive proof of the
+  # combsmith reusable nor forwards secrets — no positive proof of the
   # trusted stub shape, so the carve-out must NOT apply even though no
   # disqualifier is present.
   local meta='{"title":"chore: bump workflow timeout","author":{"login":"donpetry-bot"},"files":[{"path":".github/workflows/ci.yml"}]}'
@@ -661,8 +661,8 @@ diff --git a/b/unrelated.txt b/b/unrelated.txt
 +++ b/.github/workflows/dev-lead.yml
 @@ -3,3 +3,3 @@ jobs:
    dev-lead:
--    uses: petry-projects/.github/.github/workflows/dev-lead.yml@dev-lead/v1-next
-+    uses: petry-projects/.github/.github/workflows/dev-lead.yml@dev-lead/v1-stable
+-    uses: combsmith/.github/.github/workflows/dev-lead.yml@dev-lead/v1-next
++    uses: combsmith/.github/.github/workflows/dev-lead.yml@dev-lead/v1-stable
      secrets: inherit'
   run sc_trusted_stub_sync "$meta" "$diff"
   [ "$status" -eq 0 ]
@@ -777,19 +777,19 @@ diff --git a/b/unrelated.txt b/b/unrelated.txt
 }
 
 @test "compute: demotes description/large-pr gates to info under a trusted stub sync" {
-  local meta='{"title":"chore: sync 3 org-standard workflow stub(s) from petry-projects/.github","author":{"login":"donpetry-bot"},"changedFiles":3,"body":"Automated sync.","files":[{"path":".github/workflows/a.yml"},{"path":".github/workflows/b.yml"},{"path":".github/workflows/c.yml"}]}'
+  local meta='{"title":"chore: sync 3 org-standard workflow stub(s) from combsmith/.github","author":{"login":"donpetry-bot"},"changedFiles":3,"body":"Automated sync.","files":[{"path":".github/workflows/a.yml"},{"path":".github/workflows/b.yml"},{"path":".github/workflows/c.yml"}]}'
   local diff='--- a/.github/workflows/a.yml
 +++ b/.github/workflows/a.yml
 @@ -3,2 +3,4 @@ jobs:
    review:
-+    uses: petry-projects/.github/.github/workflows/pr-auto-review.yml@pr-auto-review/v1-stable
++    uses: combsmith/.github/.github/workflows/pr-auto-review.yml@pr-auto-review/v1-stable
 +    secrets: inherit'
   run compute_safety_checks "$meta" "$diff"
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "TRUSTED_STUB_SYNC: true"
   # description gate present but demoted to informational, not escalate
   echo "$output" | grep -q "\[info\] description-quality"
-  ! echo "$output" | grep -q "\[escalate\] description-quality"
+  ! echo "$output" | grep -q "\[escalate\] description-quality" || false
   echo "$output" | grep -q "\[info\] trusted-stub-sync"
 }
 

@@ -23,7 +23,7 @@ FINDING_AT="2026-10-02T00:00:00Z"
 PASS_AT="2026-10-09T03:00:00Z"
 
 setup() {
-  export BOT_USER="donpetry-bot" PR_NUMBER=54 REPO="petry-projects/.github-private"
+  export BOT_USER="donpetry-bot" PR_NUMBER=54 REPO="combsmith/.github-private"
   export DEV_LEAD_DRY_RUN=false BASE_REF=main PASS_START_ISO="$PASS_AT"
   export GITHUB_STEP_SUMMARY="$BATS_TEST_TMPDIR/summary.md"
   : > "$GITHUB_STEP_SUMMARY"
@@ -171,7 +171,7 @@ _landed_fix() {
   [ -f "$PATCHES/201" ]
   grep -q "Retracted" "$PATCHES/201"
   grep -q "<!-- dev-lead:retracted reason=not-on-ref -->" "$PATCHES/201"
-  ! grep -q "dev-lead:addressed" "$PATCHES/201"
+  ! grep -q "dev-lead:addressed" "$PATCHES/201" || false
   # The original claim is kept (not as a claim) so a later pass can re-verify it.
   grep -q "dev-lead:retracted-claim .*${ghost}" "$PATCHES/201"
 }
@@ -276,8 +276,8 @@ _landed_fix() {
   run sweep_earlier_claims
   [ "$status" -eq 0 ]
   [ -f "$PATCHES/207" ]
-  ! grep -q "Retracted" "$PATCHES/207"
-  ! grep -q "dev-lead:retracted" "$PATCHES/207"
+  ! grep -q "Retracted" "$PATCHES/207" || false
+  ! grep -q "dev-lead:retracted" "$PATCHES/207" || false
   grep -q "Fixed in f: handled the empty case." "$PATCHES/207"
   grep -q "<!-- dev-lead:addressed -->" "$PATCHES/207"
   run acv_parse_claim "$(cat "$PATCHES/207")"
@@ -323,7 +323,7 @@ _landed_fix() {
   run retract_unlanded_claims fix-reviews ok
   [ "$status" -eq 0 ]
   [ -f "$PATCHES/210" ]
-  ! grep -q "Retracted" "$PATCHES/210"
+  ! grep -q "Retracted" "$PATCHES/210" || false
   grep -q "<!-- dev-lead:addressed -->" "$PATCHES/210"
   run acv_parse_claim "$(cat "$PATCHES/210")"
   [ "$status" -eq 0 ]
@@ -387,7 +387,7 @@ _serve_issue() {
   grep -q "Retracted" "$PATCHES/issue-6073169970"
   grep -q "<!-- dev-lead:retracted reason=not-on-ref -->" "$PATCHES/issue-6073169970"
   # The marker is gone, so neither the minimizer nor a reader sees "fixed" any more…
-  ! grep -q "dev-lead:comment-disposition" "$PATCHES/issue-6073169970"
+  ! grep -q "dev-lead:comment-disposition" "$PATCHES/issue-6073169970" || false
   run cdv_parse_disposition "$(cat "$PATCHES/issue-6073169970")"
   [ "$status" -eq 1 ]
   # …and the original text is kept as a quote.
@@ -481,7 +481,7 @@ _serve_issue() {
   run retract_unlanded_claims fix-bot-comment ok
   [ "$status" -eq 0 ]
   [ -f "$PATCHES/issue-323" ]
-  ! grep -q "Retracted" "$PATCHES/issue-323"
+  ! grep -q "Retracted" "$PATCHES/issue-323" || false
   run cdv_parse_disposition "$(cat "$PATCHES/issue-323")"
   [ "$status" -eq 0 ]
   [ "$(jq -r .sha <<<"$output")" = "$rebased" ]
@@ -493,4 +493,243 @@ _serve_issue() {
   run retract_unlanded_claims fix-bot-comment ok
   [ "$status" -ne 0 ]
   [[ "$output" == *"issue comments"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# #2261: a claim reply posted as a PR ISSUE comment is swept like a thread reply
+# ---------------------------------------------------------------------------
+# PR #2205: a fix-bot-comment pass answered CodeAnt's issue comment with a new PR
+# comment carrying the addressed-marker and a claim citing f8f0b54. The push guard
+# then rebased that commit onto a concurrent one, so the fix landed as 3e5025bd and
+# f8f0b54 never reached GitHub. The claim sweep listed only review-thread replies
+# (`pulls/<n>/comments`), so the claim was neither re-pointed nor retracted.
+#
+# The gh stub serves $ISSUE_COMMENTS unchanged after a PATCH, which is also what
+# a listing that lags a write returns: a reply rewritten twice shows up here as
+# the second PATCH overwriting the first.
+
+GHOST_2261="f8f0b543ee9d935538a65233d261bb1284d60276"
+
+# _pr_comment <id> <created_at> <body> [login] — a PR issue comment (REST shape).
+_pr_comment() {
+  jq -c -n --argjson id "$1" --arg at "$2" --arg body "$3" --arg login "${4:-donpetry-bot}" \
+    '{id: $id, user: {login: $login}, created_at: $at, body: $body}'
+}
+
+# _serve_pr_comments <comment_json>... — the PR's issue comments, as one page.
+_serve_pr_comments() {
+  printf '%s\n' "$@" | jq -s -c . > "$ISSUE_COMMENTS"
+}
+
+@test "#2261 AC3: a claim reply posted as a PR issue comment whose commit never landed is retracted" {
+  _serve_pr_comments "$(_pr_comment 401 "2026-10-09T03:01:00Z" "$(_claim "$GHOST_2261")")"
+
+  run retract_unlanded_claims fix-bot-comment ok
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"retracted PR-comment claim reply 401"* ]]
+  # Patched through the ISSUE-comment endpoint, not the review-comment one.
+  [ -f "$PATCHES/issue-401" ]
+  [ ! -f "$PATCHES/401" ]
+  grep -q "Retracted" "$PATCHES/issue-401"
+  grep -q "<!-- dev-lead:retracted reason=not-on-ref -->" "$PATCHES/issue-401"
+  ! grep -q "dev-lead:addressed" "$PATCHES/issue-401" || false
+  ! grep -q "<!-- dev-lead:claim " "$PATCHES/issue-401" || false
+}
+
+@test "#2261 AC3: a PR issue-comment claim whose commit the push guard rebased is re-pointed at the commit that landed" {
+  echo fixed > f; git add f; git commit -q -m "fix(bot): address bot feedback"
+  local cited; cited=$(git rev-parse HEAD)
+  _serve_pr_comments "$(_pr_comment 402 "2026-10-09T03:01:00Z" "$(_claim "$cited")")"
+  _foreign_push merged-main.txt "from main"
+  push_no_clobber
+  local rebased; rebased=$(git rev-parse HEAD)
+  [ "$rebased" != "$cited" ]
+  [ "$(git --git-dir="$REMOTE" rev-parse main)" = "$rebased" ]
+
+  run retract_unlanded_claims fix-bot-comment ok
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PR-comment claim reply 402"*"claim updated, not retracted"* ]]
+  [ -f "$PATCHES/issue-402" ]
+  ! grep -q "Retracted" "$PATCHES/issue-402" || false
+  grep -q "<!-- dev-lead:addressed -->" "$PATCHES/issue-402"
+  # No claim on the PR cites a commit that is not on the branch.
+  ! grep -q "$cited" "$PATCHES/issue-402" || false
+  run acv_parse_claim "$(cat "$PATCHES/issue-402")"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .sha <<<"$output")" = "$rebased" ]
+}
+
+@test "#2261 AC3: only OUR issue comments from THIS pass are swept; a landed claim is left alone" {
+  # A fix this pass committed and pushed: its claim is true.
+  echo fixed > f; git add f; git commit -q -m "fix(bot): address bot feedback"
+  git push -q origin main
+  local landed; landed=$(git rev-parse HEAD)
+  _serve_pr_comments \
+    "$(_pr_comment 411 "2026-10-09T03:01:00Z" "$(_claim "$GHOST_2261")")" \
+    "$(_pr_comment 412 "2026-10-09T03:01:00Z" "$(_claim "$GHOST_2261")" "mallory")" \
+    "$(_pr_comment 413 "2026-10-09T02:59:59Z" "$(_claim "$GHOST_2261")")" \
+    "$(_pr_comment 414 "2026-10-09T03:02:00Z" "$(_claim "$landed")")" \
+    "$(_pr_comment 415 "2026-10-09T03:02:00Z" "Looked into it; nothing to change.")"
+
+  run retract_unlanded_claims fix-bot-comment ok
+  [ "$status" -eq 0 ]
+  # Ours, this pass, never landed: retracted.
+  [ -f "$PATCHES/issue-411" ]
+  # Another author's comment, ours from before the pass start, a claim that
+  # landed, and a comment with no marker or claim: all untouched.
+  [ ! -f "$PATCHES/issue-412" ]
+  [ ! -f "$PATCHES/issue-413" ]
+  [ ! -f "$PATCHES/issue-414" ]
+  [ ! -f "$PATCHES/issue-415" ]
+  [ "$(find "$PATCHES" -type f | wc -l | tr -d '[:space:]')" -eq 1 ]
+}
+
+@test "#2261 AC3: a claim on the second page of the issue-comment listing is still swept" {
+  # `gh api --paginate` prints one JSON array per page.
+  {
+    jq -c -n --argjson c "$(_pr_comment 421 "2026-10-09T03:01:00Z" "No change needed here.")" '[$c]'
+    jq -c -n --argjson c "$(_pr_comment 422 "2026-10-09T03:01:30Z" "$(_claim "$GHOST_2261")")" '[$c]'
+  } > "$ISSUE_COMMENTS"
+
+  run retract_unlanded_claims fix-bot-comment ok
+  [ "$status" -eq 0 ]
+  [ -f "$PATCHES/issue-422" ]
+  grep -q "reason=not-on-ref" "$PATCHES/issue-422"
+  [ ! -f "$PATCHES/issue-421" ]
+}
+
+@test "#2261 AC3: retracting a claim keeps a non-fixed disposition marker in the same reply, even on the claim's line" {
+  local disp="<!-- dev-lead:comment-disposition id=IC_FIND disposition=answered -->"
+  _serve_pr_comments \
+    "$(_pr_comment 431 "2026-10-09T03:01:00Z" "$(_claim "$GHOST_2261")
+${disp}")" \
+    "$(_pr_comment 432 "2026-10-09T03:01:00Z" "$(_claim "$GHOST_2261") ${disp}")"
+
+  run retract_unlanded_claims fix-bot-comment ok
+  [ "$status" -eq 0 ]
+  local id
+  for id in 431 432; do
+    [ -f "$PATCHES/issue-${id}" ]
+    grep -q "<!-- dev-lead:retracted reason=not-on-ref -->" "$PATCHES/issue-${id}"
+    ! grep -q "dev-lead:addressed" "$PATCHES/issue-${id}" || false
+    ! grep -q "<!-- dev-lead:claim " "$PATCHES/issue-${id}" || false
+    run cdv_parse_disposition "$(cat "$PATCHES/issue-${id}")"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '[.id, .disposition] | join(" ")' <<<"$output")" = "IC_FIND answered" ]
+  done
+}
+
+@test "#2261: a review-thread claim followed by another marker on its line is stripped whole, and only it" {
+  # Two `-->` on the claim's line: the claim ends at the first.
+  _serve "$(_reply 441 "2026-10-09T03:01:00Z" "$(_claim "$GHOST_2261") <!-- reviewer-note keep -->")"
+
+  run retract_unlanded_claims fix-reviews ok
+  [ -f "$PATCHES/441" ]
+  grep -q "<!-- dev-lead:retracted reason=not-on-ref -->" "$PATCHES/441"
+  ! grep -q "<!-- dev-lead:claim " "$PATCHES/441" || false
+  grep -q "<!-- reviewer-note keep -->" "$PATCHES/441"
+}
+
+@test "#2261: a reply with a claim AND a fixed disposition is re-pointed once, both markers together" {
+  echo fixed > f; git add f; git commit -q -m "fix(bot): address bot feedback"
+  local cited; cited=$(git rev-parse HEAD)
+  _serve_pr_comments "$(_pr_comment 451 "2026-10-09T03:01:00Z" "$(_claim "$cited")
+<!-- dev-lead:comment-disposition id=IC_FIND disposition=fixed sha=${cited} -->")"
+  _foreign_push merged-main.txt "from main"
+  push_no_clobber
+  local rebased; rebased=$(git rev-parse HEAD)
+  [ "$rebased" != "$cited" ]
+
+  run retract_unlanded_claims fix-bot-comment ok
+  [ "$status" -eq 0 ]
+  # The fixed-disposition sweep owns the reply; the claim sweep leaves it alone.
+  [[ "$output" == *"\`fixed\` reply 451"*"disposition updated, not retracted"* ]]
+  [[ "$output" != *"PR-comment claim reply 451"* ]]
+  [ -f "$PATCHES/issue-451" ]
+  ! grep -q "$cited" "$PATCHES/issue-451" || false
+  ! grep -q "Retracted" "$PATCHES/issue-451" || false
+  run cdv_parse_disposition "$(cat "$PATCHES/issue-451")"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '[.disposition, .sha] | join(" ")' <<<"$output")" = "fixed $rebased" ]
+  run acv_parse_claim "$(cat "$PATCHES/issue-451")"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .sha <<<"$output")" = "$rebased" ]
+}
+
+@test "#2261: a reply with a claim AND a fixed disposition whose commit never landed is retracted once, with neither marker left" {
+  _serve_pr_comments "$(_pr_comment 461 "2026-10-09T03:01:00Z" "$(_claim "$GHOST_2261")
+<!-- dev-lead:comment-disposition id=IC_FIND disposition=fixed sha=${GHOST_2261} -->")"
+
+  run retract_unlanded_claims fix-bot-comment ok
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"retracted \`fixed\` disposition reply 461"* ]]
+  [[ "$output" != *"PR-comment claim reply 461"* ]]
+  [ -f "$PATCHES/issue-461" ]
+  grep -q "<!-- dev-lead:retracted reason=not-on-ref -->" "$PATCHES/issue-461"
+  ! grep -q "dev-lead:comment-disposition" "$PATCHES/issue-461" || false
+  ! grep -q "dev-lead:addressed" "$PATCHES/issue-461" || false
+  ! grep -q "<!-- dev-lead:claim " "$PATCHES/issue-461" || false
+  # The model's words are kept as a quote.
+  grep -q "^> Fixed in f: handled the empty case." "$PATCHES/issue-461"
+}
+
+@test "#2261 AC3: an unreadable issue-comment listing fails the sweep; thread replies are still swept" {
+  printf 'not json' > "$ISSUE_COMMENTS"
+  _serve "$(_reply 471 "2026-10-09T03:01:00Z" "$(_claim "$GHOST_2261")")"
+
+  run retract_unlanded_claims fix-bot-comment ok
+  # Not verified is not clean: the caller must not treat the pass as swept.
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"claim replies this pass posted as PR comments were NOT verified (#2261)"* ]]
+  [ -f "$PATCHES/471" ]
+  grep -q "reason=not-on-ref" "$PATCHES/471"
+}
+
+@test "#2261: cl_without_fixed_dispositions drops only replies carrying a fixed disposition" {
+  local kept
+  kept=$(cl_without_fixed_dispositions "$(jq -s -c . <<<"$(_pr_comment 481 "$PASS_AT" "$(_claim "$GHOST_2261")")
+$(_pr_comment 482 "$PASS_AT" "x <!-- dev-lead:comment-disposition id=IC_A disposition=fixed sha=${GHOST_2261} -->")
+$(_pr_comment 483 "$PASS_AT" "x <!-- dev-lead:comment-disposition id=IC_B disposition=answered -->")")")
+  [ "$(jq -c '[.[].id]' <<<"$kept")" = "[481,483]" ]
+  # JSON that is not a list passes through for the claim selector to read as
+  # "no replies"; only a payload that is not JSON fails.
+  run cl_without_fixed_dispositions '{}'
+  [ "$status" -eq 0 ]
+  [ "$output" = "{}" ]
+  run cl_without_fixed_dispositions 'not json'
+  [ "$status" -ne 0 ]
+}
+
+@test "#2261: an issue-comment listing that is JSON but not a list does not fail the sweep" {
+  # A full-script gh stub (and any proxy) may answer the listing with an object.
+  # main's `fixed`-disposition sweep reads that as "no replies"; the claim sweep
+  # must too, or a pushed pass is reported as failed.
+  printf '{}' > "$ISSUE_COMMENTS"
+  _serve "$(_reply 495 "2026-10-09T03:01:00Z" "$(_claim "$GHOST_2261")")"
+
+  run retract_unlanded_claims fix-reviews ok
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"NOT verified"* ]]
+  [ -f "$PATCHES/495" ]
+}
+
+@test "#2261: a claim whose JSON spans lines is removed whole, so the retracted reply is not selected again" {
+  # acv_parse_claim reads through the first ` -->` across lines; the retraction
+  # must remove the same span.
+  local body
+  body=$(printf 'Fixed in f.\n\n<!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\n  "v": 1,\n  "sha": "%s",\n  "files": ["f"]\n} --> <!-- reviewer-note keep -->' "$GHOST_2261")
+  run acv_parse_claim "$body"
+  [ "$status" -eq 0 ]
+  _serve "$(_reply 491 "2026-10-09T03:01:00Z" "$body")"
+
+  run retract_unlanded_claims fix-reviews ok
+  [ -f "$PATCHES/491" ]
+  ! grep -q "<!-- dev-lead:claim " "$PATCHES/491" || false
+  ! grep -q "dev-lead:addressed" "$PATCHES/491" || false
+  grep -q "<!-- reviewer-note keep -->" "$PATCHES/491"
+  # Idempotent: the next sweep finds nothing to select in the retracted reply.
+  run cl_select_pass_claims "$(jq -c -n --arg b "$(cat "$PATCHES/491")" \
+    '[{id: 491, user: {login: "donpetry-bot"}, created_at: "2026-10-09T03:01:00Z", body: $b}]')" "donpetry-bot" "$PASS_AT"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }

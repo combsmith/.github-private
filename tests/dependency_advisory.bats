@@ -120,7 +120,7 @@ SH
 run_advisory() {
   run env "PATH=$BIN:$PATH" \
     GH_LOG="$GH_LOG" CLAUDE_LOG="$CLAUDE_LOG" CLAUDE_COUNT_FILE="$CLAUDE_COUNT_FILE" \
-    REPO="petry-projects/.github-private" PR_NUMBER="5" \
+    REPO="combsmith/.github-private" PR_NUMBER="5" \
     CLAUDE_CODE_OAUTH_TOKEN="test-token" \
     SKIP_BOT_PRS="false" \
     DEP_ADVISORY_RETRY_BASE_SEC="0" \
@@ -154,7 +154,7 @@ claude_calls() { local n; n="$(cat "$CLAUDE_COUNT_FILE")"; echo "${n:-0}"; }
   [ "$status" -eq 0 ]
   [ "$(claude_calls)" -eq 3 ]
   # Advisory is informational — a persistent overload must not post a comment...
-  ! grep -q "ARGS: pr comment" "$GH_LOG"
+  ! grep -q "ARGS: pr comment" "$GH_LOG" || false
   # ...and must emit a visible warning rather than fail silently.
   echo "$output" | grep -q "::warning::"
 }

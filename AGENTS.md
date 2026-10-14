@@ -1,14 +1,14 @@
 # AGENTS.md — .github-private
 
 This repository follows the organization-wide development standards defined in
-[`petry-projects/.github/AGENTS.md`](https://github.com/petry-projects/.github/blob/main/AGENTS.md).
+[`combsmith/.github/AGENTS.md`](https://github.com/combsmith/.github/blob/main/AGENTS.md).
 Read that file before making changes that touch CI, agent configuration, repo settings, or labels.
 
 ---
 
 ## Repository Context
 
-This is the `.github-private` org infrastructure repo for `petry-projects`. It contains:
+This is the `.github-private` org infrastructure repo for `combsmith`. It contains:
 
 - **`agents/`** — Copilot custom agent profiles (org-wide, invocable from GitHub.com, VS Code, JetBrains)
 - **`frameworks/`** — Agentic frameworks installed via `git subtree` (bmad-method, spec-kit, gsd)
@@ -156,7 +156,7 @@ at all (this was the deadlock reported in #1911). Two changes close this:
 ### The org automation-PR cap is real and near-silent
 
 There is a hard ceiling of **50 concurrent open non-Dependabot automation PRs org-wide**
-(`petry-projects/.github` `standards/pr-limits.json`). At the cap dev-lead posts a
+(`combsmith/.github` `standards/pr-limits.json`). At the cap dev-lead posts a
 `dev-lead-issue-deferred` marker and opens **nothing** — yet the run still reports success (the same
 "success while doing nothing" trap as the verify-by-execution rule above). Freeing slots and
 re-dispatching works immediately.
@@ -185,7 +185,7 @@ calling it a regression, and treat CI as authoritative.**
 ### Workflow Files
 
 - Do **not** modify `.github/workflows/agent-shield.yml` — this is exempted from agent modification per
-  [`standards/agent-standards.md`](https://github.com/petry-projects/.github/blob/main/standards/agent-standards.md).
+  [`standards/agent-standards.md`](https://github.com/combsmith/.github/blob/main/standards/agent-standards.md).
 - `.github/workflows/dev-lead.yml` is a thin caller stub that delegates to
   `dev-lead-reusable.yml` (the canonical org standard). To change behavior for
   all org repos, edit `dev-lead-reusable.yml`. Repo-specific trigger adjustments
@@ -216,7 +216,7 @@ calling it a regression, and treat CI as authoritative.**
   rather than emitted in full. Any comments dropped, and any truncation, are **counted and
   stated** in the block, never silently discarded.
 - All other workflow changes must use templates from
-  [`standards/workflows/`](https://github.com/petry-projects/.github/tree/main/standards/workflows) verbatim.
+  [`standards/workflows/`](https://github.com/combsmith/.github/tree/main/standards/workflows) verbatim.
 - **Note:** `.github/workflows/auto-rebase.yml` pins the reusable workflow at the `@auto-rebase/v2-next`
   moving channel tag — the major-scoped dogfood channel this repo rides ahead of the canonical
   `@auto-rebase/v2-stable` org stub in `standards/workflows/auto-rebase.yml`. Do not
@@ -241,7 +241,9 @@ calling it a regression, and treat CI as authoritative.**
 - **Exception:** `test-deletion-guard.yml` (#823) is a documented repo-specific workflow with no org template.
   It is one half of the #655 **stale-base / semantic-revert** guard: it fails a PR that deletes any file under
   `tests/` unless a maintainer adds the `ack-test-deletion` label, so a silent test removal becomes a deliberate,
-  reviewable decision. The other half is the **"require branches up to date before merging"** ruleset on `main`
+  reviewable decision. Deletions are measured from the merge base of the PR, so a test file `main` gained after
+  the branch point is not read as deleted by a PR that is behind (#2254; logic in `scripts/test-deletion-guard.sh`).
+  The other half is the **"require branches up to date before merging"** ruleset on `main`
   (already enabled). Together they close the gap behind #655, where a PR merged from a stale base reverted a
   shipped fix and deleted its regression test in the same green-CI diff. Do not remove either guard.
   Because this is a **gate** workflow whose `failure` conclusion is intentional enforcement (it blocks a
@@ -285,6 +287,10 @@ calling it a regression, and treat CI as authoritative.**
   independent of the live `scripts/lib/consumer-manifest.json` so a legitimate manifest refresh does not break
   the guard — only a change to the mapper's output does, which then requires an explicit fixture update visible
   in the diff. It runs in the always-run `bats` job (no `paths:` filter) so it stays a stable check.
+- **Exception:** The `bats-negation` job in `lint.yml` (#2263) is a repo-specific lint with no org template
+  equivalent. It runs `scripts/check-bats-negation.sh` (tests: `tests/test_check_bats_negation.bats`), which
+  fails on a negated command in a `.bats` file that can never fail its test. Template syncs must not remove
+  it. If the org template gains an equivalent, remove this exception and defer to the template instead.
 - **Exception:** `holdout-guard.yml` (#692, epic #581) is a documented repo-specific workflow with no
   corresponding org template in `standards/workflows/`. It is the hard CI enforcement behind the advisory
   `.github/CODEOWNERS` rule over `evals/`: it fails any PR authored by the automated skill-proposer identity
@@ -423,7 +429,7 @@ leaving the old context name unsatisfied and the merge queue permanently blocked
   trigger will slip through and reintroduce the merge-queue wall.
 - The two thin caller stubs `agent-shield.yml` and `dependency-audit.yml` also front required checks but
   carry "You MUST NOT change: trigger events"; their `merge_group` wiring is owned upstream and tracked in
-  `petry-projects/.github#1157`, not here.
+  `combsmith/.github#1157`, not here.
 
 **Cutover + verification before the queue is enabled (#1864 gate).** Enabling the merge queue is out of
 scope of #1871 and must not be switched on until this is confirmed:
@@ -478,8 +484,8 @@ stops the merge: PR 2084 was approved, enqueued, had that approval dismissed, an
 
 ### Template drift guard (`repo-template`)
 
-`petry-projects/repo-template` is a **distribution artifact** of the canonical `standards/` in the public
-`petry-projects/.github` repo: `scripts/seed-repo-template.sh` fetches each canonical workflow stub /
+`combsmith/repo-template` is a **distribution artifact** of the canonical `standards/` in the public
+`combsmith/.github` repo: `scripts/seed-repo-template.sh` fetches each canonical workflow stub /
 baseline file and ships it (caller stubs repinned to the published `@<name>/stable` channel, inline stubs +
 baseline files verbatim). The `template-drift` job in `lint.yml` (#969, epic #964) guards that the files
 **committed** in the template have not diverged from that standards-derived baseline — it re-derives the
@@ -493,7 +499,7 @@ PR-triggered check on the existing Lint workflow — **no new cron/scheduled wor
   template that already carries newer standards content therefore differs from the channel while being
   exactly what standards says it should be. A file matching neither N nor N-1 is compared once more,
   against the seed emission at the standards default-branch HEAD. A match is **AHEAD**, and its
-  `::warning::` says to promote standards (`scripts/cut-standards-release.sh` in `petry-projects/.github`)
+  `::warning::` says to promote standards (`scripts/cut-standards-release.sh` in `combsmith/.github`)
   instead of re-seeding. Re-seeding from the channel would regress the template: on 2026-09-24 it would
   have stripped the `merge_group` trigger from `agent-shield.yml` and `dependency-audit.yml`.
   - **AHEAD warns; it does not fail the check.** This is deliberate. The committed bytes are
@@ -521,7 +527,17 @@ PR-triggered check on the existing Lint workflow — **no new cron/scheduled wor
       commits-list call per DRIFTED file and one emission per commit in the range. That adds network
       cost to every PR's lint run. The message removes the wrong advice without that cost.
 
-- **`seed-repo-template.sh` has one home: this repo (#1927).** `petry-projects/.github` once carried a
+- **A red `template-drift` is never fixed from a PR here (#2220).** The check reads `repo-template`, never
+  this repo's own stubs, so nothing in a PR here can clear it. It is not a fix-ci trigger: the reusable's
+  `ci-relay` job does not relay it, and `dev-lead-fix-ci.sh` drops it (`FIX_CI_IGNORED_CHECKS`). Its
+  annotations still carry a `file=` anchor, so GitHub pins them to the PR's own same-named file (dropping
+  the anchor is tracked in #2215). That is how two passes (#2157, #1796) "fixed" the drift by repinning
+  this repo's `dev-lead.yml` from `dev-lead/v139-ring0` to the stale `dev-lead/v1-stable`. As a backstop, `scripts/lib/channel-pin-guard.sh`
+  refuses any dev-lead pass (fix-ci and every fix-reviews intent) that changes a first-party channel pin
+  (`uses: combsmith/…@<channel>` or `agent_ref`) on a workflow file, and escalates the PR. Ending on the
+  base branch's pin (a rebase, or restoring `main`'s pin) is allowed.
+
+- **`seed-repo-template.sh` has one home: this repo (#1927).** `combsmith/.github` once carried a
   different, smaller script under the same name, and the two were mistaken for diverged copies. That
   script only prints one standard file from a local checkout and is now `scripts/emit-standard-file.sh`
   there; a CI guard in that repo fails if a `seed-repo-template.sh` reappears. Change the seeder here.
@@ -586,7 +602,7 @@ PR-triggered check on the existing Lint workflow — **no new cron/scheduled wor
   - **Why not the alternatives.** *Option 2 — keep Dependabot, automate a re-seed after each bump* — was
     rejected: it leaves a permanent drift window between the bump and the re-seed during which
     `template-drift` is red and review here is halted. *Option 3 — point Dependabot at
-    `petry-projects/.github` and let bumps flow to the template by re-seeding* — reaches the same
+    `combsmith/.github` and let bumps flow to the template by re-seeding* — reaches the same
     end state but additionally requires a change in the public standards repo; the scope-out above is
     implementable entirely from this repo (which owns `seed-repo-template.sh`) and is a prerequisite for
     Option 3 anyway (the template still must not run its own `github-actions` Dependabot). If the standards
@@ -609,7 +625,7 @@ breaks post-merge (the #1034 defect). This guard closes that gap.
 - Same-repo channel tags (`dev-lead/*`, `pr-review/*`, `ci-failure-analyst/*`, …) are resolved by
   `git fetch`-ing the tag and reading the reusable at that ref. A ref that genuinely can't be resolved
   **soft-passes with a logged `::warning::` — never silently.** Cross-repo reusables (hosted in another
-  repo, e.g. `petry-projects/.github`) are treated as unresolved here unless `VCI_RESOLVE_CROSS_REPO=1`
+  repo, e.g. `combsmith/.github`) are treated as unresolved here unless `VCI_RESOLVE_CROSS_REPO=1`
   opts in; the warning keeps the skip visible. Extending resolution to cross-repo channel tags is the
   scope of the later #1052 parts.
 - PR-triggered on the existing Lint workflow — **no new cron/scheduled workload.** It must not be
@@ -654,7 +670,7 @@ row to its §4 classification table and declare a machine-readable per-role inte
   "Ring-0 caller-stub freeze" above (which byte-freezes the self-host caller stubs the standard
   classifies as Class 1). This section is still **repo-local first**, shaped for promotion into an
   org-wide `standards/agent-standards.md` in
-  [`petry-projects/.github`](https://github.com/petry-projects/.github) — the same repo-local → org
+  [`combsmith/.github`](https://github.com/combsmith/.github) — the same repo-local → org
   path the off-peak scheduling standard has already completed.
 
 ### Scheduled workflows
@@ -663,7 +679,7 @@ row to its §4 classification table and declare a machine-readable per-role inte
 > schedule at minute 0; pick a staggered, non-round minute; idempotent sweeps may
 > run more often but still off the top of the hour) is now the **canonical,
 > org-wide standard**. Read it in
-> [standards/ci-standards.md in petry-projects/.github](https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md)
+> [standards/ci-standards.md in combsmith/.github](https://github.com/combsmith/.github/blob/main/standards/ci-standards.md)
 > → **Scheduled Workflow Timing**, which was
 > promoted out of this repo-local section under epic #722 / story #726 and now
 > names this repo as its origin. That section is the single source of truth for
@@ -719,11 +735,29 @@ recorded as a comment on the tracking issue/PR**, consistent with the repo's go/
 initiative-planner inert-epic model: the loop stays inert (dry-run) until a human explicitly flips a
 run to `remediate=live` for the configured pilot.
 
+### Bats tests — a negated command must be able to fail
+
+Bash exempts a `!`-negated command from `errexit`, and bats fails a test through `errexit`. So a
+line like `! grep -q "pr comment" "$GH_LOG"` in the **middle** of a test runs, has its result thrown
+away, and the test passes either way. It only counts as the **last** command of the test. By the time
+this was caught (#2263), 113 such lines across 41 files were asserting nothing, and two of them were
+hiding a test whose setup was wrong.
+
+**Rule: write a negative assertion so it can fail.**
+
+```bash
+! grep -q "pr comment" "$GH_LOG" || false   # fails the test when grep matches
+run ! grep -q "pr comment" "$GH_LOG"        # bats >= 1.5; overwrites $status and $output
+```
+
+`scripts/check-bats-negation.sh` enforces this in the `bats-negation` lint job. When a new negative
+assertion is added for a fix, prove it: run the test against the unfixed code and watch it fail.
+
 ### Agent Profiles (`agents/*.md`)
 
 - Every agent profile must have YAML frontmatter with `name`, `description`, and `tools`.
 - Agent names must be kebab-case and match the filename.
-- Profiles are org-wide — changes affect all `petry-projects` repos.
+- Profiles are org-wide — changes affect all `combsmith` repos.
 
 ### Framework Subtrees (`frameworks/`)
 
@@ -745,7 +779,7 @@ run to `remediate=live` for the configured pilot.
 Name a model **family** — `opus`, `sonnet`, or `haiku` — and resolve it to the
 current concrete id at run time; do **not** hard-pin `claude-<family>-<version>`
 ids across the tree (#1979, companion
-[`petry-projects/.github#1199`](https://github.com/petry-projects/.github/issues/1199)).
+[`combsmith/.github#1199`](https://github.com/combsmith/.github/issues/1199)).
 A model swap should be one edit to the chains in
 [`scripts/lib/engine-models.sh`](./scripts/lib/engine-models.sh), not a hunt for
 scattered ids.
@@ -779,7 +813,7 @@ secret holding that account's PAT. The runtime resolves `BOT_USER` from
 `account` via `scripts/lib/resolve-persona-identity.sh`; **never** derive a
 write persona's identity from a shared `vars.BOT_USER` — that coupling let
 dev-lead regress to committing as the review-only machine user `donpetry-bot`
-([#1316](https://github.com/petry-projects/.github-private/issues/1316)).
+([#1316](https://github.com/combsmith/.github-private/issues/1316)).
 
 - **dev-lead** acts as `don-petry` (the owner); **pr-review** acts as the
   review-only machine user `donpetry-bot`. They are deliberately different accounts.
@@ -800,7 +834,7 @@ every model-calling workflow in this repository skips its model-calling jobs
 cleanly (neutral, not red), **except** the ones the registry lists as not paused
 because their model call lives in another repository. Today that is one:
 `feature-ideation.yml`, which keeps running through a pause until
-[petry-projects/.github#1295](https://github.com/petry-projects/.github/issues/1295)
+[combsmith/.github#1295](https://github.com/combsmith/.github/issues/1295)
 lands. The full list is in
 ["Which workflows honour the pause"](#which-workflows-honour-the-pause-2249) below. Withholding the
 secret instead presents as a fleet-wide outage of failing dispatch runs that
@@ -832,11 +866,22 @@ gated (with the one upstream exception above), and a test keeps it that way.
 - **Four gated workflows have no notice job**, so a paused run of them ends **skipped**:
   `dev-lead-reusable.yml`, `pr-review.yml`, `ci-failure-analyst-reusable.yml` and `spec-drift.yml`
   (reasons in the table). For the three reusables this is deliberate and load-bearing: the canary
-  promotion gate (`scripts/canary-rollout.sh` in `petry-projects/.github`) counts every run of an
+  promotion gate (`scripts/canary-rollout.sh` in `combsmith/.github`) counts every run of an
   agent that ends `success` or `failure` as a health sample, so a run whose only work was the
   notice would count as a healthy sample of a release that did nothing. Do not add a
   `fleet-paused` job to a reusable the gate samples; the test fails a `job-gate-silent` workflow
   that has one.
+- **How the monitors read a paused run (#2266).** The variable's value when a run started is not
+  in the Actions API afterwards, so a monitor reads what the run recorded: the `fleet-paused` job
+  concluded `success` (`scripts/lib/fleet-pause.sh`). The Fleet Monitor takes such runs out of
+  every total, success count, failure rate and duration and lists them under "Fleet-paused
+  runs"; it asks only about green runs of workflows that carry the notice job, 100 runs per
+  request. The initiative-planner canary reports `PAUSED` instead of a pass. A run that ended
+  `skipped` is **not** read as paused on that evidence alone, because an event filter ends a run
+  the same way: the Fleet Monitor leaves the four workflows above as they were, and the pr-review
+  canary reports `PAUSED` only when its dispatched run ended `skipped` **and** its own
+  `vars.AGENTS_PAUSED` is `true`. `PAUSED` never raises a canary alert and is never announced as
+  a pass.
 - **The notice can never reach a model.** It runs while the fleet is paused, so the test requires
   every `fleet-paused` job and pause-notice step to hold no model credential, no AI CLI or
   action, no `secrets:` and no `secrets.*` or `github.token` reference, and to blank (`NAME: ''`)
@@ -902,18 +947,18 @@ gated (with the one upstream exception above), and a test keeps it that way.
 | `pr-review-trigger.yml` | Through its reusable | `pr-review.yml` |  |
 | `persona-runner.yml` | Through its reusable | `persona-runner-reusable.yml` |  |
 | `ci-failure-analyst.lock.yml` | Through its reusable | `ci-failure-analyst-reusable.yml` |  |
-| `feature-ideation.yml` | **Not paused** | `petry-projects/.github/.github/workflows/feature-ideation-reusable.yml` | That reusable does not read AGENTS_PAUSED, and this file is a frozen caller stub, so the fix belongs there: petry-projects/.github#1295. |
+| `feature-ideation.yml` | **Not paused** | `combsmith/.github/.github/workflows/feature-ideation-reusable.yml` | That reusable does not read AGENTS_PAUSED, and this file is a frozen caller stub, so the fix belongs there: combsmith/.github#1295. |
 | `budget-breaker.yml` | Exempt |  | Control plane: it sets and lifts the pause, so it has to run while paused. No model call. |
 | `budget-poller.yml` | Exempt, holds a credential | `poll` | Control plane. Holds the Claude credential only to read the usage windows (a dry run), and names the CLI package only to look up its version. No model call. |
 | `actions-fleet-monitor.yml` | Exempt |  | Monitor. No model call. |
 | `engine-token-liveness.yml` | Exempt |  | Monitor. No model call; it reads AGENTS_PAUSED itself to stay silent during a pause. |
-| `persona-mention.yml` | Exempt, holds a credential | `persona-mention` | Mention router: hands its secrets to a reusable in petry-projects/.github that makes no model call (checked at persona-mention/v1-next, 2026-10-10). It dispatches persona-runner.yml, which is gated. |
-| `auto-rebase.yml` | Exempt, holds a credential | `auto-rebase` | Hands its secrets to a reusable in petry-projects/.github that makes no model call (checked at auto-rebase/v2-next, 2026-10-10); a conflict goes to dev-lead, which is gated. |
-| `dependabot-automerge.yml` | Exempt, holds a credential | `dependabot-automerge` | Hands its secrets to a reusable in petry-projects/.github that makes no model call (checked at dependabot-automerge/v2-next, 2026-10-10). |
-| `pr-review-mention.yml` | Exempt, holds a credential | `pr-review-mention` | Passes two GitHub tokens to a reusable in petry-projects/.github that makes no model call (checked at pr-review-mention/v2-next, 2026-10-10); it dispatches pr-review, which is gated. |
-| `pr-auto-review.yml` | Exempt, holds a credential | `pr-auto-review` | Passes a GitHub token to a reusable in petry-projects/.github that makes no model call (checked at pr-auto-review/v1-next, 2026-10-10); it dispatches pr-review, which is gated. |
-| `dependabot-rebase.yml` | Exempt, holds a credential | `dependabot-rebase` | Passes a GitHub App identity to a reusable in petry-projects/.github that makes no model call (checked at dependabot-rebase/v2-next, 2026-10-10). |
-| `add-to-project.yml` | Exempt, holds a credential | `add-to-project` | Passes a GitHub App identity to a reusable in petry-projects/.github that makes no model call (checked at add-to-project/v1-stable, 2026-10-10). |
+| `persona-mention.yml` | Exempt, holds a credential | `persona-mention` | Mention router: hands its secrets to a reusable in combsmith/.github that makes no model call (checked at persona-mention/v1-next, 2026-10-10). It dispatches persona-runner.yml, which is gated. |
+| `auto-rebase.yml` | Exempt, holds a credential | `auto-rebase` | Hands its secrets to a reusable in combsmith/.github that makes no model call (checked at auto-rebase/v2-next, 2026-10-10); a conflict goes to dev-lead, which is gated. |
+| `dependabot-automerge.yml` | Exempt, holds a credential | `dependabot-automerge` | Hands its secrets to a reusable in combsmith/.github that makes no model call (checked at dependabot-automerge/v2-next, 2026-10-10). |
+| `pr-review-mention.yml` | Exempt, holds a credential | `pr-review-mention` | Passes two GitHub tokens to a reusable in combsmith/.github that makes no model call (checked at pr-review-mention/v2-next, 2026-10-10); it dispatches pr-review, which is gated. |
+| `pr-auto-review.yml` | Exempt, holds a credential | `pr-auto-review` | Passes a GitHub token to a reusable in combsmith/.github that makes no model call (checked at pr-auto-review/v1-next, 2026-10-10); it dispatches pr-review, which is gated. |
+| `dependabot-rebase.yml` | Exempt, holds a credential | `dependabot-rebase` | Passes a GitHub App identity to a reusable in combsmith/.github that makes no model call (checked at dependabot-rebase/v2-next, 2026-10-10). |
+| `add-to-project.yml` | Exempt, holds a credential | `add-to-project` | Passes a GitHub App identity to a reusable in combsmith/.github that makes no model call (checked at add-to-project/v1-stable, 2026-10-10). |
 | `pr-review-delayed-retry.yml` | Exempt |  | No model call: it re-dispatches through pr-review-sweep.yml, which is gated. |
 | `auto-rebase-retry.yml` | Exempt |  | No model call: it re-runs failed Auto-rebase jobs or dispatches dev-lead's rebase intent, which is gated. |
 | `initiative-driver.yml` | Exempt |  | No model call: it releases issues to dev-lead by label. Known gap: an issue it labels during a pause is not picked up, because dev-lead skips that event. |
@@ -930,9 +975,9 @@ affected by the pause: linters, tests, CodeQL, SonarCloud, reports and the canar
   (by a person or by `initiative-driver.yml`) is not picked up afterwards: re-dispatch it as in
   ["Steering dev-lead"](#steering-dev-lead).
 - **It does not pause `feature-ideation.yml`.** Its model call is in
-  `petry-projects/.github/.github/workflows/feature-ideation-reusable.yml`, which does not read
+  `combsmith/.github/.github/workflows/feature-ideation-reusable.yml`, which does not read
   the variable, and the file here is a frozen caller stub. The fix is tracked in
-  [petry-projects/.github#1295](https://github.com/petry-projects/.github/issues/1295).
+  [combsmith/.github#1295](https://github.com/combsmith/.github/issues/1295).
 - **It is not live in a consumer repository until the channel tag it pins has moved** (see
   ["Merging to `main` does not activate agent code"](#merging-to-main-does-not-activate-agent-code--say-when-it-will-reach-each-channel)):
 
@@ -952,10 +997,10 @@ The same switch is flipped automatically by `.github/workflows/budget-breaker.ym
 that the model provider is refusing work for quota, and lifts that pause at the reset time
 those refusals report. It does not read the usage endpoint (the fleet's credential cannot,
 see #2029), so the dry-run poller below is a separate, read-only report and is not its input.
-It is not channel-pinned: it runs the default branch's code, so the disarmed schedule starts
+It is not channel-pinned: it runs the default branch's code, so the disarmed runs start
 as soon as the workflow is on `main`.
 
-- **What a run does.** Every 10 minutes (schedule only), `scripts/budget_breaker.sh` reads
+- **What a run does.** On every wake-up (see "When it runs"), `scripts/budget_breaker.sh` reads
   the pause state, collects the fleet's quota markers (`bb_collect`), decides (`bb_decide`,
   both in `scripts/lib/budget-breaker.sh`, #2221) and applies the decision through
   `scripts/lib/budget-breaker-writer.sh`, the only file that writes the variables:
@@ -973,6 +1018,113 @@ as soon as the workflow is on `main`.
   The order means a failure between two writes never leaves a pause without its source. Only
   dev-lead's three quota markers count; pr-review's `rate-limited` marker (an advisory
   reviewer bot out of quota) never does, and the workflow cannot opt it in.
+- **When it runs (#2259).** The workflow has exactly two triggers, and a test rejects any
+  other:
+  - `workflow_run`, type `completed`, for three workflows of **this repository**, matched by
+    their `name:`: "Dev-Lead Agent" and "GitHub Agentic Workflows — Cross-Org Dispatcher"
+    (the two that run the scripts that post a dev-lead quota marker), and "Dev-Lead Retry
+    (rate-limited)" (it posts no quota marker; it is one more wake-up, every few hours,
+    that does not depend on agent traffic). A rename would silently unhook the trigger, so
+    a test requires every listed name to be the `name:` of a workflow file here.
+    pr-review's workflows are not listed: its marker is not quota evidence.
+  - `schedule`, every 10 minutes, as the backstop. GitHub delivers few of these ticks in
+    this repository: after the workflow merged on 2026-10-11 at 01:55 UTC, two arrived in
+    the first 13 hours (08:35 and 15:03 UTC, of about 79 slots).
+
+  **Why `workflow_run` still runs only default-branch code.** GitHub's documentation
+  ("Events that trigger workflows", read 2026-10-11) says of it: "This event will only
+  trigger a workflow run if the workflow file exists on the default branch.", and lists
+  `GITHUB_SHA` as "Last commit on default branch" and `GITHUB_REF` as "Default branch". The
+  checkout has no `ref:`, so that commit is what it checks out. The same page says: "The
+  workflow started by the `workflow_run` event is able to access secrets and write tokens,
+  even if the previous workflow was not." So the property holds **only while the job never
+  uses anything from the run that triggered it**. Anyone who can make a listed workflow's
+  run complete here (a comment on an issue, a pull request from a fork, a pull request that
+  adds a workflow carrying a listed name) chooses when the breaker runs and what the event
+  payload says. They choose nothing else: the workflow file does not reference the event
+  context anywhere, the checkout has no `ref:` and no `repository:`, no artifact is
+  downloaded, and the script reads the event's name and nothing else of it. More runs
+  cannot cause a pause (a trip needs quota markers from trusted authors) and cannot run in
+  parallel (one concurrency group).
+
+  **`workflow_run` sees this repository only.** An agent run in another repository of the
+  organisation does not wake the breaker. Its quota markers are read by the next run,
+  whatever woke it; if none comes within the 30 minute window they have aged out and are
+  never acted on.
+
+  **No filter on the triggering run's conclusion.** About half of the Dev-Lead Agent runs
+  here end `cancelled` in their lane within seconds, and the breaker runs for those too.
+  Skipping them with a job-level `if:` would need the event context, and it is not known
+  to be safe: the concurrency group keeps one pending run and the newest arrival replaces
+  it, and GitHub does not document whether a run whose only job is skipped still takes
+  that place. If it does, a run that only skips replaces a waiting one that carries news.
+  The cost is bounded instead by the group (one run at a time and at most one waiting; a
+  replaced run loses nothing, because the run that replaced it starts later and reads the
+  same state) and by the early exit below. Measured on 2026-10-11: 988 Dev-Lead Agent runs
+  completed in 13.4 hours; replayed against the group that is about 630 breaker runs (47
+  an hour), each a job of 8 to 10 seconds.
+
+  **The early exit.** A run woken by `workflow_run` on a fleet that is **not paused** exits
+  before the organisation scan when both hold: an earlier run of this workflow that
+  succeeded was created in the same clock slot of `BUDGET_BREAKER_MIN_INTERVAL_MIN` minutes
+  (default 10; `0` switches the early exit off; a failed run covers nothing, because it may
+  have ended before its scan), and this repository shows no quota marker created in that
+  slot (one listing instead of one per repository). It is slots, not "the previous run
+  finished less than N minutes ago", because a run that exits early is itself a previous
+  run: under a steady stream of wake-ups that rule would exit early for ever, while the
+  first run to look in a slot always decides. The earlier runs are listed with the read
+  credential (the repository is public, so the workflow's `permissions:` are unchanged).
+  The default was two minutes when the trigger was added and was raised to ten after the
+  first 84 minutes of real runs (2026-10-11): 309 runs were created, 115 executed, and a slot
+  of two minutes meant up to 30 organisation scans an hour on the maintainer login's shared
+  API quota. With ten, event wake-ups cause at most 6. A scheduled run always scans, so each
+  scheduled tick that is delivered adds one (up to 6 more an hour; two were delivered in the
+  first 13 hours). A quota marker posted in this repository still
+  makes the next run decide at once; one posted only in another repository is read by the
+  first run of the next slot, so up to ten minutes later.
+  The early exit never applies to a scheduled run, never while the fleet is paused by
+  anyone (so it cannot delay a resume), and never when the earlier runs, the slot or this
+  repository's markers could not be read: then the run decides. Its one cost: a marker
+  posted in **another** repository in a slot that already had a run is read by the first
+  run of a later slot.
+
+  Every run logs `triggered by: schedule|workflow_run` and
+  `previous run: finished <time> (<conclusion>), N min before this one`, and shows both in
+  its summary, so poor delivery of either trigger is visible.
+- **How fast it reacts, and how late it can resume (#2259).** All figures are from this
+  repository on 2026-10-11 unless dated otherwise; none is a guarantee by GitHub.
+  - **Trip, marker posted in this repository.** The run that posts the deciding marker
+    ends seconds after posting it, with the conclusion `success` (run 37472943876 on
+    2026-10-06: marker at 13:44:15 UTC, run completed at 13:44:24), and its completion wakes
+    the breaker. From that completion:
+    delivery of the event (1 to 3 seconds: the 8 `workflow_run` deliveries to "Auto-rebase
+    retry" checked, 2026-09-19 to 2026-10-10), plus at most one breaker run already under
+    way (a job of 8 to 10 seconds), plus the wait for a runner (3 seconds for run
+    38125345031, 144 seconds for run 38149673170), plus the job itself. That is under a
+    minute when a runner is free and a few minutes when the job cap is full. The early exit
+    does not hide such a marker. The quota bursts this has to catch are short: on
+    2026-10-06, nine pull requests were refused within 96 seconds (13:44 UTC) and fourteen
+    within 98 seconds (15:18 UTC).
+  - **Trip, markers only in other repositories, or no agent run completing here.** The next
+    wake-up of any kind. With agent traffic here that is seconds to minutes (the gap
+    between Dev-Lead Agent completions: median 8 seconds, 95th percentile 71 seconds), but
+    the same 13.4 hours contain a gap of 2 hours 54 minutes. With no traffic it is the next
+    delivered scheduled tick: the two delivered so far were 6.5 hours apart. **There is no
+    upper bound**, and evidence older than the window is not acted on.
+  - **Resume.** The breaker lifts its pause at its first run after `AGENTS_PAUSE_UNTIL`
+    (and after the minimum hold). During a pause three things wake it. (1) Any event that
+    starts Dev-Lead Agent here: the paused run ends `skipped` within seconds, and GitHub
+    documents that "A workflow run is triggered regardless of the conclusion of the
+    previous workflow." This has been seen here for `cancelled` runs, not yet for
+    `skipped` ones (arming precondition 6). How often such events arrive during a pause
+    is not measured: most of today's traffic is the fleet's own, which a pause stops.
+    (2) A delivered tick of the retry sweep, whose run completes whether paused or not:
+    over its last 100 scheduled runs the gap was 5.8 hours at the median and 8.9 hours at
+    the longest. (3) A delivered tick of the breaker's own schedule (above). So the resume
+    follows the end time by seconds to minutes while people or other tools are active in
+    this repository, and **by hours when it is quiet: up to about 9 hours on these
+    measurements, with no guaranteed bound.** To end a pause sooner, lift it by hand
+    ("Overriding a breaker pause by hand").
 - **Default off, twice.** Nothing is written unless the repository variable
   `BUDGET_BREAKER_ARMED` is **exactly** `true` (absent, `TRUE`, `1`, `yes` all mean off)
   **and** the secret `BUDGET_BREAKER_PAT` is set. Disarmed, every run still decides and logs
@@ -1031,7 +1183,7 @@ as soon as the workflow is on `main`.
   indistinguishable from the breaker's own; the removal shortens that to at most the gap
   between two runs.
 - **The secret.** `BUDGET_BREAKER_PAT` is a **fine-grained personal access token** whose
-  resource owner is the `petry-projects` organisation, with the **organisation permission
+  resource owner is the `combsmith` organisation, with the **organisation permission
   "Variables: read and write"** and nothing else (no repository permissions). It is an
   Actions secret of **this repository only**. It is referenced in `budget-breaker.yml` and
   nowhere else (a static test enforces that), is handed to the step only when armed, and is
@@ -1049,7 +1201,7 @@ as soon as the workflow is on `main`.
      - a value-only `PATCH` of an organisation variable keeps its visibility;
      - a `PATCH` updates the variable's `updated_at` (the minimum hold is measured from it);
      - the variable list paginates as the code expects: `gh api --paginate` on
-       `orgs/petry-projects/actions/variables?per_page=30` with a `--jq` filter returns every
+       `orgs/combsmith/actions/variables?per_page=30` with a `--jq` filter returns every
        variable when there are more than 30 (the filter runs once per page);
      - the dedicated write credential can read, create, update and delete an organisation
        variable, and nothing else;
@@ -1060,6 +1212,12 @@ as soon as the workflow is on `main`.
      `Would have written` lines and the job summaries, with no `::error::` about the arming
      value.
   5. The secret `BUDGET_BREAKER_PAT` is set.
+  6. The event trigger (#2259) has been seen working in disarmed runs, recorded on #1565
+     with the run ids: a run with `triggered by: workflow_run` whose `previous run:` line
+     shows a time (the read credential can list the workflow's runs); and a Budget Breaker
+     run that starts within seconds of a Dev-Lead Agent run that ended `skipped`, which is
+     what a resume relies on. The second is visible without a pause: Dev-Lead Agent runs
+     end `skipped` every day (61 in 13.4 hours on 2026-10-11).
 - **Arming.** With the preconditions met, set the repository variable
   `BUDGET_BREAKER_ARMED` to `true`, lowercase, with no space around it, and check that the
   next run logs `mode: armed` and no `::error::`. The first trip creates the three
@@ -1127,21 +1285,25 @@ as soon as the workflow is on `main`.
 - **Token rotation.** The token has no expiry, so rotation is a manual policy: **every 90
   days**, and at once if it may have leaked. Steps: (1) create a new fine-grained token with
   the same resource owner and the same single permission; (2) update the `BUDGET_BREAKER_PAT`
-  secret of this repository; (3) verify a read: `GET /orgs/petry-projects/actions/variables`
+  secret of this repository; (3) verify a read: `GET /orgs/combsmith/actions/variables`
   answers 200 with the new token (an armed run does exactly this, and logs
   `pause state from organisation API` with no `::error::`); (4) revoke the old token. Each
   run logs the secret's age (`age of BUDGET_BREAKER_PAT: last updated N day(s) ago`) and
   raises a `::warning::` once it is older than 90 days.
 - **Tuning** (repository variables, all optional): `BUDGET_BREAKER_MIN_ITEMS`,
   `BUDGET_BREAKER_WINDOW_MIN`, `BUDGET_BREAKER_PROBE_HOURS` (the pause length when no reset
-  time is known, default 2) and `BUDGET_BREAKER_MIN_HOLD_MIN`. Keep the minimum hold at or
-  above the window: otherwise the markers that caused a pause can still be inside the window
-  when it lifts.
-- **Guard rails for editors.** The workflow is schedule-only on purpose: do not add
-  `workflow_dispatch` or any event trigger (a manual or event run can execute branch code,
-  and the job holds a credential that can pause every repository), and do not widen its
-  `permissions:` (`contents: read`, plus `issues: write` for the notice). Tests:
-  `tests/dev-lead/unit/test_budget_breaker_writer.bats`.
+  time is known, default 2), `BUDGET_BREAKER_MIN_HOLD_MIN` and
+  `BUDGET_BREAKER_MIN_INTERVAL_MIN` (the early exit's slot, default 10, `0` for off). Keep
+  the minimum hold at or above the window: otherwise the markers that caused a pause can
+  still be inside the window when it lifts.
+- **Guard rails for editors.** The workflow's triggers are `schedule` and `workflow_run`
+  and nothing else, on purpose: do not add `workflow_dispatch`, `pull_request`, `push` or
+  any other trigger (a manual or event run can execute branch code, and the job holds a
+  credential that can pause every repository). Do not make it read the run that triggered
+  it: no reference to the event context anywhere in the file, no `ref:` or `repository:`
+  on the checkout, no artifact download, no `actions/github-script` (see "When it runs").
+  Do not widen its `permissions:` (`contents: read`, plus `issues: write` for the notice).
+  Tests: `tests/dev-lead/unit/test_budget_breaker_writer.bats`.
 
 The telemetry adapter (`scripts/lib/usage-telemetry.sh`) and the dry-run poller described
 below still ship; the poller writes nothing and has no access to the breaker's secret.
@@ -1222,7 +1384,7 @@ pending the pause-vs-degrade decision.
   reads the envelope via `scripts/lib/usage-telemetry.sh`, publishes it on the
   existing `AGENT_TOKEN_BUDGET_TELEMETRY_FILE` seam, and evaluates the shipped public
   `arl_token_budget_gate session` and `arl_token_weekly_glide_gate`. It checks the
-  public library and config out of `petry-projects/.github@main`. The public config
+  public library and config out of `combsmith/.github@main`. The public config
   ships the glide breaker inert (`weekly_all.enabled=false`), so the glide gate is
   evaluated against a **temp armed copy** of that config. The decision therefore
   says what the breaker *would* do. The real arm state is recorded as
@@ -1306,6 +1468,46 @@ on it is the follow-up actuation work.
     hit. The report ends with the redacted rejection messages.
   - It emits one `::warning::` per tier that is `degraded` or `unavailable`, at most once
     per tier per Pacific day. A `gemini_tier_notice` record in the store prevents repeats.
+- **Only records from trusted runs (#2147).** A token-usage artifact is untrusted input: a
+  pull request from a fork runs the fork's copy of a workflow and can upload an artifact of
+  any name and content, and a record says nothing about its origin but a run id it wrote
+  itself. `scripts/token_report.sh` decides trust from the Actions API, never from the
+  artifact:
+  - **trusted:** the uploading run's head repository is the repository itself, and either
+    the run was on the default branch (read from the artifact listing's `workflow_run`, no
+    extra call), or the run, looked up, confirms the head repository and was not started by
+    Dependabot. These are the runs GitHub gives the repository's secrets to.
+  - **not trusted:** a fork run, a Dependabot run, an artifact with no `workflow_run`, and a
+    run that cannot be looked up or does not match. A look-up that *failed* (timeout, 403,
+    rate limit) is also counted as a failed read (`run_lookups_failed`), because that run
+    may have been a trusted one.
+
+  Every collected record is stamped `provenance: {run_id, trusted, basis}`, replacing
+  anything the artifact wrote under that name. Only trusted records are handed to the tier
+  report. The ignored ones are counted in the log, in a `::warning::` and in the job summary
+  ("Gemini ledger provenance"). The cost report is not filtered. The history cache was
+  renamed (`gemini-tier-history-v2-`), so nothing collected before the filter is restored.
+- **The snapshot is not yet a basis for a dispatch decision (#2147).** A forged record can
+  only make a tier look less available. Usage that is missing, or records that are not real
+  calls, are the other half, and the snapshot records both in `collection`:
+  - **Missing usage** makes a tier look *more* available: a repository listing, an
+    artifact, a run look-up or a record file that could not be read (each is counted, and
+    any of them makes `collection.complete` false), or simply the time since the snapshot
+    (it is written once a day, at 06:27 UTC, shortly before the Pacific reset).
+  - **Test fixtures are in the real ledger.** An agent session that runs this repository's
+    engine tests passes them the job's `TOKEN_LOG_FILE`, so the tests append their fixture
+    calls, rejections and cooldowns to the ledger the job then uploads. They arrive from a
+    trusted run and some look exactly like real calls. The collector counts the visible
+    part (`gemini_records_unlisted`: records for a key index and model the caps file does
+    not list) and raises a `::warning::`. The fix belongs at the source (tests must not
+    inherit the ledger path); until then the tier view over-counts Gemini usage.
+
+  A dispatch decision must read the snapshot with
+  `gq_tier_decision <snapshot> <tier> [max_age_sec]`, not `gq_tier_can_run`. It answers
+  `unknown` (return 2: do not start the work) when the snapshot is unreadable, older than
+  the limit (default 3600 s, `GEMINI_DECISION_MAX_AGE_SEC`), for a quota day that is over,
+  not marked `trusted-runs-only`, or built from a collection that was incomplete or held
+  unlisted records. Nothing calls it yet. Tests: `tests/token_report_trust.bats`.
 - **Rejected attempts count.** Google counts rejected calls against the limits. So a call
   rejected as rate-limited or quota-exceeded appends a `kind:"gemini_attempt"`
   (`rejected:true`) record, which holds the key index, model and timestamp only. Metering
@@ -1383,7 +1585,7 @@ HTTP 406 above that limit.
 - Prices are data, not code: keep per-model rates in `scripts/lib/model-pricing.tsv`
   (effective-dated) — never hardcode dollar rates in scripts.
 - **Promotion:** this is currently a repo-local standard. To make it org-wide,
-  lift it into [`petry-projects/.github`](https://github.com/petry-projects/.github/blob/main/AGENTS.md)
+  lift it into [`combsmith/.github`](https://github.com/combsmith/.github/blob/main/AGENTS.md)
   (the org AGENTS.md / `standards/`) and have repos defer to it.
 
 ### Release channel tags & the mutable-ref exception
@@ -1392,7 +1594,7 @@ First-party reusables are versioned via tags — see
 [`docs/release/versioning.md`](./docs/release/versioning.md). This began with the `pr-review` and
 `dev-lead` agents and now covers every first-party reusable we own — the reusables in this repo
 (`pr-review`, `dev-lead`, `ci-failure-analyst`) and the cross-repo reusables hosted in
-`petry-projects/.github` (`feature-ideation` and the six #482 reusables). **One convention applies to
+`combsmith/.github` (`feature-ideation` and the six #482 reusables). **One convention applies to
 all of them.** Two kinds of tag exist per reusable:
 
 - **Immutable releases** `<name>/vX.Y.Z` — never moved or deleted; the audit trail and rollback targets.
@@ -1428,12 +1630,12 @@ intentionally **mutable** and are an accepted, documented exception because they
 #### Release automation — who cuts and moves tags
 
 Release tags on this repo's agents (`pr-review`, `dev-lead`, `ci-failure-analyst`) and on the
-`petry-projects/.github`-hosted reusables are cut and moved by the **Release Manager**. That is the
-`Canary Rollout` workflow in **`petry-projects/.github`**
+`combsmith/.github`-hosted reusables are cut and moved by the **Release Manager**. That is the
+`Canary Rollout` workflow in **`combsmith/.github`**
 (`.github/workflows/canary-rollout.yml` + `scripts/canary-rollout.sh`, relocated there from this
 repo under #613), acting as the **`petry-projects-release-manager[bot]`** GitHub App. Its registry
 (each agent's host, reusable path, rings and gate knobs) is **`standards/canary-rings.json` in
-`petry-projects/.github`**, not in this repo. Each sweep (cron `33 */4 * * *`, every 4 hours;
+`combsmith/.github`**, not in this repo. Each sweep (cron `33 */4 * * *`, every 4 hours;
 GitHub may delay scheduled runs) runs `autocut` → `promote-all` → `sync-issues`:
 
 | Step | What it does | Armed by | Human control |
@@ -1457,12 +1659,12 @@ GitHub may delay scheduled runs) runs `autocut` → `promote-all` → `sync-issu
   are promoting or rolling back deliberately. Use `--promote --channel <tier>` to move a channel to
   an **existing** release, and never cut a new version just to move a channel.
 - **Rollback** is a channel move back to an earlier immutable tag. Either dispatch the `Canary
-  Rollout` workflow in `petry-projects/.github` with `command=rollback agent=<agent> ring=<tier> to=vX.Y.Z`, or run
+  Rollout` workflow in `combsmith/.github` with `command=rollback agent=<agent> ring=<tier> to=vX.Y.Z`, or run
   `cut-release.sh <agent> <X.Y.Z> --promote --channel <tier> --push`.
 - **A release that needs a human go/no-go must be configured *before* its candidate reaches the
   ring.** Examples are a model swap such as epic #1895 / #1899, or a behaviour change that needs
   canary metrics. Add `require_confirmation: true` to that agent's transition in
-  `petry-projects/.github` `standards/canary-rings.json`, or disarm `CANARY_AUTO_PROMOTE`, which is
+  `combsmith/.github` `standards/canary-rings.json`, or disarm `CANARY_AUTO_PROMOTE`, which is
   fleet-wide. An issue label such as `dev-lead:hands-off` stops dev-lead from acting on the issue,
   but **it does not stop the promotion gate**.
 - **Who did what:** releases tagged by `petry-projects-release-manager[bot]` came from the
@@ -1477,7 +1679,7 @@ mechanism (see the initiative analysis §5.1: `docs/initiatives/agentic-release-
 **feature-ideation (cross-repo).** The `feature-ideation` agent is released through the same model with
 the channel set `{next, ring0, ring1, stable}`, so its `feature-ideation/v<MAJOR>-<tier>` pins (e.g., `feature-ideation/v1-stable`) are the **same
 sanctioned mutable-ref exception** and must not be flagged as unpinned. Unlike `pr-review`/`dev-lead`
-whose reusables live in this repo, `feature-ideation`'s reusable lives in **`petry-projects/.github`**
+whose reusables live in this repo, `feature-ideation`'s reusable lives in **`combsmith/.github`**
 (this repo holds only the thin caller stub), so its release/channel tags are cut against that public
 repo — and the protective ruleset bounding `feature-ideation/**` channel tags is therefore created
 **there**, not on this repo (an untracked prerequisite in the public repo). See
@@ -1532,6 +1734,6 @@ even though every ref looks valid, because the stub is ahead of the channel it p
   skew at the source; the **Part A CI guard (#1253)** is the belt-and-braces check that fails a PR whose
   caller-stub `with:` forwards an input the pinned channel does not declare.
 - **Promotion.** The canonical org-wide version of this rule is tracked for
-  [`petry-projects/.github`](https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md)
+  [`combsmith/.github`](https://github.com/combsmith/.github/blob/main/standards/ci-standards.md)
   (`standards/ci-standards.md`, "Reusable workflow versioning — the `stable` channel") in
-  petry-projects/.github#736; consumer repos defer to it once it lands.
+  combsmith/.github#736; consumer repos defer to it once it lands.

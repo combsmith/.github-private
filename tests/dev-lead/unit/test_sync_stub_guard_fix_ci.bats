@@ -25,12 +25,14 @@ setup() {
   export SSG_RETRY_SLEEP=0
   export GIT_AUTHOR_NAME=T GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=T GIT_COMMITTER_EMAIL=t@t
   export GIT_EDITOR=true
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 }
 
 _stub_body() {
   local variant="${1:-sync}"
   cat <<EOF
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/persona-mention.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/persona-mention.yml
 # Do not change the trigger events in a consumer repo.
 name: Persona Mention (${variant})
 on:
@@ -38,7 +40,7 @@ on:
     types: [created]
 jobs:
   route:
-    uses: petry-projects/.github/.github/workflows/persona-mention-reusable.yml@v1
+    uses: combsmith/.github/.github/workflows/persona-mention-reusable.yml@v1
 EOF
 }
 
@@ -48,7 +50,7 @@ _hl_body() {
 name: dev-lead (${variant})
 jobs:
   dispatch:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
 EOF
 }
 
@@ -231,7 +233,7 @@ _remote_feat() { git --git-dir="$REMOTE" rev-parse refs/heads/feat; }
 # ---------------------------------------------------------------------------
 
 @test "Wiring: fix-ci sources the guard and evaluates it before push_with_merge_guard" {
-  grep -q 'source "$(dirname "$0")/lib/sync-stub-guard.sh"' "$FIX_CI"
+  grep -qF 'source "$(dirname "${BASH_SOURCE[0]}")/lib/sync-stub-guard.sh"' "$FIX_CI"
   local body
   body=$(awk '/^main\(\) \{/,/^}/' "$FIX_CI")
   local eval_line push_line

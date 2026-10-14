@@ -9,6 +9,8 @@ GH_STUBS_DIR="$SCRIPT_DIR/tests/dev-lead/fixtures/stubs"
 setup() {
   export GITHUB_ENV="$(mktemp)"
   export GITHUB_OUTPUT="$(mktemp)"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
 
   # Set up stub binary directory
   STUB_BIN_DIR="$(mktemp -d)"
@@ -22,8 +24,8 @@ setup() {
   # Default environment for fix-ci
   export PR_NUMBER="42"
   export HEAD_SHA="abc123def456"
-  export CHECKS_JSON='[{"name":"lint / eslint","conclusion":"failure","details_url":"https://github.com/petry-projects/.github-private/actions/runs/12345","app_slug":"github-actions","id":99}]'
-  export REPO="petry-projects/.github-private"
+  export CHECKS_JSON='[{"name":"lint / eslint","conclusion":"failure","details_url":"https://github.com/combsmith/.github-private/actions/runs/12345","app_slug":"github-actions","id":99}]'
+  export REPO="combsmith/.github-private"
   export REVIEW_ENGINE="claude"
   export DEV_LEAD_DRY_RUN="true"
   export GH_STUB_COMMENT_BODY=""
@@ -490,7 +492,7 @@ esac
 GHEOF
   chmod +x "$STUB_BIN_DIR/gh"
   export DEV_LEAD_DRY_RUN="true"
-  export CHECKS_JSON='[{"name":"lint / eslint","conclusion":"failure","details_url":"https://github.com/petry-projects/.github-private/actions/runs/12345","app_slug":"github-actions"}]'
+  export CHECKS_JSON='[{"name":"lint / eslint","conclusion":"failure","details_url":"https://github.com/combsmith/.github-private/actions/runs/12345","app_slug":"github-actions"}]'
 
   run bash "$FIX_CI_SCRIPT"
 

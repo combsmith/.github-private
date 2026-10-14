@@ -30,8 +30,16 @@ source "$(dirname "$0")/lib/claim-landing.sh"
 source "$(dirname "$0")/lib/test-tamper-guard.sh"
 # Sync-stub guard (#2185): a bot pass may not edit a synced org-standard stub.
 source "$(dirname "$0")/lib/sync-stub-guard.sh"
+# Channel-pin guard (#2220): no pass may change a caller stub's channel pin.
+source "$(dirname "$0")/lib/channel-pin-guard.sh"
 # Test-regression guard (#2013): a pass may not push with the suite newly red.
 source "$(dirname "$0")/lib/test-regression-guard.sh"
+# Isolated test job (#2143): the suite runs in a job with no secrets. DEV_LEAD_PHASE
+# picks this run's part of a guarded pass — `work` (dispatch: run the model, commit,
+# hand off), `push` (push job: restore the commits, read the test job's verdict,
+# push, then everything after a push). Empty runs the whole pass in one process,
+# suite included (local runs and tests).
+source "$(dirname "$0")/lib/test-job-handoff.sh"
 # Review-thread deferral verifier (#2045): the thread-side sibling of the
 # `out-of-scope` disposition. A bot thread deferred to an open tracking issue that
 # links it is resolved by resolve_deferred_bot_threads.
@@ -69,6 +77,40 @@ source "$(dirname "$0")/lib/ci-status.sh"
 # Hold label (#2142): every escalation applies needs-human-review through the REST
 # labels API, logs the API's message on failure, and a failed hold fails the run.
 source "$(dirname "$0")/lib/hold-label.sh"
+
+# Push phase (#2143): read the work job's state back from the handoff before the
+# intent's inputs are read below. INTENT_TYPE, PR_NUMBER, the pre-pass head and the
+# pass start come from the dispatch job's outputs, so the claim-retraction sweep can
+# still run when the handoff is missing or refused; that case is handled before the
+# intent dispatch (dlh_enter_push_phase).
+DEV_LEAD_PHASE="${DEV_LEAD_PHASE:-}"
+DLH_DIR=""
+if [ "$DEV_LEAD_PHASE" = "push" ]; then
+  DLH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dev-lead-handoff.XXXXXX")" \
+    || { echo "::error::failed to create temporary directory" >&2; exit 1; }
+  # Registered at once so the dir is never orphaned; the restore_auto_merge trap
+  # below chains this cleanup rather than replacing it.
+  trap 'rm -rf "$DLH_DIR"' EXIT
+  if tjh_restore "${DEV_LEAD_HANDOFF_FILE:-}" "${DEV_LEAD_HANDOFF_SHA256:-}" "$DLH_DIR" \
+     && [ "$(jq -r '.intent // ""' "$DLH_DIR/state.json" 2>/dev/null)" = "${INTENT_TYPE:-}" ] \
+     && [ "$(jq -r '.pr_number // ""' "$DLH_DIR/state.json" 2>/dev/null)" = "${PR_NUMBER:-}" ]; then
+    _dlh() { jq -r --arg k "$1" '.[$k] // "" | tostring' "$DLH_DIR/state.json"; }
+    HEAD_SHA="$(_dlh head_sha)"
+    PASS_STARTED_AT="$(_dlh pass_started_at)"
+    ACTOR="$(_dlh actor)"
+    TRIGGERING_REVIEWER="$(_dlh triggering_reviewer)"
+    COMMENT_BODY="$(_dlh comment_body)"
+    COMMENT_NODE_ID="$(_dlh comment_node_id)"
+    COMMENT_VERSION="$(_dlh comment_version)"
+    BASE_REF="$(_dlh base_ref)"
+    [ -n "$BASE_REF" ] || unset BASE_REF
+    export HEAD_SHA ACTOR TRIGGERING_REVIEWER COMMENT_BODY COMMENT_NODE_ID COMMENT_VERSION
+  else
+    echo "::error::push phase: the handoff from the dispatch job is missing, does not match its published digest, or names another pass — nothing will be pushed (#2143)"
+    rm -rf "$DLH_DIR"
+    DLH_DIR=""
+  fi
+fi
 
 INTENT_TYPE="${INTENT_TYPE:-fix-reviews}"
 PR_NUMBER="${PR_NUMBER:-}"
@@ -108,7 +150,10 @@ trap hold_label_exit_guard EXIT
 # automation budget since the last human interaction, stop before any writes.
 # Checked before holding auto-merge so the escalation's auto-merge disable is not
 # undone by the restore_auto_merge EXIT trap. Only a human interaction resets it.
+# The push phase (#2143) finishes a pass the work job already admitted: stopping
+# here would leave that pass's claim replies standing with nothing pushed.
 if [ -n "${PR_NUMBER:-}" ] && [ "${DEV_LEAD_DRY_RUN:-false}" != "true" ] \
+   && [ "$DEV_LEAD_PHASE" != "push" ] \
    && enforce_pr_budget "$PR_NUMBER" "$REPO"; then
   echo "::warning::PR #${PR_NUMBER} automation budget exhausted — skipping ${INTENT_TYPE}"
   exit 0
@@ -141,6 +186,10 @@ github_knows_commit() {
 #   - earlier: a commit missing from a still-shallow checkout, one GitHub knows
 #              (pushed, then rewritten), or one GitHub cannot be asked about is
 #              left as is.
+# A reply that also carries the review-thread addressed-marker or claim (#2261)
+# is handled here in the same edit, so it has one writer: a re-point moves a
+# claim citing the same commit along with the disposition, and a retraction
+# removes the addressed-marker and the claim with it.
 # Best-effort: returns 1 on a listing/PATCH failure; the caller folds it in.
 sweep_fixed_dispositions() {
   local ref="${1:-}" window="${2:-pass}"
@@ -196,6 +245,10 @@ sweep_fixed_dispositions() {
     fi
     if [ -n "$rebased" ] && git merge-base --is-ancestor "$rebased" "$ref" 2>/dev/null \
        && new_body=$(cl_rewrite_disposition_sha "$body" "$rebased"); then
+      # #2261: a claim in the same reply citing the same commit moves with it.
+      if [ "$(acv_parse_claim "$body" 2>/dev/null | jq -r '.sha // ""' 2>/dev/null)" = "$sha" ]; then
+        new_body=$(cl_rewrite_claim_sha "$new_body" "$rebased") || new_body=$(cl_rewrite_disposition_sha "$body" "$rebased")
+      fi
       if gh api -X PATCH "repos/${REPO}/issues/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
         remapped=$((remapped + 1))
         echo "::notice::\`fixed\` reply ${id} on PR #${PR_NUMBER}: ${sha} was rebased onto a foreign commit and landed as ${rebased} — disposition updated, not retracted (#2156)"
@@ -203,7 +256,9 @@ sweep_fixed_dispositions() {
       fi
       echo "::warning::could not update \`fixed\` reply ${id} on PR #${PR_NUMBER} to the rebased commit ${rebased} — retracting it instead (#2156)"
     fi
-    new_body=$(cl_retract_disposition_body "$body" "$reason")
+    # #2261: the addressed-marker and claim go too, or the quoted original would
+    # keep a claim citing the unlanded commit. Without either, the body is unchanged.
+    new_body=$(cl_retract_disposition_body "$(cl_strip_claim_markers "$body" || printf '%s' "$body")" "$reason")
     if gh api -X PATCH "repos/${REPO}/issues/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
       retracted=$((retracted + 1))
       echo "::warning::retracted \`fixed\` disposition reply ${id} on PR #${PR_NUMBER} (${reason}; cited ${sha:-<none>}, remote head ${ref:-<unknown>}) (#2156)"
@@ -348,7 +403,7 @@ if [ "${DEV_LEAD_DRY_RUN:-false}" = "false" ] && [ -n "${PR_NUMBER:-}" ]; then
   # trap) puts it back however we exit; checkout_pr_in_worktree chains its own
   # cleanup onto this trap.
   # shellcheck disable=SC2154 # rc is set by the trap string itself
-  trap 'rc=$?; restore_auto_merge; hold_label_exit_guard "$rc"' EXIT
+  trap 'rc=$?; restore_auto_merge; [ -z "$DLH_DIR" ] || rm -rf "$DLH_DIR"; hold_label_exit_guard "$rc"' EXIT
   hold_auto_merge
   # Resolve HEAD_SHA after holding auto-merge: for issue_comment intents
   # (on-mention, fix-bot-comment) only pr_number is provided, not head_sha.
@@ -388,6 +443,12 @@ fi
 # build_and_run <template_name>: loads a prompt template, substitutes variables, and runs the agent.
 build_and_run() {
   local template_name="$1"
+  # Push phase (#2143): the engine already ran in the work job, whose commits
+  # dlh_enter_push_phase restored; the pass continues from its commit_and_push.
+  if [ "${DEV_LEAD_PHASE:-}" = "push" ]; then
+    echo "::notice::push phase: the ${template_name} engine pass ran in the dispatch job — continuing from its result (#2143)"
+    return 0
+  fi
   local prompt_file="/tmp/dev-lead-${template_name}-prompt-$$.md"
   local template_path="${PROMPTS_DIR}/${template_name}.md"
   # Scope envsubst to only the variables declared in the <!-- VARIABLES: --> header.
@@ -531,7 +592,7 @@ ${summary}"
 # window, body inside the kept window would otherwise leak plaintext key
 # material).
 read_session_summary() {
-  local log="/tmp/dev-lead-session-output.txt"
+  local log="$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   [[ -f "$log" ]] || return 0
   local redacted
   redacted="$(redact_secrets < "$log")"
@@ -1333,7 +1394,7 @@ resolve_addressed_bot_threads() {
     fi
     # #2013: the claimed commit must be one THIS pass produced — not the PR's first
     # commit or any other pre-pass ancestor, which passes the on-head + intersection
-    # checks trivially (the petry-projects/.github#1220 `571a3b8` case). Parity with
+    # checks trivially (the combsmith/.github#1220 `571a3b8` case). Parity with
     # the issue-comment `fixed` check in resolve_dispositioned_comments (#1813).
     in_base=$(printf '%s' "$facts" | jq -r 'if .in_base == false then "false" else "true" end' 2>/dev/null || echo "true")
     if ! in_pass=$(acv_claim_in_pass "${RESOLUTION_BASE_SHA:-}" "$on_head" "$in_base"); then
@@ -1445,6 +1506,7 @@ rdc_commit_diff() {
 rdc_fixed_verdict() {
   local sha="$1" body="$2" created="$3"
   local facts on_head="false" in_base="unknown" own_files=0 commit_date="" content this_pass="false"
+  local own_list="" touches_named="false"
   if [ -n "${RDC_FIXED_REF:-}" ]; then
     facts=$(acv_gather_commit_facts "$sha" "${RDC_FIXED_BASE:-}" "$RDC_FIXED_REF")
     on_head=$(printf '%s' "$facts" | jq -r '.on_head // false' 2>/dev/null || echo "false")
@@ -1452,17 +1514,23 @@ rdc_fixed_verdict() {
       in_base=$(printf '%s' "$facts" | jq -r 'if .in_base == false then "false" else "true" end' 2>/dev/null || echo "true")
     fi
     own_files=$(printf '%s' "$facts" | jq -r '(.own_files // []) | length' 2>/dev/null || echo "0")
+    own_list=$(printf '%s' "$facts" | jq -r '(.own_files // []) | .[]' 2>/dev/null || echo "")
     commit_date=$(printf '%s' "$facts" | jq -r '.commit_date // ""' 2>/dev/null || echo "")
   fi
-  # A tokenless finding verifies only on a commit this pass produced: one not
-  # reachable from the pre-pass head. No snapshot or an unreadable sha is "no".
+  # #2269: does the commit change a file the finding names?
+  if cdv_touches_named_file "$own_list" "$(cdv_finding_paths "$body")"; then
+    touches_named="true"
+  fi
+  # A tokenless finding, and a fix that touches no token the finding names
+  # (#2269), verify only on a commit this pass produced: one not reachable from
+  # the pre-pass head. No snapshot or an unreadable sha is "no".
   if [ -n "${RESOLUTION_BASE_SHA:-}" ] \
      && git cat-file -e "${sha}^{commit}" 2>/dev/null \
      && ! git merge-base --is-ancestor "$sha" "$RESOLUTION_BASE_SHA" 2>/dev/null; then
     this_pass="true"
   fi
   content=$(cdv_diff_token_verdict "$(rdc_commit_diff "$sha")" "$(cdv_finding_tokens "$body")") || true
-  cdv_fixed_verdict "$on_head" "$in_base" "$own_files" "$commit_date" "$created" "$content" "$this_pass"
+  cdv_fixed_verdict "$on_head" "$in_base" "$own_files" "$commit_date" "$created" "$content" "$this_pass" "$touches_named"
 }
 
 # rdc_live_comment_body <comment_node_id>
@@ -2124,6 +2192,9 @@ resolve_dispositioned_comments() {
         # it: on the PR's pushed head, not on the base branch, a non-empty diff that
         # REMOVES a token the finding names and does not ADD it, dated after the
         # finding. A finding with no token fails closed unless the cited sha was produced by this pass (tokenless-not-this-pass).
+        # A commit this pass produced that neither removes nor adds a token the
+        # finding names (an additive fix) verifies when it changes a file the
+        # finding names (#2269).
         # The old "produced by THIS pass" rule could never accept a fix that landed
         # in an earlier pass. Accepting any later commit would let an unrelated
         # commit resolve the comment.
@@ -2918,7 +2989,7 @@ post_reviews_rate_limited() {
   # resolve-failed (a thread/comment resolution or finalization failure) is not a
   # quota hold either: it takes the same non-quota status and backoff (#2045).
   if [ "$reason" = "blocked" ] || [ "$reason" = "resolve-failed" ]; then
-    printf '%s' "$(date -u -d '+30 minutes' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)" > /tmp/dev-lead-rate-limit-reset
+    printf '%s' "$(date -u -d '+30 minutes' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
   fi
 
   # Expire any stale terminal markers (applied/no-changes/failed) for this SHA+intent
@@ -2952,7 +3023,7 @@ post_reviews_rate_limited() {
   fi
 
   local reset_time
-  reset_time=$(cat /tmp/dev-lead-rate-limit-reset 2>/dev/null || true)
+  reset_time=$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" 2>/dev/null || true)
   local reset_detail=""
   if [ -n "$reset_time" ]; then
     reset_detail=" reset=${reset_time}"
@@ -3232,7 +3303,7 @@ commit_and_push() {
         ;;
     esac
     # Sync-stub guard (#2185): on a `standards-sync` PR, a bot-driven pass must not
-    # change a stub copied verbatim from petry-projects/.github/standards/ (the
+    # change a stub copied verbatim from combsmith/.github/standards/ (the
     # incubator#164 shape). Restoring a stub to what the sync commit wrote is
     # allowed. Maintainer-driven intents (review-changes/human-pr, on-mention,
     # human) are the explicit override and are not guarded. The PR is read only
@@ -3258,16 +3329,37 @@ commit_and_push() {
         fi
         ;;
     esac
+    # Channel-pin guard (#2220): no pass may change a caller stub's first-party
+    # channel pin (`uses:` ref or `agent_ref`); the #2157/#1796 passes repinned
+    # dev-lead.yml to a stale channel to "fix" template-drift. Unlike the sync-stub
+    # guard this covers every pushing intent — a maintainer who wants a repin makes
+    # it in a reviewed PR. Ending on the base branch's pin (a rebase, or restoring
+    # main's pin) is allowed.
+    case "$intent" in
+      enable-auto-merge) ;;  # never pushes; nothing to guard
+      *)
+        local cpg_out cpg_rc=0
+        cpg_out=$(cpg_scan_pass "${RESOLUTION_BASE_SHA:-${HEAD_SHA:-}}" HEAD "origin/${BASE_REF:-main}") || cpg_rc=$?
+        if [ "$cpg_rc" -ne 0 ]; then
+          echo "::error::Channel-pin guard: the ${intent} pass changed a caller stub's channel pin ($(printf '%s\n' "$cpg_out" | head -1)) — refusing to push (#2220)"
+          cpg_flag_refused "$intent" "$(printf '%s\n' "$cpg_out" | sed '1d')"
+          return 4
+        fi
+        ;;
+    esac
     # Test-tamper guard (#2013): a bot-driven fix pass must not silently rewrite an
-    # existing test to make its own change pass (the petry-projects/.github#1220
+    # existing test to make its own change pass (the combsmith/.github#1220
     # `13927fc` shape). Refuse the push and escalate, like the no-op guard (rc 3).
     # "Existing" means present at the merge base with the PR's base branch (#2141):
     # tests the PR itself added are free to revise. The merge base is resolved only
     # when the pass touches a test file; an unresolvable one leaves ttg_mb empty,
-    # which ttg_scan_pass then refuses (fail closed).
+    # which ttg_scan_pass then refuses (fail closed). ttg_umb is the pass result's
+    # merge base with the base branch (#2254): when a rebase or merge of the base
+    # moved it, test changes the base brought in are not the pass's. Unresolvable,
+    # it stays empty and the stricter pre-pass comparison applies.
     case "$intent" in
       fix-reviews|fix-bot-comment|review-changes|human-pr)
-        local ttg_out ttg_rc=0 ttg_files ttg_mb=""
+        local ttg_out ttg_rc=0 ttg_files ttg_mb="" ttg_umb=""
         if ttg_pass_touches_tests "${RESOLUTION_BASE_SHA:-}"; then
           # Several intents default BASE_REF to `main` before the PR is read, so ask
           # the API for the PR's real target; an unreadable base leaves ttg_mb empty.
@@ -3277,9 +3369,10 @@ commit_and_push() {
           fi
           if [ -n "$ttg_base" ]; then
             ttg_mb=$(ttg_resolve_merge_base "$ttg_base" "${RESOLUTION_BASE_SHA:-}" "${HEAD_REF:-}") || ttg_mb=""
+            [ -n "$ttg_mb" ] && { ttg_umb=$(git merge-base HEAD "origin/${ttg_base}" 2>/dev/null) || ttg_umb=""; }
           fi
         fi
-        ttg_out=$(ttg_scan_pass "${RESOLUTION_BASE_SHA:-}" HEAD "$ttg_mb") || ttg_rc=$?
+        ttg_out=$(ttg_scan_pass "${RESOLUTION_BASE_SHA:-}" HEAD "$ttg_mb" "$ttg_umb") || ttg_rc=$?
         ttg_files=$(printf '%s\n' "$ttg_out" | sed '1d' | paste -sd ',' - | sed 's/,/, /g')
         if [ "$ttg_rc" -eq 1 ]; then
           echo "::error::Test-tamper guard: the ${intent} pass changed or skipped existing test(s) [${ttg_files:-skip added}] with no Test-Change-Justification trailer — refusing to push (#2013)"
@@ -3298,12 +3391,32 @@ commit_and_push() {
     # Test-regression guard (#2013): the `15a919e` shape adds a new test and breaks an
     # existing one WITHOUT editing it, so the tamper guard is silent. Run the suite;
     # refuse the push when a test that passed on the pre-pass head fails on the result.
+    # The suite is PR code, so in the workflow it never runs here (#2143): the work
+    # phase hands the result to the test-suite job and stops; the push phase reads
+    # that job's verdict, failing closed when there is none.
     case "$intent" in
       fix-reviews|fix-bot-comment|review-changes|human-pr)
         local trg_out trg_rc=0 trg_verdict trg_cmd trg_tests
-        trg_out=$(trg_scan_pass "${RESOLUTION_BASE_SHA:-}") || trg_rc=$?
+        case "${DEV_LEAD_PHASE:-}" in
+          work)
+            dlh_hand_off
+            echo "::error::Test-regression guard: could not hand the ${intent} pass to the test-suite job — refusing to push (#2143)" >&2
+            retract_unlanded_claims "$intent" failed || true
+            exit 1
+            ;;
+          push) trg_out=$(tjh_verdict "${DEV_LEAD_TEST_JOB_RESULT:-}" "${DEV_LEAD_TRG_RESULT:-}") || trg_rc=$? ;;
+          "")   trg_out=$(trg_scan_pass "${RESOLUTION_BASE_SHA:-}") || trg_rc=$? ;;
+          # Fail closed: an unknown phase must never run PR test code in the job that holds secrets.
+          *)    trg_out=$(printf 'no-verdict\tunknown DEV_LEAD_PHASE %s\n' "$DEV_LEAD_PHASE"); trg_rc=2 ;;
+        esac
         IFS=$'\t' read -r trg_verdict trg_cmd <<<"$(printf '%s\n' "$trg_out" | head -1)"
         trg_tests=$(printf '%s\n' "$trg_out" | sed '1d' | paste -sd ',' - | sed 's/,/, /g')
+        if [ "$trg_rc" -eq 2 ]; then
+          record_suite_summary "Test suite: NO VERDICT — ${trg_cmd}. NOT verified green. Push refused."
+          echo "::error::Test-regression guard: no verdict for the ${intent} pass (${trg_cmd}) — refusing to push (#2143)"
+          flag_test_unverified "$intent" "$trg_cmd"
+          return 4
+        fi
         record_suite_summary "$(trg_summary_line "$trg_verdict" "$trg_cmd")"
         if [ "$trg_rc" -ne 0 ]; then
           echo "::error::Test-regression guard: the ${intent} pass broke test(s) that passed on the pre-pass head [${trg_tests}] — refusing to push (#2013)"
@@ -3318,7 +3431,19 @@ commit_and_push() {
     # A rejected push — or one the remote head does not reflect (#2013) — must not
     # leave this pass's "Fixed" replies standing: retract them before failing.
     # (commit_and_push returns 3 for the no-op guard and 4 for the sync-stub,
-    # test-tamper and test-regression guards.)
+    # channel-pin, test-tamper and test-regression guards.)
+    # The test-suite verdict covers the handoff's tree. If the remote moved since the
+    # pass started, push_no_clobber would rebase onto it and push a tree the suite
+    # never saw, so refuse and let the next pass start from the new head (#2143).
+    if [ "${DEV_LEAD_PHASE:-}" = "push" ]; then
+      local pnc_remote="" pnc_rc=0
+      pnc_remote=$(cl_remote_head) || pnc_rc=$?
+      if [ "$pnc_rc" -ne 1 ] && { [ "$pnc_rc" -ne 0 ] || [ "$pnc_remote" != "${RESOLUTION_BASE_SHA:-}" ]; }; then
+        echo "::error::push phase: the remote head (${pnc_remote:-unreadable}) is not the pre-pass head ${RESOLUTION_BASE_SHA:-<unknown>} — the tested tree would be rebased, so nothing is pushed (#2143)" >&2
+        retract_unlanded_claims "$intent" failed || true
+        exit 1
+      fi
+    fi
     push_no_clobber || {
       echo "::error::git push failed — check remote access and branch permissions" >&2
       retract_unlanded_claims "$intent" failed || true
@@ -3523,6 +3648,10 @@ save_pending_replies() {
 # cl_retract_body, which strips both markers so it can never resolve a thread.
 # This pass's `fixed` disposition replies on issue comments are swept against the
 # same reference head (sweep_fixed_dispositions, #2156).
+# Claim replies are swept on both surfaces (#2261): review-thread replies, and the
+# PR issue comments the model posts when it answers a bot's issue comment the
+# same way. A PR comment that also carries a `fixed` disposition is left to
+# sweep_fixed_dispositions alone, so one reply is never rewritten by two sweeps.
 #
 # The reference head is the remote head. When there is no upstream (rc 1) on an
 # `ok` outcome, the local HEAD is what was pushed; in every other case — including
@@ -3567,10 +3696,44 @@ retract_unlanded_claims() {
     echo "::warning::retract_unlanded_claims: could not parse the review comments on PR #${PR_NUMBER} — this pass's claim replies were NOT verified (#2013)"
     return 1
   }
-  local rebased remapped=0
-  while IFS=$'\t' read -r id sha; do
+
+  # #2261: the model can also post its addressed/claim reply as a PR ISSUE comment
+  # (PR #2205: "Fixed in …" answering a bot's issue comment). That reply is not in
+  # the review-comment listing above, so its claim was never checked and kept
+  # citing a commit that was never pushed. Sweep the same selection (our account,
+  # since the pass start, carrying the marker or a claim) over the issue comments.
+  # A reply that also carries a `fixed` disposition is left out: it belongs to
+  # sweep_fixed_dispositions above, which handles its claim in the same edit.
+  # An unreadable listing is reported as a failure: those replies were NOT
+  # verified. The thread replies above are still swept.
+  local issue_raw="" issue_comments="" issue_rows=""
+  if ! issue_raw=$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" 2>/dev/null) \
+     || ! issue_comments=$(jq -s 'add // []' <<<"$issue_raw" 2>/dev/null) \
+     || ! issue_comments=$(cl_without_fixed_dispositions "$issue_comments") \
+     || ! issue_rows=$(cl_select_pass_claims "$issue_comments" "$bot_user" "$PASS_START_ISO"); then
+    echo "::warning::retract_unlanded_claims: could not list the issue comments on PR #${PR_NUMBER} — claim replies this pass posted as PR comments were NOT verified (#2261)"
+    issue_comments=""
+    issue_rows=""
+    failed=1
+  fi
+  # One row per reply: `<surface>\t<id>\t<sha>`. <surface> is the REST collection
+  # the reply lives in (pulls = review-thread reply, issues = PR issue comment),
+  # which is also the path segment its PATCH uses.
+  rows=$(
+    [ -z "$rows" ] || awk '{ print "pulls\t" $0 }' <<<"$rows"
+    [ -z "$issue_rows" ] || awk '{ print "issues\t" $0 }' <<<"$issue_rows"
+  )
+
+  local rebased remapped=0 surface listing what
+  while IFS=$'\t' read -r surface id sha; do
     [ -z "$id" ] && continue
-    body=$(printf '%s' "$comments" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
+    listing="$comments"
+    what="claim reply"
+    if [ "$surface" = "issues" ]; then
+      listing="$issue_comments"
+      what="PR-comment claim reply"
+    fi
+    body=$(printf '%s' "$listing" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
     if [ -z "$sha" ]; then
       reason="unverifiable"
     else
@@ -3596,21 +3759,24 @@ retract_unlanded_claims() {
         new_body=$(cl_rewrite_claim_sha "$body" "$rebased") || new_body=""
         if acv_claim_in_pass "$base" "$on_ref" "$in_base" >/dev/null \
            && [ -n "$new_body" ]; then
-          if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+          if gh api -X PATCH "repos/${REPO}/${surface}/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
             remapped=$((remapped + 1))
-            echo "::notice::claim reply ${id} on PR #${PR_NUMBER}: ${sha} was rebased onto a foreign commit and landed as ${rebased} — claim updated, not retracted (#2032)"
+            echo "::notice::${what} ${id} on PR #${PR_NUMBER}: ${sha} was rebased onto a foreign commit and landed as ${rebased} — claim updated, not retracted (#2032)"
             continue
           fi
-          echo "::warning::could not update claim reply ${id} on PR #${PR_NUMBER} to the rebased commit ${rebased} — retracting it instead (#2032)"
+          echo "::warning::could not update ${what} ${id} on PR #${PR_NUMBER} to the rebased commit ${rebased} — retracting it instead (#2032)"
         fi
       fi
     fi
+    # cl_retract_body removes only the addressed-marker and the claim. A
+    # non-`fixed` `dev-lead:comment-disposition` marker in the same reply is
+    # kept: the disposition resolver verifies that one on its own (#2261).
     new_body=$(cl_retract_body "$body" "$reason")
-    if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
+    if gh api -X PATCH "repos/${REPO}/${surface}/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
       retracted=$((retracted + 1))
-      echo "::warning::retracted claim reply ${id} on PR #${PR_NUMBER} (${reason}; cited ${sha:-<none>}, remote head ${ref:-<unknown>}) (#2013)"
+      echo "::warning::retracted ${what} ${id} on PR #${PR_NUMBER} (${reason}; cited ${sha:-<none>}, remote head ${ref:-<unknown>}) (#2013)"
     else
-      echo "::error::could not retract claim reply ${id} on PR #${PR_NUMBER} (${reason}) — a false 'Fixed' reply may remain (#2013)"
+      echo "::error::could not retract ${what} ${id} on PR #${PR_NUMBER} (${reason}) — a false 'Fixed' reply may remain (#2013)"
       failed=1
     fi
   done <<< "$rows"
@@ -3661,6 +3827,101 @@ The \`${intent}\` pass left the test suite failing on test(s) that passed on the
   return 0
 }
 
+# flag_test_unverified <intent> <reason> — the push job got no verdict from the
+# test-suite job (it failed, was cancelled, timed out, or reported nothing), so the
+# pass was not pushed (#2143). Same escalation as flag_test_regression.
+flag_test_unverified() {
+  local intent="$1" reason="$2"
+  _AM_NEEDS_RESTORE=0
+  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+    echo "[dry-run] test-regression guard: would flag PR #${PR_NUMBER} (${intent}) as unverified, add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}, disable auto-merge"
+    return 0
+  fi
+  local marker="<!-- dev-lead-test-unverified pr=${PR_NUMBER} intent=${intent} -->"
+  apply_hold_label "$REPO" "$PR_NUMBER" || true
+  if gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" 2>/dev/null \
+       | jq -r '.[].body // ""' 2>/dev/null | grep -qF "$marker"; then
+    echo "::notice::PR #${PR_NUMBER} already flagged for an unverified test run for intent=${intent} — not reposting"
+    post_hold_failure_note "$REPO" "$PR_NUMBER"
+  else
+    gh pr comment "$PR_NUMBER" --repo "$REPO" --body "${marker}
+## Test suite not verified — human attention needed
+
+The \`${intent}\` pass could not be checked against the test suite: ${reason}. Without a verdict dev-lead **did not push** this pass (#2143). Auto-merge has been disabled. Re-run the workflow, or apply the change by hand.${HOLD_LABEL_NOTE}" \
+      || echo "::warning::could not post test-unverified flag comment on PR #${PR_NUMBER}"
+  fi
+  disable_auto_merge_for_hold "$REPO" "$PR_NUMBER" || true
+  return 0
+}
+
+# dlh_hand_off — work phase (#2143). The pass's result is committed and the no-op
+# and tamper guards have passed. Write the handoff for the test-suite job and the
+# dispatch job's outputs, keep auto-merge held for the push job, and end this run
+# WITHOUT pushing: the push job pushes, verifies, retracts and resolves. Exits 0 on
+# success; returns 1 when the handoff could not be written.
+dlh_hand_off() {
+  local dir="${DEV_LEAD_HANDOFF_DIR:-}" state sha result
+  if [ -z "$dir" ] || [ -z "${RESOLUTION_BASE_SHA:-}" ]; then
+    echo "::error::work phase: DEV_LEAD_HANDOFF_DIR or the pre-pass head is unset (#2143)" >&2
+    return 1
+  fi
+  result="$(git rev-parse HEAD 2>/dev/null)" || return 1
+  state=$(jq -n \
+    --arg intent "$INTENT_TYPE" --arg pr "${PR_NUMBER:-}" --arg head "${HEAD_SHA:-}" \
+    --arg base "$RESOLUTION_BASE_SHA" --arg result "$result" \
+    --arg psi "${PASS_START_ISO:-}" --arg psa "${PASS_STARTED_AT:-}" \
+    --arg actor "${ACTOR:-}" --arg trig "${TRIGGERING_REVIEWER:-}" \
+    --arg cbody "${COMMENT_BODY:-}" --arg cnid "${COMMENT_NODE_ID:-}" --arg cver "${COMMENT_VERSION:-}" \
+    --arg base_ref "${BASE_REF:-}" \
+    --arg am_restore "${_AM_NEEDS_RESTORE:-0}" --arg am_method "${_AM_MERGE_METHOD:-squash}" \
+    --arg am_title "${_AM_COMMIT_TITLE:-}" --arg am_msg "${_AM_COMMIT_MESSAGE:-}" --arg am_head "${_AM_HEAD_SHA:-}" \
+    '{v:1, intent:$intent, pr_number:$pr, head_sha:$head, base_sha:$base, result_sha:$result,
+      pass_start_iso:$psi, pass_started_at:$psa, actor:$actor, triggering_reviewer:$trig,
+      comment_body:$cbody, comment_node_id:$cnid, comment_version:$cver, base_ref:$base_ref,
+      am:{needs_restore:$am_restore, merge_method:$am_method, commit_title:$am_title,
+          commit_message:$am_msg, head_sha:$am_head}}') || return 1
+  sha=$(tjh_write "$dir" "$RESOLUTION_BASE_SHA" "$state") || return 1
+  {
+    echo "handoff=true"
+    echo "handoff_sha256=${sha}"
+    echo "intent=${INTENT_TYPE}"
+    echo "pr_number=${PR_NUMBER:-}"
+    echo "base_sha=${RESOLUTION_BASE_SHA}"
+    echo "pass_start_iso=${PASS_START_ISO:-}"
+  } > "$dir/outputs" || return 1
+  # Auto-merge stays held until the push job ends; it restores it from the state.
+  _AM_NEEDS_RESTORE=0
+  echo "::notice::${INTENT_TYPE}: result ${result} handed to the test-suite job; the push job pushes it on a passing verdict (#2143)"
+  exit 0
+}
+
+# dlh_enter_push_phase — push phase (#2143), run before the intent dispatch. Puts
+# the pass back where the work job left it: the pre-pass head and pass start the
+# claim sweep and resolution gate measure from, the auto-merge hold, and the
+# work job's exact commits in the PR worktree. When the handoff is missing or
+# refused nothing can be pushed: retract this pass's claim replies and fail.
+dlh_enter_push_phase() {
+  RESOLUTION_BASE_SHA="${DEV_LEAD_BASE_SHA:-}"
+  PASS_START_ISO="${DEV_LEAD_PASS_START_ISO:-}"
+  local result=""
+  if [ -n "$DLH_DIR" ]; then
+    result="$(jq -r '.result_sha // ""' "$DLH_DIR/state.json")"
+    _AM_NEEDS_RESTORE="$(jq -r '.am.needs_restore // "0"' "$DLH_DIR/state.json")"
+    _AM_MERGE_METHOD="$(jq -r '.am.merge_method // "squash"' "$DLH_DIR/state.json")"
+    _AM_COMMIT_TITLE="$(jq -r '.am.commit_title // ""' "$DLH_DIR/state.json")"
+    _AM_COMMIT_MESSAGE="$(jq -r '.am.commit_message // ""' "$DLH_DIR/state.json")"
+    _AM_HEAD_SHA="$(jq -r '.am.head_sha // ""' "$DLH_DIR/state.json")"
+    [ "$_AM_NEEDS_RESTORE" = "1" ] || _AM_NEEDS_RESTORE=0
+  fi
+  if [ -z "$DLH_DIR" ] || [ -z "$RESOLUTION_BASE_SHA" ] \
+     || ! tjh_apply_result "$DLH_DIR" "$result"; then
+    echo "::error::push phase: could not restore the ${INTENT_TYPE} pass's result ${result:-<unknown>} — nothing pushed (#2143)"
+    retract_unlanded_claims "$INTENT_TYPE" failed || true
+    exit 1
+  fi
+  echo "::notice::push phase: restored the ${INTENT_TYPE} pass's result ${result} (pre-pass head ${RESOLUTION_BASE_SHA}) (#2143)"
+}
+
 # flag_test_tamper <intent> <files> — the test-tamper guard refused the push
 # (#2013). Mirrors flag_noop_pr: one deduped human-attention comment, the
 # needs-human-review label, auto-merge disabled and its EXIT-trap restore
@@ -3696,7 +3957,7 @@ If the test really is wrong, a human should make that call, or the fix should ca
 # flag_sync_stub_drift <intent> <rows> — the sync-stub guard refused the push
 # (#2185). <rows> are `path\ttemplate` lines (empty when the scan was unknown).
 # Same escalation as flag_test_tamper; the comment answers the bot suggestion as
-# declined and points at each template in petry-projects/.github.
+# declined and points at each template in combsmith/.github.
 flag_sync_stub_drift() {
   local intent="$1" rows="$2"
   _AM_NEEDS_RESTORE=0
@@ -3815,7 +4076,13 @@ finalize_review_application() {
   local substantive="true" changed_regions="" named_regions verdict
   if [ -n "$pre_sha" ] && [ -n "$cur_sha" ] \
      && git rev-parse --verify --quiet "${pre_sha}^{commit}" >/dev/null 2>&1; then
-    if [ -z "$(git diff -w --name-only "$pre_sha" "$cur_sha" 2>/dev/null)" ]; then
+    # --numstat, not --name-only: git lists a file under --name-only even when
+    # -w leaves nothing to show, so a whitespace-only commit read as substantive
+    # and was announced as applied (#2263). A failed diff stays substantive
+    # (fail-open, as above).
+    local ws_diff ws_rc=0
+    ws_diff="$(git diff -w --numstat "$pre_sha" "$cur_sha" 2>/dev/null)" || ws_rc=$?
+    if [ "$ws_rc" -eq 0 ] && [ -z "$ws_diff" ]; then
       substantive="false"
     fi
     changed_regions="$(git diff --unified=0 "$pre_sha" "$cur_sha" 2>/dev/null | rce_parse_hunks)"
@@ -3936,6 +4203,10 @@ resolution_gate_open() {
   ri_may_resolve "$pre_sha" "$cur_sha"
 }
 
+if [ "$DEV_LEAD_PHASE" = "push" ]; then
+  dlh_enter_push_phase
+fi
+
 case "$INTENT_TYPE" in
   fix-reviews)
     # Get open review threads
@@ -4021,7 +4292,7 @@ case "$INTENT_TYPE" in
         # marker and do not re-enable auto-merge or resolve threads.
         echo "::warning::fix-reviews produced a net-zero diff — flagged for human, not pushed (#1340)"
       elif [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::fix-reviews was refused by a push guard (test tamper/regression or sync-stub) — flagged for human, not pushed (#2013/#2185)"
+        echo "::warning::fix-reviews was refused by a push guard (test tamper/regression, sync-stub or channel-pin) — flagged for human, not pushed (#2013/#2185/#2220)"
       else
         notify_coderabbit_resolve
         if has_hard_blockers; then
@@ -4120,7 +4391,7 @@ case "$INTENT_TYPE" in
         # re-enable auto-merge or resolve threads.
         echo "::warning::fix-bot-comment produced a net-zero diff — flagged for human, not pushed (#1340)"
       elif [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::fix-bot-comment was refused by a push guard (test tamper/regression or sync-stub) — flagged for human, not pushed (#2013/#2185)"
+        echo "::warning::fix-bot-comment was refused by a push guard (test tamper/regression, sync-stub or channel-pin) — flagged for human, not pushed (#2013/#2185/#2220)"
       else
         notify_coderabbit_resolve
         if has_hard_blockers; then
@@ -4207,6 +4478,12 @@ case "$INTENT_TYPE" in
         echo "::notice::on-mention: no-op guard aborted the push for PR #${PR_NUMBER} — flagged for human, not merged (#1786)"
         exit "$rc"
       fi
+      if [ "$cp_rc" -eq 4 ]; then
+        # A push guard refused the pass and flagged the PR; never report it or
+        # re-enable auto-merge (#2220).
+        echo "::warning::on-mention was refused by a push guard — flagged for human, not pushed (#2220)"
+        exit "$rc"
+      fi
       if [ "$cp_rc" -eq 0 ]; then
         post_reviews_terminal "on-mention" "applied" "Changes committed and pushed."
       else
@@ -4259,7 +4536,7 @@ case "$INTENT_TYPE" in
       # Nothing landed, so a `fixed` disposition would cite a local-only commit; no
       # thread resolves and auto-merge stays off.
       if [ "$cp_rc" -eq 4 ]; then
-        echo "::warning::review-changes was refused by a test guard (tamper/regression) — flagged for human, not pushed (#2013)"
+        echo "::warning::review-changes was refused by a push guard (test tamper/regression, sync-stub or channel-pin) — flagged for human, not pushed (#2013/#2185/#2220)"
         resolve_dispositioned_comments "review-changes" failed || _DISPOSITIONS_UNRESOLVED=1
         resolve_deferred_bot_threads "review-changes" || rc=1
         [ "${_DISPOSITIONS_UNRESOLVED:-0}" -eq 1 ] && rc=1
@@ -4439,6 +4716,10 @@ case "$INTENT_TYPE" in
         # commit_and_push committed a script-side change that nets to zero and
         # already flagged it. Stop — never report a self-cancelling rebase applied.
         echo "::notice::rebase: no-op guard aborted the push for PR #${PR_NUMBER} — flagged for human, not merged (#1786)"
+        exit "$rc"
+      fi
+      if [ "$cp_rc" -eq 4 ]; then
+        echo "::warning::rebase was refused by a push guard — flagged for human, not pushed (#2220)"
         exit "$rc"
       fi
       # Post-resolution integrity gate (#1890 AC #7): a corrupted resolution

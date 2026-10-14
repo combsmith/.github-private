@@ -9,6 +9,8 @@
 
 setup() {
   export REVIEW_ENGINE="claude"
+  # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
+  export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
   source "$(dirname "$BATS_TEST_FILENAME")/../scripts/engine.sh" >/dev/null 2>&1 || true
   # shellcheck source=scripts/fleet_report.sh
   source "$(dirname "$BATS_TEST_FILENAME")/../scripts/fleet_report.sh"
@@ -33,7 +35,7 @@ _samples() {
     "You've hit your weekly limit · resets Mon 9am" \
     "trailing noise" > "$CAPTURE"
   parse_reset_time_files "$CAPTURE"
-  [ "$(cat /tmp/dev-lead-rate-limit-reset)" = "" ]
+  [ "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset")" = "" ]
   [ "$(_samples | wc -l)" -eq 1 ]
   sample="$(_samples | jq -r '.sample')"
   [[ "$sample" == *"hit your weekly limit"* ]]
@@ -82,9 +84,9 @@ _samples() {
 @test "a message the parser reads is not recorded" {
   printf '%s\n' "You've hit your limit · resets 11:20pm (UTC)" > "$CAPTURE"
   parse_reset_time_files "$CAPTURE"
-  [ -n "$(cat /tmp/dev-lead-rate-limit-reset)" ]
+  [ -n "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset")" ]
   parse_reset_time "You've hit your limit · resets 3:05am (UTC)"
-  [ -n "$(cat /tmp/dev-lead-rate-limit-reset)" ]
+  [ -n "$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset")" ]
   [ "$(_samples | wc -l)" -eq 0 ]
 }
 

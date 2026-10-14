@@ -21,7 +21,7 @@
 # Run with: bats tests/test_batch_skip_reporting.bats
 
 setup() {
-  export TEST_DIR="$BATS_TMPDIR/batch-skip-report-test"
+  export TEST_DIR="$BATS_TEST_TMPDIR/batch-skip-report-test"
   mkdir -p "$TEST_DIR/scripts"
   mkdir -p "$TEST_DIR/bin"
   cd "$TEST_DIR"

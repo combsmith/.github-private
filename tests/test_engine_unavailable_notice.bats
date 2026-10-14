@@ -5,7 +5,7 @@
 # dedupe across re-runs (the mention-dispatch retry loop) via an HTML marker.
 
 setup() {
-  export TEST_DIR="$BATS_TMPDIR/engine-unavailable-test"
+  export TEST_DIR="$BATS_TEST_TMPDIR/engine-unavailable-test"
   rm -rf "$TEST_DIR"
   mkdir -p "$TEST_DIR/scripts" "$TEST_DIR/bin"
   cd "$TEST_DIR"

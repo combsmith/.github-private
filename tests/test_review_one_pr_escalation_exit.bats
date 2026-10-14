@@ -10,7 +10,7 @@ setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   export REVIEW_SCRIPT="$REPO_ROOT/scripts/review-one-pr.sh"
   export FIXED_SHA="d53a7fc6b0718dd3d672fed4eec8394e5d372900"
-  export PR_URL="https://github.com/petry-projects/.github-private/pull/1703"
+  export PR_URL="https://github.com/combsmith/.github-private/pull/1703"
 
   export TEST_DIR="$BATS_TEST_TMPDIR"
   mkdir -p "$TEST_DIR/bin"
@@ -84,6 +84,6 @@ GHEOF
   echo "status=$status" >&2; echo "$output" >&2
   [[ "$output" == *"max-cycles-reached"* ]]
   [ "$status" -eq 100 ]
-  ! grep -q 'needs-human-review' "$GH_LOG"
+  ! grep -q 'needs-human-review' "$GH_LOG" || false
   ! grep -q 'pr comment' "$GH_LOG"
 }
