@@ -993,7 +993,7 @@ resolve_addressed_bot_threads() {
     fi
     # #2013: the claimed commit must be one THIS pass produced — not the PR's first
     # commit or any other pre-pass ancestor, which passes the on-head + intersection
-    # checks trivially (the petry-projects/.github#1220 `571a3b8` case). Parity with
+    # checks trivially (the combsmith/.github#1220 `571a3b8` case). Parity with
     # the issue-comment `fixed` check in resolve_dispositioned_comments (#1813).
     in_base=$(printf '%s' "$facts" | jq -r 'if .in_base == false then "false" else "true" end' 2>/dev/null || echo "true")
     if ! in_pass=$(acv_claim_in_pass "${RESOLUTION_BASE_SHA:-}" "$on_head" "$in_base"); then
@@ -2904,7 +2904,7 @@ commit_and_push() {
         ;;
     esac
     # Test-tamper guard (#2013): a bot-driven fix pass must not silently rewrite an
-    # existing test to make its own change pass (the petry-projects/.github#1220
+    # existing test to make its own change pass (the combsmith/.github#1220
     # `13927fc` shape). Refuse the push and escalate, like the no-op guard (rc 3).
     # "Existing" means present at the merge base with the PR's base branch (#2141):
     # tests the PR itself added are free to revise. The merge base is resolved only

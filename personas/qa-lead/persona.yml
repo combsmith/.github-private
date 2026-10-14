@@ -1,12 +1,12 @@
 # Persona manifest — QA Lead (Master Test Architect & Quality Advisor).
-# Worked example for standards/persona-standards.md (in petry-projects/.github):
+# Worked example for standards/persona-standards.md (in combsmith/.github):
 # the wrap-a-vendored-framework-agent, advisory-everywhere path.
 #
 # Naming: this persona is `qa-lead` — the ROLE (persona-standards.md §1.6).
 # The vendored agent it wraps carries a person-name upstream; that stays
 # upstream. We point at it only by its technical skill id (`framework.skill`).
 #
-# Validate against: petry-projects/.github standards/personas/persona.schema.json
+# Validate against: combsmith/.github standards/personas/persona.schema.json
 
 schema_version: 1
 
@@ -23,7 +23,7 @@ summary: >-
 # dedicated advisory workflow + release are added.
 status: draft
 
-owner: petry-projects/org-leads
+owner: combsmith/org-leads
 
 # --- How humans address this persona (§4.1) --------------------------------
 # An org TEAM handle, never a user account: '@qa-lead' is a real, live GitHub
@@ -35,7 +35,7 @@ owner: petry-projects/org-leads
 #   privacy: closed                               (secret teams are unmentionable)
 #   notification_setting: notifications_disabled  (routes a webhook, not a page)
 address:
-  handle: petry-projects/qa-lead
+  handle: combsmith/qa-lead
 
 definition:
   layers:
@@ -137,7 +137,7 @@ triggers:
       events: [created]
       enabled: true
       mode: advisory
-      notes: "Direct invocation: '@petry-projects/qa-lead design tests for this epic'. SERVED by the shared persona-mention.yml router (issue_comment / pull_request_review_comment / discussion_comment)."
+      notes: "Direct invocation: '@combsmith/qa-lead design tests for this epic'. SERVED by the shared persona-mention.yml router (issue_comment / pull_request_review_comment / discussion_comment)."
 
     - surface: check_run
       events: [completed]
@@ -182,4 +182,4 @@ evals:
 references:
   - "frameworks/bmad-test-architecture/VENDOR.md"
   - "prompts/bmad/scrum-master.md (qa-lead consulted during planning)"
-  - "petry-projects/.github standards/persona-standards.md"
+  - "combsmith/.github standards/persona-standards.md"

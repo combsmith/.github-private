@@ -286,7 +286,7 @@ ai_models_fable_deprecation() {
 
 # ai_model_for_family <family> — the current concrete model id for a Claude model
 # FAMILY (opus|sonnet|haiku), so callers name a family and never pin a version
-# (#1979, companion petry-projects/.github#1199). The families map to the tiers
+# (#1979, companion combsmith/.github#1199). The families map to the tiers
 # whose primary is that family, and the id is that tier's chain FIRST model — the
 # existing chains stay the single source of truth:
 #     opus   → deep    (default primary claude-opus-5-5)

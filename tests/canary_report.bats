@@ -49,9 +49,9 @@ seed_pass() {
   local i
   for i in 1 2 3 4 5; do
     mkrec "$FILE" "2026-09-26T10:0${i}:00Z" pr-review deep model-new \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/${i}" 700
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/${i}" 700
     mkrec "$FILE" "2026-09-20T10:0${i}:00Z" pr-review deep model-old \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/10${i}" 1000
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/10${i}" 1000
   done
 }
 
@@ -87,9 +87,9 @@ seed_pass() {
   for i in 1 2 3 4 5; do
     # Higher candidate output makes per-invocation cost exceed the incumbent.
     mkrec "$FILE" "2026-09-26T10:0${i}:00Z" pr-review deep model-new \
-      1000 1000 0 1000 "https://github.com/petry-projects/.github-private/pull/${i}" 700
+      1000 1000 0 1000 "https://github.com/combsmith/.github-private/pull/${i}" 700
     mkrec "$FILE" "2026-09-20T10:0${i}:00Z" pr-review deep model-old \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/10${i}" 1000
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/10${i}" 1000
   done
   run render_canary_report "$DIR"
   [ "$status" -eq 1 ]
@@ -103,9 +103,9 @@ seed_pass() {
     # Candidate reads a lot more cache: cache-read cost reduction falls below 50%
     # while per-invocation cost still clears its 20% bar.
     mkrec "$FILE" "2026-09-26T10:0${i}:00Z" pr-review deep model-new \
-      900 2000 0 100 "https://github.com/petry-projects/.github-private/pull/${i}" 700
+      900 2000 0 100 "https://github.com/combsmith/.github-private/pull/${i}" 700
     mkrec "$FILE" "2026-09-20T10:0${i}:00Z" pr-review deep model-old \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/10${i}" 1000
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/10${i}" 1000
   done
   run render_canary_report "$DIR"
   [ "$status" -eq 1 ]
@@ -118,9 +118,9 @@ seed_pass() {
   local i
   for i in 1 2 3 4 5; do
     mkrec "$FILE" "2026-09-26T10:0${i}:00Z" pr-review deep model-new \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/${i}" 1000
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/${i}" 1000
     mkrec "$FILE" "2026-09-20T10:0${i}:00Z" pr-review deep model-old \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/10${i}" 1000
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/10${i}" 1000
   done
   run render_canary_report "$DIR"
   [ "$status" -eq 1 ]
@@ -137,11 +137,11 @@ seed_pass() {
   local i
   for i in 1 2 3 4; do
     mkrec "$FILE" "2026-09-26T10:0${i}:00Z" pr-review deep model-new \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/${i}" 700
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/${i}" 700
   done
   for i in 1 2 3 4 5; do
     mkrec "$FILE" "2026-09-20T10:0${i}:00Z" pr-review deep model-old \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/10${i}" 1000
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/10${i}" 1000
   done
   run render_canary_report "$DIR"
   [ "$status" -eq 2 ]
@@ -158,9 +158,9 @@ seed_pass() {
     local cdur="" idur=""
     [ "$i" -eq 1 ] && { cdur=700; idur=1000; }
     mkrec "$FILE" "2026-09-26T10:0${i}:00Z" pr-review deep model-new \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/${i}" "$cdur"
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/${i}" "$cdur"
     mkrec "$FILE" "2026-09-20T10:0${i}:00Z" pr-review deep model-old \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/10${i}" "$idur"
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/10${i}" "$idur"
   done
   run render_canary_report "$DIR"
   [ "$status" -eq 2 ]
@@ -199,7 +199,7 @@ seed_pass() {
   export CANARY_BASELINE_SINCE="2026-09-19T00:00:00Z"
   export CANARY_BASELINE_UNTIL="2026-09-25T00:00:00Z"
   mkrec "$FILE" "2026-09-26T12:00:00Z" pr-review deep model-old \
-    1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/777" 900
+    1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/777" 900
   run render_canary_report "$DIR"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Deep-tier fallback calls (excluded from both arms)"* ]]
@@ -210,9 +210,9 @@ seed_pass() {
   local i
   for i in 1 2 3 4 5; do
     mkrec "$FILE" "2026-09-26T10:0${i}:00Z" pr-review deep model-new \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/${i}" ""
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/${i}" ""
     mkrec "$FILE" "2026-09-20T10:0${i}:00Z" pr-review deep model-old \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/10${i}" ""
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/10${i}" ""
   done
   run render_canary_report "$DIR"
   [ "$status" -eq 2 ]
@@ -232,15 +232,15 @@ seed_pass() {
   for i in 1 2 3 4 5; do
     # A model with no row in model-pricing.tsv → unpriced, but still a real call.
     mkrec "$FILE" "2026-09-26T10:0${i}:00Z" pr-review deep model-new \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/${i}" 700
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/${i}" 700
     mkrec "$FILE" "2026-09-20T10:0${i}:00Z" pr-review deep model-old \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/10${i}" 1000
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/10${i}" 1000
   done
   # Add two unpriced candidate calls on new PRs (dated before model-new pricing began).
   mkrec "$FILE" "2026-09-01T10:00:00Z" pr-review deep model-new \
-    1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/91" 700
+    1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/91" 700
   mkrec "$FILE" "2026-09-01T10:01:00Z" pr-review deep model-new \
-    1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/92" 700
+    1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/92" 700
   run render_canary_report "$DIR"
   # 7 candidate invocations total; 2 of them unpriced but still counted.
   [[ "$output" == *"- candidate invocations: 7"* ]]
@@ -251,7 +251,7 @@ seed_pass() {
   seed_pass
   # model-new pricing is effective 2026-09-10; the boundary day itself must be priced.
   mkrec "$FILE" "2026-09-10T00:00:00Z" pr-review deep model-new \
-    1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/93" 700
+    1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/93" 700
   run render_canary_report "$DIR"
   [[ "$output" == *"- candidate invocations: 6"* ]]
   [[ "$output" == *"- candidate unpriced records: 0"* ]]
@@ -272,13 +272,13 @@ seed_pass() {
   local i
   for i in 1 2 3 4 5; do
     mkrec "$FILE" "2026-09-26T10:0${i}:00Z" pr-review deep model-new \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/${i}" 700
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/${i}" 700
     mkrec "$FILE" "2026-09-20T10:0${i}:00Z" pr-review deep model-old \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/10${i}" 1000
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/10${i}" 1000
   done
   # One unpriced incumbent call (model-old predates its 2025-11-01 pricing row).
   mkrec "$FILE" "2025-10-01T10:00:00Z" pr-review deep model-old \
-    1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/199" 1000
+    1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/199" 1000
   run render_canary_report "$DIR"
   [ "$status" -eq 2 ]
   [[ "$output" == *"- incumbent unpriced records: 1"* ]]
@@ -350,7 +350,7 @@ seed_pass() {
   # output_tokens) makes the sample partial, so scoring aborts with the operational
   # code rather than scoring only the surviving rows into a bogus verdict (#1953).
   seed_pass
-  printf '{"ts":"2026-09-26T10:09:00Z","workflow":"pr-review","tier":"deep","model":"model-new","input_tokens":1000,"cache_read_tokens":1000,"cache_creation_tokens":0,"context":"https://github.com/petry-projects/.github-private/pull/9"}\n' > "$DIR/partial.jsonl"
+  printf '{"ts":"2026-09-26T10:09:00Z","workflow":"pr-review","tier":"deep","model":"model-new","input_tokens":1000,"cache_read_tokens":1000,"cache_creation_tokens":0,"context":"https://github.com/combsmith/.github-private/pull/9"}\n' > "$DIR/partial.jsonl"
   run render_canary_report "$DIR"
   [ "$status" -eq 3 ]
   [[ "$output" != *"**Overall verdict:** PASS"* ]]
@@ -406,7 +406,7 @@ seed_pass() {
 @test "render_canary_report: a negative token count aborts scoring (exit 3)" {
   seed_pass
   mkrec "$FILE" "2026-09-26T10:09:00Z" pr-review deep model-new \
-    1000 1000 -1000 100 "https://github.com/petry-projects/.github-private/pull/9" 700
+    1000 1000 -1000 100 "https://github.com/combsmith/.github-private/pull/9" 700
   run render_canary_report "$DIR"
   [ "$status" -eq 3 ]
 }
@@ -414,7 +414,7 @@ seed_pass() {
 @test "render_canary_report: a malformed record timestamp aborts scoring (exit 3)" {
   seed_pass
   mkrec "$FILE" "2026-09-26garbage" pr-review deep model-new \
-    1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/9" 700
+    1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/9" 700
   run render_canary_report "$DIR"
   [ "$status" -eq 3 ]
 }
@@ -439,13 +439,13 @@ seed_pass() {
   local i
   for i in 1 2 3 4 5; do
     mkrec "$FILE" "2026-09-26T10:0${i}:00Z" pr-review deep model-new \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/${i}" ""
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/${i}" ""
     mkrec "$FILE" "2026-09-20T10:0${i}:00Z" pr-review deep model-old \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/10${i}" 1000
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/10${i}" 1000
   done
   for i in 1 2 3 4 5; do
     mkrec "$FILE" "2026-09-26T11:0${i}:00Z" pr-review deep model-new \
-      1000 1000 0 100 "https://github.com/petry-projects/.github-private/pull/1" 700
+      1000 1000 0 100 "https://github.com/combsmith/.github-private/pull/1" 700
   done
   run render_canary_report "$DIR"
   [ "$status" -eq 2 ]

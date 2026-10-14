@@ -12,10 +12,10 @@
 #                     intentionally a PAT (not GITHUB_TOKEN) because the default
 #                     Actions token lacks cross-org actions:read
 #   GH_PAT_FALLBACK — optional secondary token if primary lacks org-level access
-#   ORG             — GitHub org to scan (default: petry-projects)
+#   ORG             — GitHub org to scan (default: combsmith)
 #   LOOKBACK_DAYS   — days of history to consider (default: 1)
 #   BUDGET_POLLER_REPO        — repo whose budget-poller-log artifact is read
-#                               (default: petry-projects/.github-private, #2029)
+#                               (default: combsmith/.github-private, #2029)
 #   BUDGET_POLLER_STALE_HOURS — warn when the last OK poll is older (default: 3)
 #   GITHUB_ENV      — written by Actions runner
 #   GITHUB_STEP_SUMMARY — written by Actions runner (1 MB hard limit per job)
@@ -32,7 +32,7 @@ source "${SCRIPT_DIR}/lib/run-attribution.sh"
 # shellcheck source=scripts/lib/budget-poller.sh
 source "${SCRIPT_DIR}/lib/budget-poller.sh"
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-1}"
 REPORT_FILE="fleet_monitor_report.md"
 TODAY=$(date -u +%Y-%m-%d)
@@ -61,7 +61,7 @@ TODAY=$(date -u +%Y-%m-%d)
 #                       collapsed repo IGNORES it so a deleted per-role stub is never
 #                       resurrected (AC #4). Whole-file compared against ...
 #     legacy_canonical_path — ... this org-template per-role canonical path.
-CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-petry-projects/.github}"
+CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-combsmith/.github}"
 STUB_REGISTRY=(
   $'initiative-planner\tInitiative-planner\t.github/workflows/initiative-planner.yml\tstandards/workflows/initiative-planner.yml\t\t\t'
   $'initiative-driver\tInitiative-driver\t.github/workflows/initiative-driver.yml\tstandards/workflows/initiative-driver.yml\t\t\t'
@@ -587,7 +587,7 @@ done
 # artifact or API error renders "no OK record", never fails the monitor.
 # ---------------------------------------------------------------------------
 budget_poller_log_file=$(mktemp) || { echo "::error::budget-poller: failed to create temporary file" >&2; exit 1; }
-if ! bp_download_latest_log "${BUDGET_POLLER_REPO:-petry-projects/.github-private}" "$budget_poller_log_file"; then
+if ! bp_download_latest_log "${BUDGET_POLLER_REPO:-combsmith/.github-private}" "$budget_poller_log_file"; then
   echo "::notice::budget-poller: no readable ${BUDGET_POLLER_ARTIFACT} artifact — reporting no OK record"
   : > "$budget_poller_log_file"
 fi

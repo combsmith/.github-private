@@ -64,7 +64,7 @@ fi
 #                      carried for parity with fleet_monitor.sh; unused by
 #                      remediation (only DRIFTED entries — a present, differing
 #                      block — are remediable; MISSING/legacy repos are not).
-CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-petry-projects/.github}"
+CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-combsmith/.github}"
 STUB_REGISTRY=(
   $'initiative-planner\tInitiative-planner\t.github/workflows/initiative-planner.yml\tstandards/workflows/initiative-planner.yml\t\t\t'
   $'initiative-driver\tInitiative-driver\t.github/workflows/initiative-driver.yml\tstandards/workflows/initiative-driver.yml\t\t\t'

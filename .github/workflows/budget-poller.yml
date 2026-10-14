@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/budget-poller.yml
+# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/budget-poller.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • Repo-specific DRY-RUN budget poller for issue #2029 (slice 2 of #1565);
@@ -48,7 +48,7 @@ jobs:
         # The public library + config the org breaker ships (read-only, public repo).
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          repository: petry-projects/.github
+          repository: combsmith/.github
           ref: 4c52221a0dffe521bb4ad37dfe2b25f6738263de  # main — pinned; bump deliberately
           path: public
           persist-credentials: false

@@ -614,7 +614,7 @@ imv_v_boundary() {
 #   - its own opt_out_label (personas/<id>/persona.yml) — the router's opt-out check;
 #   - the canonical escalation markers (needs-human-review, dev-lead:needs-human).
 # The mention router now reads a persona's stop_markers straight from this contract
-# (petry-projects/.github#1133), so a marker declared here is what actually gates the
+# (combsmith/.github#1133), so a marker declared here is what actually gates the
 # mention surface — which is exactly why a claim that no serving workflow can honour,
 # or a missing universal brake, is a real behavioural defect, not just tidiness.
 #
