@@ -1623,7 +1623,7 @@ intentionally **mutable** and are an accepted, documented exception because they
 - Immutable `vX.Y.Z` tags are the real rollback targets; `scripts/cut-release.sh` refuses to overwrite
   an existing release tag.
 - Routine channel-tag moves are made by the health-gated Release Manager automation (#501/#993,
-  below), which is a ruleset bypass actor through the `petry-projects-release-manager` GitHub App.
+  below), which is a ruleset bypass actor through the `combsmith-release-manager` GitHub App.
   The only other sanctioned path is a maintainer running `cut-release.sh` as an org admin or with
   that App's token.
 
@@ -1633,7 +1633,7 @@ Release tags on this repo's agents (`pr-review`, `dev-lead`, `ci-failure-analyst
 `combsmith/.github`-hosted reusables are cut and moved by the **Release Manager**. That is the
 `Canary Rollout` workflow in **`combsmith/.github`**
 (`.github/workflows/canary-rollout.yml` + `scripts/canary-rollout.sh`, relocated there from this
-repo under #613), acting as the **`petry-projects-release-manager[bot]`** GitHub App. Its registry
+repo under #613), acting as the **`combsmith-release-manager[bot]`** GitHub App. Its registry
 (each agent's host, reusable path, rings and gate knobs) is **`standards/canary-rings.json` in
 `combsmith/.github`**, not in this repo. Each sweep (cron `33 */4 * * *`, every 4 hours;
 GitHub may delay scheduled runs) runs `autocut` → `promote-all` → `sync-issues`:
@@ -1667,7 +1667,7 @@ GitHub may delay scheduled runs) runs `autocut` → `promote-all` → `sync-issu
   `combsmith/.github` `standards/canary-rings.json`, or disarm `CANARY_AUTO_PROMOTE`, which is
   fleet-wide. An issue label such as `dev-lead:hands-off` stops dev-lead from acting on the issue,
   but **it does not stop the promotion gate**.
-- **Who did what:** releases tagged by `petry-projects-release-manager[bot]` came from the
+- **Who did what:** releases tagged by `combsmith-release-manager[bot]` came from the
   automation, and releases tagged by a person were cut by hand. The `Canary Rollout` run's job
   summary and the promotion Deployments record the gate evidence for every move.
 

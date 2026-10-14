@@ -30,7 +30,7 @@ move.
 
 > **Current state — most of this is automated.** Routine releases no longer need
 > the manual steps below. The Release Manager (the `Canary Rollout` workflow in
-> `combsmith/.github`, acting as the `petry-projects-release-manager[bot]`
+> `combsmith/.github`, acting as the `combsmith-release-manager[bot]`
 > App) auto-cuts `<agent>/vX.Y.Z` and moves `<agent>/v<MAJOR>-next` every 4-hour
 > sweep, and promotes through the rings by its health gate when armed. See
 > [`AGENTS.md` "Release automation — who cuts and moves tags"](../../AGENTS.md#release-automation--who-cuts-and-moves-tags).

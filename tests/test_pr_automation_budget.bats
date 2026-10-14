@@ -421,7 +421,7 @@ RL_AT() {  # RL_AT <head> → a rate-limited withhold marker body at <head>
 # ---------------------------------------------------------------------------
 
 DEPENDABOT="dependabot[bot]"
-AUTOMRG="petry-projects-dependabot-automrg[bot]"
+AUTOMRG="combsmith-dependabot-automrg[bot]"
 
 # The ten events the counter saw on combsmith/broodminder-data#176.
 bd176_events() {
@@ -659,15 +659,15 @@ STUB
 bd176_fixture() {
   cat > "$FIXD/commits.json" <<'JSON'
 [{"commit":{"author":{"date":"2026-10-08T15:33:54Z","name":"dependabot[bot]"}},"author":{"login":"dependabot[bot]"}},
- {"commit":{"author":{"date":"2026-10-08T20:57:06Z"}},"author":{"login":"petry-projects-dependabot-automrg[bot]"}},
- {"commit":{"author":{"date":"2026-10-08T20:59:58Z"}},"author":{"login":"petry-projects-dependabot-automrg[bot]"}},
- {"commit":{"author":{"date":"2026-10-09T04:09:46Z"}},"author":{"login":"petry-projects-dependabot-automrg[bot]"}}]
+ {"commit":{"author":{"date":"2026-10-08T20:57:06Z"}},"author":{"login":"combsmith-dependabot-automrg[bot]"}},
+ {"commit":{"author":{"date":"2026-10-08T20:59:58Z"}},"author":{"login":"combsmith-dependabot-automrg[bot]"}},
+ {"commit":{"author":{"date":"2026-10-09T04:09:46Z"}},"author":{"login":"combsmith-dependabot-automrg[bot]"}}]
 JSON
   cat > "$FIXD/reviews.json" <<'JSON'
-[{"submitted_at":"2026-10-08T15:34:09Z","user":{"login":"petry-projects-dependabot-automrg[bot]"},"body":""},
- {"submitted_at":"2026-10-08T20:57:25Z","user":{"login":"petry-projects-dependabot-automrg[bot]"},"body":""},
- {"submitted_at":"2026-10-08T21:00:58Z","user":{"login":"petry-projects-dependabot-automrg[bot]"},"body":""},
- {"submitted_at":"2026-10-09T04:16:18Z","user":{"login":"petry-projects-dependabot-automrg[bot]"},"body":""}]
+[{"submitted_at":"2026-10-08T15:34:09Z","user":{"login":"combsmith-dependabot-automrg[bot]"},"body":""},
+ {"submitted_at":"2026-10-08T20:57:25Z","user":{"login":"combsmith-dependabot-automrg[bot]"},"body":""},
+ {"submitted_at":"2026-10-08T21:00:58Z","user":{"login":"combsmith-dependabot-automrg[bot]"},"body":""},
+ {"submitted_at":"2026-10-09T04:16:18Z","user":{"login":"combsmith-dependabot-automrg[bot]"},"body":""}]
 JSON
   cat > "$FIXD/comments.json" <<'JSON'
 [{"created_at":"2026-10-08T15:34:21Z","user":{"login":"coderabbitai[bot]"},"body":"<!-- This is an auto-generated comment: summarize by coderabbit.ai -->"},
