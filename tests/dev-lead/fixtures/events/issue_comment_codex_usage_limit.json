@@ -6,7 +6,7 @@
     "title": "feat: some change",
     "state": "open",
     "pull_request": {
-      "url": "https://api.github.com/repos/combsmith/.github-private/pulls/1952"
+      "url": "https://api.github.com/repos/petry-projects/.github-private/pulls/1952"
     },
     "user": {
       "login": "donpetry-bot",
@@ -23,7 +23,7 @@
     }
   },
   "repository": {
-    "full_name": "combsmith/.github-private"
+    "full_name": "petry-projects/.github-private"
   },
   "sender": {
     "login": "chatgpt-codex-connector[bot]",

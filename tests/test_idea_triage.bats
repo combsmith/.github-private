@@ -14,7 +14,7 @@ setup() {
 teardown() { rm -rf "$TMP"; }
 
 @test "upsert-queue (DRY_RUN) logs the intended upsert with a non-empty body" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
     QUEUE_BODY_PATH="$BODY" run bash "$TRIAGE_DIR/upsert-queue.sh"
   [ "$status" -eq 0 ]
   grep -q '"op":"upsert_queue"' "$LOG"
@@ -23,7 +23,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "upsert-queue fails on a missing/empty body" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
     QUEUE_BODY_PATH="$TMP/does-not-exist.md" run bash "$TRIAGE_DIR/upsert-queue.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"missing or empty"* ]]

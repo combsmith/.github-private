@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/auto-rebase-health.yml
+# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/auto-rebase-health.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • Daily Auto-rebase Health report (#737, epic #736). Counts conflict-sentinel

@@ -3,7 +3,7 @@
 # make its own change pass (#2013).
 #
 # WHAT IS WRONG WITHOUT THIS
-#   On combsmith/.github#1220 a cubic finding said, literally, "update the
+#   On petry-projects/.github#1220 a cubic finding said, literally, "update the
 #   older test to assert failure precedence so the Bats suite can pass". dev-lead
 #   applied it: it rewrote an existing test (#1023 "success precedence …") into
 #   "failure precedence", inverting a deliberate behavior, and the rewritten test

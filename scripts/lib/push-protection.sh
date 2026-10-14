@@ -2,10 +2,10 @@
 # push-protection.sh — required security_and_analysis settings and apply helper.
 #
 # Sourced by scripts that need to enforce or audit the push-protection standard:
-#   https://github.com/combsmith/.github/blob/main/standards/push-protection.md
+#   https://github.com/petry-projects/.github/blob/main/standards/push-protection.md
 #
 # PP_REQUIRED_SA_SETTINGS lists the security_and_analysis keys that must be
-# "enabled" on every combsmith repository.  Adding a key here
+# "enabled" on every petry-projects repository.  Adding a key here
 # automatically extends both apply and audit logic that sources this file.
 #
 # Usage:

@@ -98,7 +98,7 @@ Override `REVIEW_REGISTRY_MANIFEST` to point the helper at a different manifest
 ## Ownership & tests
 
 The registry and helper are covered by the repo's global CODEOWNERS rule
-(`* @combsmith/org-leads` in `.github/CODEOWNERS`), so changes here are
+(`* @petry-projects/org-leads` in `.github/CODEOWNERS`), so changes here are
 gated by default. Unit tests live in
 [`tests/test_review_registry.bats`](../../tests/test_review_registry.bats).
 
@@ -197,7 +197,7 @@ The metric is a rolling window; `reviewer_report.sh` honors `LOOKBACK_DAYS`
 run the scorecard over a 30-day window and read the "pr-review miss rate" section:
 
 ```bash
-ORG=combsmith LOOKBACK_DAYS=30 GH_TOKEN=<pat> \
+ORG=petry-projects LOOKBACK_DAYS=30 GH_TOKEN=<pat> \
   bash scripts/reviewer_report.sh > /tmp/reviewer-30d.md
 ```
 

@@ -30,7 +30,7 @@ setup() {
 }
 
 @test "registry.yml: dev-lead is hosted in .github-private" {
-  run yq -e '.reusables."dev-lead".host == "combsmith/.github-private"' "$REGISTRY"
+  run yq -e '.reusables."dev-lead".host == "petry-projects/.github-private"' "$REGISTRY"
   [ "$status" -eq 0 ]
 }
 
@@ -65,21 +65,21 @@ setup() {
 }
 
 @test "registry.yml: dev-lead next ring is the self-host repo" {
-  run bash -c "yq -o=json '$REGISTRY' | jq -er '(.reusables.\"dev-lead\".rings[] | select(.channel==\"next\").repos) == [\"combsmith/.github-private\"]'"
+  run bash -c "yq -o=json '$REGISTRY' | jq -er '(.reusables.\"dev-lead\".rings[] | select(.channel==\"next\").repos) == [\"petry-projects/.github-private\"]'"
   [ "$status" -eq 0 ]
 }
 
 @test "registry.yml: dev-lead ring0 is the other org-infra repo" {
-  run bash -c "yq -o=json '$REGISTRY' | jq -er '(.reusables.\"dev-lead\".rings[] | select(.channel==\"ring0\").repos) == [\"combsmith/.github\"]'"
+  run bash -c "yq -o=json '$REGISTRY' | jq -er '(.reusables.\"dev-lead\".rings[] | select(.channel==\"ring0\").repos) == [\"petry-projects/.github\"]'"
   [ "$status" -eq 0 ]
 }
 
 @test "registry.yml: dev-lead ring1 carries the two low-traffic consumers" {
-  run bash -c "yq -o=json '$REGISTRY' | jq -er '(.reusables.\"dev-lead\".rings[] | select(.channel==\"ring1\").repos) == [\"combsmith/TalkTerm\",\"combsmith/bmad-bgreat-suite\"]'"
+  run bash -c "yq -o=json '$REGISTRY' | jq -er '(.reusables.\"dev-lead\".rings[] | select(.channel==\"ring1\").repos) == [\"petry-projects/TalkTerm\",\"petry-projects/bmad-bgreat-suite\"]'"
   [ "$status" -eq 0 ]
 }
 
 @test "registry.yml: dev-lead stable carries the remaining four consumers" {
-  run bash -c "yq -o=json '$REGISTRY' | jq -er '(.reusables.\"dev-lead\".rings[] | select(.channel==\"stable\").repos) == [\"combsmith/ContentTwin\",\"combsmith/google-app-scripts\",\"combsmith/markets\",\"combsmith/broodly\"]'"
+  run bash -c "yq -o=json '$REGISTRY' | jq -er '(.reusables.\"dev-lead\".rings[] | select(.channel==\"stable\").repos) == [\"petry-projects/ContentTwin\",\"petry-projects/google-app-scripts\",\"petry-projects/markets\",\"petry-projects/broodly\"]'"
   [ "$status" -eq 0 ]
 }

@@ -7,7 +7,7 @@
 #   version                schema version.
 #   reusables.<name>:
 #     host          repo that OWNS the reusable — its release/channel tags are cut
-#                   here (a host of combsmith/.github means the reusable is
+#                   here (a host of petry-projects/.github means the reusable is
 #                   cross-repo and this repo holds only the thin caller stub).
 #     run_workflow  the workflow (file or display name) whose run history feeds the
 #                   health gate for this reusable.
@@ -31,11 +31,11 @@ reusables:
   # staged repin PRs land in those repos to move them onto the ring1 channel.
   # This registry entry records the intended ring1 shape; the blocker is external.
   dev-lead:
-    host: combsmith/.github-private
+    host: petry-projects/.github-private
     run_workflow: dev-lead.yml
     gate: { soak_window_days: 7, signals: [shadow_dual_run] }
     rings:
-      - { channel: next,   order: 0, repos: [combsmith/.github-private] }
-      - { channel: ring0,  order: 1, repos: [combsmith/.github] }
-      - { channel: ring1,  order: 2, repos: [combsmith/TalkTerm, combsmith/bmad-bgreat-suite] }
-      - { channel: stable, order: 3, repos: [combsmith/ContentTwin, combsmith/google-app-scripts, combsmith/markets, combsmith/broodly] }
+      - { channel: next,   order: 0, repos: [petry-projects/.github-private] }
+      - { channel: ring0,  order: 1, repos: [petry-projects/.github] }
+      - { channel: ring1,  order: 2, repos: [petry-projects/TalkTerm, petry-projects/bmad-bgreat-suite] }
+      - { channel: stable, order: 3, repos: [petry-projects/ContentTwin, petry-projects/google-app-scripts, petry-projects/markets, petry-projects/broodly] }

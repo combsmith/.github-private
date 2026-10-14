@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for the persona runtime core (scripts/lib/persona-runner.sh).
-# Standard: combsmith/.github standards/persona-standards.md §4.1.
+# Standard: petry-projects/.github standards/persona-standards.md §4.1.
 #
 # The runner is a SEPARATE trust boundary from the router: a repository_dispatch
 # can be sent by anything with a token, so payload re-validation and the
@@ -163,8 +163,8 @@ setup() {
 # name the auth-vs-authz cause, and still fail. All offline, no network.
 
 @test "pr_artifact_name slugs owner/repo deterministically" {
-  run pr_artifact_name qa-lead combsmith/.github-private 1723
-  [ "$output" = "persona-advisory-qa-lead-combsmith-.github-private-1723" ]
+  run pr_artifact_name qa-lead petry-projects/.github-private 1723
+  [ "$output" = "persona-advisory-qa-lead-petry-projects-.github-private-1723" ]
 }
 
 @test "pr_artifact_name strips characters an artifact name cannot carry" {
@@ -236,7 +236,7 @@ STUB
 
   run env PATH="$stub:$PATH" bash -c '
     source "'"$LIB"'"
-    pr_post_advisory_or_preserve qa-lead combsmith/.github-private 1723 \
+    pr_post_advisory_or_preserve qa-lead petry-projects/.github-private 1723 \
       don-petry GH_PAT_DON_PETRY "'"$body"'" "'"$body_file"'" "'"$summary_file"'"
   '
   [ "$status" -eq 1 ]                              # AC #2: still a failure
@@ -369,7 +369,7 @@ _run_post() {
   run env PATH="$stub:$PATH" GH_TOKEN=fake PR_LOGIN_RETRY_DELAY=0 bash -c '
     set -euo pipefail
     source "'"$LIB"'"
-    pr_run_post qa-lead combsmith/.github-private 2188 \
+    pr_run_post qa-lead petry-projects/.github-private 2188 \
       don-petry GH_PAT_DON_PETRY "'"$raw"'" "'"$body_file"'" "'"$summary_file"'"
   '
 }

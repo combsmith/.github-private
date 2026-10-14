@@ -19,18 +19,18 @@
       "sha": "eee555fff666",
       "ref": "dev-lead/issue-55-20260718-1200",
       "repo": {
-        "full_name": "combsmith/.github-private"
+        "full_name": "petry-projects/.github-private"
       }
     },
     "base": {
       "ref": "main",
       "repo": {
-        "full_name": "combsmith/.github-private"
+        "full_name": "petry-projects/.github-private"
       }
     }
   },
   "repository": {
-    "full_name": "combsmith/.github-private"
+    "full_name": "petry-projects/.github-private"
   },
   "sender": {
     "login": "copilot-pull-request-reviewer[bot]",

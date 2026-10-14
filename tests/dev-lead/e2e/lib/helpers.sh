@@ -5,7 +5,7 @@ set -euo pipefail
 
 # ── configuration ─────────────────────────────────────────────────────────────
 
-E2E_TARGET_REPO="${E2E_TARGET_REPO:-combsmith/.github-private}"
+E2E_TARGET_REPO="${E2E_TARGET_REPO:-petry-projects/.github-private}"
 E2E_CLEANUP="${E2E_CLEANUP:-true}"
 E2E_RESULTS_DIR="${E2E_RESULTS_DIR:-$(dirname "${BASH_SOURCE[0]}")/../results}"
 

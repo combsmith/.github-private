@@ -2,7 +2,7 @@
 # Role, not a person (§1.6): wraps the vendored BMAD sprint-planning skill; the
 # upstream agent's person-name stays upstream, referenced only by skill id.
 #
-# Validate against: combsmith/.github standards/personas/persona.schema.json
+# Validate against: petry-projects/.github standards/personas/persona.schema.json
 
 schema_version: 1
 
@@ -18,10 +18,10 @@ summary: >-
 # before promotion.
 status: draft
 
-owner: combsmith/org-leads
+owner: petry-projects/org-leads
 
 address:
-  handle: combsmith/scrum-master
+  handle: petry-projects/scrum-master
 
 definition:
   layers:
@@ -51,7 +51,7 @@ triggers:
       events: [created]
       enabled: true
       mode: advisory
-      notes: "'@combsmith/scrum-master' — decomposition/scoping/sequencing advice."
+      notes: "'@petry-projects/scrum-master' — decomposition/scoping/sequencing advice."
 
     - surface: issues
       events: [labeled, commented]
@@ -89,4 +89,4 @@ evals:
 references:
   - "prompts/bmad/scrum-master.md (org orchestration wrapper, consumed by initiative-planner)"
   - "frameworks/bmad-method/VENDOR.md (v6.8.0)"
-  - "combsmith/.github standards/persona-standards.md"
+  - "petry-projects/.github standards/persona-standards.md"

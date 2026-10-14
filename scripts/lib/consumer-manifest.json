@@ -12,7 +12,7 @@
         ".github/.github/workflows/pr-auto-review-reusable.yml",
         ".github/.github/workflows/pr-review-mention-reusable.yml"
       ],
-      "repo": "combsmith/.github"
+      "repo": "petry-projects/.github"
     },
     {
       "refs": [
@@ -30,7 +30,7 @@
         ".github/.github/workflows/feature-ideation-reusable.yml",
         ".github/.github/workflows/pr-review-mention-reusable.yml"
       ],
-      "repo": "combsmith/.github-private"
+      "repo": "petry-projects/.github-private"
     },
     {
       "refs": [
@@ -46,7 +46,7 @@
         ".github/.github/workflows/pr-auto-review-reusable.yml",
         ".github/.github/workflows/pr-review-mention-reusable.yml"
       ],
-      "repo": "combsmith/ContentTwin"
+      "repo": "petry-projects/ContentTwin"
     },
     {
       "refs": [
@@ -63,7 +63,7 @@
         ".github/.github/workflows/pr-auto-review-reusable.yml",
         ".github/.github/workflows/pr-review-mention-reusable.yml"
       ],
-      "repo": "combsmith/TalkTerm"
+      "repo": "petry-projects/TalkTerm"
     },
     {
       "refs": [
@@ -80,7 +80,7 @@
         ".github/.github/workflows/pr-auto-review-reusable.yml",
         ".github/.github/workflows/pr-review-mention-reusable.yml"
       ],
-      "repo": "combsmith/bmad-bgreat-suite"
+      "repo": "petry-projects/bmad-bgreat-suite"
     },
     {
       "refs": [
@@ -97,7 +97,7 @@
         ".github/.github/workflows/pr-auto-review-reusable.yml",
         ".github/.github/workflows/pr-review-mention-reusable.yml"
       ],
-      "repo": "combsmith/broodly"
+      "repo": "petry-projects/broodly"
     },
     {
       "refs": [
@@ -114,7 +114,7 @@
         ".github/.github/workflows/pr-auto-review-reusable.yml",
         ".github/.github/workflows/pr-review-mention-reusable.yml"
       ],
-      "repo": "combsmith/google-app-scripts"
+      "repo": "petry-projects/google-app-scripts"
     },
     {
       "refs": [
@@ -131,7 +131,7 @@
         ".github/.github/workflows/pr-auto-review-reusable.yml",
         ".github/.github/workflows/pr-review-mention-reusable.yml"
       ],
-      "repo": "combsmith/markets"
+      "repo": "petry-projects/markets"
     }
   ],
   "providers": [

@@ -1,8 +1,8 @@
 {
-  "_test_note": "Cross-org CI failure dispatch from an org repo listener (gh-aw-org-listener.yml). Source: combsmith/ContentTwin. Used to verify gh-aw-cross-org.yml routes correctly to dev-lead-fix-ci.sh.",
+  "_test_note": "Cross-org CI failure dispatch from an org repo listener (gh-aw-org-listener.yml). Source: petry-projects/ContentTwin. Used to verify gh-aw-cross-org.yml routes correctly to dev-lead-fix-ci.sh.",
   "action": "gh-aw-ci-failure",
   "client_payload": {
-    "source_repo": "combsmith/ContentTwin",
+    "source_repo": "petry-projects/ContentTwin",
     "pr_number": 7,
     "head_sha": "abc123def456abc7",
     "checks": [
@@ -10,11 +10,11 @@
         "id": 98765432,
         "name": "test / unit",
         "conclusion": "failure",
-        "details_url": "https://github.com/combsmith/ContentTwin/actions/runs/98765",
+        "details_url": "https://github.com/petry-projects/ContentTwin/actions/runs/98765",
         "app_slug": "github-actions"
       }
     ]
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "github-actions[bot]", "type": "Bot" }
 }

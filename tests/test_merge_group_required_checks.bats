@@ -9,11 +9,11 @@
 # `CodeQL` workflows. They assert that required-check context names are unchanged —
 # a rename silently un-requires the check, because the ruleset matches by context
 # name (AC #4). The two caller stubs (`agent-shield.yml`, `dependency-audit.yml`)
-# are out of scope here; their `merge_group` wiring is tracked in combsmith/.github#1157.
+# are out of scope here; their `merge_group` wiring is tracked in petry-projects/.github#1157.
 #
 # The two thin caller stubs (agent-shield.yml, dependency-audit.yml) are out of
 # scope here — they carry "You MUST NOT change: trigger events" and are tracked
-# in combsmith/.github#1157.
+# in petry-projects/.github#1157.
 #
 # Run with: bats tests/test_merge_group_required_checks.bats
 

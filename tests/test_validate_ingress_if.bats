@@ -71,11 +71,11 @@ setup() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"repo-identity"* ]]
 
-  run viif_forbidden "github.event.repository.full_name == 'combsmith/some-repo'"
+  run viif_forbidden "github.event.repository.full_name == 'petry-projects/some-repo'"
   [ "$status" -ne 0 ]
   [[ "$output" == *"repo-identity"* ]]
 
-  run viif_forbidden "github.event.repository.owner.login == 'combsmith'"
+  run viif_forbidden "github.event.repository.owner.login == 'petry-projects'"
   [ "$status" -ne 0 ]
   [[ "$output" == *"repo-identity"* ]]
 }
@@ -96,7 +96,7 @@ setup() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"needs-outputs"* ]]
 
-  run viif_forbidden "github['repository'] == 'combsmith/some-repo'"
+  run viif_forbidden "github['repository'] == 'petry-projects/some-repo'"
   [ "$status" -ne 0 ]
   [[ "$output" == *"repo-identity"* ]]
 
@@ -178,7 +178,7 @@ setup() {
 
   # Bare github serialized whole is the most severe reach — everything, not the
   # event. It is not the delivered event, so the allowlist backstop names it.
-  run viif_forbidden "contains(toJSON(github), 'combsmith/x')"
+  run viif_forbidden "contains(toJSON(github), 'petry-projects/x')"
   [ "$status" -eq 1 ]
   [[ "$output" == *"unlisted-context"* ]]
 }

@@ -22,7 +22,7 @@ silently regress them:
   Plus: top-level `permissions: {}` (org least-privilege policy) and SHA-pinned
   actions per AGENTS.md.
 
-Standard: combsmith/.github/standards/ci-standards.md
+Standard: petry-projects/.github/standards/ci-standards.md
 """
 from __future__ import annotations
 

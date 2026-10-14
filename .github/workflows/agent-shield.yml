@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: combsmith/.github/standards/workflows/agent-shield.yml
-# Standard:        combsmith/.github/standards/agent-standards.md
-# Reusable:        combsmith/.github/.github/workflows/agent-shield-reusable.yml
+# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/agent-shield.yml
+# Standard:        petry-projects/.github/standards/agent-standards.md
+# Reusable:        petry-projects/.github/.github/workflows/agent-shield-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. The AgentShield CLI scan and the
@@ -31,4 +31,4 @@ permissions:
 
 jobs:
   agent-shield:
-    uses: combsmith/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: petry-projects/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable  # NOSONAR(githubactions:S7637) first-party channel ref

@@ -3,7 +3,7 @@ set -euo pipefail
 # test_sonar_s7637_exemption.sh — regression guard for issue #943.
 #
 # SonarCloud's githubactions:S7637 ("pin actions to a full-length commit SHA")
-# fires on the first-party combsmith/.github(-private) reusable refs in our
+# fires on the first-party petry-projects/.github(-private) reusable refs in our
 # thin caller stubs. Those refs are intentionally pinned to a moving channel/tag
 # (@<name>/stable, @v1/@v2) by org standard — NOT SHA-pinned. sonar-project.properties
 # MUST suppress S7637 on each caller-stub file individually (one criterion per file),

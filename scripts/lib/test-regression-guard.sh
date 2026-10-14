@@ -2,7 +2,7 @@
 # test-regression-guard.sh — a fix pass may not push with the suite newly red (#2013).
 #
 # WHAT IS WRONG WITHOUT THIS
-#   On combsmith/.github#1220 the `15a919e` fix added a NEW test and broke an
+#   On petry-projects/.github#1220 the `15a919e` fix added a NEW test and broke an
 #   EXISTING one without editing it. The test-tamper guard is silent about that (no
 #   existing test line changed) and the claim names a real in-pass commit, so every
 #   other check passed. Only running the suite against the pre-pass baseline sees it.

@@ -14,7 +14,7 @@ setup() {
   export DIAG_SCRIPT="$REPO_ROOT/scripts/pr-approval-diagnostic.sh"
 
   export SHA="1894a1b2c3d4e5f60718293a4b5c6d7e8f901234"
-  export PR_URL="https://github.com/combsmith/.github-private/pull/1894"
+  export PR_URL="https://github.com/petry-projects/.github-private/pull/1894"
 
   export TEST_DIR="$BATS_TEST_TMPDIR"
   mkdir -p "$TEST_DIR/bin"

@@ -4,7 +4,7 @@
 #   - Issue Triage: dispatches when an issue is labeled by an org member
 #   - CI Failure Analyst: dispatches when a check run fails on a non-fork PR
 #
-# All logic lives in combsmith/.github-private (gh-aw-cross-org.yml).
+# All logic lives in petry-projects/.github-private (gh-aw-cross-org.yml).
 # This stub is intentionally minimal — do not add business logic here.
 #
 # Requires:
@@ -13,7 +13,7 @@
 #                     (must be explicitly granted to this repo in org secret settings;
 #                      requires read:org scope for the org-member trust gate)
 #                     Must be a CLASSIC PAT: this listener dispatches across orgs
-#                     (target repo → combsmith/.github-private), and fine-grained
+#                     (target repo → petry-projects/.github-private), and fine-grained
 #                     PATs are restricted to a single resource owner. Classic PATs
 #                     are not, so they span orgs; do not swap in a fine-grained token.
 #
@@ -86,7 +86,7 @@ jobs:
             }')
           echo "$payload" | gh api \
             --method POST \
-            "repos/combsmith/.github-private/dispatches" \
+            "repos/petry-projects/.github-private/dispatches" \
             --input -
           echo "::notice::Dispatched gh-aw-issue-triage for issue #${ISSUE_NUMBER} in ${SOURCE_REPO}"
 
@@ -173,6 +173,6 @@ jobs:
             }')
           echo "$payload" | gh api \
             --method POST \
-            "repos/combsmith/.github-private/dispatches" \
+            "repos/petry-projects/.github-private/dispatches" \
             --input -
           echo "::notice::Dispatched gh-aw-ci-failure for PR #${PR_NUMBER} in ${SOURCE_REPO}"

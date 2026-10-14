@@ -9,7 +9,7 @@
 
 ## Purpose
 
-Audit documentation freshness across all repos in the `combsmith` org. Open a
+Audit documentation freshness across all repos in the `petry-projects` org. Open a
 GitHub issue on `.github-private` listing every documentation file that has not been
 updated in 90 or more days, so that doc owners can review and refresh stale content.
 
@@ -52,7 +52,7 @@ schedule (weekly)
 | Variable | Source | Default | Description |
 |----------|--------|---------|-------------|
 | `STALE_DAYS` | `vars.DOCS_STALE_DAYS` or `inputs.stale_days` | `90` | Days without update threshold |
-| `ORG` | `vars.ORG` | `combsmith` | GitHub org to scan |
+| `ORG` | `vars.ORG` | `petry-projects` | GitHub org to scan |
 | `GH_TOKEN` | `secrets.DON_PETRY_BOT_GH_PAT` | — | PAT with `repo` scope |
 | `CLAUDE_CODE_OAUTH_TOKEN` | `secrets.CLAUDE_CODE_OAUTH_TOKEN` | — | Claude auth token |
 
@@ -62,7 +62,7 @@ schedule (weekly)
 
 ### When stale docs are found
 
-A GitHub issue is opened in `combsmith/.github-private`:
+A GitHub issue is opened in `petry-projects/.github-private`:
 
 - **Title:** `Docs Health Check — stale files detected YYYY-MM-DD`
 - **Labels:** `health-check`, `automated-report`

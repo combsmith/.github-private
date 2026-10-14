@@ -6,7 +6,7 @@
     "title": "feat: automated fixes",
     "state": "open",
     "pull_request": {
-      "url": "https://api.github.com/repos/combsmith/.github-private/pulls/66"
+      "url": "https://api.github.com/repos/petry-projects/.github-private/pulls/66"
     }
   },
   "comment": {
@@ -17,6 +17,6 @@
       "type": "Bot"
     }
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "donpetry-bot", "type": "Bot" }
 }

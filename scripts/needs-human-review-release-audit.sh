@@ -18,10 +18,10 @@ set -euo pipefail
 #   needs-human-review-release-audit.sh [--repo owner/repo] [--since YYYY-MM-DD]
 #
 # Env (fallbacks for the flags):
-#   REPO   owner/repo (default: combsmith/.github-private)
+#   REPO   owner/repo (default: petry-projects/.github-private)
 #   SINCE  ISO date; releases before it are out of scope (default: 2026-08-18)
 
-REPO="${REPO:-combsmith/.github-private}"
+REPO="${REPO:-petry-projects/.github-private}"
 SINCE="${SINCE:-2026-08-18}"
 HOLD_LABEL="${HOLD_RELEASE_AUDIT_HOLD_LABEL:-needs-human-review}"
 RELEASE_LABEL="${HOLD_RELEASE_AUDIT_RELEASE_LABEL:-dev-lead}"

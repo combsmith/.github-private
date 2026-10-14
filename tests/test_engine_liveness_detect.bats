@@ -261,8 +261,8 @@ setup() {
 
 @test "render_liveness_table renders each repo row with its state" {
   f=$(mktemp "$TMP/rows.XXXXXX")
-  printf '%s\t%s\t%s\t%s\n' "combsmith/ContentTwin" "dev-lead.yml" "OUTAGE" "3" > "$f"
-  printf '%s\t%s\t%s\t%s\n' "combsmith/markets" "pr-review.yml" "OK" "0" >> "$f"
+  printf '%s\t%s\t%s\t%s\n' "petry-projects/ContentTwin" "dev-lead.yml" "OUTAGE" "3" > "$f"
+  printf '%s\t%s\t%s\t%s\n' "petry-projects/markets" "pr-review.yml" "OK" "0" >> "$f"
   run render_liveness_table "$f"
   [ "$status" -eq 0 ]
   [[ "$output" == *"ContentTwin"* ]]
@@ -283,7 +283,7 @@ setup() {
   # opening Actions — the table carries the newest run's timestamp per stub.
   f=$(mktemp "$TMP/rows.XXXXXX")
   printf '%s\t%s\t%s\t%s\t%s\n' \
-    "combsmith/ContentTwin" "dev-lead.yml" "STALE" "0" "2026-08-28T18:57:00Z" > "$f"
+    "petry-projects/ContentTwin" "dev-lead.yml" "STALE" "0" "2026-08-28T18:57:00Z" > "$f"
   run render_liveness_table "$f"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Last run"* ]]

@@ -13,7 +13,7 @@ jobs:
     concurrency:
       group: "dev-lead-ingress-pr-${{ github.event.pull_request.number }}"
       cancel-in-progress: false
-    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-test
+    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-test
     with:
       agent_ref: dev-lead/v1-test
     permissions:

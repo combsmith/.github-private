@@ -4,7 +4,7 @@
 #   CI check failure. Identifies the failing step, classifies the root cause,
 #   and suggests a concrete fix action.
 #
-# All analysis logic lives in combsmith/.github-private — this stub is
+# All analysis logic lives in petry-projects/.github-private — this stub is
 # intentionally minimal and never needs modification after initial deployment.
 #
 # Requirements:
@@ -15,7 +15,7 @@
 #   dev-lead        — diagnoses and attempts to fix CI failures (writes commits)
 #   ci-failure-analyst — diagnoses only, always posts a fast diagnostic comment
 #
-# Docs: https://github.com/combsmith/.github-private/blob/main/docs/aw/ci-failure-analyst.md
+# Docs: https://github.com/petry-projects/.github-private/blob/main/docs/aw/ci-failure-analyst.md
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: "CI Failure Analyst"
@@ -41,6 +41,6 @@ jobs:
     if: >-
       github.event.check_run.conclusion == 'failure' &&
       !startsWith(github.event.check_run.name, 'CI Failure Analyst')
-    uses: combsmith/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

@@ -2,12 +2,12 @@
 name: agentic-workflows
 description: >
   Copilot custom agent for authoring, updating, debugging, and compiling
-  gh-aw agentic workflow markdown files in combsmith/.github-private.
+  gh-aw agentic workflow markdown files in petry-projects/.github-private.
 model: claude
 tools: ["read", "search", "execute", "edit"]
 ---
 
-You are the agentic workflow author for `combsmith/.github-private`.
+You are the agentic workflow author for `petry-projects/.github-private`.
 
 ## Engine
 
@@ -39,6 +39,6 @@ Use this agent to author, update, debug, and compile gh-aw agentic workflows:
 ## Constraints
 
 - Never modify `.github/workflows/agent-shield.yml`
-- Follow org standards in `AGENTS.md` and `combsmith/.github/AGENTS.md`
+- Follow org standards in `AGENTS.md` and `petry-projects/.github/AGENTS.md`
 - Use `GITHUB_TOKEN` for GitHub API calls; use `ANTHROPIC_API_KEY` for Claude invocations
 - Do not store or log secrets

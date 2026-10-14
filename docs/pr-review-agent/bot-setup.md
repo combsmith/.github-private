@@ -16,7 +16,7 @@ This guide sets up the bot account that posts PR approvals on behalf of the PR R
 
 ## Step 2: Add Bot to Organization
 
-1. Go to https://github.com/organizations/combsmith/settings/members
+1. Go to https://github.com/organizations/petry-projects/settings/members
 2. Click **Invite member**
 3. Enter `donpetry-bot`
 4. Select Role: **Member**
@@ -63,7 +63,7 @@ This guide sets up the bot account that posts PR approvals on behalf of the PR R
 ## Step 4: Add DON_PETRY_BOT_GH_PAT Secret to Repo
 
 1. Sign back in as **don-petry**
-2. Go to https://github.com/combsmith/.github-private/settings/secrets/actions
+2. Go to https://github.com/petry-projects/.github-private/settings/secrets/actions
 3. Click **New repository secret**
 4. Fill in:
    - **Name:** `DON_PETRY_BOT_GH_PAT`
@@ -76,7 +76,7 @@ This guide sets up the bot account that posts PR approvals on behalf of the PR R
 
 The bot needs to be allowed as an approver in branch protection settings.
 
-1. Go to https://github.com/combsmith/.github-private/settings/branches
+1. Go to https://github.com/petry-projects/.github-private/settings/branches
 2. Click on the `main` branch protection rule (or create one)
 3. In "Require pull request reviews before merging":
    - Make sure the bot is **NOT** in the "Dismiss stale pull request approvals" dismissal restrictions
@@ -84,7 +84,7 @@ The bot needs to be allowed as an approver in branch protection settings.
 4. Save
 
 **Alternative:** If using GitHub Rulesets instead of branch protection:
-1. Go to https://github.com/combsmith/.github-private/rules
+1. Go to https://github.com/petry-projects/.github-private/rules
 2. Edit the main branch ruleset
 3. Under "Require reviews," ensure `donpetry-bot` can post approvals
 4. Save
@@ -92,22 +92,22 @@ The bot needs to be allowed as an approver in branch protection settings.
 ## Step 6: Configure Across Multiple Repos
 
 Repeat **Step 5** for any other repos where the bot should approve PRs:
-- `combsmith/ContentTwin`
-- `combsmith/TalkTerm`
-- `combsmith/markets`
-- Any other repos in the `combsmith` org
+- `petry-projects/ContentTwin`
+- `petry-projects/TalkTerm`
+- `petry-projects/markets`
+- Any other repos in the `petry-projects` org
 
 ## Step 7: Test the Setup
 
 1. Trigger a dry-run of the PR-review workflow to verify authentication:
    ```bash
-   gh workflow run pr-review.yml --repo combsmith/.github-private -f dry_run=true
+   gh workflow run pr-review.yml --repo petry-projects/.github-private -f dry_run=true
    ```
 
 2. Check the workflow logs (substitute the run number from the previous
-   command's output, or list runs with `gh run list --repo combsmith/.github-private -w pr-review.yml -L 1`):
+   command's output, or list runs with `gh run list --repo petry-projects/.github-private -w pr-review.yml -L 1`):
    ```bash
-   gh run view <run-number> --repo combsmith/.github-private --log
+   gh run view <run-number> --repo petry-projects/.github-private --log
    ```
 
 3. The `Install review engine CLIs` step calls `gh auth status` first; it
@@ -119,7 +119,7 @@ Repeat **Step 5** for any other repos where the bot should approve PRs:
 
 4. Once authentication looks correct, flip the org variable to live mode:
    ```bash
-   gh variable set LIVE_MODE --body true --repo combsmith/.github-private
+   gh variable set LIVE_MODE --body true --repo petry-projects/.github-private
    ```
    The next scheduled `:07` cron tick (or a fresh `workflow_dispatch` with
    `dry_run=false`) will post real approvals.
@@ -145,7 +145,7 @@ Repeat **Step 5** for any other repos where the bot should approve PRs:
   GraphQL field requires org-level member read access.
 - Edit the token at **Settings → Developer settings → Tokens (classic) → Edit** and
   check the `read:org` box. No need to regenerate — editing scopes takes effect immediately.
-- Verify by re-running: `gh workflow run pr-review.yml --repo combsmith/.github-private -f pr_url=<pr-url> -f force_review=true`
+- Verify by re-running: `gh workflow run pr-review.yml --repo petry-projects/.github-private -f pr_url=<pr-url> -f force_review=true`
 
 ## Rotating the Token (Annually)
 

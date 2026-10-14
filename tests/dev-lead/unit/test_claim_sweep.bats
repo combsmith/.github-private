@@ -23,7 +23,7 @@ FINDING_AT="2026-10-02T00:00:00Z"
 PASS_AT="2026-10-09T03:00:00Z"
 
 setup() {
-  export BOT_USER="donpetry-bot" PR_NUMBER=54 REPO="combsmith/.github-private"
+  export BOT_USER="donpetry-bot" PR_NUMBER=54 REPO="petry-projects/.github-private"
   export DEV_LEAD_DRY_RUN=false BASE_REF=main PASS_START_ISO="$PASS_AT"
   export GITHUB_STEP_SUMMARY="$BATS_TEST_TMPDIR/summary.md"
   : > "$GITHUB_STEP_SUMMARY"

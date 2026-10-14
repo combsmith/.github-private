@@ -11,7 +11,7 @@ setup() {
   export BOT_USER="donpetry-bot"
   export TRUSTED_BOTS="copilot-pull-request-reviewer[bot],gemini-code-assist[bot],sonarqubecloud[bot],coderabbitai[bot]"
   export TRIGGER_PHRASES="@dev-lead"
-  export GITHUB_REPOSITORY="combsmith/.github-private"
+  export GITHUB_REPOSITORY="petry-projects/.github-private"
   MOCK_BIN="$(mktemp -d)"
   export PATH="$MOCK_BIN:$PATH"
   # Stub gh so dispatch tests don't require an authenticated GitHub CLI.
@@ -223,7 +223,7 @@ EOF
   cat > "$tmp_event" <<'EOF'
 {
   "action": "dev-lead-issue-retry",
-  "client_payload": { "repo": "combsmith/.github-private" }
+  "client_payload": { "repo": "petry-projects/.github-private" }
 }
 EOF
   export GITHUB_EVENT_NAME="repository_dispatch"

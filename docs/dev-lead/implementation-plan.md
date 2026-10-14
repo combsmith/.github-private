@@ -122,7 +122,7 @@ Same stub for `stub-gemini` with appropriate flag parsing.
 case "$*" in
   *dispatches*) export GH_STUB_DISPATCH_CALLED="true"; exit 0 ;;
   *"commits/"*"/pulls"*) echo "[{\"number\":${GH_STUB_PR_NUMBER:-0},\"state\":\"open\"}]" ;;
-  *"pulls/${GH_STUB_PR_NUMBER:-0}"*) echo "{\"head\":{\"repo\":{\"full_name\":\"${GH_STUB_PR_HEAD_REPO:-combsmith/.github-private}\"}}}" ;;
+  *"pulls/${GH_STUB_PR_NUMBER:-0}"*) echo "{\"head\":{\"repo\":{\"full_name\":\"${GH_STUB_PR_HEAD_REPO:-petry-projects/.github-private}\"}}}" ;;
   *"comments"*) echo "[{\"body\":\"${GH_STUB_COMMENT_BODY:-}\"}]" ;;
   *"pr checks"*|*"pr check"*) echo "${GH_STUB_CI_STATUS:-success}"; exit 0 ;;
   *"pr comment"*) exit 0 ;;
@@ -343,7 +343,7 @@ done
 @test "fix-ci prompt: renders with all required variables" {
   export PR_NUMBER="175" PR_URL="https://github.com/..." CHECK_NAME="SonarCloud"
   export APP_SLUG="sonarqubecloud" HEAD_SHA="abc123" DETAILS_URL="https://sonarcloud.io"
-  export FAILURE_LOGS="error: unused variable" ANNOTATIONS="line 42: issue" REPO="combsmith/.github-private"
+  export FAILURE_LOGS="error: unused variable" ANNOTATIONS="line 42: issue" REPO="petry-projects/.github-private"
   run bash -c 'envsubst < prompts/dev-lead/fix-ci.md'
   [ "$status" -eq 0 ]
   [[ "$output" != *'${'* ]]   # no unrendered variables
@@ -351,7 +351,7 @@ done
 }
 
 @test "fix-reviews prompt: renders with all required variables" {
-  export PR_NUMBER="175" PR_URL="https://github.com/..." REPO="combsmith/.github-private"
+  export PR_NUMBER="175" PR_URL="https://github.com/..." REPO="petry-projects/.github-private"
   export OPEN_THREADS_JSON='[]' BASE_REF="main"
   run bash -c 'envsubst < prompts/dev-lead/fix-reviews.md'
   [ "$status" -eq 0 ]
@@ -474,7 +474,7 @@ jobs:
       - name: Checkout dev-lead scripts
         uses: actions/checkout@...
         with:
-          repository: combsmith/.github-private
+          repository: petry-projects/.github-private
           path: .dev-lead
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
           sparse-checkout: |
@@ -525,13 +525,13 @@ jobs:
 
 **Key design point:** Handler scripts use `$DEV_LEAD_PROMPTS` env var to locate prompt templates, so they work identically whether run from `.github-private` (where prompts are at `prompts/dev-lead/`) or from a caller repo (where they're at `.dev-lead/prompts/dev-lead/`).
 
-### 1.5.3 Caller stub standard (`combsmith/.github/standards/workflows/dev-lead.yml`)
+### 1.5.3 Caller stub standard (`petry-projects/.github/standards/workflows/dev-lead.yml`)
 
 ```yaml
 # ─────────────────────────────────────────────────────────────────────────────
 # Dev-Lead Agent — thin caller stub
-# Standard: combsmith/.github/standards/ci-standards.md#5-dev-lead-agent
-# Reusable: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml
+# Standard: petry-projects/.github/standards/ci-standards.md#5-dev-lead-agent
+# Reusable: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml
 #
 # ADOPTING THIS WORKFLOW:
 #   1. Copy this file verbatim to .github/workflows/dev-lead.yml in your repo.
@@ -569,7 +569,7 @@ permissions: {}
 
 jobs:
   dev-lead:
-    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@main
+    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@main
     secrets: inherit
     permissions:
       contents: write
@@ -586,7 +586,7 @@ repository, so any repository can call its reusable workflows and no access sett
 
 The **Settings → Actions → General → Access** setting ("Accessible from repositories in the
 organization") exists only for private and internal repositories. Checked on 2026-10-10: the
-repository's visibility is `public`, and `GET /repos/combsmith/.github-private/actions/permissions/access`
+repository's visibility is `public`, and `GET /repos/petry-projects/.github-private/actions/permissions/access`
 answers `422 Access policy only applies to internal and private repositories`. If the repository is
 ever made private or internal, that setting must be enabled before any caller can use the reusable.
 
@@ -597,7 +597,7 @@ Document this in `standards/ci-standards.md` §5.
 - [ ] `dev-lead-reusable.yml` created in `.github-private`
 - [ ] `standards/workflows/dev-lead.yml` created in `.github` (caller stub)
 - [ ] `ci-standards.md` updated with §5 Dev-Lead Agent
-- [ ] A test repo in `combsmith` adopts the stub and workflow fires correctly
+- [ ] A test repo in `petry-projects` adopts the stub and workflow fires correctly
 - [ ] Script path resolution (`$DEV_LEAD_SCRIPTS`, `$DEV_LEAD_PROMPTS`) works in both `.github-private` and caller repos
 
 ---
@@ -944,7 +944,7 @@ Both `claude.yml` and `dev-lead.yml` run in parallel. Each run is tagged in the 
 - [ ] All intent types covered by `dev-lead.yml` (confirmed via Actions run history)
 - [ ] Delete `.github/workflows/claude.yml` from `.github-private`
 - [ ] Update `AGENTS.md` — replace `claude.yml` exemption with `dev-lead.yml`
-- [ ] Update `combsmith/.github` — mark `claude.yml` as deprecated in `ci-standards.md`
+- [ ] Update `petry-projects/.github` — mark `claude.yml` as deprecated in `ci-standards.md`
 - [ ] Update `standards/workflows/` — `claude.yml` deprecation notice, pointer to `dev-lead.yml`
 - [ ] File issue to notify other repos using `claude.yml` to migrate to `dev-lead.yml`
 
@@ -952,19 +952,19 @@ Both `claude.yml` and `dev-lead.yml` run in parallel. Each run is tagged in the 
 
 ## Phase 8 — Cross-repo Rollout
 
-**Goal:** Propagate the `dev-lead.yml` standard to other `combsmith` repos.
+**Goal:** Propagate the `dev-lead.yml` standard to other `petry-projects` repos.
 
 ### 8.1 Rollout order
 
-1. `combsmith/.github-private` ← already on dev-lead (this repo)
-2. `combsmith/.github` ← adopts caller stub; becomes a user of the standard it defines
+1. `petry-projects/.github-private` ← already on dev-lead (this repo)
+2. `petry-projects/.github` ← adopts caller stub; becomes a user of the standard it defines
 3. High-activity repos (3–5 PRs/week) — validate in real-world conditions
 4. All other repos — batch rollout via an issue labeled `dev-lead` in each repo
 
 ### 8.2 Migration from `claude.yml` to `dev-lead.yml`
 
 For each repo:
-1. Add `dev-lead.yml` (copy standard from `combsmith/.github/standards/workflows/dev-lead.yml`)
+1. Add `dev-lead.yml` (copy standard from `petry-projects/.github/standards/workflows/dev-lead.yml`)
 2. Run both in parallel for 1 week
 3. Delete `claude.yml` when no regressions observed
 

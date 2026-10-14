@@ -24,15 +24,15 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "vci_parse_uses parses a same-repo reusable ref with a channel tag" {
-  run vci_parse_uses "    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next"
+  run vci_parse_uses "    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next"
   [ "$status" -eq 0 ]
-  [ "$output" = "combsmith/.github-private	.github/workflows/dev-lead-reusable.yml	dev-lead/v1-next" ]
+  [ "$output" = "petry-projects/.github-private	.github/workflows/dev-lead-reusable.yml	dev-lead/v1-next" ]
 }
 
 @test "vci_parse_uses parses a cross-repo reusable ref and strips a trailing comment" {
-  run vci_parse_uses "    uses: combsmith/.github/.github/workflows/add-to-project-reusable.yml@add-to-project/v1-stable  # NOSONAR"
+  run vci_parse_uses "    uses: petry-projects/.github/.github/workflows/add-to-project-reusable.yml@add-to-project/v1-stable  # NOSONAR"
   [ "$status" -eq 0 ]
-  [ "$output" = "combsmith/.github	.github/workflows/add-to-project-reusable.yml	add-to-project/v1-stable" ]
+  [ "$output" = "petry-projects/.github	.github/workflows/add-to-project-reusable.yml	add-to-project/v1-stable" ]
 }
 
 @test "vci_parse_uses emits nothing for a regular action uses (not a reusable workflow)" {
@@ -54,7 +54,7 @@ setup() {
 @test "vci_with_keys_for_job collects the direct with: keys" {
   local caller="$FIX/good/.github/workflows/caller.yml"
   local lineno
-  lineno="$(grep -n 'uses: combsmith' "$caller" | head -1 | cut -d: -f1)"
+  lineno="$(grep -n 'uses: petry-projects' "$caller" | head -1 | cut -d: -f1)"
   run vci_with_keys_for_job "$caller" "$lineno"
   [ "$status" -eq 0 ]
   [[ "$output" == *"agent_ref"* ]]
@@ -66,7 +66,7 @@ setup() {
   cat > "$tmp" <<'YML'
 jobs:
   call:
-    uses: combsmith/.github-private/.github/workflows/x.yml@stable
+    uses: petry-projects/.github-private/.github/workflows/x.yml@stable
     secrets: inherit
 YML
   local lineno

@@ -1088,9 +1088,9 @@ EOF
 
 @test "ruleset_required_checks: reads the ruleset API and returns its contexts" {
   _install_gh_ruleset_stub
-  run ruleset_required_checks "combsmith/.github-private" "main"
+  run ruleset_required_checks "petry-projects/.github-private" "main"
   [ "$output" = '["SonarCloud","CodeQL"]' ]
-  grep -q 'api repos/combsmith/.github-private/rules/branches/main' "$GH_CALL_LOG"
+  grep -q 'api repos/petry-projects/.github-private/rules/branches/main' "$GH_CALL_LOG"
 }
 
 @test "ruleset_required_checks: empty repo or branch returns empty (no API call)" {
@@ -1106,7 +1106,7 @@ EOF
 @test "ruleset_required_checks + compute_ci_status: red non-required check does not block" {
   _install_gh_ruleset_stub
   local req r
-  req=$(ruleset_required_checks "combsmith/.github-private" "main")
+  req=$(ruleset_required_checks "petry-projects/.github-private" "main")
   r=$(rollup \
     "$(check_run "SonarCloud" "COMPLETED" "SUCCESS")" \
     "$(check_run "CodeQL" "COMPLETED" "SUCCESS")" \

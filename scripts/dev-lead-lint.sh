@@ -92,7 +92,7 @@ if [[ "${#agent_files[@]}" -gt 0 ]]; then
 fi
 
 # ── 3. CODEOWNERS validation ──────────────────────────────────────────────────
-# Checks that every owner line lists @combsmith/org-leads first.
+# Checks that every owner line lists @petry-projects/org-leads first.
 # Standard: standards/codeowners-standard.md (codeowners-org-leads-not-first check)
 codeowners_file=""
 for candidate in ".github/CODEOWNERS" "CODEOWNERS" "docs/CODEOWNERS"; do

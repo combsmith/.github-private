@@ -17,7 +17,7 @@ other than `.github-private` can serve it by adopting that stub. The
 it checks this repo out and `source`s `scripts/qa-lead-advisory-gate.sh` (a
 script that exists only here), it calls the **local** reusable
 `./.github/workflows/persona-runner-reusable.yml` rather than an org-published
-one, and there is no `standards/workflows/` template in `combsmith/.github`
+one, and there is no `standards/workflows/` template in `petry-projects/.github`
 for the standards sweep to carry. So the surface cannot simply be listed as
 deployable: copying the file into another repo would reference a gate script and
 a reusable that do not exist there.
@@ -32,7 +32,7 @@ path so the event reaches the one shared runtime; or **(c)** keep the surface
 
 The solution-architect advisory on #1869 (2026-09-23) decided **(b)** and
 directed that it be implemented. The router change itself is **cross-repo**
-(it lives in `combsmith/.github`) and is filed separately; this ADR records
+(it lives in `petry-projects/.github`) and is filed separately; this ADR records
 the decision and its consequences for this repo. This ADR does not supersede any
 existing ADR — it applies ADR-0007's governing rule to a concrete surface.
 
@@ -70,7 +70,7 @@ persona runtime or stand up a second agent-ingress path to serve this surface.
 The checkable boundaries:
 
 - **No second ingress path.** The `pull_request` event is absorbed by the
-  already-published router (the cross-repo change in `combsmith/.github`),
+  already-published router (the cross-repo change in `petry-projects/.github`),
   reaching the one shared runtime ADR-0006 records. Option (a)'s separate
   `persona-runner/v1-*` ingress path is rejected on ADR-0007 grounds.
 - **The router change is out of scope for this repo.** It is cross-repo and
@@ -127,7 +127,7 @@ The hard precondition on retirement:
   `qa-lead-pr-advisory.yml` is deleted and the `persona-mention` router serves
   qa-lead's `pull_request` advisory alone, on `[opened, ready_for_review]`.
   Every precondition was met first — the router serves the event
-  (combsmith/.github#1167, live on `persona-mention/v1-next`); this repo's
+  (petry-projects/.github#1167, live on `persona-mention/v1-next`); this repo's
   stub subscribes it (#2188); the runner's pre-gate applies qa-lead's
   suppressors on a router dispatch (#1909); a router run against a real PR
   carrying `needs-human-review` logged `skip stop-marker needs-human-review`
@@ -172,7 +172,7 @@ The hard precondition on retirement:
   reaching `persona-mention/v1-next`.
 - ADR-0001 (thin-caller / reusable two-tier) — why `qa-lead-pr-advisory.yml`,
   being self-contained rather than a thin caller stub, has no deployable form.
-- Issue combsmith/.github-private#1869 and its solution-architect advisory
+- Issue petry-projects/.github-private#1869 and its solution-architect advisory
   (2026-09-23) that decided option (b) — the decision thread.
 - Related history: #1646 (built this surface), #1647 (declared surfaces must
   match served ones), #1745 (stop markers), #1643 (epic).

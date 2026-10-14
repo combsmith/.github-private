@@ -11,7 +11,7 @@ setup() {
   export BOT_USER="donpetry-bot"
   export TRUSTED_BOTS="copilot-pull-request-reviewer[bot],gemini-code-assist[bot],sonarqubecloud[bot],coderabbitai[bot],chatgpt-codex-connector[bot]"
   export TRIGGER_PHRASES="@dev-lead"
-  export GITHUB_REPOSITORY="combsmith/.github-private"
+  export GITHUB_REPOSITORY="petry-projects/.github-private"
 }
 
 teardown() {
@@ -90,9 +90,9 @@ _get_env() {
   "pull_request": {
     "number": 10,
     "author_association": "NONE",
-    "head": { "sha": "abc", "repo": { "full_name": "combsmith/.github-private" } }
+    "head": { "sha": "abc", "repo": { "full_name": "petry-projects/.github-private" } }
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "external-user", "type": "User" }
 }
 EOF
@@ -124,9 +124,9 @@ EOF
     "number": 11,
     "author_association": "OWNER",
     "head": { "sha": "def", "repo": { "full_name": "fork-user/.github-private" } },
-    "base": { "repo": { "full_name": "combsmith/.github-private" } }
+    "base": { "repo": { "full_name": "petry-projects/.github-private" } }
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "copilot-pull-request-reviewer[bot]", "type": "Bot" }
 }
 EOF
@@ -154,9 +154,9 @@ EOF
   "pull_request": {
     "number": 12,
     "author_association": "OWNER",
-    "head": { "sha": "ghi", "repo": { "full_name": "combsmith/.github-private" } }
+    "head": { "sha": "ghi", "repo": { "full_name": "petry-projects/.github-private" } }
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "donpetry-bot", "type": "Bot" }
 }
 EOF
@@ -272,9 +272,9 @@ EOF
   },
   "pull_request": {
     "number": 1421,
-    "head": { "sha": "deadbee", "ref": "dev-lead/issue-1425", "repo": { "full_name": "combsmith/.github-private" } }
+    "head": { "sha": "deadbee", "ref": "dev-lead/issue-1425", "repo": { "full_name": "petry-projects/.github-private" } }
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "graphite-app[bot]", "type": "Bot" }
 }
 EOF

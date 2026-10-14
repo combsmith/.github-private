@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: combsmith/.github/standards/workflows/pr-review-mention.yml
-# Standard:        combsmith/.github/standards/ci-standards.md
-# Reusable:        combsmith/.github/.github/workflows/pr-review-mention-reusable.yml
+# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/pr-review-mention.yml
+# Standard:        petry-projects/.github/standards/ci-standards.md
+# Reusable:        petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All review-dispatch logic lives in the
@@ -20,7 +20,7 @@
 #
 # PR Review Mention — thin caller for the org-level reusable.
 # To adopt: copy this file to .github/workflows/pr-review-mention.yml in your repo.
-# Requires (org secrets, already present in combsmith org):
+# Requires (org secrets, already present in petry-projects org):
 #   GH_PAT_DON_PETRY     canonical PAT for API calls and dispatching the review agent.
 #                        GH_PAT_WORKFLOWS is the deprecated transition alias, kept as the
 #                        `||` fallback until the persona rename lands fleet-wide.
@@ -41,7 +41,7 @@ jobs:
   pr-review-mention:
     permissions:
       pull-requests: write
-    uses: combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-next  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-next  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets:
       GH_PAT_WORKFLOWS: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
       DON_PETRY_BOT_GH_PAT: ${{ secrets.DON_PETRY_BOT_GH_PAT }}

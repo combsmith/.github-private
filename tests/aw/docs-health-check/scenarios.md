@@ -81,4 +81,4 @@ files that have not been updated in 90 or more days.
 - the issue is opened on the `.github-private` repo itself
 
 **Assertions:**
-- At least one entry in the report matches the pattern `combsmith/.github-private/docs/*`
+- At least one entry in the report matches the pattern `petry-projects/.github-private/docs/*`

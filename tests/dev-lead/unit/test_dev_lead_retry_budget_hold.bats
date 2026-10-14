@@ -137,7 +137,7 @@ _downloads() { [ -f "$MOCK_DIR/downloads.log" ] && wc -l < "$MOCK_DIR/downloads.
   grep -qx 'retry-cron: weekly window exhausted, holding retries until 2026-10-12T16:00:00Z (poll 0h 30m old)' "$HOLD_LOG"
 
   _rate_limited_issue
-  run scan_issue_for_retry combsmith/demo 478
+  run scan_issue_for_retry petry-projects/demo 478
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "0" ]
   [[ "$output" == *"[skip] issue #478 rate-limit held by the budget poller until 2026-10-12T16:00:00Z"* ]]
@@ -151,7 +151,7 @@ _downloads() { [ -f "$MOCK_DIR/downloads.log" ] && wc -l < "$MOCK_DIR/downloads.
   grep -qx 'retry-cron: no Claude window exhausted with a future reset (poll 0h 30m old), retrying as usual' "$HOLD_LOG"
 
   _rate_limited_issue
-  run scan_issue_for_retry combsmith/demo 478
+  run scan_issue_for_retry petry-projects/demo 478
   [ "${lines[-1]}" = "1" ]
   [[ "$output" == *"would dispatch dev-lead-issue-retry"* ]]
 }
@@ -163,12 +163,12 @@ _downloads() { [ -f "$MOCK_DIR/downloads.log" ] && wc -l < "$MOCK_DIR/downloads.
   grep -qx 'retry-cron: session window exhausted, holding retries until 2026-10-09T14:00:00Z (poll 0h 10m old)' "$HOLD_LOG"
 
   _rate_limited_issue
-  run scan_issue_for_retry combsmith/demo 478
+  run scan_issue_for_retry petry-projects/demo 478
   [ "${lines[-1]}" = "0" ]
 
   # Past the session reset (the weekly window is not exhausted), it retries.
   NOW_ISO="2026-10-09T14:00:01Z"
-  run scan_issue_for_retry combsmith/demo 478
+  run scan_issue_for_retry petry-projects/demo 478
   [ "${lines[-1]}" = "1" ]
   [[ "$output" == *"would dispatch dev-lead-issue-retry"* ]]
 }
@@ -190,7 +190,7 @@ _downloads() { [ -f "$MOCK_DIR/downloads.log" ] && wc -l < "$MOCK_DIR/downloads.
   [ -z "$BUDGET_HOLD_UNTIL" ]
   grep -q 'retry-cron: no Claude window exhausted with a future reset' "$HOLD_LOG"
   _rate_limited_issue
-  run scan_issue_for_retry combsmith/demo 478
+  run scan_issue_for_retry petry-projects/demo 478
   [ "${lines[-1]}" = "1" ]
 }
 
@@ -215,7 +215,7 @@ _downloads() { [ -f "$MOCK_DIR/downloads.log" ] && wc -l < "$MOCK_DIR/downloads.
   _init
   [ -n "$BUDGET_HOLD_UNTIL" ]
   _rate_limited_issue failed
-  run scan_issue_for_retry combsmith/demo 478
+  run scan_issue_for_retry petry-projects/demo 478
   [ "${lines[-1]}" = "1" ]
   [[ "$output" == *"would dispatch dev-lead-issue-retry"* ]]
 }
@@ -236,7 +236,7 @@ _scan_pr() {
   stale_disposition_needs_dispatch() { return 0; }
   dispatch_reviews_retry() { echo "DISPATCH intent=$4" >&2; }
   dispatch_ci_retry() { echo "DISPATCH ci" >&2; }
-  run scan_pr_for_rate_limits "combsmith/demo" 2000
+  run scan_pr_for_rate_limits "petry-projects/demo" 2000
 }
 
 @test "hold (#2139): a rate-limited fix-reviews PR is held, and so is its #2008 edit re-dispatch" {
@@ -282,7 +282,7 @@ _assert_fail_open() {
   grep -q "^retry-cron: budget hold fail-open (.*$1.*), retrying as usual$" "$HOLD_LOG"
   [ "$(grep -c '^retry-cron:' "$HOLD_LOG")" -eq 1 ]
   _rate_limited_issue
-  run scan_issue_for_retry combsmith/demo 478
+  run scan_issue_for_retry petry-projects/demo 478
   [ "${lines[-1]}" = "1" ]
   [[ "$output" == *"would dispatch dev-lead-issue-retry"* ]]
   [[ "$output" != *"held by the budget poller"* ]]
@@ -399,7 +399,7 @@ _assert_fail_open() {
 
 @test "once (#2139 AC3): main downloads the artifact once however many items are retried" {
   _publish "$(_record $((NOW_EPOCH - 600)) 40 100 "" 2026-10-12T16:00:00Z)"
-  printf '["combsmith/a","combsmith/b","combsmith/c"]' > "$MOCK_DIR/repos.json"
+  printf '["petry-projects/a","petry-projects/b","petry-projects/c"]' > "$MOCK_DIR/repos.json"
   jq -n '[{number: 478, labels: [{name: "dev-lead"}], pull_request: null},
           {number: 479, labels: [{name: "dev-lead"}], pull_request: null}]' > "$MOCK_DIR/issues.json"
   _rate_limited_issue
@@ -414,7 +414,7 @@ _assert_fail_open() {
 }
 
 @test "once (#2139 AC3): with no hold, main still reads once and retries every item as today" {
-  printf '["combsmith/a","combsmith/b"]' > "$MOCK_DIR/repos.json"
+  printf '["petry-projects/a","petry-projects/b"]' > "$MOCK_DIR/repos.json"
   jq -n '[{number: 478, labels: [{name: "dev-lead"}], pull_request: null}]' > "$MOCK_DIR/issues.json"
   _rate_limited_issue
 
@@ -496,7 +496,7 @@ _assert_fail_open() {
   [ "$(_downloads)" -eq 1 ]
 
   _rate_limited_issue
-  run scan_issue_for_retry combsmith/demo 478
+  run scan_issue_for_retry petry-projects/demo 478
   [ "${lines[-1]}" = "0" ]
   [[ "$output" == *"held by the budget poller until 2026-10-12T16:00:00Z"* ]]
 }

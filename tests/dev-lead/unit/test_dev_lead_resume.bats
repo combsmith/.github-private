@@ -48,7 +48,7 @@ esac
 GHEOF
   chmod +x "$MOCK_BIN/gh"
 
-  export REPO="combsmith/demo"
+  export REPO="petry-projects/demo"
   export PR_NUMBER="860"
 
   source "$RESUME_SCRIPT"

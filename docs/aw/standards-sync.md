@@ -9,7 +9,7 @@
 
 ## Purpose
 
-Check all repos in the `combsmith` org against the org standards defined in
+Check all repos in the `petry-projects` org against the org standards defined in
 `AGENTS.md` and `CODEOWNERS`. For any repo that is out of sync, open a PR with the
 required additions. Produce a monthly compliance summary issue in `.github-private`.
 
@@ -57,9 +57,9 @@ schedule (first Monday)
 
 | Variable | Source | Default | Description |
 |----------|--------|---------|-------------|
-| `ORG` | `vars.ORG` | `combsmith` | GitHub org to scan |
+| `ORG` | `vars.ORG` | `petry-projects` | GitHub org to scan |
 | `GH_TOKEN` | `secrets.DON_PETRY_BOT_GH_PAT` | — | PAT with `repo` and `workflow` scopes |
-| `STANDARDS_REPO` | `vars.STANDARDS_REPO` | `combsmith/.github` | Repo containing org standards templates |
+| `STANDARDS_REPO` | `vars.STANDARDS_REPO` | `petry-projects/.github` | Repo containing org standards templates |
 | `SYNC_LABEL` | `vars.STANDARDS_SYNC_LABEL` | `standards-sync` | Label applied to opened PRs and issues |
 | `SKIP_REPOS` | `vars.STANDARDS_SYNC_SKIP_REPOS` | `` | Comma-separated list of repos to skip |
 

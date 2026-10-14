@@ -36,7 +36,7 @@ teardown() { rm -rf "$TMP"; }
 reconcile_dry() {
   DRY_RUN=1 DRY_RUN_LOG="$LOG" RECONCILE=1 \
     DRY_RUN_EXISTING_EPIC="${EPIC:-812}" \
-    REPO="combsmith/.github-private" \
+    REPO="petry-projects/.github-private" \
     DISCUSSION_NUMBER=572 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$1" \
     bash "$APPLY"
 }
@@ -68,7 +68,7 @@ write_one_finding() { # write_one_finding <dest> <title>
 
 @test "reconcile with no existing epic creates nothing and exits 0 (clean no-op)" {
   DRY_RUN=1 DRY_RUN_LOG="$LOG" RECONCILE=1 \
-    REPO="combsmith/.github-private" \
+    REPO="petry-projects/.github-private" \
     DISCUSSION_NUMBER=572 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN_ACCEPTED" \
     run bash "$APPLY"
   [ "$status" -eq 0 ]
@@ -187,7 +187,7 @@ write_one_finding() { # write_one_finding <dest> <title>
 
 @test "RECONCILE and FORCE_REPLAN together is a hard error (mutually exclusive)" {
   DRY_RUN=1 DRY_RUN_LOG="$LOG" RECONCILE=1 FORCE_REPLAN=1 DRY_RUN_EXISTING_EPIC=812 \
-    REPO="combsmith/.github-private" \
+    REPO="petry-projects/.github-private" \
     DISCUSSION_NUMBER=572 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN_ACCEPTED" \
     run bash "$APPLY"
   [ "$status" -ne 0 ]
@@ -226,7 +226,7 @@ EOF
   chmod +x "$MOCK_BIN/gh"
   CTX="$TMP/context.json"
   PATH="$MOCK_BIN:$PATH" GITHUB_ENV="$TMP/gh.env" RECONCILE=1 \
-    REPO="combsmith/.github-private" DISCUSSION_NUMBER=572 \
+    REPO="petry-projects/.github-private" DISCUSSION_NUMBER=572 \
     CONTEXT_PATH="$CTX" GH_TOKEN=x \
     run bash "$PLANNER_DIR/gather-context.sh"
   [ "$status" -eq 0 ]
@@ -250,7 +250,7 @@ EOF
   chmod +x "$MOCK_BIN/gh"
   CTX="$TMP/context.json"
   PATH="$MOCK_BIN:$PATH" GITHUB_ENV="$TMP/gh.env" RECONCILE=1 \
-    REPO="combsmith/.github-private" DISCUSSION_NUMBER=572 \
+    REPO="petry-projects/.github-private" DISCUSSION_NUMBER=572 \
     CONTEXT_PATH="$CTX" GH_TOKEN=x \
     run bash "$PLANNER_DIR/gather-context.sh"
   [ "$status" -eq 0 ]
@@ -294,7 +294,7 @@ EOF
   chmod +x "$MOCK_BIN/gh"
   CTX="$TMP/context.json"
   PATH="$MOCK_BIN:$PATH" GITHUB_ENV="$TMP/gh.env" \
-    REPO="combsmith/.github-private" DISCUSSION_NUMBER=572 \
+    REPO="petry-projects/.github-private" DISCUSSION_NUMBER=572 \
     CONTEXT_PATH="$CTX" GH_TOKEN=x \
     run bash "$PLANNER_DIR/gather-context.sh"
   [ "$status" -eq 0 ]

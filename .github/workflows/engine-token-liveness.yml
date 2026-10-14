@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/engine-token-liveness.yml
+# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/engine-token-liveness.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • Repo-specific monitor for issue #1587; there is no org template — see AGENTS.md.
@@ -53,7 +53,7 @@ jobs:
       - name: Checkout agent repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          repository: combsmith/.github-private
+          repository: petry-projects/.github-private
           ref: main  # Always checkout .github-private@main
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
           persist-credentials: false

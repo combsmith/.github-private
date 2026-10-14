@@ -78,15 +78,15 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "canary_report: OK report names the path, target and epic" {
-  run canary_report "OK" "combsmith/.github-private" "combsmith/fixture" "42" "https://x/run/1" "2026-06-21"
+  run canary_report "OK" "petry-projects/.github-private" "petry-projects/fixture" "42" "https://x/run/1" "2026-06-21"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"combsmith/fixture"* ]]
+  [[ "$output" == *"petry-projects/fixture"* ]]
   [[ "$output" == *"#42"* ]]
   [[ "$output" == *"2026-06-21"* ]]
 }
 
 @test "canary_report: the hollow-green status surfaces the no-READY hint" {
-  run canary_report "HOLLOW_GREEN" "combsmith/.github-private" "combsmith/fixture" "42" "https://x/run/1"
+  run canary_report "HOLLOW_GREEN" "petry-projects/.github-private" "petry-projects/fixture" "42" "https://x/run/1"
   [[ "$output" == *"READY (dry-run, not labeling)"* ]]
   [[ "$output" == *"https://x/run/1"* ]]
 }
@@ -131,8 +131,8 @@ teardown() {
 
 @test "main: dispatches the driver in DRY-RUN against the fixture and exits OK" {
   _install_gh_mock
-  export REPO="combsmith/.github-private"
-  export CANARY_TARGET="combsmith/fixture"
+  export REPO="petry-projects/.github-private"
+  export CANARY_TARGET="petry-projects/fixture"
   export CANARY_EPIC="42"
   export GH_TOKEN="pat"
   export CANARY_POLL_TIMEOUT="5"
@@ -146,7 +146,7 @@ teardown() {
   # The dispatch must be a dry-run targeting the fixture so it creates/labels nothing.
   grep -qF "workflow run initiative-driver.yml" "$GH_LOG"
   grep -qF -- "-f dry_run=true" "$GH_LOG"
-  grep -qF -- "-f target_repo=combsmith/fixture" "$GH_LOG"
+  grep -qF -- "-f target_repo=petry-projects/fixture" "$GH_LOG"
   grep -qF -- "-f epic=42" "$GH_LOG"
 
   # Status surfaced for the workflow alert step.
@@ -176,8 +176,8 @@ esac
 EOF
   chmod +x "$MOCK_BIN/gh"
 
-  export REPO="combsmith/.github-private"
-  export CANARY_TARGET="combsmith/fixture"
+  export REPO="petry-projects/.github-private"
+  export CANARY_TARGET="petry-projects/fixture"
   export CANARY_EPIC="42"
   export GH_TOKEN="pat"
   export CANARY_POLL_TIMEOUT="5"
@@ -213,8 +213,8 @@ esac
 EOF
   chmod +x "$MOCK_BIN/gh"
 
-  export REPO="combsmith/.github-private"
-  export CANARY_TARGET="combsmith/fixture"
+  export REPO="petry-projects/.github-private"
+  export CANARY_TARGET="petry-projects/fixture"
   export CANARY_EPIC="42"
   export GH_TOKEN="pat"
   export CANARY_POLL_TIMEOUT="5"
@@ -232,8 +232,8 @@ EOF
 
 @test "main: a non-numeric CANARY_EPIC is rejected before any dispatch" {
   _install_gh_mock
-  export REPO="combsmith/.github-private"
-  export CANARY_TARGET="combsmith/fixture"
+  export REPO="petry-projects/.github-private"
+  export CANARY_TARGET="petry-projects/fixture"
   export CANARY_EPIC="42; rm -rf /"
   export GH_TOKEN="pat"
 
@@ -244,7 +244,7 @@ EOF
 
 @test "main: a malformed CANARY_TARGET is rejected before any dispatch" {
   _install_gh_mock
-  export REPO="combsmith/.github-private"
+  export REPO="petry-projects/.github-private"
   export CANARY_TARGET="not a repo; rm -rf /"
   export CANARY_EPIC="42"
   export GH_TOKEN="pat"
@@ -256,9 +256,9 @@ EOF
 
 @test "main: INITIATIVE_DRIVER_CANARY_* are used when CANARY_* are unset" {
   _install_gh_mock
-  export REPO="combsmith/.github-private"
+  export REPO="petry-projects/.github-private"
   unset CANARY_TARGET CANARY_EPIC
-  export INITIATIVE_DRIVER_CANARY_TARGET="combsmith/fixture"
+  export INITIATIVE_DRIVER_CANARY_TARGET="petry-projects/fixture"
   export INITIATIVE_DRIVER_CANARY_EPIC="99"
   export GH_TOKEN="pat"
   export CANARY_POLL_TIMEOUT="5"
@@ -268,7 +268,7 @@ EOF
 
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
-  grep -qF -- "-f target_repo=combsmith/fixture" "$GH_LOG"
+  grep -qF -- "-f target_repo=petry-projects/fixture" "$GH_LOG"
   grep -qF -- "-f epic=99" "$GH_LOG"
 
   rm -f "$CANARY_OUT" "$GITHUB_ENV"
@@ -277,7 +277,7 @@ EOF
 
 @test "main: exits with error when the fixture target/epic are unset" {
   _install_gh_mock
-  export REPO="combsmith/.github-private"
+  export REPO="petry-projects/.github-private"
   unset CANARY_TARGET CANARY_EPIC
   unset INITIATIVE_DRIVER_CANARY_TARGET INITIATIVE_DRIVER_CANARY_EPIC
   export GH_TOKEN="pat"

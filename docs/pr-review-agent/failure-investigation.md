@@ -113,7 +113,7 @@ Commit message: _"GitHub App tokens don't have user identity, so @me search does
 
 Instead of using `@me` (which fails with GitHub App tokens), the script now:
 1. Enumerates all repos in `don-petry` account with `gh repo list don-petry`
-2. Enumerates all repos in `combsmith` org with `gh repo list combsmith`
+2. Enumerates all repos in `petry-projects` org with `gh repo list petry-projects`
 3. Searches for open PRs within each repo individually
 
 **Why this approach:**
@@ -159,7 +159,7 @@ Add a verification step to the workflow:
 
 **What was fixed:**
 - Rewrote `scripts/list-prs.sh` to use repo-based enumeration instead of `@me` queries
-- Now searches all repos in don-petry and combsmith accounts
+- Now searches all repos in don-petry and petry-projects accounts
 - Works correctly with GitHub App token authentication
 
 **Verification:**

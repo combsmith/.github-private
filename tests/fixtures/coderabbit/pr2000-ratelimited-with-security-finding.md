@@ -1,7 +1,7 @@
 <!-- This is an auto-generated comment: summarize by coderabbit.ai -->
 <!-- review_stack_entry_start -->
 
-<a href="https://app.coderabbit.ai/change-stack/combsmith/.github-private/pull/2000?cs_source=review_comment"><img src="https://storage.googleapis.com/coderabbit_public_assets/review-stack-in-coderabbit-ui-dark.svg?v=2" alt="Review in Change Stack →" width="220" height="32"></a>
+<a href="https://app.coderabbit.ai/change-stack/petry-projects/.github-private/pull/2000?cs_source=review_comment"><img src="https://storage.googleapis.com/coderabbit_public_assets/review-stack-in-coderabbit-ui-dark.svg?v=2" alt="Review in Change Stack →" width="220" height="32"></a>
 
 Navigate logical layers of code changes, visualize relationships, and explore their blast radius.
 
@@ -266,7 +266,7 @@ Provide reviewable evidence for the excluded registry and bot-path behavior, or 
 
 ---
 
-Thanks for using [CodeRabbit](https://coderabbit.ai?utm_source=oss&utm_medium=github&utm_campaign=combsmith/.github-private&utm_content=2000)! It's free for OSS, and your support helps us grow. If you like it, consider giving us a shout-out.
+Thanks for using [CodeRabbit](https://coderabbit.ai?utm_source=oss&utm_medium=github&utm_campaign=petry-projects/.github-private&utm_content=2000)! It's free for OSS, and your support helps us grow. If you like it, consider giving us a shout-out.
 
 <details>
 <summary>❤️ Share</summary>

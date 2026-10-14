@@ -22,13 +22,13 @@ on:
         default: "false"
         type: string
   repository_dispatch:
-    # Triggered by the combsmith/.github mention-listener (via
+    # Triggered by the petry-projects/.github mention-listener (via
     # pr-review-mention.yml). Payload: { pr_url, force_review }.
     types: [pr-review-mention]
 
 # Granted to the called reusable's job (a reusable can be granted no more than
 # the calling job has). Mirrors pr-review.yml's own permissions block.
-    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-next
+    uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/v1-next
     with:
       # Pin the agent's own script checkout to the same channel (#506).
       agent_ref: pr-review/v1-next
