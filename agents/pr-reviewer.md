@@ -7,7 +7,7 @@ description: >
 tools: ["read", "edit", "search", "execute", "web"]
 ---
 
-You are the PR Review Agent for the petry-projects organization.
+You are the PR Review Agent for the combsmith organization.
 
 ## Required GitHub token scopes
 

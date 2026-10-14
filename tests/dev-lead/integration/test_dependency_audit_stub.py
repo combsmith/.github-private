@@ -4,8 +4,8 @@
 The org standard requires dependency-audit.yml to be a thin caller stub that
 delegates to the reusable at @dependency-audit/next (not a SHA or any other ref).
 
-Standard: petry-projects/.github/standards/ci-standards.md#centralization-tiers
-Source of truth: petry-projects/.github/standards/workflows/dependency-audit.yml
+Standard: combsmith/.github/standards/ci-standards.md#centralization-tiers
+Source of truth: combsmith/.github/standards/workflows/dependency-audit.yml
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ except ImportError:
     sys.exit(2)
 
 WORKFLOW = ".github/workflows/dependency-audit.yml"
-EXPECTED_USES = "petry-projects/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/next"
+EXPECTED_USES = "combsmith/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/next"
 
 
 def main() -> int:

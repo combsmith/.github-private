@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/seed-repo-template.sh — the DRY_RUN-aware generator that
-# seeds petry-projects/repo-template with the org baseline file scaffold:
+# seeds combsmith/repo-template with the org baseline file scaffold:
 # the ~10 thin-caller workflow stubs (fetched byte-identically from the public
 # standards/ and repinned from local ./… dogfood refs to published channel tags)
 # plus the root/baseline files (issue #966, epic #964). Mirrors the cross-repo
@@ -104,19 +104,19 @@ _stub_gh_empty() {
 }
 
 # ── repin: caller stubs → published channel tags (AC #2) ───────────────────────
-@test "repin: public caller ./… dogfood ref → @<name>/stable on petry-projects/.github" {
+@test "repin: public caller ./… dogfood ref → @<name>/stable on combsmith/.github" {
   run bash -c 'printf "%s\n" "    uses: ./.github/workflows/auto-rebase-reusable.yml@auto-rebase/next" | bash "$0" --repin auto-rebase' "$SEED"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/stable"* ]]
   [[ "$output" != *"./.github/workflows/auto-rebase-reusable.yml"* ]]
   [[ "$output" != *"auto-rebase/next"* ]]
 }
 
 @test "repin: private dev-lead → @dev-lead/stable on .github-private and agent_ref repinned" {
-  src=$'    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/next\n    with:\n      agent_ref: dev-lead/next'
+  src=$'    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/next\n    with:\n      agent_ref: dev-lead/next'
   run bash -c 'printf "%s\n" "$1" | bash "$0" --repin dev-lead' "$SEED" "$src"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable"* ]]
   [[ "$output" == *"agent_ref: dev-lead/stable"* ]]
   [[ "$output" != *"dev-lead/next"* ]]
 }
@@ -149,7 +149,7 @@ _stub_gh_empty() {
     | _fixture_workflow dependency-audit.yml
   run bash "$SEED" --emit-workflow dependency-audit.yml
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/stable"* ]]
   [[ "$output" != *"./.github/workflows/dependency-audit-reusable.yml"* ]]
 }
 
@@ -196,13 +196,13 @@ EOF
 @test "baseline: CODEOWNERS is the org default rule" {
   run bash "$SEED" --emit-baseline .github/CODEOWNERS
   [ "$status" -eq 0 ]
-  [[ "$output" == *"* @petry-projects/org-leads"* ]]
+  [[ "$output" == *"* @combsmith/org-leads"* ]]
 }
 
 @test "baseline: AGENTS.md is a consumer pointer to the org AGENTS.md" {
   run bash "$SEED" --emit-baseline AGENTS.md
   [ "$status" -eq 0 ]
-  [[ "$output" == *"petry-projects/.github"* ]]
+  [[ "$output" == *"combsmith/.github"* ]]
   [[ "$output" == *"AGENTS.md"* ]]
 }
 
@@ -299,9 +299,9 @@ EOF
   printf 'name: CI\n' | _fixture_workflow ci.yml
   printf 'name: Auto\n  uses: ./.github/workflows/auto-rebase-reusable.yml@auto-rebase/next\n' \
     | _fixture_workflow auto-rebase.yml
-  run env DRY_RUN=true bash "$SEED" --repo petry-projects/repo-template
+  run env DRY_RUN=true bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
-  [[ "$output" == *"petry-projects/repo-template"* ]]
+  [[ "$output" == *"combsmith/repo-template"* ]]
   [ ! -f "$CALLS" ]
 }
 
@@ -317,7 +317,7 @@ EOF
   done
   printf 'version: 2\n' > "$STANDARDS_DIR/standards/dependabot/frontend.yml"
   printf 'title = "gitleaks config"\n' > "$STANDARDS_DIR/standards/gitleaks.toml"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [ -f "$CALLS" ]
   grep -q "contents/.github/workflows/auto-rebase.yml" "$CALLS"
@@ -347,7 +347,7 @@ EOF
   done
   printf 'version: 2\n' > "$STANDARDS_DIR/standards/dependabot/frontend.yml"
   printf 'title = "gitleaks config"\n' > "$STANDARDS_DIR/standards/gitleaks.toml"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"PR #42 already open"* ]]
   [ ! -f "$CALLS" ] || ! grep -q "pr create" "$CALLS"

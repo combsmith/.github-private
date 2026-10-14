@@ -22,7 +22,7 @@ The workflow uses the **reusable workflow** (`workflow_call`) pattern — the sa
 ```
 repo-x (check_run: failure)
   └─ .github/workflows/ci-failure-analyst.yml   ← ~20-line stub (no logic)
-      └─ uses: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@0ef7b6150516c4fa447700b4902e8ed406bcfb99 # main
+      └─ uses: combsmith/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@0ef7b6150516c4fa447700b4902e8ed406bcfb99 # main
           ├─ resolves PR (non-fork only)
           ├─ idempotency check (<!-- ci-analyst sha=... -->)
           ├─ installs Claude Code

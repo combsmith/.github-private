@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for the PR-limit admission gate wired into dev-lead-fix-issue.sh.
-# Epic petry-projects/.github#505 Phase 3. Mirrors the stub pattern in
+# Epic combsmith/.github#505 Phase 3. Mirrors the stub pattern in
 # test_fix_issue.bats: engine stubs on PATH, a gh stub, a git stub for the
 # non-dry-run commit/push path, and a per-test PLG_STANDARDS_DIR fixture holding
 # a FAKE guard + minimal limits config so allow/defer is driven by FAKE_GATE
@@ -133,9 +133,9 @@ GUARDEOF
 CFGEOF
 
   export ISSUE_NUMBER="100"
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export REVIEW_ENGINE="claude"
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
   export LINT_SCRIPT="$STUB_BIN_DIR/dev-lead-lint.sh"
 
   cd "$SCRIPT_DIR"

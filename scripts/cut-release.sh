@@ -10,7 +10,7 @@
 #                                    [--push] [--dry-run]
 #
 #   <agent>      this repo: pr-review | dev-lead
-#                cross-repo (reusable in petry-projects/.github): feature-ideation |
+#                cross-repo (reusable in combsmith/.github): feature-ideation |
 #                  agent-shield | auto-rebase | dependency-audit |
 #                  dependabot-automerge | dependabot-rebase | pr-review-mention
 #   <version>    semantic version without the leading v, e.g. 1.2.0
@@ -38,7 +38,7 @@
 # GH013s ("Cannot update this protected ref") when moving a protected channel tag
 # such as `dev-lead/next`; the API path, authenticated with the same App token,
 # IS honored as a bypass actor. Requires GH_TOKEN with contents:write on the host
-# repo. The host is petry-projects/.github for cross-repo agents (#872) and the
+# repo. The host is combsmith/.github for cross-repo agents (#872) and the
 # current repo (GITHUB_REPOSITORY / origin) otherwise. See
 # docs/release/versioning.md "Cross-repo reusables".
 #
@@ -50,13 +50,13 @@
 set -euo pipefail
 
 # The repo whose git refs hold cross-repo agents' release/channel tags.
-CROSS_REPO_TARGET="petry-projects/.github"
+CROSS_REPO_TARGET="combsmith/.github"
 
 # ── pure helpers (sourced by tests; no side effects) ─────────────────────────
 
 # valid_agent <agent> — return 0 iff agent is a known agent name. Covers the
 # agents hosted in this repo (pr-review, dev-lead, ci-failure-analyst) plus the
-# cross-repo reusables hosted in petry-projects/.github (feature-ideation and the
+# cross-repo reusables hosted in combsmith/.github (feature-ideation and the
 # six #482 reusables brought under the ring model in #870).
 valid_agent() {
   case "$1" in
@@ -66,7 +66,7 @@ valid_agent() {
 }
 
 # cross_repo_agent <agent> — return 0 iff the agent's reusable workflow lives in
-# petry-projects/.github (this repo holds only the thin caller stub). For these,
+# combsmith/.github (this repo holds only the thin caller stub). For these,
 # a "release" is a commit on that public repo, so its release/channel tags are
 # resolved and cut against THAT repo (CROSS_REPO_TARGET). See
 # docs/release/versioning.md "Cross-repo reusables".
@@ -96,7 +96,7 @@ this_repo() {
 }
 
 # agent_host_repo <agent> — echo the owner/repo whose refs hold this agent's tags:
-# petry-projects/.github for cross-repo agents (#872), else the current repo.
+# combsmith/.github for cross-repo agents (#872), else the current repo.
 agent_host_repo() {
   if cross_repo_agent "$1"; then printf '%s\n' "$CROSS_REPO_TARGET"; else this_repo; fi
 }

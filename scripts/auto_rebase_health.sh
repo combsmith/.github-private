@@ -29,14 +29,14 @@
 # Env vars consumed:
 #   GH_TOKEN        — primary token (needs actions:read + repo read on this repo)
 #   GH_PAT_FALLBACK — optional fallback PAT if GH_TOKEN lacks run-telemetry access
-#   AGENT_REPO      — repo to scan (default: petry-projects/.github-private)
+#   AGENT_REPO      — repo to scan (default: combsmith/.github-private)
 #   LOOKBACK_DAYS   — days of history to consider (default: 7)
 #   AUTO_REBASE_HEALTH_OUT — optional path; report is written there in addition to stdout
 #   GITHUB_STEP_SUMMARY — written by the Actions runner when present
 
 set -euo pipefail
 
-WORKFLOW_REPO="${AGENT_REPO:-petry-projects/.github-private}"
+WORKFLOW_REPO="${AGENT_REPO:-combsmith/.github-private}"
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-7}"
 AUTO_REBASE_WORKFLOW="auto-rebase.yml"
 

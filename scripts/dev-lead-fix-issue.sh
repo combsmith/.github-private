@@ -23,11 +23,11 @@ MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 # skips issues carrying it.
 NEEDS_HUMAN_LABEL="${NEEDS_HUMAN_LABEL:-dev-lead:needs-human}"
 
-# PR-limit admission gate (epic petry-projects/.github#505 Phase 3) config.
+# PR-limit admission gate (epic combsmith/.github#505 Phase 3) config.
 # The shared guard + limits config live in the PUBLIC standards repo so every
 # automation caller enforces the same org-wide cap. PLG_STANDARDS_DIR lets tests
 # and offline runs source a local checkout instead of hitting the API.
-PLG_SOURCE_REPO="${PLG_SOURCE_REPO:-petry-projects/.github}"
+PLG_SOURCE_REPO="${PLG_SOURCE_REPO:-combsmith/.github}"
 PLG_SOURCE_REF="${PLG_SOURCE_REF:-main}"
 PLG_DEFER_MARKER="<!-- dev-lead-issue-deferred -->"
 
@@ -379,9 +379,9 @@ main() {
     exit 0
   fi
 
-  # PR-limit admission gate — epic petry-projects/.github#505 Phase 3.
+  # PR-limit admission gate — epic combsmith/.github#505 Phase 3.
   # Before opening a new automation PR, defer if the org-wide open-automation-PR
-  # queue is at the signed-off cap (standards/pr-limits.json in petry-projects/.github).
+  # queue is at the signed-off cap (standards/pr-limits.json in combsmith/.github).
   # Placed AFTER the dry-run early-exit so a dry-run never defers; FAIL-OPEN so a
   # guard problem never blocks PR creation.
   if ! admission_gate_allows; then

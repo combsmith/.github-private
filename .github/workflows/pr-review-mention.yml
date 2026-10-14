@@ -1,13 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/pr-review-mention.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md
-# Reusable:        petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/pr-review-mention.yml
+# Standard:        combsmith/.github/standards/ci-standards.md
+# Reusable:        combsmith/.github/.github/workflows/pr-review-mention-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All review-dispatch logic lives in the
 #     reusable workflow above.
 #   • You MAY change: the tag in the `uses:` line when upgrading the reusable
-#     workflow version (e.g. bump `@v1` → `@v2` when petry-projects/.github cuts a new release).
+#     workflow version (e.g. bump `@v1` → `@v2` when combsmith/.github cuts a new release).
 #   • You MUST NOT change: trigger events or the job-level `permissions:` block —
 #     reusable workflows can be granted no more permissions than the calling job,
 #     so removing the stanza breaks the reusable's gh API calls.
@@ -37,7 +37,7 @@ jobs:
   pr-review-mention:
     permissions:
       pull-requests: write
-    uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/next
+    uses: combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/next
     secrets:
       GH_PAT_WORKFLOWS: ${{ secrets.GH_PAT_WORKFLOWS }}
       DON_PETRY_BOT_GH_PAT: ${{ secrets.DON_PETRY_BOT_GH_PAT }}

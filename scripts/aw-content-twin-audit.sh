@@ -6,7 +6,7 @@
 # Env vars consumed:
 #   GH_TOKEN                  — PAT with repo + actions:read on ContentTwin
 #   CLAUDE_CODE_OAUTH_TOKEN   — Claude auth token
-#   CONTENT_TWIN_REPO         — target repo (default: petry-projects/ContentTwin)
+#   CONTENT_TWIN_REPO         — target repo (default: combsmith/ContentTwin)
 #   STALE_DAYS                — days without commit threshold (default: 7)
 #   PUBLISH_WORKFLOW          — workflow file to check for failures (default: publish.yml)
 #   REPORT_FILE               — output markdown file (default: content_twin_audit_report.md)
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-CONTENT_TWIN_REPO="${CONTENT_TWIN_REPO:-petry-projects/ContentTwin}"
+CONTENT_TWIN_REPO="${CONTENT_TWIN_REPO:-combsmith/ContentTwin}"
 STALE_DAYS="${STALE_DAYS:-7}"
 PUBLISH_WORKFLOW="${PUBLISH_WORKFLOW:-publish.yml}"
 REPORT_FILE="${REPORT_FILE:-content_twin_audit_report.md}"

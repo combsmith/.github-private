@@ -12,7 +12,7 @@
 #                     intentionally a PAT (not GITHUB_TOKEN) because the default
 #                     Actions token lacks cross-org actions:read
 #   GH_PAT_FALLBACK — optional secondary token if primary lacks org-level access
-#   ORG             — GitHub org to scan (default: petry-projects)
+#   ORG             — GitHub org to scan (default: combsmith)
 #   LOOKBACK_DAYS   — days of history to consider (default: 1)
 #   GITHUB_ENV      — written by Actions runner
 #   GITHUB_STEP_SUMMARY — written by Actions runner (1 MB hard limit per job)
@@ -25,7 +25,7 @@ source "${SCRIPT_DIR}/fleet_report.sh"
 # shellcheck source=scripts/fleet_stub_drift.sh
 source "${SCRIPT_DIR}/fleet_stub_drift.sh"
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-1}"
 REPORT_FILE="fleet_monitor_report.md"
 TODAY=$(date -u +%Y-%m-%d)
@@ -39,7 +39,7 @@ TODAY=$(date -u +%Y-%m-%d)
 #     label           — section heading / alert grouping ("Initiative-planner")
 #     stub_path       — per-repo thin-caller path under each enrolled repo
 #     canonical_path  — org-template path under $CANONICAL_STUB_REPO
-CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-petry-projects/.github}"
+CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-combsmith/.github}"
 STUB_REGISTRY=(
   $'initiative-planner\tInitiative-planner\t.github/workflows/initiative-planner.yml\tstandards/workflows/initiative-planner.yml'
   $'initiative-driver\tInitiative-driver\t.github/workflows/initiative-driver.yml\tstandards/workflows/initiative-driver.yml'
