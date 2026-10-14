@@ -789,6 +789,7 @@ jobs:
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
 
       - name: Validate dev-lead scripts ref
+        id: agent_ref
         env:
           INPUT_AGENT_REF: ${{ inputs.agent_ref }}
         run: |
@@ -801,13 +802,13 @@ jobs:
             echo "::error::inputs.agent_ref must be a full 40-character commit SHA; branch and tag refs are not allowed."
             exit 1
           fi
-          echo "SAFE_AGENT_REF=$ref" >> "$GITHUB_ENV"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: combsmith/.github-private
-          ref: ${{ env.SAFE_AGENT_REF }}
+          ref: ${{ steps.agent_ref.outputs.ref }}
           path: .dev-lead
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
           sparse-checkout: |
