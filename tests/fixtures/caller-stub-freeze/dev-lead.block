@@ -15,7 +15,7 @@ on:
   repository_dispatch:
     types: [dev-lead-ci-failure, dev-lead-reviews-retry, dev-lead-issue-retry]
 
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     with:
       agent_ref: dev-lead/v139-stable
     permissions:

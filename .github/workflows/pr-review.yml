@@ -10,7 +10,7 @@ on:
         # pinned version, not the caller's branch — closing the reusable
         # self-ref gap (#506). Empty (the default) preserves the historical
         # behaviour exactly: actions/checkout treats an empty ref as "default".
-        description: "Ref of petry-projects/.github-private to check out for agent scripts"
+        description: "Ref of combsmith/.github-private to check out for agent scripts"
         type: string
         required: false
         default: ""
@@ -179,7 +179,7 @@ jobs:
       # candidate queue (it can't approve its own PRs). Human reviewers are
       # routed via CODEOWNERS at escalation time, not pinned via env.
       BOT_USER: ${{ vars.BOT_USER || 'donpetry-bot' }}
-      TARGET_ORG: ${{ vars.TARGET_ORG || 'petry-projects' }}
+      TARGET_ORG: ${{ vars.TARGET_ORG || 'combsmith' }}
       AGENT_REPO: ${{ github.repository }}
       # Review engine: "claude" or "copilot". Controls which CLI and models are used.
       REVIEW_ENGINE: ${{ vars.REVIEW_ENGINE || 'claude' }}
@@ -299,7 +299,7 @@ jobs:
           # has no such ref → failure. .github-private is public, so the default
           # token can read it. `agent_ref` (e.g. pr-review/stable) pins the
           # scripts to the known-good channel; empty defaults to main (#506/#536).
-          repository: petry-projects/.github-private
+          repository: combsmith/.github-private
           ref: ${{ inputs.agent_ref || 'main' }}
 
       - name: Resolve persona identity

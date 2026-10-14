@@ -39,10 +39,10 @@ GHEOF
 
   # Default env
   export ISSUE_NUMBER="100"
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export REVIEW_ENGINE="claude"
   export DEV_LEAD_DRY_RUN="true"
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
 
   cd "$SCRIPT_DIR"
 }
@@ -767,7 +767,7 @@ GITEOF
 #!/usr/bin/env bash
 cmd="\$1"; shift || true
 case "\$cmd" in
-  pr) case "\$*" in create*) echo "https://github.com/petry-projects/.github-private/pull/42" ;; *) exit 0 ;; esac ;;
+  pr) case "\$*" in create*) echo "https://github.com/combsmith/.github-private/pull/42" ;; *) exit 0 ;; esac ;;
   label) exit 0 ;;
   api)
     case "\$*" in
@@ -969,7 +969,7 @@ cmd="\$1"; shift || true
 case "\$cmd" in
   pr)
     case "\$*" in
-      create*) echo "https://github.com/petry-projects/.github-private/pull/42" ;;
+      create*) echo "https://github.com/combsmith/.github-private/pull/42" ;;
       *)       exit 0 ;;
     esac ;;
   label) exit 0 ;;
@@ -1172,7 +1172,7 @@ GITEOF
 #!/usr/bin/env bash
 cmd="$1"; shift || true
 case "$cmd" in
-  pr) case "$*" in create*) echo "https://github.com/petry-projects/.github-private/pull/42" ;; *) exit 0 ;; esac ;;
+  pr) case "$*" in create*) echo "https://github.com/combsmith/.github-private/pull/42" ;; *) exit 0 ;; esac ;;
   label) exit 0 ;;
   api)
     case "$*" in
@@ -1231,7 +1231,7 @@ GITEOF
   cat > "$STUB_BIN_DIR/gh" <<GHEOF
 #!/usr/bin/env bash
 case "\$*" in
-  *"pr create"*)       echo "https://github.com/petry-projects/repo/pull/42" ;;
+  *"pr create"*)       echo "https://github.com/combsmith/repo/pull/42" ;;
   *"pr edit"*)         echo "\$*" >> "$LABEL_RECORD"; exit 0 ;;
   *"label create"*)    exit 0 ;;
   *"pulls?state=open"*) echo "0" ;;
@@ -1313,7 +1313,7 @@ cmd="\$1"; shift || true
 case "\$cmd" in
   pr)
     case "\$*" in
-      create*) echo "\$*" >> "${NDG_PR_CREATE_FILE}"; echo "https://github.com/petry-projects/.github-private/pull/77" ;;
+      create*) echo "\$*" >> "${NDG_PR_CREATE_FILE}"; echo "https://github.com/combsmith/.github-private/pull/77" ;;
       *) exit 0 ;;
     esac ;;
   label) exit 0 ;;
@@ -1357,7 +1357,7 @@ GHEOF
 
   cd "$NDG_REPO"
   run bash -c "
-    export ISSUE_NUMBER=100 REPO='petry-projects/.github-private' GITHUB_REPOSITORY='petry-projects/.github-private'
+    export ISSUE_NUMBER=100 REPO='combsmith/.github-private' GITHUB_REPOSITORY='combsmith/.github-private'
     export REVIEW_ENGINE=claude DEV_LEAD_DRY_RUN=false
     export PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export LINT_SCRIPT='$STUB_BIN_DIR/dev-lead-lint.sh'
@@ -1386,7 +1386,7 @@ GHEOF
 
   cd "$NDG_REPO"
   run bash -c "
-    export ISSUE_NUMBER=100 REPO='petry-projects/.github-private' GITHUB_REPOSITORY='petry-projects/.github-private'
+    export ISSUE_NUMBER=100 REPO='combsmith/.github-private' GITHUB_REPOSITORY='combsmith/.github-private'
     export REVIEW_ENGINE=claude DEV_LEAD_DRY_RUN=false GITHUB_RUN_ID=99
     export PROMPTS_DIR='$SCRIPT_DIR/prompts/dev-lead'
     export LINT_SCRIPT='$STUB_BIN_DIR/dev-lead-lint.sh'

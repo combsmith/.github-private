@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/seed-repo-template.sh — the DRY_RUN-aware generator that
-# seeds petry-projects/repo-template with the org baseline file scaffold:
+# seeds combsmith/repo-template with the org baseline file scaffold:
 # the ~10 thin-caller workflow stubs (fetched byte-identically from the public
 # standards/ and repinned from local ./… dogfood refs to published channel tags)
 # plus the root/baseline files (issue #966, epic #964). Mirrors the cross-repo
@@ -85,7 +85,7 @@ echo "\$*" >> "$CALLS"
 case "\$*" in
   *"/commits/${exists}"*) echo "cafef00d00000000000000000000000000000000" ;;
   *"/commits/"*) exit 0 ;;
-  *"/contents/"*) printf '%s' "\$(printf '    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64 -w0 2>/dev/null || printf '    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64)" ;;
+  *"/contents/"*) printf '%s' "\$(printf '    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64 -w0 2>/dev/null || printf '    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64)" ;;
   *) echo '' ;;
 esac
 EOF
@@ -230,10 +230,10 @@ EOF
 }
 
 # ── repin: caller stubs → published major-scoped channel tags (AC #1, #2) ──────
-@test "repin: public caller dogfood ref → major-scoped @<name>/v<MAJOR>-stable on petry-projects/.github" {
+@test "repin: public caller dogfood ref → major-scoped @<name>/v<MAJOR>-stable on combsmith/.github" {
   run bash -c 'printf "%s\n" "    uses: ./.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-next" | bash "$0" --repin auto-rebase' "$SEED"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-stable"* ]]
   [[ "$output" != *"./.github/workflows/auto-rebase-reusable.yml"* ]]
   [[ "$output" != *"auto-rebase/v2-next"* ]]
   # AC #1: never the pre-#1184 legacy non-major-scoped channel.
@@ -241,10 +241,10 @@ EOF
 }
 
 @test "repin: private dev-lead → @dev-lead/v<MAJOR>-stable on .github-private and agent_ref repinned" {
-  src=$'    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n    with:\n      agent_ref: dev-lead/v1-next'
+  src=$'    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n    with:\n      agent_ref: dev-lead/v1-next'
   run bash -c 'printf "%s\n" "$1" | bash "$0" --repin dev-lead' "$SEED" "$src"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"* ]]
   [[ "$output" == *"agent_ref: dev-lead/v1-stable"* ]]
   [[ "$output" != *"dev-lead/v1-next"* ]]
   [[ "$output" != *"@dev-lead/stable"* ]]
@@ -290,8 +290,8 @@ EOF
 @test "repin round-trip: a canonical @<name>/v<MAJOR>-stable stub is unchanged (#1493 AC 13)" {
   for name in "${CALLER_STUBS[@]}"; do
     # Multi-line stub so the round-trip covers surrounding context, not just the uses: line.
-    host="petry-projects/.github"
-    [ "$name" = "dev-lead" ] && host="petry-projects/.github-private"
+    host="combsmith/.github"
+    [ "$name" = "dev-lead" ] && host="combsmith/.github-private"
     src=$'jobs:\n  call:\n    uses: '"${host}/.github/workflows/${name}-reusable.yml@${name}/v1-stable"$'\n    with:\n      agent_ref: '"${name}/v1-stable"
     run bash -c 'printf "%s" "$1" | bash "$0" --repin "$2"' "$SEED" "$src" "$name"
     [ "$status" -eq 0 ]
@@ -326,7 +326,7 @@ EOF
     | _fixture_workflow dependency-audit.yml
   run bash "$SEED" --emit-workflow dependency-audit.yml
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/v2-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/v2-stable"* ]]
   [[ "$output" != *"./.github/workflows/dependency-audit-reusable.yml"* ]]
   [[ "$output" != *"@dependency-audit/stable"* ]]
 }
@@ -337,7 +337,7 @@ EOF
   # baseline contradicted standards/ and reported the correct template as DRIFTED.
   # The repin must reproduce the canonical major-scoped stable pin byte-for-byte.
   printf '%s\n' 'jobs:' '  run:' \
-    '    uses: petry-projects/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable' \
+    '    uses: combsmith/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable' \
     | _fixture_workflow agent-shield.yml
   run bash "$SEED" --emit-workflow agent-shield.yml
   [ "$status" -eq 0 ]
@@ -410,13 +410,13 @@ GHEOF
 @test "baseline: CODEOWNERS is the org default rule" {
   run bash "$SEED" --emit-baseline .github/CODEOWNERS
   [ "$status" -eq 0 ]
-  [[ "$output" == *"* @petry-projects/org-leads"* ]]
+  [[ "$output" == *"* @combsmith/org-leads"* ]]
 }
 
 @test "baseline: AGENTS.md is a consumer pointer to the org AGENTS.md" {
   run bash "$SEED" --emit-baseline AGENTS.md
   [ "$status" -eq 0 ]
-  [[ "$output" == *"petry-projects/.github"* ]]
+  [[ "$output" == *"combsmith/.github"* ]]
   [[ "$output" == *"AGENTS.md"* ]]
 }
 
@@ -693,9 +693,9 @@ EOF
   # the same standards fixtures the live seed does — but still makes zero writes.
   _stub_gh
   _drop_all_standards_fixtures
-  run env DEPENDABOT_STACK=frontend DRY_RUN=true bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend DRY_RUN=true bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
-  [[ "$output" == *"petry-projects/repo-template"* ]]
+  [[ "$output" == *"combsmith/repo-template"* ]]
   [ ! -f "$CALLS" ]
 }
 
@@ -711,7 +711,7 @@ EOF
   done
   printf 'version: 2\n' > "$STANDARDS_DIR/standards/dependabot/frontend.yml"
   printf 'title = "gitleaks config"\n' > "$STANDARDS_DIR/standards/gitleaks.toml"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [ -f "$CALLS" ]
   grep -q "contents/.github/workflows/auto-rebase.yml" "$CALLS"
@@ -741,7 +741,7 @@ EOF
   done
   printf 'version: 2\n' > "$STANDARDS_DIR/standards/dependabot/frontend.yml"
   printf 'title = "gitleaks config"\n' > "$STANDARDS_DIR/standards/gitleaks.toml"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"PR #42 already open"* ]]
   [ ! -f "$CALLS" ] || ! grep -q "pr create" "$CALLS"
@@ -754,12 +754,12 @@ EOF
 _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   local f="$BATS_TEST_TMPDIR/existing_gitignore"
   {
-    echo '# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>'
+    echo '# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>'
     echo '# First layer of defense in the Push Protection Standard.'
     echo '.env'
     echo '*.pem'
     echo 'id_rsa'
-    echo '# <<< END petry-projects secrets baseline <<<'
+    echo '# <<< END combsmith secrets baseline <<<'
   } > "$f"
   printf '%s' "$f"
 }
@@ -769,7 +769,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   _drop_all_standards_fixtures
   local gi; gi="$(_managed_gitignore_fixture)"
   _stub_gh_existing ".gitignore" "$gi"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   # The preservation is reported by name + reason (check $output before `run grep`).
   [[ "$output" == *".gitignore"* ]]
@@ -788,7 +788,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   local ci="$BATS_TEST_TMPDIR/existing_ci"
   printf 'name: CI\n# customized per stack by the consumer\njobs:\n  build:\n    runs-on: ubuntu-latest\n' > "$ci"
   _stub_gh_existing ".github/workflows/ci.yml" "$ci"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"ci.yml"* ]]
   [ -f "$CALLS" ]
@@ -817,7 +817,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   # Ownership-awareness must not degrade to deletion — a brand-new repo needs both.
   _drop_all_standards_fixtures
   _stub_gh   # every contents read returns {} → absent → create
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [ -f "$CALLS" ]
   grep -qF "contents/.gitignore" "$CALLS"
@@ -830,7 +830,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   local out="$BATS_TEST_TMPDIR/existing"; printf 'same-bytes\n' > "$out"
   _stub_gh_existing "docs/x.txt" "$out"
   # Unchanged: existing == new content → no write, reported as unchanged.
-  run _seed_file petry-projects/repo-template "docs/x.txt" "$(printf 'same-bytes\n')" seed-branch main
+  run _seed_file combsmith/repo-template "docs/x.txt" "$(printf 'same-bytes\n')" seed-branch main
   [ "$status" -eq 0 ]
   [[ "$output" == *"unchanged"* || "$output" == *"preserv"* ]]
   if [ -f "$CALLS" ]; then
@@ -838,7 +838,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
     [ "$status" -eq 1 ]
   fi
   # Differing: existing != new content → a write happens.
-  run _seed_file petry-projects/repo-template "docs/x.txt" "$(printf 'new-bytes\n')" seed-branch main
+  run _seed_file combsmith/repo-template "docs/x.txt" "$(printf 'new-bytes\n')" seed-branch main
   [ "$status" -eq 0 ]
   grep -qF "contents/docs/x.txt" "$CALLS"
 }
@@ -848,7 +848,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   _drop_all_standards_fixtures
   local gi; gi="$(_managed_gitignore_fixture)"
   _stub_gh_existing ".gitignore" "$gi"
-  run env DRY_RUN=true DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DRY_RUN=true DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   # The destructive-avoidance is visible: named, with the managed reason.
   [[ "$output" == *".gitignore"* ]]
@@ -875,11 +875,11 @@ case "$args" in
 esac
 GHEOF
   chmod +x "$STUB_BIN/gh"
-  run _existing_file_content petry-projects/repo-template docs/x.txt main
+  run _existing_file_content combsmith/repo-template docs/x.txt main
   [ "$status" -ne 0 ]
   [[ "$output" == *"gh api failed"* ]]
   # _seed_file propagates the failure — no CREATE PUT for the unreadable file.
-  run _seed_file petry-projects/repo-template docs/x.txt "$(printf 'new\n')" seed-branch main
+  run _seed_file combsmith/repo-template docs/x.txt "$(printf 'new\n')" seed-branch main
   [ "$status" -ne 0 ]
   if [ -f "$CALLS" ]; then
     run grep -qF "contents/docs/x.txt" "$CALLS"
@@ -898,7 +898,7 @@ printf '{"message":"Not Found","documentation_url":"https://docs.github.com/rest
 exit 1
 GHEOF
   chmod +x "$STUB_BIN/gh"
-  run _existing_file_content petry-projects/repo-template docs/x.txt main
+  run _existing_file_content combsmith/repo-template docs/x.txt main
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }

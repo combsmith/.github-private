@@ -2,7 +2,7 @@
 
 **Status:** Draft  
 **Version:** 0.1.0  
-**Repo:** `petry-projects/.github-private`  
+**Repo:** `combsmith/.github-private`  
 **Primary workflow:** `.github/workflows/dev-lead.yml` _(planned)_  
 **Related:** [`docs/pr-review-agent/`](../pr-review-agent/), [`scripts/engine.sh`](../../scripts/engine.sh)
 
@@ -45,7 +45,7 @@ contracts and the standard's §4 classification table in the same change.
 |---|---|
 | **Engine-agnostic** | All LLM calls go through `engine.sh`. Swapping `DEV_LEAD_ENGINE=gemini` changes every invocation without touching prompts or scripts. |
 | **Intent-first routing** | Events are classified into named intents before any LLM is invoked. Trust gates, deduplication, and skip logic live in the classification layer, not scattered across job conditions. |
-| **Primary workflow in `.github-private`** | All logic lives in this repo. No dependency on the central org reusable (`petry-projects/.github/claude-code-reusable.yml`). Changes propagate immediately without cross-repo PRs. |
+| **Primary workflow in `.github-private`** | All logic lives in this repo. No dependency on the central org reusable (`combsmith/.github/claude-code-reusable.yml`). Changes propagate immediately without cross-repo PRs. |
 | **No OIDC constraint** | The agent uses `CLAUDE_CODE_OAUTH_TOKEN` / `GOOGLE_API_KEY` / `COPILOT_GITHUB_TOKEN` directly via CLI, not via `claude-code-action`. The OIDC byte-for-byte invariant does not apply; the workflow file is freely modifiable via PRs. |
 | **Write-minimal** | The agent only commits and pushes when it has substantive changes. No empty commits, no force-pushes to protected branches. |
 | **Idempotent** | Each intent handler checks for existing work before acting (SHA markers, open PR detection, recent fix comments). A second trigger for the same event is a no-op. |
@@ -363,7 +363,7 @@ env:
   "annotations_url": "https://api.github.com/repos/.../check-runs/76073706541/annotations",
   "actor": "sonarqubecloud[bot]",
   "actor_type": "trusted-bot",
-  "pr_url": "https://github.com/petry-projects/.github-private/pull/175",
+  "pr_url": "https://github.com/combsmith/.github-private/pull/175",
   "base_ref": "main",
   "head_ref": "fix/health-check",
   "review_body": null,
@@ -521,7 +521,7 @@ Exit codes are unchanged (`2` rate-limit, `1` otherwise). The retryable marker i
 **Standards injection (always prepended to prompt):**
 
 The prompt includes instructions to:
-- Read `petry-projects/.github/standards/workflows/` templates before writing any workflow files
+- Read `combsmith/.github/standards/workflows/` templates before writing any workflow files
 - Never fabricate action SHAs — always look them up via `gh api`
 - Match org label colors/names exactly
 - Follow `ci-standards.md` Action Pinning Policy
@@ -801,7 +801,7 @@ The `ci-relay` job uses `GH_PAT_WORKFLOWS || github.token` to emit `repository_d
 
 2. **`claude.yml` retirement timing** — Should the old caller stub remain as a no-op redirect (forwarding to `dev-lead.yml`) during the transition, or be deleted immediately in Phase 7?
 
-3. **Cross-repo scope** — The dev-lead agent currently only handles events in `.github-private`. Should it eventually handle events across all `petry-projects` repos (similar to how `pr-review.yml` enumerates org-wide PRs)?
+3. **Cross-repo scope** — The dev-lead agent currently only handles events in `.github-private`. Should it eventually handle events across all `combsmith` repos (similar to how `pr-review.yml` enumerates org-wide PRs)?
 
 4. **Prompt library** — Should prompts be extracted to `prompts/dev-lead/` (matching the PR Review Agent pattern) for easier review and tuning, or kept inline in handler scripts?
 
@@ -809,4 +809,4 @@ The `ci-relay` job uses `GH_PAT_WORKFLOWS || github.token` to emit `repository_d
 
 ---
 
-_See also: [PR Review Agent spec](../pr-review-agent/pr-review-agent.md) · [Engine implementation](../../scripts/engine.sh) · [CI standards](https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md)_
+_See also: [PR Review Agent spec](../pr-review-agent/pr-review-agent.md) · [Engine implementation](../../scripts/engine.sh) · [CI standards](https://github.com/combsmith/.github/blob/main/standards/ci-standards.md)_

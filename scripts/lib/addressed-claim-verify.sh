@@ -7,7 +7,7 @@
 #   resolve_addressed_bot_threads() (dev-lead-fix-reviews.sh) resolved a bot thread
 #   the moment its LAST reply carried `<!-- dev-lead:addressed -->` and was authored
 #   by our account. It verified WHO claimed and THAT a claim was made — never
-#   WHETHER the claim was true. On petry-projects/.github PR #1044 three functions
+#   WHETHER the claim was true. On combsmith/.github PR #1044 three functions
 #   were byte-identical between two commits, carried addressed-markers, and were
 #   resolved exactly as designed. It also read `comments(last:1)` only, so an earlier
 #   maintainer "ACCEPTED — required before merge" reply went invisible the moment the

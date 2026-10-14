@@ -12,7 +12,7 @@
 #                     intentionally a PAT (not GITHUB_TOKEN) because the default
 #                     Actions token lacks cross-org actions:read
 #   GH_PAT_FALLBACK — optional secondary token if primary lacks org-level access
-#   ORG             — GitHub org to scan (default: petry-projects)
+#   ORG             — GitHub org to scan (default: combsmith)
 #   LOOKBACK_DAYS   — days of history to consider (default: 1)
 #   GITHUB_ENV      — written by Actions runner
 #   GITHUB_STEP_SUMMARY — written by Actions runner (1 MB hard limit per job)
@@ -27,7 +27,7 @@ source "${SCRIPT_DIR}/fleet_stub_drift.sh"
 # shellcheck source=scripts/lib/run-attribution.sh
 source "${SCRIPT_DIR}/lib/run-attribution.sh"
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-1}"
 REPORT_FILE="fleet_monitor_report.md"
 TODAY=$(date -u +%Y-%m-%d)
@@ -56,7 +56,7 @@ TODAY=$(date -u +%Y-%m-%d)
 #                       collapsed repo IGNORES it so a deleted per-role stub is never
 #                       resurrected (AC #4). Whole-file compared against ...
 #     legacy_canonical_path — ... this org-template per-role canonical path.
-CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-petry-projects/.github}"
+CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-combsmith/.github}"
 STUB_REGISTRY=(
   $'initiative-planner\tInitiative-planner\t.github/workflows/initiative-planner.yml\tstandards/workflows/initiative-planner.yml\t\t\t'
   $'initiative-driver\tInitiative-driver\t.github/workflows/initiative-driver.yml\tstandards/workflows/initiative-driver.yml\t\t\t'

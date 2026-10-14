@@ -34,7 +34,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/pr-review-sweep-metrics.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/run-attribution.sh"
 
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-1}"
-WORKFLOW_REPO="${AGENT_REPO:-petry-projects/.github-private}"
+WORKFLOW_REPO="${AGENT_REPO:-combsmith/.github-private}"
 WORKFLOW_FILE="pr-review-trigger.yml"
 SWEEP_WORKFLOW_FILE="pr-review-sweep.yml"
 # The role-bearing agent-ingress job that carries the pr-review signal post-collapse
