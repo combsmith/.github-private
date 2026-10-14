@@ -35,10 +35,10 @@ GHEOF
 
   # Default env
   export ISSUE_NUMBER="100"
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export REVIEW_ENGINE="claude"
   export DEV_LEAD_DRY_RUN="true"
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
 
   cd "$SCRIPT_DIR"
 }
@@ -781,7 +781,7 @@ cmd="\$1"; shift || true
 case "\$cmd" in
   pr)
     case "\$*" in
-      create*) echo "https://github.com/petry-projects/.github-private/pull/42" ;;
+      create*) echo "https://github.com/combsmith/.github-private/pull/42" ;;
       *)       exit 0 ;;
     esac ;;
   label) exit 0 ;;
@@ -978,7 +978,7 @@ GITEOF
   cat > "$STUB_BIN_DIR/gh" <<GHEOF
 #!/usr/bin/env bash
 case "\$*" in
-  *"pr create"*)       echo "https://github.com/petry-projects/repo/pull/42" ;;
+  *"pr create"*)       echo "https://github.com/combsmith/repo/pull/42" ;;
   *"pr edit"*)         echo "\$*" >> "$LABEL_RECORD"; exit 0 ;;
   *"label create"*)    exit 0 ;;
   *"pulls?state=open"*) echo "0" ;;

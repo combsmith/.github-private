@@ -19,7 +19,7 @@
 #   are resolved by `git fetch`-ing the ref and reading the reusable at that ref.
 #   A ref that genuinely can't be resolved SOFT-PASSES with a logged `::warning::`
 #   — never silently. Cross-repo refs (reusables hosted in another repo, e.g.
-#   petry-projects/.github) are treated as unresolved here unless
+#   combsmith/.github) are treated as unresolved here unless
 #   VCI_RESOLVE_CROSS_REPO=1 opts in; the warning keeps the skip visible.
 #
 # USAGE
@@ -32,7 +32,7 @@
 #
 # ENV
 #   VCI_ROOT             Repo root to scan (default: the repo containing this script).
-#   VCI_SELF_REPO        This repo's <owner>/<repo> slug (default petry-projects/.github-private).
+#   VCI_SELF_REPO        This repo's <owner>/<repo> slug (default combsmith/.github-private).
 #   VCI_RESOLVE_DIR      Test hook: resolve any ref to <dir>/<wf-basename> instead of via git.
 #   VCI_RESOLVE_CROSS_REPO  Set to 1 to attempt anonymous git fetch of cross-repo reusables.
 
@@ -246,7 +246,7 @@ vci_check_pair() {
 # could not be resolved (caller then soft-passes with a warning).
 vci_resolve_reusable() {
   local repo_slug="$1" wf_path="$2" ref="$3" out="$4"
-  local self="${VCI_SELF_REPO:-petry-projects/.github-private}"
+  local self="${VCI_SELF_REPO:-combsmith/.github-private}"
 
   if [ -n "${VCI_RESOLVE_DIR:-}" ]; then
     local base

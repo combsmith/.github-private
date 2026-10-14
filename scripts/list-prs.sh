@@ -32,7 +32,7 @@ set -euo pipefail
 # identity the workflow PAT authenticates as — both the queue scope (which
 # repos to scan) and the self-approval filter use it.
 BOT_USER="${BOT_USER:-donpetry-bot}"
-TARGET_ORG="${TARGET_ORG:-petry-projects}"
+TARGET_ORG="${TARGET_ORG:-combsmith}"
 DELEGATION_ORGS="${DELEGATION_ORGS:-}"
 
 # Reject BOT_USER values that aren't valid GitHub usernames before

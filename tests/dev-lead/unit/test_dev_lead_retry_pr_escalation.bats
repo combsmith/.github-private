@@ -62,7 +62,7 @@ teardown() {
 @test "retry PR: needs-human-review present → skips (no dispatch)" {
   LABELS_JSON='["needs-human-review"]'
 
-  run scan_pr_for_rate_limits "petry-projects/demo" 860
+  run scan_pr_for_rate_limits "combsmith/demo" 860
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"needs-human-review"* ]]
@@ -74,7 +74,7 @@ teardown() {
 @test "retry PR: no escalation label → re-dispatches the rate-limited retry" {
   LABELS_JSON='[]'
 
-  run scan_pr_for_rate_limits "petry-projects/demo" 860
+  run scan_pr_for_rate_limits "combsmith/demo" 860
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"would dispatch dev-lead-ci-failure"* ]]
@@ -89,7 +89,7 @@ teardown() {
   LABELS_JSON='["bug"]'
   COMMITS_JSON="$(jq -nc '[range(10) | {commit:{author:{date:"2026-06-18T00:00:00Z"}}, author:{login:"donpetry-bot"}}]')"
 
-  run scan_pr_for_rate_limits "petry-projects/demo" 860
+  run scan_pr_for_rate_limits "combsmith/demo" 860
 
   [ "$status" -eq 0 ]
   [[ "$output" != *"would dispatch"* ]]
@@ -100,7 +100,7 @@ teardown() {
   # Same PR/markers as the skip case, but the human has dropped the label.
   LABELS_JSON='["bug","p1"]'
 
-  run scan_pr_for_rate_limits "petry-projects/demo" 860
+  run scan_pr_for_rate_limits "combsmith/demo" 860
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"would dispatch dev-lead-ci-failure"* ]]
@@ -111,7 +111,7 @@ teardown() {
   # PR resolved from an event but already closed/merged before scan runs.
   export PR_STATE="closed"
 
-  run scan_pr_for_rate_limits "petry-projects/demo" 860
+  run scan_pr_for_rate_limits "combsmith/demo" 860
 
   [ "$status" -eq 0 ]
   [[ "$output" != *"would dispatch"* ]]
@@ -121,7 +121,7 @@ teardown() {
 @test "retry PR: merged PR → skips (no dispatch)" {
   export PR_STATE="merged"
 
-  run scan_pr_for_rate_limits "petry-projects/demo" 860
+  run scan_pr_for_rate_limits "combsmith/demo" 860
 
   [ "$status" -eq 0 ]
   [[ "$output" != *"would dispatch"* ]]
@@ -135,7 +135,7 @@ teardown() {
     '["<!-- dev-lead-fix-ci sha=\($s) status=rate-limited reset=2020-01-01T00:00:00Z check=CI failure -->",
       "<!-- dev-lead-dispatch-guard sha=\($s) at=2026-06-18T23:55:00Z -->"]')"
 
-  run scan_pr_for_rate_limits "petry-projects/demo" 860
+  run scan_pr_for_rate_limits "combsmith/demo" 860
 
   [ "$status" -eq 0 ]
   [[ "$output" != *"would dispatch"* ]]
@@ -148,7 +148,7 @@ teardown() {
     '["<!-- dev-lead-fix-ci sha=\($s) status=rate-limited reset=2020-01-01T00:00:00Z check=CI failure -->",
       "<!-- dev-lead-dispatch-guard sha=\($s) at=2026-06-18T23:40:00Z -->"]')"
 
-  run scan_pr_for_rate_limits "petry-projects/demo" 860
+  run scan_pr_for_rate_limits "combsmith/demo" 860
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"would dispatch dev-lead-ci-failure"* ]]

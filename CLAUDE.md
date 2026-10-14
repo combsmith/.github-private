@@ -9,7 +9,7 @@ workflows, agent configuration, and more.
 
 ## Repository Purpose
 
-This is the **private org-level `.github-private` repository** for `petry-projects`. It contains:
+This is the **private org-level `.github-private` repository** for `combsmith`. It contains:
 
 - **`agents/`** — Copilot custom agent profiles (org-wide, invocable from GitHub.com, VS Code, JetBrains)
 - **`prompts/`** — Prompt libraries used by workflows

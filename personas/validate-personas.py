@@ -2,13 +2,13 @@
 """Validate agentic persona manifests.
 
 Every `personas/<id>/persona.yml` is validated against the canonical persona
-schema (owned by petry-projects/.github) PLUS the cross-invariants the JSON
+schema (owned by combsmith/.github) PLUS the cross-invariants the JSON
 schema cannot express on its own:
 
   * `id` == the persona directory name == `canary.agent`
   * `address.handle`'s team slug == `id` (so a mention routes by prefix-strip).
     This makes handle uniqueness a THEOREM rather than a check: the schema pins
-    the org (^petry-projects/...), slug == id, id == the persona directory name,
+    the org (^combsmith/...), slug == id, id == the persona directory name,
     and directory names are unique — so two personas cannot claim the same
     handle. There is deliberately no cross-file uniqueness check.
 
@@ -16,7 +16,7 @@ schema cannot express on its own:
     mention router resolves. `address.aliases` shared the handle namespace and
     was NOT covered by it — which is why a uniqueness check existed while
     aliases did. Aliases are being removed from the addressing contract
-    (petry-projects/.github#755 finding 1); this repo has already dropped every
+    (combsmith/.github#755 finding 1); this repo has already dropped every
     use, and the companion PR drops the field from the schema. Until that lands
     the schema still PERMITS an alias, so re-adding one here would reopen the
     namespace this theorem does not cover. Do not.
@@ -33,7 +33,7 @@ schema cannot express on its own:
 Schema resolution order:
   1. --schema PATH                     (explicit local file; used by tests)
   2. $PERSONA_SCHEMA_FILE              (local file)
-  3. fetch from petry-projects/.github at $PERSONA_SCHEMA_REF (default: main)
+  3. fetch from combsmith/.github at $PERSONA_SCHEMA_REF (default: main)
 
 The schema lives in the org standards repo, not here — this validator reads it
 the same way any consumer repo reads a published standard. When run against the
@@ -52,7 +52,7 @@ import urllib.request
 from pathlib import Path
 from typing import NoReturn
 
-SCHEMA_REPO = "petry-projects/.github"
+SCHEMA_REPO = "combsmith/.github"
 SCHEMA_PATH_IN_REPO = "standards/personas/persona.schema.json"
 REGISTRY_PATH_IN_REPO = "standards/canary-rings.json"
 MANIFEST_NAME = "persona.yml"
@@ -125,7 +125,7 @@ def handle_slug(manifest_path: Path, field: str, value: object) -> str:
     """
     if not isinstance(value, str) or "/" not in value:
         fail(f"{manifest_path}: {field} must be an 'org/team-slug' string "
-             f"(e.g. 'petry-projects/qa-lead'), got {value!r}")
+             f"(e.g. 'combsmith/qa-lead'), got {value!r}")
     return value.split("/", 1)[1]
 
 

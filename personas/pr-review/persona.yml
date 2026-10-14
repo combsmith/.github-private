@@ -2,7 +2,7 @@
 # Formalizes the existing pr-review agent under the persona standard. Role, not a
 # person (§1.6).
 #
-# Validate against: petry-projects/.github standards/personas/persona.schema.json
+# Validate against: combsmith/.github standards/personas/persona.schema.json
 
 schema_version: 1
 
@@ -17,7 +17,7 @@ summary: >-
 # sets exist but the addressing team and registration must land before promotion.
 status: draft
 
-owner: petry-projects/org-leads
+owner: combsmith/org-leads
 
 # --- How humans address this persona (§4.1) --------------------------------
 # The role handle. A legacy path also exists — '@donpetry-bot' / assigning
@@ -26,7 +26,7 @@ owner: petry-projects/org-leads
 # standardises on. The mention here is ADVISORY (review guidance); the full
 # review runs on the existing pull_request path below.
 address:
-  handle: petry-projects/pr-review
+  handle: combsmith/pr-review
 
 definition:
   layers:
@@ -59,7 +59,7 @@ triggers:
       events: [created]
       enabled: true
       mode: advisory
-      notes: "'@petry-projects/pr-review' — review-focus guidance. Legacy '@donpetry-bot' path retained."
+      notes: "'@combsmith/pr-review' — review-focus guidance. Legacy '@donpetry-bot' path retained."
 
 trust:
   author_association_floor: [OWNER, MEMBER, COLLABORATOR]
@@ -84,11 +84,11 @@ evals:
   min_cases: 5
 
 canary:
-  registry: petry-projects/.github/standards/canary-rings.json
+  registry: combsmith/.github/standards/canary-rings.json
   agent: pr-review
 
 references:
   - "agents/pr-reviewer.md (Copilot profile)"
   - "evals/pr-review/ (held-out set — combines deep-review + triage cases)"
   - "#710 (pr-review not yet in canary-rings.json — register before promotion)"
-  - "petry-projects/.github standards/persona-standards.md"
+  - "combsmith/.github standards/persona-standards.md"

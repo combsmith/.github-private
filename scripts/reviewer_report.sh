@@ -26,10 +26,10 @@
 #     week-over-week snapshot fetch/publish.
 #
 # Usage:
-#   ORG=petry-projects LOOKBACK_DAYS=7 GH_TOKEN=<pat> bash scripts/reviewer_report.sh > report.md
+#   ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN=<pat> bash scripts/reviewer_report.sh > report.md
 #
 # Environment:
-#   ORG                 — GitHub org to scan (default: petry-projects)
+#   ORG                 — GitHub org to scan (default: combsmith)
 #   LOOKBACK_DAYS       — rolling window of PR activity to include (default: 7)
 #   GH_TOKEN            — PAT with repo read across the org (PRs + reviews)
 #   REVIEWER_REPORT_OUT — optional path; when set, the report is ALSO written there.
@@ -41,16 +41,16 @@
 #                         main() fetches this automatically via the GitHub API when
 #                         SNAPSHOT_REPO is set; pass it directly in tests.
 #   SNAPSHOT_REPO       — repo holding the snapshot artifacts (default: this repo,
-#                         petry-projects/.github-private).
+#                         combsmith/.github-private).
 #   GH_OP_TIMEOUT       — per-gh-call timeout in seconds (default 60). 0 disables.
 #   COLLECT_CONCURRENCY — max concurrent per-repo GraphQL sweeps (default 8).
 #   MAX_PR_PAGES        — safety cap on GraphQL PR pages per repo (default 20 ×25 PRs).
 
 set -euo pipefail
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-7}"
-SNAPSHOT_REPO="${SNAPSHOT_REPO:-petry-projects/.github-private}"
+SNAPSHOT_REPO="${SNAPSHOT_REPO:-combsmith/.github-private}"
 
 # ---------------------------------------------------------------------------
 # Reviewer registry — reuse the advisory-review-gate single source of truth so

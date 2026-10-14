@@ -5,7 +5,7 @@ initiative, epic #495). Implements issue #496.
 
 This defines how **first-party reusables** are versioned and how callers select a version. It began
 with the **dev-lead** and **pr-review** agents and now covers every first-party reusable this repo (or
-`petry-projects/.github`) owns — including `ci-failure-analyst`. **One convention applies to all of
+`combsmith/.github`) owns — including `ci-failure-analyst`. **One convention applies to all of
 them:** an immutable release `<name>/vMAJOR.MINOR.PATCH` plus major-scoped moving channel tags
 `<name>/v<MAJOR>-<tier>` (`stable`, and where live `next`/`ring0`/`ring1`). It is the foundation the
 rest of the initiative (rings, promotion, rollback) builds on.
@@ -20,16 +20,16 @@ together, so a version is a single repo commit that contains a known-good combin
 | `pr-review` | `.github/workflows/pr-review.yml` | `scripts/review-one-pr.sh`, `scripts/review-batch.sh`, `scripts/post-pr-review.sh`, `scripts/engine.sh`, `scripts/lib/*` |
 | `dev-lead` | `.github/workflows/dev-lead-reusable.yml` | `scripts/dev-lead-*.sh`, `scripts/engine.sh`, `scripts/lib/*` |
 | `ci-failure-analyst` | `.github/workflows/ci-failure-analyst-reusable.yml` | reusable-owned (inline `gh api` orchestration + the Claude Code action; no separate `scripts/`) |
-| `feature-ideation` | `petry-projects/.github` → `.github/workflows/feature-ideation-reusable.yml` (**cross-repo**) | reusable-owned (lives in the public repo; this repo holds only the thin caller `.github/workflows/feature-ideation.yml`) |
-| `agent-shield`, `auto-rebase`, `dependency-audit`, `dependabot-automerge`, `dependabot-rebase`, `pr-review-mention` (the six #482 reusables) | `petry-projects/.github` → `.github/workflows/<name>-reusable.yml` (**cross-repo**) | reusable-owned (live in the public repo; this repo holds only the thin caller stubs) |
+| `feature-ideation` | `combsmith/.github` → `.github/workflows/feature-ideation-reusable.yml` (**cross-repo**) | reusable-owned (lives in the public repo; this repo holds only the thin caller `.github/workflows/feature-ideation.yml`) |
+| `agent-shield`, `auto-rebase`, `dependency-audit`, `dependabot-automerge`, `dependabot-rebase`, `pr-review-mention` (the six #482 reusables) | `combsmith/.github` → `.github/workflows/<name>-reusable.yml` (**cross-repo**) | reusable-owned (live in the public repo; this repo holds only the thin caller stubs) |
 
 `pr-review`, `dev-lead`, and `ci-failure-analyst` all live in this repo, so a release tag points at a
 whole-repo commit; the tag *name* scopes it to one reusable so each can be released and promoted
 independently.
 
-The rest are the exception: their reusables live in **`petry-projects/.github`** (this repo holds only
+The rest are the exception: their reusables live in **`combsmith/.github`** (this repo holds only
 the thin caller stubs), so a "release" is a commit on that public repo, and their release/channel tags
-must be cut **against `petry-projects/.github`, not this repo's `origin`**. This is `feature-ideation`
+must be cut **against `combsmith/.github`, not this repo's `origin`**. This is `feature-ideation`
 plus the six reusables #482 migrated to channel tags — see [Cross-repo reusables](#cross-repo-reusables)
 below.
 
@@ -57,7 +57,7 @@ The candidate (`next`) and ring channels are real moving tags, created alongside
 pins **once** to its ring channel and is never edited again; a release flows outward ring-by-ring as
 each ring's tag is advanced.
 
-Ring membership (canonical model — see [#500](https://github.com/petry-projects/.github-private/issues/500)).
+Ring membership (canonical model — see [#500](https://github.com/combsmith/.github-private/issues/500)).
 `next` is **host-relative**: it always resolves to the repo that *hosts* the reusable, and `ring0`
 covers the other org-infra repo, so `next` + `ring0` always span `.github` + `.github-private`,
 partitioned by which one is the host:
@@ -74,14 +74,14 @@ Concretely for **`dev-lead`** (hosted in `.github-private`): `next` = `.github-p
 **Production self-review/dev duty stays pinned to `stable` even within ring 0** — the agent validating
 fixes is never the unvalidated candidate (the circular-dependency fix #500 targets). The intended
 machine-readable source of truth is `standards/canary-rings.json`, now hosted in
-`petry-projects/.github` and consumed by the promotion automation (#501, relocated there under #613).
+`combsmith/.github` and consumed by the promotion automation (#501, relocated there under #613).
 
 > **Deliberate SC2 exception — `.github-private`'s own `dev-lead.yml` (#1624).** This repo sits in ring
 > `next`, yet its self-review/dev duty stub `dev-lead.yml` pins `@dev-lead/v1-stable`. This is **not**
 > drift to fix: it is the structural half of Safe Release **SC2** (epic #495 / story #503) — a broken
 > in-development (`next`) version cannot block the PR that fixes its own breakage, because the dev/merge
 > gate runs the last known-good `stable`. The `pinned-version-report` audit (`scripts/pinned-version-report.sh`
-> in `petry-projects/.github`) flags this pin as a ⚠️ **ring mismatch** (a ring-`next` repo is expected to
+> in `combsmith/.github`) flags this pin as a ⚠️ **ring mismatch** (a ring-`next` repo is expected to
 > pin `next`). Both surfaces are correct and reconciled here: the report is right from the ring-rollout
 > perspective, and the stable pin is right from the SC2 perspective. **Do not "fix the ring drift" by
 > repinning `dev-lead.yml` to `next`** — that silently re-arms the self-hosting circular dependency. The
@@ -117,13 +117,13 @@ under #499.
 `feature-ideation` uses the full per-ring channel set — `{next, ring0, ring1, stable}` — so it can be
 promoted through the same canary → ring → stable model. Its tags follow the identical name scheme
 (`feature-ideation/vX.Y.Z`, `feature-ideation/v<MAJOR>-next`, `feature-ideation/v<MAJOR>-ring0`,
-`feature-ideation/v<MAJOR>-ring1`, `feature-ideation/v<MAJOR>-stable`) but are cut against `petry-projects/.github`
+`feature-ideation/v<MAJOR>-ring1`, `feature-ideation/v<MAJOR>-stable`) but are cut against `combsmith/.github`
 (see [Cross-repo reusables](#cross-repo-reusables)).
 
 The six **#482 reusables** — `agent-shield`, `auto-rebase`, `dependency-audit`, `dependabot-automerge`,
 `dependabot-rebase`, `pr-review-mention` — use the same `{next, ring0, ring1, stable}` set (#870),
 replacing the single-hop `<name>/stable`-only migration #482 cut by hand. They are `.github`-hosted, so
-like `feature-ideation` their tags are cut against `petry-projects/.github`. Their ring membership is an
+like `feature-ideation` their tags are cut against `combsmith/.github`. Their ring membership is an
 **explicit org-owner assignment** (#870, matching #866), and it does **not** follow the host-relative
 `$host`/`$org_infra` default above — `next` is `.github-private` (the dogfood lab) even though the
 reusables are hosted in `.github`, which sits in `ring0`:
@@ -150,8 +150,8 @@ central move of the channel tag (see the initiative doc §5.1):
 
 ```yaml
 # A consumer / self-host caller pins once to the per-agent channel:
-uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
-uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
+uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
+uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
 ```
 
 > Shorthand: the initiative doc writes `@stable`; the concrete tag is the **per-agent** major-scoped channel
@@ -176,22 +176,22 @@ whole-repo commit here and tags are cut against this repo's `origin`. That holds
 reusables (`agent-shield`, `auto-rebase`, `dependency-audit`, `dependabot-automerge`,
 `dependabot-rebase`, `pr-review-mention`):
 
-- Their reusables live in **`petry-projects/.github`** (`.github/workflows/<name>-reusable.yml`); this
+- Their reusables live in **`combsmith/.github`** (`.github/workflows/<name>-reusable.yml`); this
   repo carries only the thin caller stubs `.github/workflows/<name>.yml`.
-- Therefore a release is a commit on **`petry-projects/.github`**, and the `<name>/vX.Y.Z` immutable +
+- Therefore a release is a commit on **`combsmith/.github`**, and the `<name>/vX.Y.Z` immutable +
   `<name>/v<MAJOR>-<tier>` channel tags must be cut **against that repo**, not this repo's `origin`.
 - `scripts/cut-release.sh` recognizes each of these agents (`valid_agent`) and, for a cross-repo agent,
-  **resolves the ref and creates/moves the tags against `petry-projects/.github` via `gh api`** (#872,
+  **resolves the ref and creates/moves the tags against `combsmith/.github` via `gh api`** (#872,
   wired). `--dry-run` previews the immutable + channel tag names; a live `--push` creates the annotated
   `<name>/vX.Y.Z` release object and force-moves the `<name>/v<MAJOR>-<tier>` channel tag on `.github`, and needs
   `GH_TOKEN` with `contents:write` on that repo. (`origin/main` in `--ref` means `.github`'s `main` — the
   `origin/` prefix is stripped for the cross-repo API lookup.)
-- Because these channel tags live on `petry-projects/.github`, the protective ruleset that bounds them
+- Because these channel tags live on `combsmith/.github`, the protective ruleset that bounds them
   (the mutable-ref exception) is created **there**, not on this repo — see
   [`AGENTS.md`](../../AGENTS.md) "Release channel tags & the mutable-ref exception".
 
 > **Now registered in `standards/canary-rings.json`.** The promotion automation (`canary-rollout.sh`,
-> #501) — relocated to `petry-projects/.github` under #613 — moves channel tags **cross-repo** via `gh api`
+> #501) — relocated to `combsmith/.github` under #613 — moves channel tags **cross-repo** via `gh api`
 > ref updates on each agent's host repo (#1054), so the six reusables above are registered under the full
 > `{next, ring0, ring1, stable}` model (#870). `feature-ideation` remains **absent** for now: its host + ring
 > assignment aren't settled. (Manual/scripted cuts via `cut-release.sh` work today.)
@@ -221,7 +221,7 @@ scripts/cut-release.sh pr-review 1.1.0 --channel stable --push
 # Preview without touching anything:
 scripts/cut-release.sh pr-review 1.1.0 --channel stable --dry-run
 
-# Cross-repo agent (reusable in petry-projects/.github): cut against that repo via
+# Cross-repo agent (reusable in combsmith/.github): cut against that repo via
 # gh api (#872). --dry-run previews; --push publishes (needs contents:write on .github):
 scripts/cut-release.sh feature-ideation 1.4.0 --channel ring0 --dry-run
 scripts/cut-release.sh feature-ideation 1.4.0 --channel ring0 --push

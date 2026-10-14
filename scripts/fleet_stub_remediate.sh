@@ -40,7 +40,7 @@ set -euo pipefail
 #     label          — the `stub` value carried in fleet_stub_drift.json
 #     stub_path      — the `stub_file` value carried in fleet_stub_drift.json
 #     canonical_path — org-template path under $CANONICAL_STUB_REPO
-CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-petry-projects/.github}"
+CANONICAL_STUB_REPO="${CANONICAL_STUB_REPO:-combsmith/.github}"
 STUB_REGISTRY=(
   $'initiative-planner\tInitiative-planner\t.github/workflows/initiative-planner.yml\tstandards/workflows/initiative-planner.yml'
   $'initiative-driver\tInitiative-driver\t.github/workflows/initiative-driver.yml\tstandards/workflows/initiative-driver.yml'

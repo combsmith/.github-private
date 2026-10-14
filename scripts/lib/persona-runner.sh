@@ -2,8 +2,8 @@
 # scripts/lib/persona-runner.sh — Persona runtime core (dispatch side)
 #
 # The other half of the mention framework. The router
-# (petry-projects/.github scripts/lib/persona-mention.sh) resolves an
-# `@petry-projects/<role>` mention and fires a `persona-mention`
+# (combsmith/.github scripts/lib/persona-mention.sh) resolves an
+# `@combsmith/<role>` mention and fires a `persona-mention`
 # repository_dispatch at this repo; this library backs the workflow that
 # receives it and runs the addressed persona's advisory prompt.
 #

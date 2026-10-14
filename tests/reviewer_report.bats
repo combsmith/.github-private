@@ -79,7 +79,7 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "normalize: emits one pr record and one bot_pr per participating bot; humans excluded" {
-  run jq -c --arg repo "petry-projects/markets" --argjson bots "$BOTS" \
+  run jq -c --arg repo "combsmith/markets" --argjson bots "$BOTS" \
     --arg rl "$RATE_LIMIT_RE" "[ $_NORMALIZE_JQ ]" "$PR_NODE"
   # 1 pr record + 4 bot records (copilot, gemini, coderabbit, codex — NOT human alice, NOT sonar)
   echo "$output" | jq -e 'map(select(.kind=="pr")) | length == 1'
