@@ -818,9 +818,12 @@ $'ci-failure-analyst\tCI-Failure-Analyst\t.github/workflows/agent-ingress.yml\t<
 
 > `<CANONICAL agent-ingress path>` and the three `<legacy … canonical>` cells
 > resolve to wherever the org publishes the canonical `agent-ingress.yml` template
-> (§9b) and each role's existing per-role canonical. They are shown as markers
-> because this package predates the publication; the rows as applied are in
-> `scripts/fleet_monitor.sh` (§9c).
+> (§9b) and each role's existing per-role canonical. Only roles with a published
+> legacy canonical use one: `dev-lead` resolves to `standards/workflows/dev-lead.yml`,
+> while `pr-review` and `ci-failure-analyst` have none, so their
+> `legacy_canonical_path` cells are empty in the applied registry. The cells are
+> shown as markers because this package predates the publication; the rows as
+> applied are in `scripts/fleet_monitor.sh` (§9c).
 
 ### 9b. Canonical `agent-ingress.yml` template — publish was cross-repo (DONE)
 
