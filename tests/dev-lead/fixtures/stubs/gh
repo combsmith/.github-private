@@ -9,9 +9,9 @@ case "$ARGS" in
     echo "true" > "${GH_STUB_DISPATCH_FILE:-/tmp/gh_stub_dispatch_called}"
     echo "{}" ;;
   *"commits/"*"/pulls"*)
-    echo "[{\"number\":${GH_STUB_PR_NUMBER:-0},\"state\":\"open\",\"head\":{\"repo\":{\"full_name\":\"${GH_STUB_PR_HEAD_REPO:-combsmith/.github-private}\"}}}]" ;;
+    echo "[{\"number\":${GH_STUB_PR_NUMBER:-0},\"state\":\"open\",\"head\":{\"repo\":{\"full_name\":\"${GH_STUB_PR_HEAD_REPO:-petry-projects/.github-private}\"}}}]" ;;
   *"pulls/${GH_STUB_PR_NUMBER:-0}"*|*"pulls/0"*)
-    echo "{\"number\":${GH_STUB_PR_NUMBER:-0},\"state\":\"open\",\"head\":{\"repo\":{\"full_name\":\"${GH_STUB_PR_HEAD_REPO:-combsmith/.github-private}\"},\"sha\":\"abc123\"},\"base\":{\"ref\":\"main\"}}" ;;
+    echo "{\"number\":${GH_STUB_PR_NUMBER:-0},\"state\":\"open\",\"head\":{\"repo\":{\"full_name\":\"${GH_STUB_PR_HEAD_REPO:-petry-projects/.github-private}\"},\"sha\":\"abc123\"},\"base\":{\"ref\":\"main\"}}" ;;
   *"comments"*)
     echo "[{\"body\":\"${GH_STUB_COMMENT_BODY:-}\"}]" ;;
   *"pr checks"*|*"checks run"*)

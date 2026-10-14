@@ -11,7 +11,7 @@ setup() {
   export BOT_USER="donpetry-bot"
   export TRUSTED_BOTS="copilot-pull-request-reviewer[bot],gemini-code-assist[bot],sonarqubecloud[bot],coderabbitai[bot]"
   export TRIGGER_PHRASES="@dev-lead"
-  export GITHUB_REPOSITORY="combsmith/.github-private"
+  export GITHUB_REPOSITORY="petry-projects/.github-private"
 }
 
 teardown() {
@@ -88,7 +88,7 @@ _get_context_field() {
     "labels": [{ "name": "dev-lead" }]
   },
   "label": { "name": "dev-lead" },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "donpetry", "type": "User" }
 }
 EOF

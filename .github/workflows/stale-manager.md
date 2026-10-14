@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Automatically manage stale issues and PRs across the `combsmith` org.
+Automatically manage stale issues and PRs across the `petry-projects` org.
 Warns items that have been inactive beyond the staleness threshold, then closes
 them if they remain inactive through the grace period.
 
@@ -33,7 +33,7 @@ permissions:
 
 | Variable | Default | Description |
 |---|---|---|
-| `TARGET_ORG` | `combsmith` | GitHub org to scan |
+| `TARGET_ORG` | `petry-projects` | GitHub org to scan |
 | `STALE_DAYS_ISSUE` | `60` | Days before an issue is considered stale |
 | `STALE_DAYS_PR` | `30` | Days before a PR is considered stale |
 | `GRACE_DAYS` | `7` | Days after stale label before closure |

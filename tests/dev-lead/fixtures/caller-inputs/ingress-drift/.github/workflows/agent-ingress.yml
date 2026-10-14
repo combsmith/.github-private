@@ -15,7 +15,7 @@ permissions: {}
 jobs:
   dev-lead:
     if: github.event_name != 'issue_comment'
-    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-test
+    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-test
     with:
       agent_ref: dev-lead/v1-test
       mode: apply
@@ -27,7 +27,7 @@ jobs:
     if: github.event.action == 'review_requested'
     permissions:
       pull-requests: write
-    uses: combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v1-test
+    uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v1-test
     with:
       agent_ref: pr-review-mention/v1-test
       bogus_input: "true"

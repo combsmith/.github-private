@@ -1,5 +1,5 @@
-# PINNED-USES: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable
-# SNAPSHOT (trimmed) of combsmith/.github-private
+# PINNED-USES: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable
+# SNAPSHOT (trimmed) of petry-projects/.github-private
 # .github/workflows/dev-lead-reusable.yml @ dev-lead/v139-stable, read 2026-10-02
 # for #2038. Only the agent_ref input the markets caller forwards is kept; the
 # markets dev-lead job declares no caller concurrency group.

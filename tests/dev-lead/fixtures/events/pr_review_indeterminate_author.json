@@ -17,13 +17,13 @@
     "author_association": "OWNER",
     "head": {
       "sha": "d00dfeed",
-      "repo": { "full_name": "combsmith/.github-private" }
+      "repo": { "full_name": "petry-projects/.github-private" }
     },
     "base": {
       "ref": "main",
-      "repo": { "full_name": "combsmith/.github-private" }
+      "repo": { "full_name": "petry-projects/.github-private" }
     }
   },
-  "repository": { "full_name": "combsmith/.github-private" },
+  "repository": { "full_name": "petry-projects/.github-private" },
   "sender": { "login": "copilot-pull-request-reviewer[bot]", "type": "Bot" }
 }

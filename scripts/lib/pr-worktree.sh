@@ -12,7 +12,7 @@
 #   scripts/dev-lead-fix-reviews.sh: line 51:
 #     prompts/dev-lead/on-mention.md: No such file or directory
 #
-# (See combsmith/.github-private run 27077585464 and issue #448.)
+# (See petry-projects/.github-private run 27077585464 and issue #448.)
 #
 # A worktree gives the PR branch its own directory, so the agent checkout — and
 # everything under it — stays on the agent ref while the engine edits the PR.

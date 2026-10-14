@@ -8,7 +8,7 @@ set -euo pipefail
 # comments via Claude, and applies labels/close actions.
 #
 # Environment:
-#   TARGET_ORG         — GitHub org to scan (default: combsmith)
+#   TARGET_ORG         — GitHub org to scan (default: petry-projects)
 #   STALE_DAYS_ISSUE   — days before issue is stale (default: 60)
 #   STALE_DAYS_PR      — days before PR is stale (default: 30)
 #   GRACE_DAYS         — days after stale label before closure (default: 7)
@@ -17,7 +17,7 @@ set -euo pipefail
 #   GH_TOKEN           — GitHub PAT with repo + read:org scope
 #   CLAUDE_CODE_OAUTH_TOKEN — required when REVIEW_ENGINE=claude
 
-TARGET_ORG="${TARGET_ORG:-combsmith}"
+TARGET_ORG="${TARGET_ORG:-petry-projects}"
 STALE_DAYS_ISSUE="${STALE_DAYS_ISSUE:-60}"
 STALE_DAYS_PR="${STALE_DAYS_PR:-30}"
 GRACE_DAYS="${GRACE_DAYS:-7}"

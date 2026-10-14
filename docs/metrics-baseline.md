@@ -1,14 +1,14 @@
 # Success Metrics — Definitions & Pre-Rollout Baseline
 
 This document is the falsifiability contract for epic
-[#1402](https://github.com/combsmith/.github-private/issues/1402). It fixes the **three
+[#1402](https://github.com/petry-projects/.github-private/issues/1402). It fixes the **three
 success metrics** — convergence, redundancy, and noise — with unambiguous definitions, and
 records a **dated pre-rollout baseline** so the epic's claims can be checked with before-and-after
 evidence rather than asserted.
 
 It gates the timer/behaviour changes in
-[#1407](https://github.com/combsmith/.github-private/issues/1407) and
-[#1408](https://github.com/combsmith/.github-private/issues/1408): the baseline below must be
+[#1407](https://github.com/petry-projects/.github-private/issues/1407) and
+[#1408](https://github.com/petry-projects/.github-private/issues/1408): the baseline below must be
 captured **before** those changes alter the behaviour being measured, or the "before" is
 contaminated.
 
@@ -61,8 +61,8 @@ PRs it is labelled *(all PRs)*.
 ## Pre-rollout baseline snapshot
 
 - **Captured (dated):** 2026-08-02
-- **Pre-change window:** 2026-07-26T00:00:00Z – 2026-08-02T00:00:00Z (7-day rolling window, over all non-archived `combsmith` repos)
-- **Repository scope:** all non-archived repos in the `combsmith` org (count logged by `reviewer_report.sh` at each run start)
+- **Pre-change window:** 2026-07-26T00:00:00Z – 2026-08-02T00:00:00Z (7-day rolling window, over all non-archived `petry-projects` repos)
+- **Repository scope:** all non-archived repos in the `petry-projects` org (count logged by `reviewer_report.sh` at each run start)
 - **PR cohorts:** substantive PRs = non-generated source changed, non-draft, merged in window; trivial stub-sync PRs = verbatim canonical-stub propagation (reported separately, never averaged into substantive figures)
 - **Sample:** the known-working figures below are the measured pre-change references cited on epic
   #1402; they are reproduced (or corrected, with the discrepancy explained) by the same code path

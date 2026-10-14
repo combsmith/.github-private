@@ -17,7 +17,7 @@
 #     the two values diverge the first is silently discarded (persona.yml carried
 #     a duplicate `reusable:` under `runtime:`, #1779).
 #
-# The md/yml scopes close the scan-scope gap filed as combsmith/.github#1041
+# The md/yml scopes close the scan-scope gap filed as petry-projects/.github#1041
 # (the shipped gate only ever looked at scripts/). This is that one gate widened,
 # not a second gate.
 #

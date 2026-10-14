@@ -120,7 +120,7 @@ SH
 run_advisory() {
   run env "PATH=$BIN:$PATH" \
     GH_LOG="$GH_LOG" CLAUDE_LOG="$CLAUDE_LOG" CLAUDE_COUNT_FILE="$CLAUDE_COUNT_FILE" \
-    REPO="combsmith/.github-private" PR_NUMBER="5" \
+    REPO="petry-projects/.github-private" PR_NUMBER="5" \
     CLAUDE_CODE_OAUTH_TOKEN="test-token" \
     SKIP_BOT_PRS="false" \
     DEP_ADVISORY_RETRY_BASE_SEC="0" \

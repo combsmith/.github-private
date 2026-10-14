@@ -39,7 +39,7 @@ setup() {
   export PATH="$MOCK_BIN:$PATH"
 
   export BOT_USER="donpetry-bot"
-  export TARGET_ORG="combsmith"
+  export TARGET_ORG="petry-projects"
   unset DELEGATION_ORGS || true
 
   cat > "$MOCK_BIN/gh" <<'EOF'
@@ -72,7 +72,7 @@ EOF
   chmod +x "$MOCK_BIN/gh"
 
   # Default: only the org owns repos; the bot account owns none.
-  printf 'combsmith/.github-private\n' > "$REPO_LIST_DIR/combsmith.txt"
+  printf 'petry-projects/.github-private\n' > "$REPO_LIST_DIR/petry-projects.txt"
 }
 
 # write_prs <repo> <json-array>
@@ -86,27 +86,27 @@ run_list_prs() {
 }
 
 @test "eligible open non-draft non-self PR is present in the candidate pool" {
-  write_prs "combsmith/.github-private" \
-    '[{"url":"https://github.com/combsmith/.github-private/pull/1710","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":false}]'
+  write_prs "petry-projects/.github-private" \
+    '[{"url":"https://github.com/petry-projects/.github-private/pull/1710","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":false}]'
 
   run_list_prs
-  grep -qx 'https://github.com/combsmith/.github-private/pull/1710' "$OUT"
+  grep -qx 'https://github.com/petry-projects/.github-private/pull/1710' "$OUT"
 }
 
 @test "eligible PR is found via the List API even when the Search API is empty" {
   # This is the #1710 case: a just-pushed PR the Search index has not re-indexed.
   # The mocked `gh search prs` returns nothing; the PR must still appear because
   # enumeration reads from the strongly-consistent List API.
-  write_prs "combsmith/.github-private" \
-    '[{"url":"https://github.com/combsmith/.github-private/pull/1710","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":false}]'
+  write_prs "petry-projects/.github-private" \
+    '[{"url":"https://github.com/petry-projects/.github-private/pull/1710","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":false}]'
 
   run_list_prs
   [ "$(grep -c '/pull/1710' "$OUT")" -eq 1 ]
 }
 
 @test "draft PR is excluded from the pool AND logged with a reason at notice level" {
-  write_prs "combsmith/.github-private" \
-    '[{"url":"https://github.com/combsmith/.github-private/pull/2000","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":true}]'
+  write_prs "petry-projects/.github-private" \
+    '[{"url":"https://github.com/petry-projects/.github-private/pull/2000","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":true}]'
 
   run_list_prs
   # Not in the candidate list (stdout)...
@@ -118,8 +118,8 @@ run_list_prs() {
 }
 
 @test "self-authored PR is excluded from the pool AND logged with a reason" {
-  write_prs "combsmith/.github-private" \
-    '[{"url":"https://github.com/combsmith/.github-private/pull/2001","author":{"login":"donpetry-bot"},"createdAt":"2026-09-13T00:00:00Z","isDraft":false}]'
+  write_prs "petry-projects/.github-private" \
+    '[{"url":"https://github.com/petry-projects/.github-private/pull/2001","author":{"login":"donpetry-bot"},"createdAt":"2026-09-13T00:00:00Z","isDraft":false}]'
 
   run_list_prs
   ! grep -q '/pull/2001' "$OUT"
@@ -129,19 +129,19 @@ run_list_prs() {
 }
 
 @test "an eligible PR is kept while a draft alongside it is dropped and logged" {
-  write_prs "combsmith/.github-private" \
-    '[{"url":"https://github.com/combsmith/.github-private/pull/1710","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":false},{"url":"https://github.com/combsmith/.github-private/pull/2000","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":true}]'
+  write_prs "petry-projects/.github-private" \
+    '[{"url":"https://github.com/petry-projects/.github-private/pull/1710","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":false},{"url":"https://github.com/petry-projects/.github-private/pull/2000","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":true}]'
 
   run_list_prs
-  grep -qx 'https://github.com/combsmith/.github-private/pull/1710' "$OUT"
+  grep -qx 'https://github.com/petry-projects/.github-private/pull/1710' "$OUT"
   ! grep -q '/pull/2000' "$OUT"
   grep -q '/pull/2000' "$ERR"
   grep -qi 'draft' "$ERR"
 }
 
 @test "enumeration emits a seen/kept/excluded summary at notice level" {
-  write_prs "combsmith/.github-private" \
-    '[{"url":"https://github.com/combsmith/.github-private/pull/1710","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":false},{"url":"https://github.com/combsmith/.github-private/pull/2000","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":true}]'
+  write_prs "petry-projects/.github-private" \
+    '[{"url":"https://github.com/petry-projects/.github-private/pull/1710","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":false},{"url":"https://github.com/petry-projects/.github-private/pull/2000","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":true}]'
 
   run_list_prs
   grep -q '::notice::' "$ERR"

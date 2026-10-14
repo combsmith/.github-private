@@ -1,6 +1,6 @@
-# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>
+# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>
 # ============================================================================
-# combsmith baseline .gitignore — SECRETS ONLY
+# petry-projects baseline .gitignore — SECRETS ONLY
 # ----------------------------------------------------------------------------
 # First layer of defense in the Push Protection Standard
 # (standards/push-protection.md). Complements GitHub secret scanning + push
@@ -381,7 +381,7 @@ private.yml
 # 13. Agent / local worktrees and CI-generated tool artifacts (org coding policy)
 # ---------------------------------------------------------------------------
 # Temporary worktrees created by Claude Code and other agents. Not strictly
-# secret material, but the combsmith coding guidelines require these
+# secret material, but the petry-projects coding guidelines require these
 # paths to be ignored in every repo so an agent's scratch worktree cannot
 # be committed accidentally.
 .claude/worktrees/
@@ -393,9 +393,9 @@ actionlint
 actionlint.tar.gz
 
 # ============================================================================
-# End of combsmith secrets baseline
+# End of petry-projects secrets baseline
 # ============================================================================
-# <<< END combsmith secrets baseline <<<
+# <<< END petry-projects secrets baseline <<<
 
 # Python bytecode
 __pycache__/

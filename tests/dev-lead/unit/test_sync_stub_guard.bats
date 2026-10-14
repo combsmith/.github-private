@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/lib/sync-stub-guard.sh (#2185).
 #
-# On combsmith/incubator#164 (a standards-sync PR) CodeAnt asked for a
+# On petry-projects/incubator#164 (a standards-sync PR) CodeAnt asked for a
 # `pull_request: [review_requested]` trigger on the synced persona-mention.yml
 # stub. A fix-bot-comment pass applied it and deleted the NOTE explaining why the
 # template omits it; the PR then no longer matched the template it syncs, with
 # auto-merge on. Nothing in the harness stopped it. This guard does: a bot-driven
 # pass on a `standards-sync` PR may not change a stub whose header names a
-# `SOURCE OF TRUTH` under combsmith/.github/standards/, except to restore it
+# `SOURCE OF TRUTH` under petry-projects/.github/standards/, except to restore it
 # to the content the sync commit wrote.
 
 SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
@@ -33,13 +33,13 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "ssg_template_path: an org-standard stub header yields its template path" {
-  run ssg_template_path $'# ──\n# SOURCE OF TRUTH: combsmith/.github/standards/workflows/persona-mention.yml\nname: x\n'
+  run ssg_template_path $'# ──\n# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/persona-mention.yml\nname: x\n'
   [[ "$status" -eq 0 ]]
   [[ "$output" == "$TPL" ]]
 }
 
 @test "ssg_template_path: a .github-private SOURCE OF TRUTH is out of scope" {
-  run ssg_template_path $'# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/token-report.yml\n'
+  run ssg_template_path $'# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/token-report.yml\n'
   [[ "$status" -eq 1 ]]
   [[ -z "$output" ]]
 }
@@ -50,7 +50,7 @@ setup() {
   local body i
   body=""
   for i in $(seq 1 30); do body+="# line ${i}"$'\n'; done
-  body+=$'# SOURCE OF TRUTH: combsmith/.github/standards/workflows/x.yml\n'
+  body+=$'# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/x.yml\n'
   run ssg_template_path "$body"
   [[ "$status" -eq 1 ]]
 }
@@ -74,7 +74,7 @@ setup() {
 _stub_body() {
   cat <<'EOF'
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: combsmith/.github/standards/workflows/persona-mention.yml
+# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/persona-mention.yml
 # Do not change the trigger events in a consumer repo.
 # ─────────────────────────────────────────────────────────────────────────────
 name: Persona Mention
@@ -83,10 +83,10 @@ on:
     types: [created]
   # NOTE: pull_request review_requested is deliberately not subscribed — the
   # router has no path for reviewer assignment (finding 10 in
-  # combsmith/.github#755). Do not add it here; change the template.
+  # petry-projects/.github#755). Do not add it here; change the template.
 jobs:
   route:
-    uses: combsmith/.github/.github/workflows/persona-mention-reusable.yml@v1
+    uses: petry-projects/.github/.github/workflows/persona-mention-reusable.yml@v1
 EOF
 }
 
@@ -100,7 +100,7 @@ _mk_sync_pr() {
   git config user.email t@t; git config user.name T
   mkdir -p .github/workflows docs
   echo "# repo" > README.md
-  printf '# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/token-report.yml\nname: t\n' \
+  printf '# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/token-report.yml\nname: t\n' \
     > .github/workflows/token-report.yml
   git add -A; git commit -q -m base
   MB="$(git rev-parse HEAD)"
@@ -159,7 +159,7 @@ _bot_drift() {
 
 @test "ssg_scan_pass: a stub the PR did not touch, edited by the pass -> drift" {
   _mk_sync_pr
-  printf '# SOURCE OF TRUTH: combsmith/.github/standards/workflows/ci.yml\nname: ci\n' > .github/workflows/ci.yml
+  printf '# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/ci.yml\nname: ci\n' > .github/workflows/ci.yml
   git add -A; git commit -q -m "main stub"
   # Rebuild the PR on top of that commit so the stub exists at the merge base.
   MB="$(git rev-parse HEAD)"; PRE="$MB"
@@ -316,7 +316,7 @@ on:
     types: [created]
 jobs:
   dispatch:
-    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
+    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
 EOF
 }
 
@@ -374,10 +374,10 @@ _pin_uses() {
   [[ "$status" -eq 0 ]]
 }
 
-@test "ssg_declined_body: a row with no template points at standards/ in combsmith/.github" {
+@test "ssg_declined_body: a row with no template points at standards/ in petry-projects/.github" {
   run ssg_declined_body "fix-bot-comment" ".github/workflows/dev-lead.yml"
   [[ "$output" == *'`.github/workflows/dev-lead.yml` — no template header'* ]]
-  [[ "$output" == *"combsmith/.github/tree/main/standards"* ]]
+  [[ "$output" == *"petry-projects/.github/tree/main/standards"* ]]
 }
 
 
@@ -385,13 +385,13 @@ _pin_uses() {
 # ssg_declined_body — the reply that answers the bot as declined
 # ---------------------------------------------------------------------------
 
-@test "ssg_declined_body: declines, links each template in combsmith/.github, and says nothing was pushed" {
+@test "ssg_declined_body: declines, links each template in petry-projects/.github, and says nothing was pushed" {
   run ssg_declined_body fix-bot-comment "${STUB}"$'\t'"${TPL}"
   [[ "$status" -eq 0 ]]
   [[ "$output" == *"Declined"* ]]
   [[ "$output" == *"change the template"* ]]
   [[ "$output" == *"\`${STUB}\`"* ]]
-  [[ "$output" == *"https://github.com/combsmith/.github/blob/main/${TPL}"* ]]
+  [[ "$output" == *"https://github.com/petry-projects/.github/blob/main/${TPL}"* ]]
   [[ "$output" == *"did not push"* ]]
   [[ "$output" == *"fix-bot-comment"* ]]
 }

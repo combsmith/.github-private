@@ -11,8 +11,8 @@ by the `dev-lead` label. It does not say how a write-mode persona should behave
 on a branch that **other actors are pushing to at the same time**, such as a
 maintainer, a Claude session, or the auto-rebase bot.
 
-combsmith/.github#1220 showed what goes wrong
-([#2013](https://github.com/combsmith/.github-private/issues/2013)). While
+petry-projects/.github#1220 showed what goes wrong
+([#2013](https://github.com/petry-projects/.github-private/issues/2013)). While
 a human session was driving the same branch:
 
 - dev-lead posted "Fixed in …" replies for changes that never reached the

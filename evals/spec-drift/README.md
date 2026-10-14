@@ -105,7 +105,7 @@ The `holdout/` cases and their `expected.verdict` baseline are committed as
 fixture change — **never** a tuning-loop side effect. Two independent controls
 enforce this, both already in place for everything under `evals/`:
 
-1. **CODEOWNERS** owner-locks `/evals/**/holdout/` to `@combsmith/org-leads`
+1. **CODEOWNERS** owner-locks `/evals/**/holdout/` to `@petry-projects/org-leads`
    ([`.github/CODEOWNERS`](../../.github/CODEOWNERS)).
 2. **CI immutability gate** — [`holdout-guard.yml`](../../.github/workflows/holdout-guard.yml)
    / [`scripts/lib/holdout-guard.sh`](../../scripts/lib/holdout-guard.sh) hard-fails
