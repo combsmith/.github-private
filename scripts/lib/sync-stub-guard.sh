@@ -3,7 +3,7 @@
 # org-standard stub the PR exists to sync (#2185).
 #
 # WHAT IS WRONG WITHOUT THIS
-#   On petry-projects/incubator#164 (a `standards-sync` PR) CodeAnt asked for a
+#   On combsmith/incubator#164 (a `standards-sync` PR) CodeAnt asked for a
 #   `pull_request: [review_requested]` trigger on the synced persona-mention.yml
 #   stub. A fix-bot-comment pass added it and deleted the NOTE explaining why the
 #   template omits it. dev-lead replied "Fixed", the thread was resolved, and
@@ -13,7 +13,7 @@
 #
 # THE RULE
 #   A synced stub is a file whose header (first _SSG_HEADER_LINES lines) reads
-#   `SOURCE OF TRUTH: petry-projects/.github/standards/<path>`. On a PR labeled
+#   `SOURCE OF TRUTH: combsmith/.github/standards/<path>`. On a PR labeled
 #   `standards-sync`, a pass that changes or deletes one is:
 #     clean    the stub ends byte-identical to the content the PR's first commit
 #              touching it wrote (the sync commit), i.e. a restore to the template;
@@ -23,7 +23,7 @@
 #   the header (standards/workflows/dev-lead.yml has none), so on a labeled PR
 #   every path the PR's own commits changed before the pass (<merge-base>..<pre>)
 #   is synced content too, header or not, under the same restore rule. Other
-#   header-less files, or a SOURCE OF TRUTH outside petry-projects/.github/standards/,
+#   header-less files, or a SOURCE OF TRUTH outside combsmith/.github/standards/,
 #   are out of scope, and so are PRs without the label.
 #
 # PURITY / TESTABILITY (ADR-0004)
@@ -42,14 +42,14 @@ fi
 
 # The header sits at the top of the stub; a mention deeper in the body is not one.
 readonly _SSG_HEADER_LINES=20
-readonly _SSG_TEMPLATE_REPO="petry-projects/.github"
-readonly _SSG_SOT_RE='SOURCE OF TRUTH:[[:space:]]*petry-projects/\.github/(standards/[^[:space:]]+)'
+readonly _SSG_TEMPLATE_REPO="combsmith/.github"
+readonly _SSG_SOT_RE='SOURCE OF TRUTH:[[:space:]]*combsmith/\.github/(standards/[^[:space:]]+)'
 
 # The label the sync generator applies (scripts/aw-standards-sync.sh).
 : "${SSG_SYNC_LABEL:=standards-sync}"
 
 # ssg_template_path <content>
-#   Echoes the template path in petry-projects/.github (e.g.
+#   Echoes the template path in combsmith/.github (e.g.
 #   `standards/workflows/persona-mention.yml`) when <content>'s header names a
 #   SOURCE OF TRUTH under standards/; returns 1 otherwise. Pure.
 ssg_template_path() {

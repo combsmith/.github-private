@@ -13,7 +13,7 @@ LIB="$SCRIPT_DIR/scripts/lib/deferred-thread-verify.sh"
 
 THREAD_ID="PRRT_kwDOabc123"
 DB_ID="2401234567"
-LINK="https://github.com/petry-projects/.github-private/pull/1953#discussion_r${DB_ID}"
+LINK="https://github.com/combsmith/.github-private/pull/1953#discussion_r${DB_ID}"
 
 setup() {
   # shellcheck source=scripts/lib/deferred-thread-verify.sh
@@ -280,10 +280,10 @@ ${marker}
 }
 
 @test "dtv_text_mentions_thread: scoped to repo+PR; other PR or repo is not a mention" {
-  local url="https://github.com/petry-projects/.github-private/pull/54#discussion_r${DB_ID}"
-  run dtv_text_mentions_thread "$url" "$THREAD_ID" "$DB_ID" "petry-projects/.github-private" "54"
+  local url="https://github.com/combsmith/.github-private/pull/54#discussion_r${DB_ID}"
+  run dtv_text_mentions_thread "$url" "$THREAD_ID" "$DB_ID" "combsmith/.github-private" "54"
   [ "$status" -eq 0 ]
-  run dtv_text_mentions_thread "$url" "$THREAD_ID" "$DB_ID" "petry-projects/.github-private" "55"
+  run dtv_text_mentions_thread "$url" "$THREAD_ID" "$DB_ID" "combsmith/.github-private" "55"
   [ "$status" -eq 1 ]
   run dtv_text_mentions_thread "$url" "$THREAD_ID" "$DB_ID" "other/repo" "54"
   [ "$status" -eq 1 ]

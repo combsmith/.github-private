@@ -22,9 +22,9 @@ setup() {
   IMPACT_BLOCK='Impacted shared surfaces:
   - .github/workflows/pr-review.yml
 Impacted consumers (2, fetching up to 10):
-  - petry-projects/alpha (pins .github/workflows/pr-review.yml)
+  - combsmith/alpha (pins .github/workflows/pr-review.yml)
       .github/workflows/caller.yml
-  - petry-projects/bravo (pins .github/workflows/pr-review.yml)
+  - combsmith/bravo (pins .github/workflows/pr-review.yml)
       .github/workflows/caller.yml'
 }
 
@@ -63,8 +63,8 @@ teardown() {
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "DOWNSTREAM_IMPACT"
   echo "$output" | grep -q ".github/workflows/pr-review.yml"
-  echo "$output" | grep -q "petry-projects/alpha"
-  echo "$output" | grep -q "petry-projects/bravo"
+  echo "$output" | grep -q "combsmith/alpha"
+  echo "$output" | grep -q "combsmith/bravo"
 }
 
 @test "the inlined section labels downstream impact as informational, not auto-escalation" {
@@ -87,7 +87,7 @@ teardown() {
   echo "$output" | grep -q "DOWNSTREAM_IMPACT"
   echo "$output" | grep -q "(none)"
   # No consumer repos or impacted surfaces leaked into the "(none)" case.
-  ! echo "$output" | grep -q "petry-projects/"
+  ! echo "$output" | grep -q "combsmith/"
   ! echo "$output" | grep -q "Impacted shared surfaces"
 }
 
@@ -96,7 +96,7 @@ teardown() {
   run downstream_impact_triage_section "$STUB_DIR/does-not-exist.txt"
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "(none)"
-  ! echo "$output" | grep -q "petry-projects/"
+  ! echo "$output" | grep -q "combsmith/"
 }
 
 # ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ teardown() {
   export DOWNSTREAM_IMPACT_FILE="$IMPACT_FILE"
   run downstream_impact_triage_section
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q "petry-projects/alpha"
+  echo "$output" | grep -q "combsmith/alpha"
 }
 
 # ---------------------------------------------------------------------------
@@ -123,10 +123,10 @@ teardown() {
 
   printf '%s' "$IMPACT_BLOCK" > "$IMPACT_FILE"
   { printf '# triage\n'; downstream_impact_triage_section "$IMPACT_FILE"; } > "$prompt_present"
-  grep -q "petry-projects/alpha" "$prompt_present"
+  grep -q "combsmith/alpha" "$prompt_present"
 
   printf '%s' "(none)" > "$IMPACT_FILE"
   { printf '# triage\n'; downstream_impact_triage_section "$IMPACT_FILE"; } > "$prompt_none"
-  ! grep -q "petry-projects/" "$prompt_none"
+  ! grep -q "combsmith/" "$prompt_none"
   grep -q "(none)" "$prompt_none"
 }
