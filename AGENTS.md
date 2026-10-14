@@ -846,12 +846,12 @@ only an **organisation** variable pauses every repository, and a repository vari
 same name overrides the organisation's for that repository. GitHub compares the value without
 regard to case, so `TRUE` pauses too.
 
-#### Setting a pause by hand: three calls, then a check (#2251)
+#### Setting a pause by hand: three calls, a wait, then a check (#2251)
 
 A pause set by hand is one that carries no `AGENTS_PAUSE_SOURCE`. The budget breaker lifts only
 a pause that carries its own source, so a hand pause is always **delete the source, set the
-pause, delete the source again, then check**, in that order, whether or not the breaker is
-armed:
+pause, delete the source again, wait for any breaker run already under way, then check**, in
+that order, whether or not the breaker is armed:
 
 ```bash
 gh api -X DELETE orgs/petry-projects/actions/variables/AGENTS_PAUSE_SOURCE
@@ -865,15 +865,23 @@ gh api -X PATCH orgs/petry-projects/actions/variables/AGENTS_PAUSED -f value=tru
 gh api -X DELETE orgs/petry-projects/actions/variables/AGENTS_PAUSE_SOURCE
 ```
 
-Wait a minute, then read the state:
+Then wait until every Budget Breaker run that was already under way has finished. This
+command waits for each run in progress now and returns when they are done (a run that starts
+later reads your pause and leaves it alone):
+
+```bash
+for id in $(gh run list -R petry-projects/.github-private --workflow budget-breaker.yml --status in_progress --json databaseId --jq '.[].databaseId'); do gh run watch "$id" -R petry-projects/.github-private >/dev/null 2>&1; done; echo "no earlier breaker run is still in progress"
+```
+
+Then read the state:
 
 ```bash
 gh api "orgs/petry-projects/actions/variables?per_page=100" --jq '[.variables[] | select(.name == "AGENTS_PAUSED" or .name == "AGENTS_PAUSE_SOURCE") | "\(.name)=\(.value) (\(.visibility))"] | join("  ")'
 ```
 
 The answer must be exactly `AGENTS_PAUSED=true (all)`, with no `AGENTS_PAUSE_SOURCE`. **If it
-is anything else, run the three calls again and check again.** The check is part of the
-procedure, not an extra.
+is anything else, run the three calls, the wait and the check again, until it is.** The wait
+and the check are part of the procedure, not extras.
 
 - A `DELETE` answers 404 when there is no source to delete. That is the normal case and it is
   fine; run the next call anyway.
@@ -900,9 +908,19 @@ procedure, not an extra.
   has made its last read of the state ("my pause, and its time is up") goes on to set
   `AGENTS_PAUSED=false`; if the first two calls land between that read and that write, the
   fleet ends up running and every call still looks successful. Nothing done from outside can stop a write the breaker has
-  already decided on. What can be done is to look afterwards: a breaker run that has read the
-  state finishes within seconds, and once it has resumed, its source is gone and it will not
-  touch a hand pause. So one repeat is enough, and the minute is there to let that run finish.
+  already decided on. What can be done is to look afterwards, once that run has finished:
+  checking while it is still running can show a pause it is about to lift, which is why the
+  wait comes first. After a resume its source is gone and it will not touch a hand pause.
+  A different run can trip again in the meantime; the next round of three calls covers that,
+  and the breaker's minimum hold (30 minutes by default, `BUDGET_BREAKER_MIN_HOLD_MIN`) stops
+  it from lifting that new pause straight away, so one repeat is normally enough. Repeat
+  until the check passes anyway.
+- How this was checked: an exhaustive interleaving of these steps against the breaker's own
+  read and write sequence (taken from `scripts/budget_breaker.sh` and
+  `scripts/lib/budget-breaker-writer.sh`), with up to four breaker runs and every starting
+  state, found no run that ends anything but paused with no source when the wait and one
+  repeat are kept. Without the repeat the resume race leaves the fleet running; without the
+  wait the check can pass just before a resume lands.
 - This is why no drill of those races is required before arming. What it rests on is that a
   read of the variable list sees a write or a delete made just before it, which is one of the
   live checks under "Arming preconditions" and blocks arming until it has passed.
@@ -1219,9 +1237,9 @@ as soon as the workflow is on `main`.
   - The window is narrowed, not closed, by the breaker alone: a pause set by hand in the one
     API call between that second read and the write of `AGENTS_PAUSED` would still be
     claimed. The hand-pause procedure closes it from the other side: delete
-    `AGENTS_PAUSE_SOURCE` before and after setting the pause, then check the state a
-    minute later and repeat if it is not as expected ("Setting a pause by hand: three calls,
-    then a check").
+    `AGENTS_PAUSE_SOURCE` before and after setting the pause, wait for any breaker run
+    already under way, then check the state and repeat until it is as expected ("Setting a
+    pause by hand: three calls, a wait, then a check").
   - If the roll-back itself fails, the run is red with one `::error::` that says what is
     left. A failed delete of the source leaves `AGENTS_PAUSE_SOURCE=rate-limit-observed`
     **and** `AGENTS_PAUSE_UNTIL` in place on purpose (a pause carrying the breaker's source
