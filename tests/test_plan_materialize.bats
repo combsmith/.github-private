@@ -28,7 +28,7 @@ setup() {
 teardown() { rm -rf "$TMP"; }
 
 apply_dry() { # apply_dry <plan.json>
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=572 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$1" \
     bash "$APPLY"
 }
@@ -100,7 +100,7 @@ apply_dry() { # apply_dry <plan.json>
 @test "an un-accepted proposed_story finding gates: apply-plan creates ZERO issues" {
   jq '.open_questions = [{"question":"[eval_safeguards] missing held-out split","affected_story_ids":[1],"blocking":true,"proposed_story":{"title":"[Phase 1] Add a held-out split","acceptance_criteria":["dev/test split exists"]},"proposed_blocked_by":587}]' \
     "$PLAN_581" > "$TMP/pending.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=572 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/pending.json" \
     run bash "$APPLY"
   [ "$status" -eq 0 ]

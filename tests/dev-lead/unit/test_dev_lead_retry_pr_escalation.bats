@@ -55,7 +55,7 @@ teardown() {
 @test "retry PR: needs-human-review present → skips (no dispatch)" {
   LABELS_JSON='["needs-human-review"]'
 
-  run scan_pr_for_rate_limits "petry-projects/demo" 860
+  run scan_pr_for_rate_limits "combsmith/demo" 860
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"needs-human-review"* ]]
@@ -67,7 +67,7 @@ teardown() {
 @test "retry PR: no escalation label → re-dispatches the rate-limited retry" {
   LABELS_JSON='[]'
 
-  run scan_pr_for_rate_limits "petry-projects/demo" 860
+  run scan_pr_for_rate_limits "combsmith/demo" 860
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"would dispatch dev-lead-ci-failure"* ]]
@@ -78,7 +78,7 @@ teardown() {
   # Same PR/markers as the skip case, but the human has dropped the label.
   LABELS_JSON='["bug","p1"]'
 
-  run scan_pr_for_rate_limits "petry-projects/demo" 860
+  run scan_pr_for_rate_limits "combsmith/demo" 860
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"would dispatch dev-lead-ci-failure"* ]]

@@ -5,7 +5,7 @@ AGENTS.md §"Release channel tags & the mutable-ref exception" exempts first-par
 reusable workflows from the SHA-pin standard. This repo (.github-private) is the
 `next` ring tier (epic #495), so the correct reference for the auto-rebase
 reusable is the moving channel tag `@auto-rebase/next` (#870), matching the
-canonical stub at standards/workflows/auto-rebase.yml in petry-projects/.github.
+canonical stub at standards/workflows/auto-rebase.yml in combsmith/.github.
 
 Regression guard: a SHA-pinned or frozen-tag reference is a compliance violation (issue #139).
 """
@@ -20,7 +20,7 @@ except ImportError:
     yaml = None
 
 WORKFLOW = ".github/workflows/auto-rebase.yml"
-REUSABLE = "petry-projects/.github/.github/workflows/auto-rebase-reusable.yml"
+REUSABLE = "combsmith/.github/.github/workflows/auto-rebase-reusable.yml"
 EXPECTED_REF = "@auto-rebase/next"
 SHA_PATTERN = re.compile(r"@[0-9a-f]{40}\b")
 

@@ -10,7 +10,7 @@ DEPENDABOT_YML=".github/dependabot.yml"
 AUTOMERGE_YML=".github/workflows/dependabot-automerge.yml"
 # This repo (.github-private) is the `next` ring tier (epic #495), so its stub
 # pins the dependabot-automerge/next channel rather than the former @v1 SHA
-# (#870). The org compliance audit is ring-aware (petry-projects/.github#529).
+# (#870). The org compliance audit is ring-aware (combsmith/.github#529).
 AUTOMERGE_CHANNEL="dependabot-automerge/next"
 
 setup() {
@@ -47,7 +47,7 @@ setup() {
 }
 
 @test "dependabot-automerge.yml pins the reusable to the next ring channel (compliance-audit check)" {
-  grep -qE "^[[:space:]]*uses:[[:space:]]*petry-projects/\.github/\.github/workflows/dependabot-automerge-reusable\.yml@${AUTOMERGE_CHANNEL}[[:space:]]*\$" "$AUTOMERGE_YML"
+  grep -qE "^[[:space:]]*uses:[[:space:]]*combsmith/\.github/\.github/workflows/dependabot-automerge-reusable\.yml@${AUTOMERGE_CHANNEL}[[:space:]]*\$" "$AUTOMERGE_YML"
 }
 
 @test "dependabot-automerge.yml does not reference an off-channel pin" {

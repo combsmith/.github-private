@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Dev-Lead Agent — thin caller stub
-# Standard:  petry-projects/.github/standards/ci-standards.md#5-dev-lead-agent
-# Reusable:  petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml
+# Standard:  combsmith/.github/standards/ci-standards.md#5-dev-lead-agent
+# Reusable:  combsmith/.github-private/.github/workflows/dev-lead-reusable.yml
 #
 # ADOPTING THIS WORKFLOW:
 #   1. Copy this file verbatim to .github/workflows/dev-lead.yml in your repo.
@@ -49,7 +49,7 @@ jobs:
     # Pinning a channel tag (not @main) keeps a broken change on main from gating
     # its own fix (the circular dependency). agent_ref pins the dev-lead
     # scripts/prompts checkout to the same channel.
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/next
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/next
     with:
       agent_ref: dev-lead/next
     secrets: inherit

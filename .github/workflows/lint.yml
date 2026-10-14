@@ -104,7 +104,7 @@ jobs:
             tests/test_readme_refresh_helpers.bats
 
   template-drift:
-    # Drift guard (#969): fail when a file committed in petry-projects/repo-template
+    # Drift guard (#969): fail when a file committed in combsmith/repo-template
     # has diverged from its standards-derived baseline, so the template stays a thin
     # distribution layer of standards/ and never becomes a competing fork. Reuses the
     # byte-identity (blob-SHA) model from scripts/fleet_stub_drift.sh. PR-triggered via

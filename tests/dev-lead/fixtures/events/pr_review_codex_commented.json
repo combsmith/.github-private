@@ -18,13 +18,13 @@
     "head": {
       "sha": "aaa111bbb222",
       "ref": "feat/issue-232",
-      "repo": { "full_name": "petry-projects/.github-private" }
+      "repo": { "full_name": "combsmith/.github-private" }
     },
     "base": {
       "ref": "main",
-      "repo": { "full_name": "petry-projects/.github-private" }
+      "repo": { "full_name": "combsmith/.github-private" }
     }
   },
-  "repository": { "full_name": "petry-projects/.github-private" },
+  "repository": { "full_name": "combsmith/.github-private" },
   "sender": { "login": "chatgpt-codex-connector[bot]", "type": "Bot" }
 }

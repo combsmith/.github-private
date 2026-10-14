@@ -25,17 +25,17 @@ setup() {
   grep -q 'agent_host_repo' "$script"
 }
 
-@test "agent_host_repo: cross-repo agent resolves to petry-projects/.github" {
+@test "agent_host_repo: cross-repo agent resolves to combsmith/.github" {
   run agent_host_repo "agent-shield"
   [ "$status" -eq 0 ]
-  [ "$output" = "petry-projects/.github" ]
+  [ "$output" = "combsmith/.github" ]
 }
 
 @test "agent_host_repo: this-repo agent resolves to the current repo (GITHUB_REPOSITORY)" {
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
   run agent_host_repo "dev-lead"
   [ "$status" -eq 0 ]
-  [ "$output" = "petry-projects/.github-private" ]
+  [ "$output" = "combsmith/.github-private" ]
 }
 
 @test "valid_agent: pr-review is accepted" {
@@ -90,7 +90,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# cross_repo_agent — agents whose reusable lives in petry-projects/.github
+# cross_repo_agent — agents whose reusable lives in combsmith/.github
 # (this repo holds only the thin caller stub), so live cuts are refused until
 # the cross-repo push target is wired (TODO #872).
 # ---------------------------------------------------------------------------

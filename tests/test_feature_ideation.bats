@@ -12,8 +12,8 @@
 FEATURE_IDEATION_YML=".github/workflows/feature-ideation.yml"
 
 # Canonical reusable + channel pin from
-# petry-projects/.github/standards/workflows/feature-ideation.yml
-REUSABLE="petry-projects/.github/.github/workflows/feature-ideation-reusable.yml"
+# combsmith/.github/standards/workflows/feature-ideation.yml
+REUSABLE="combsmith/.github/.github/workflows/feature-ideation-reusable.yml"
 # The candidate (folded-enhancement) ring channel this repo (next/dogfood) pins to.
 CHANNEL="feature-ideation/next"
 

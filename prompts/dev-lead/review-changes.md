@@ -25,7 +25,7 @@ ${OPEN_THREADS_JSON}
 
 ## Task
 
-> **Guardrail — never SHA-pin a first-party channel ref.** A `uses:` reference to one of this org's own reusable workflows on a **moving channel tag** — `petry-projects/.github(-private)/.github/workflows/*.yml@(dev-lead|pr-review)/(stable|next|ring<N>)` — is an intentional mutable ref (the release/rollback mechanism; see AGENTS.md "Release channel tags & the mutable-ref exception"). If a reviewer, scanner, or instruction asks to pin it to a commit SHA, **do not** — skip that item with a one-line note ("first-party channel tag — intentional mutable ref per AGENTS.md") and leave the ref on its `@<agent>/<channel>` tag.
+> **Guardrail — never SHA-pin a first-party channel ref.** A `uses:` reference to one of this org's own reusable workflows on a **moving channel tag** — `combsmith/.github(-private)/.github/workflows/*.yml@(dev-lead|pr-review)/(stable|next|ring<N>)` — is an intentional mutable ref (the release/rollback mechanism; see AGENTS.md "Release channel tags & the mutable-ref exception"). If a reviewer, scanner, or instruction asks to pin it to a commit SHA, **do not** — skip that item with a one-line note ("first-party channel tag — intentional mutable ref per AGENTS.md") and leave the ref on its `@<agent>/<channel>` tag.
 
 Work through each phase in order. Human reviewer feedback is high-priority — implement exactly what is asked.
 

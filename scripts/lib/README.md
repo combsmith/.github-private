@@ -75,6 +75,6 @@ Override `REVIEW_REGISTRY_MANIFEST` to point the helper at a different manifest
 ## Ownership & tests
 
 The registry and helper are covered by the repo's global CODEOWNERS rule
-(`* @petry-projects/org-leads` in `.github/CODEOWNERS`), so changes here are
+(`* @combsmith/org-leads` in `.github/CODEOWNERS`), so changes here are
 gated by default. Unit tests live in
 [`tests/test_review_registry.bats`](../../tests/test_review_registry.bats).
