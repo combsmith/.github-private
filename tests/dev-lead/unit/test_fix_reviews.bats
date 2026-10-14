@@ -810,7 +810,7 @@ GHEOF
   # Run from a non-git tmpdir so commit_and_push reports no changes → no-changes path
   local tmpdir
   tmpdir="$(mktemp -d)"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   run bash -c "
     cd '$tmpdir'
@@ -829,7 +829,7 @@ GHEOF
 @test "post_no_changes: includes agent reasoning when session log is present" {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  local session_log="/tmp/dev-lead-session-output.txt"
+  local session_log="$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   printf 'Agent determined no code changes required.\n' > "$session_log"
 
   run bash -c "
@@ -849,7 +849,7 @@ GHEOF
 @test "post_no_changes: redacts GitHub tokens from session log" {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  local session_log="/tmp/dev-lead-session-output.txt"
+  local session_log="$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   # Embed a fake GitHub PAT — redact_secrets should mask it before publishing.
   # Build the token at runtime so the literal doesn't appear in this source file
   # (avoids tripping gitleaks on our own test fixture).
@@ -873,7 +873,7 @@ GHEOF
 @test "post_no_changes: pick_fence outgrows tilde sequences in content" {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  local session_log="/tmp/dev-lead-session-output.txt"
+  local session_log="$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   # Content has a 4-tilde sequence — fence must be 5+ to wrap cleanly
   printf 'output line one\n~~~~ this looks like a fence\noutput line two\n' > "$session_log"
 
@@ -894,7 +894,7 @@ GHEOF
 @test "post_no_changes: redacts entire PEM private key block, not just header" {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  local session_log="/tmp/dev-lead-session-output.txt"
+  local session_log="$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   # Build the PEM markers at runtime so the literal "-----BEGIN RSA PRIVATE
   # KEY-----" never appears in this source file (avoids tripping our own
   # gitleaks check on a test fixture).
@@ -930,7 +930,7 @@ GHEOF
 @test "post_no_changes: redacts PEM block straddling the tail-30 boundary" {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  local session_log="/tmp/dev-lead-session-output.txt"
+  local session_log="$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   local dashes="-----"
   local begin="${dashes}BEGIN RSA PRIVATE KEY${dashes}"
   local end="${dashes}END RSA PRIVATE KEY${dashes}"
@@ -962,7 +962,7 @@ GHEOF
 @test "post_no_changes: neutralises literal </details> in session output" {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  local session_log="/tmp/dev-lead-session-output.txt"
+  local session_log="$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   printf 'discussing </details> tag\n' > "$session_log"
 
   run bash -c "
@@ -1111,7 +1111,7 @@ GITEOF
 @test "read_session_summary: extracts buried summary block past the tail-30 window" {
   local tmpdir session_log
   tmpdir="$(mktemp -d)"
-  session_log="/tmp/dev-lead-session-output.txt"
+  session_log="$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   # Summary at line 3, then 200 lines of trailing tool output — the prior tail -30
   # implementation would have missed this entirely.
@@ -1143,7 +1143,7 @@ GITEOF
 @test "read_session_summary: falls back to tail when no marker is found" {
   local tmpdir session_log
   tmpdir="$(mktemp -d)"
-  session_log="/tmp/dev-lead-session-output.txt"
+  session_log="$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   # Unstructured output with no recognised marker — should still surface the last lines.
   {
@@ -1169,7 +1169,7 @@ GITEOF
 @test "resolve_actor_outdated_threads: dry-run announces and skips API calls" {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   run bash -c "
     cd '$tmpdir'
@@ -1189,7 +1189,7 @@ GITEOF
   local tmpdir mutations_file base_sha
   tmpdir="$(mktemp -d)"
   mutations_file="$(mktemp)"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   # A real git repo whose PR head advances beyond the pre-pass HEAD_SHA, so the
   # #1617 resolution gate is open and resolve_actor_outdated_threads actually runs
@@ -1263,7 +1263,7 @@ GHEOF
 @test "resolve_actor_outdated_threads: skips when ACTOR is unset" {
   local tmpdir
   tmpdir="$(mktemp -d)"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   # No ACTOR set and no TRIGGERING_REVIEWER fallback — helper should log and skip.
   run bash -c "
@@ -1343,7 +1343,7 @@ GHEOF
   mkdir -p "$tmpdir"
   local mutations_file="$BATS_TEST_TMPDIR/mutations"
   local base_sha
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   # A real git repo whose PR head advances beyond the pre-pass HEAD_SHA, so the
   # #1617 resolution gate is open and resolve_addressed_bot_threads actually runs
@@ -1432,7 +1432,7 @@ GITEOF
   local mutations_file="$BATS_TEST_TMPDIR/mutations"
   # Pre-create empty so a no-resolve run yields grep exit 1 (no match), not 2 (missing file).
   : > "$mutations_file"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   cat > "$STUB_BIN_DIR/gh" << GHEOF
 #!/usr/bin/env bash
@@ -1503,7 +1503,7 @@ STUB
   local mutations_file="$BATS_TEST_TMPDIR/mutations"
   # Pre-create empty so a no-resolve run yields grep exit 1 (no match), not 2 (missing file).
   : > "$mutations_file"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   cat > "$STUB_BIN_DIR/gh" << GHEOF
 #!/usr/bin/env bash
@@ -1560,7 +1560,7 @@ STUB
   local mutations_file="$BATS_TEST_TMPDIR/mutations"
   # Pre-create empty so a no-resolve run yields grep exit 1 (no match), not 2 (missing file).
   : > "$mutations_file"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   # Bot-originated thread (a valid candidate), but the addressed-marker reply the
   # node(id) re-fetch returns was posted by SOME OTHER account — not our BOT_USER.
@@ -1646,7 +1646,7 @@ _1735_run_case() {
   local mutations_file="$BATS_TEST_TMPDIR/mutations"
   : > "$mutations_file"
   local base_sha
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   git -C "$tmpdir" init -q
   echo "initial" > "$tmpdir/file.txt"
@@ -1785,7 +1785,7 @@ _2045_run_case() {
   local mutations_file="$BATS_TEST_TMPDIR/mutations"
   : > "$mutations_file"
   local base_sha
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   git -C "$tmpdir" init -q
   echo "initial" > "$tmpdir/file.txt"
@@ -2326,7 +2326,7 @@ GHEOF
   # Pre-create empty so a no-resolve run yields grep exit 1 (no match), not 2 (missing file).
   : > "$mutations_file"
   local base_sha
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   git -C "$tmpdir" init -q
   echo "initial" > "$tmpdir/file.txt"
@@ -2464,7 +2464,7 @@ _run_claim_fix_reviews() {
   mkdir -p "$tmpdir"
   local mutations_file="$BATS_TEST_TMPDIR/mutations"
   : > "$mutations_file"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   _claim_repo_setup "$tmpdir"
   local base_sha="$CLAIM_BASE_SHA"
 
@@ -2520,7 +2520,7 @@ GHEOF
   mkdir -p "$tmpdir"
   local mutations_file="$BATS_TEST_TMPDIR/mutations"
   : > "$mutations_file"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   _claim_repo_setup "$tmpdir"
   local base_sha="$CLAIM_BASE_SHA"
   local absent_sha="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
@@ -2573,7 +2573,7 @@ GHEOF
   mkdir -p "$tmpdir"
   local mutations_file="$BATS_TEST_TMPDIR/mutations"
   : > "$mutations_file"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   _claim_repo_setup "$tmpdir"
   local base_sha="$CLAIM_BASE_SHA"
 
@@ -2626,7 +2626,7 @@ GHEOF
   mkdir -p "$tmpdir"
   local mutations_file="$BATS_TEST_TMPDIR/mutations"
   : > "$mutations_file"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   _claim_repo_setup "$tmpdir"
   local base_sha="$CLAIM_BASE_SHA"
 
@@ -2740,7 +2740,7 @@ GHEOF
 @test "resolution gate (#1617): fix-reviews no-commit pass resolves zero threads" {
   local tmpdir="$BATS_TEST_TMPDIR/fr" mutations_file="$BATS_TEST_TMPDIR/fr-mut"
   mkdir -p "$tmpdir"; : > "$mutations_file"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   _gate_no_commit_setup "$tmpdir" "$mutations_file"
 
   run bash -c "
@@ -2762,7 +2762,7 @@ GHEOF
 @test "resolution gate (#1617): fix-bot-comment no-commit pass resolves zero threads" {
   local tmpdir="$BATS_TEST_TMPDIR/fbc" mutations_file="$BATS_TEST_TMPDIR/fbc-mut"
   mkdir -p "$tmpdir"; : > "$mutations_file"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   _gate_no_commit_setup "$tmpdir" "$mutations_file"
 
   run bash -c "
@@ -2783,7 +2783,7 @@ GHEOF
 @test "resolution gate (#1617): review-changes no-commit pass resolves zero threads" {
   local tmpdir="$BATS_TEST_TMPDIR/rc" mutations_file="$BATS_TEST_TMPDIR/rc-mut"
   mkdir -p "$tmpdir"; : > "$mutations_file"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   _gate_no_commit_setup "$tmpdir" "$mutations_file"
 
   run bash -c "
@@ -2813,7 +2813,7 @@ GHEOF
 @test "resolution gate (#1617): stale HEAD_SHA differing from checkout head resolves zero threads on a no-commit pass" {
   local tmpdir="$BATS_TEST_TMPDIR/stale" mutations_file="$BATS_TEST_TMPDIR/stale-mut"
   mkdir -p "$tmpdir"; : > "$mutations_file"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   _gate_no_commit_setup "$tmpdir" "$mutations_file"
 
   # A stale, event-time SHA that deliberately does NOT match the checked-out head
@@ -6164,7 +6164,7 @@ _setup_2013() {
   : > "$T2013_MUT"; : > "$T2013_PATCH"; : > "$T2013_PUSH"
   [ -s "$T2013_EXTRA" ] || echo '[]' > "$T2013_EXTRA"
   mkdir -p "$T2013_DIR/tests"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   git -C "$T2013_DIR" init -q
   echo "initial" > "$T2013_DIR/file.txt"
@@ -6922,7 +6922,7 @@ _assert_open_thread_past_first_page_reaches_prompt() {
   tmpdir="$(mktemp -d)"
   fixture="$(mktemp)"
   capture="$(mktemp)"
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   git -C "$tmpdir" init -q
   echo "initial" > "$tmpdir/file.txt"
   git -C "$tmpdir" add .
@@ -7473,7 +7473,7 @@ _nochange_resolver_case() {
   else
     : > "$BODY_FILE"
   fi
-  rm -f /tmp/dev-lead-session-output.txt
+  rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
   git -C "$tmpdir" init -q
   echo "initial" > "$tmpdir/file.txt"

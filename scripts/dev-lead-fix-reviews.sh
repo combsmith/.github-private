@@ -592,7 +592,7 @@ ${summary}"
 # window, body inside the kept window would otherwise leak plaintext key
 # material).
 read_session_summary() {
-  local log="/tmp/dev-lead-session-output.txt"
+  local log="$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
   [[ -f "$log" ]] || return 0
   local redacted
   redacted="$(redact_secrets < "$log")"
