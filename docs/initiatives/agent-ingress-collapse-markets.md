@@ -52,7 +52,7 @@ ingress `pr-review` job from `@pr-review/stable` to `@pr-review/v1-stable`
 (markets `62587ec`, 2026-10-10), in both `uses:` and `agent_ref`. §3 carries
 that pin. The row above still records the pre-collapse stub pin. See §5a.
 
-### 1a. Measured baseline (billed runs)
+### 1a. Measured baseline (workflow runs)
 
 - **Window:** `2026-09-15T00:00:00Z..2026-09-22T00:00:00Z`, 7 days, bounded at
   both ends. Each count is a per-workflow `total_count` from
@@ -669,14 +669,17 @@ event-filtered, no-runner skips.
 - Post-collapse window: `2026-10-10T01:16:00Z..2026-10-14T01:16:00Z`, 4 days,
   from the markets#513 merge.
 - `agent-ingress.yml` had 382 runs. Each of the five deleted stubs had 0.
-- A job counts as **billed** when `runner_name` is non-empty. Billed minutes are
-  per job, each rounded up to a whole minute.
+- A job counts as **runner-assigned** when `runner_name` is non-empty. Runner
+  minutes are per job, each rounded up to a whole minute. This measures runner
+  usage, not billing: `petry-projects/markets` is a public repository, and
+  public-repository Actions jobs accrue no billable minutes. Read the figures
+  below as a proxy for runner load.
 - Job sample: 1340 of the 1342 baseline runs (§1a; 2 returned no jobs), and all
   382 post-collapse runs.
 
 **Per-day figures:**
 
-| Role | Billed jobs/day, before → after | Billed min/day, before → after |
+| Role | Runner jobs/day, before → after | Runner min/day, before → after |
 | --- | --- | --- |
 | dev-lead | 44.4 → 41.8 | 60.3 → 49.8 |
 | pr-auto-review | 29.7 → 23.8 | 29.7 → 24.8 |
@@ -693,13 +696,17 @@ event-filtered, no-runner skips.
   window.
 - PRs opened: 5 in the baseline window (0.7/day) and 7 in the post-collapse
   window (1.75/day). Post-collapse traffic was not lighter.
-- Raw totals: baseline 552 billed jobs and 663 billed minutes; post-collapse 281
-  billed jobs and 317 billed minutes.
+- Raw totals: baseline 552 runner jobs and 663 runner minutes; post-collapse 281
+  runner jobs and 317 runner minutes.
 
-**Conclusion:** the collapse is cost-neutral to slightly cheaper for markets.
-The per-event `if:` filters skip union events before a runner is assigned. The
-main saving is pr-auto-review: the old stub gave a runner to every run
-(208/208), while the ingress job is billed for 95 of 382.
+**Conclusion:** runner load is neutral to slightly lower for markets (no
+billing conclusion is drawn; the repository is public). The per-event `if:`
+filters skip union events before a runner is assigned. The pr-auto-review
+figures (old stub: a runner on 208 of 208 runs; ingress job: a runner on 95 of
+382 runs) are **not a matched comparison**: the 382 ingress runs include union
+events pr-auto-review never subscribed to, and the two windows do not overlap,
+so `workflow_run`/`check_suite` traffic may differ. They show the filter
+working, not a measured saving attributable to the collapse.
 
 Source: the #1729 finalization comment
 (https://github.com/petry-projects/.github-private/issues/1729#issuecomment-6159791868).
@@ -806,17 +813,21 @@ $'ci-failure-analyst\tCI-Failure-Analyst\t.github/workflows/agent-ingress.yml\t<
 > (§9b) and each role's existing per-role canonical. They are left as markers
 > because publishing the canonical template is the cross-repo step below.
 
-### 9b. Canonical `agent-ingress.yml` template — publish is cross-repo (DEFERRED)
+### 9b. Canonical `agent-ingress.yml` template — publish was cross-repo (DONE)
 
 The canonical, per-repo-parameterized `agent-ingress.yml` template that markets'
 copy must byte-match lives in the canonical stub repo
-(`CANONICAL_STUB_REPO`, default `petry-projects/.github`). **Publishing it is a
-write to another repo and cannot be done from `.github-private`.** The §3 content
+(`CANONICAL_STUB_REPO`, default `petry-projects/.github`). **Publishing it was a
+write to another repo and could not be done from `.github-private`; it has since
+been published (petry-projects/.github#1316, `452ea69`, §11).** The §3 content
 is the pilot instance; the generalized template (repo-agnostic pins, the
 role-superset `on:` union, adopter notes) is authored in the canonical repo by
 its owner.
 
-### 9c. Why in-repo activation is premature
+### 9c. Why in-repo activation was premature (historical; now applied)
+
+*Historical rationale; the rows are now applied (#2182) and markets is
+post-collapse (markets#513), so the conditions below are met.*
 
 - Adding the `STUB_REGISTRY` rows (§9a) before the canonical template exists
   makes `fleet_monitor.sh` compare markets' ingress against a `canonical_path`
@@ -834,12 +845,12 @@ the snapshots are refreshed.
 
 ---
 
-## 10. Companion issue for `petry-projects/markets` (prepared; filing is remaining)
+## 10. Companion issue for `petry-projects/markets` (filed as markets#506)
 
 `.github-private` dev-lead cannot open the markets PR, and this package cannot
 file cross-repo either from here. The companion-issue body below is the committed
-artifact; **filing it in `petry-projects/markets` is the remaining post-merge
-step** (AC7 evidence is the filed issue link + the markets PR it drives).
+artifact; it has been **filed in `petry-projects/markets` as markets#506**, and
+the markets PR it drove is markets#513 (§11).
 
 ```markdown
 Title: [ADR-0007] Collapse per-role Class-1 stubs into agent-ingress.yml (pilot)
