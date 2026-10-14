@@ -695,7 +695,9 @@ event-filtered, no-runner skips.
   kind (a): **0 jobs concluded `skipped` with a runner assigned**, in either
   window.
 - PRs opened: 5 in the baseline window (0.7/day) and 7 in the post-collapse
-  window (1.75/day). Post-collapse traffic was not lighter.
+  window (1.75/day). Post-collapse PR-opening traffic was not lighter. This
+  says nothing about total traffic: review, comment and check events are not
+  counted here.
 - Raw totals: baseline 552 runner jobs and 663 runner minutes; post-collapse 281
   runner jobs and 317 runner minutes.
 
@@ -786,10 +788,12 @@ apply.
 
 ---
 
-## 9. AC11 (prepared, activation deferred) — STUB_REGISTRY rows + canonical template
+## 9. AC11 (done: template published, activation applied) — STUB_REGISTRY rows + canonical template
 
-Two AC11 pieces are **cross-repo or post-collapse and cannot be completed from
-`.github-private` now**; they are prepared here ready-to-apply.
+Two AC11 pieces were **cross-repo or post-collapse and could not be completed
+from `.github-private` at first**; they were prepared here ready-to-apply. Both
+are now done: the canonical template is published (§9b) and the rows are applied
+(§9c, §11).
 
 ### 9a. Ready-to-apply `STUB_REGISTRY` rows (scripts/fleet_monitor.sh)
 
@@ -810,8 +814,9 @@ $'ci-failure-analyst\tCI-Failure-Analyst\t.github/workflows/agent-ingress.yml\t<
 
 > `<CANONICAL agent-ingress path>` and the three `<legacy … canonical>` cells
 > resolve to wherever the org publishes the canonical `agent-ingress.yml` template
-> (§9b) and each role's existing per-role canonical. They are left as markers
-> because publishing the canonical template is the cross-repo step below.
+> (§9b) and each role's existing per-role canonical. They are shown as markers
+> because this package predates the publication; the rows as applied are in
+> `scripts/fleet_monitor.sh` (§9c).
 
 ### 9b. Canonical `agent-ingress.yml` template — publish was cross-repo (DONE)
 
@@ -829,15 +834,16 @@ its owner.
 *Historical rationale; the rows are now applied (#2182) and markets is
 post-collapse (markets#513), so the conditions below are met.*
 
-- Adding the `STUB_REGISTRY` rows (§9a) before the canonical template exists
-  makes `fleet_monitor.sh` compare markets' ingress against a `canonical_path`
-  that 404s.
-- ALIGNED verification via the role-path needs a **post-collapse** markets
-  carrying `agent-ingress.yml`; today markets is pre-collapse, so every role
-  would fall back to the legacy per-role path.
+- Before the canonical template was published, adding the `STUB_REGISTRY` rows
+  (§9a) would have made `fleet_monitor.sh` compare markets' ingress against a
+  `canonical_path` that 404s.
+- Before markets#513, ALIGNED verification via the role-path required a
+  **post-collapse** markets carrying `agent-ingress.yml`; markets was then
+  pre-collapse, so every role would have fallen back to the legacy per-role
+  path. markets is now post-collapse, so the role-path comparison applies.
 
-Activation lands after the markets PR merges and the canonical template is
-published — this package hands both artifacts to that follow-up.
+Activation was applied after the markets PR merged and the canonical template
+was published. The ALIGNED run is recorded in §11.
 
 The Bats ingress checks use trimmed reusable snapshots. Changes to checked
 inputs or concurrency declarations behind channel refs are not detected until
