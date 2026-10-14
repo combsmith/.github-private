@@ -114,6 +114,7 @@ JUDGE_SHIM="$(mktemp)"
 cat >"$JUDGE_SHIM" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+export REVIEW_ENGINE=claude
 export CLAUDE_TRIAGE_MODEL_CHAIN="$AB_JUDGE_MODEL"
 base="$EVAL_JUDGE_CMD"
 if command -v "\$base" >/dev/null 2>&1; then
@@ -136,6 +137,7 @@ _is_scored() { [ "$1" -eq 0 ] || [ "$1" -eq 1 ]; }
 run_arm() {
   local skill="$1" model="$2" out rc=0
   if out="$(
+        REVIEW_ENGINE=claude \
         CLAUDE_TRIAGE_MODEL_CHAIN="$model" \
         EVAL_ENGINE_CMD="$EVAL_ENGINE_CMD" \
         EVAL_JUDGE_CMD="$JUDGE_SHIM" \
