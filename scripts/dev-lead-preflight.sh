@@ -54,6 +54,9 @@ if declare -F ai_engine_enabled >/dev/null 2>&1; then
   }
   [[ " $_chain " == *" claude "* ]] || CLAUDE_REQUIRED=optional
 fi
+# The workflow's token preflight sets CLAUDE_UNAVAILABLE=1 when a non-Claude effective
+# primary runs without the token; claude is then skipped by the fallback, not required.
+[ "${CLAUDE_UNAVAILABLE:-}" = "1" ] && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && CLAUDE_REQUIRED=optional
 
 if [ "$CLAUDE_REQUIRED" = required ]; then
   check_required "CLAUDE_CODE_OAUTH_TOKEN" "Claude Code CLI authentication" || FAILED=1

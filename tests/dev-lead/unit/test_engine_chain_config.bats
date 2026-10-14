@@ -719,3 +719,16 @@ EOS
   grep -q '^gemini rl=\[claude\]$' "$BDIR/engine_calls.txt"
   rm -rf "$BDIR"
 }
+
+@test "preflight: tokenless claude later in the chain passes when CLAUDE_UNAVAILABLE=1" {
+  export AI_ENGINES="gemini,claude" CLAUDE_UNAVAILABLE=1
+  run _preflight
+  [ "$status" -eq 0 ]
+}
+
+@test "preflight: CLAUDE_UNAVAILABLE does not excuse a missing token without the flag" {
+  export AI_ENGINES="gemini,claude"
+  unset CLAUDE_UNAVAILABLE
+  run _preflight
+  [ "$status" -eq 1 ]
+}
