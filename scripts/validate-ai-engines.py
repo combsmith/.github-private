@@ -144,7 +144,10 @@ def check_references(config, globs) -> list:
                 why = "the duck runs one model" if task in SINGLE_MODEL_TASKS else "Copilot has no in-engine chain"
                 problems.append(f"tasks.{task}.{provider}: takes one model ({why}), got {len(chain)}")
     for model, entry in models.items():
-        if entry["status"] == "retired" or not providers[entry["provider"]]["enabled"]:
+        # Claude chains are resolved outside provider routing (idea-triage.yml,
+        # persona-runner-reusable.yml), so Claude models are priced even when disabled.
+        if entry["status"] == "retired" or (
+                entry["provider"] != "claude" and not providers[entry["provider"]]["enabled"]):
             continue
         # Only the Copilot path strips a vendor prefix before pricing a run.
         bare = model.split("/", 1)[1] if entry["provider"] == "copilot" and "/" in model else model
