@@ -698,8 +698,8 @@ event-filtered, no-runner skips.
   window (1.75/day). Post-collapse PR-opening traffic was not lighter. This
   says nothing about total traffic: review, comment and check events are not
   counted here.
-- Raw totals: baseline 552 runner jobs and 663 runner minutes; post-collapse 281
-  runner jobs and 317 runner minutes.
+- Raw totals: baseline 552 billed jobs and 663 billed minutes; post-collapse 281
+  billed jobs and 317 billed minutes.
 
 **Conclusion:** billed load is neutral to slightly lower for markets (no
 billing conclusion is drawn; the repository is public). The per-event `if:`
