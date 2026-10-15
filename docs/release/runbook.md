@@ -206,6 +206,12 @@ git push origin pr-review/stable --force
 
 - The immutable `vX.Y.Z` tags are the rollback targets — pick the last release
   known healthy (`git tag -l 'pr-review/v*' | sort -V`).
+- **Never roll back to a release cut before the org rename (2026-10-14,
+  `petry-projects` → `combsmith`).** Those releases' workflows and scripts still say
+  `uses: petry-projects/...`, which GitHub Actions does not redirect after a rename,
+  so moving a channel to one breaks every caller on its next run. Only releases cut
+  on or after 2026-10-14 are rollback targets; if an agent has none yet, roll
+  forward with a fix instead.
 - For the cross-repo agents (`feature-ideation` + the six #482 reusables), the
   same reverse-tag-move applies but against `combsmith/.github` (where their
   `<agent>/v*` and channel tags live), not this repo — see the cross-repo note in §2b.
