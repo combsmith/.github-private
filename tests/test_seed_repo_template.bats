@@ -905,12 +905,12 @@ GHEOF
 
 # ── #2233: commercial-support sections + one open seed PR per repo ─────────────
 # Fixtures: standards/commercial-support-standard.md at standards/v1.2.0, and
-# README.md / BOOTSTRAP.md from combsmith/repo-template main at bb43b0db.
+# README.md / BOOTSTRAP.md from combsmith/repo-template main at a1b4fb23.
 SEED_FIXTURES="$SCRIPT_DIR/tests/fixtures/seed-repo-template"
 # Git blob SHAs of those two repo-template files (guards the fixtures themselves
 # against an editor/hook adding a trailing newline).
-REPO_TEMPLATE_README_BLOB=b0b70720038659d7d303f8611fb54703e05df428
-REPO_TEMPLATE_BOOTSTRAP_BLOB=b0d2f01630b2c19437288dedd535c1c6b1ba8771
+REPO_TEMPLATE_README_BLOB=0aba9ec3a18ab29660f71d12a26403fd0c05c0d1
+REPO_TEMPLATE_BOOTSTRAP_BLOB=484d2ce52affd774d89dd9c6a98aae7ad9917a8b
 
 _fixture_commercial_standard() {
   cp "$SEED_FIXTURES/commercial-support-standard.md" \
@@ -927,7 +927,7 @@ _standard_readme_block() { # <standard-file>
 # newlines and _put_file encodes it with printf '%s'.
 _seeded_blob() { printf '%s' "$1" | git hash-object --stdin; }
 
-@test "#2233: BOOTSTRAP.md emission is blob-identical to repo-template main (bb43b0db)" {
+@test "#2233: BOOTSTRAP.md emission is blob-identical to repo-template main (a1b4fb23)" {
   [ "$(git hash-object "$SEED_FIXTURES/repo-template-BOOTSTRAP.md")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
   run bash "$SEED" --emit-baseline BOOTSTRAP.md
   [ "$status" -eq 0 ]
