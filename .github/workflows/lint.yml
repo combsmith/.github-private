@@ -124,6 +124,7 @@ jobs:
             tests/fleet_monitor_run.bats \
             tests/test_fleet_paused_run.bats \
             tests/template_stub_drift.bats \
+            tests/ci_failure_analyst_resolve.bats \
             tests/canary_rollout.bats \
             tests/test_initiative_canary.bats \
             tests/test_initiative_driver_canary.bats \
@@ -334,7 +335,9 @@ jobs:
           chmod +x actionlint
           rm actionlint.tar.gz
           shopt -s extglob
-          ./actionlint -ignore 'SC2129' .github/workflows/!(*.lock).yml
+          # `workflow_sha` is a valid `job` context property (the
+          # reusable's own commit); the actionlint schema omits it.
+          ./actionlint -ignore 'SC2129' -ignore '"workflow_sha" is not defined' .github/workflows/!(*.lock).yml
 
   validate-workflow-schedules:
     # Off-peak scheduling compliance (#724, epic #722): fail any PR that
