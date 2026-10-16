@@ -7669,10 +7669,11 @@ GITEOF
 # current and posted nothing. The harness now computes the stale set before the
 # model runs (the gate's own #2008 rule) and hands it over as a fact.
 
-# _stale_env <comments-json|FAIL>: run export_stale_dispositions against a gh stub
-# whose comment read returns <comments-json> (or fails), and print the result.
+# _stale_env <comments-json|FAIL> [var]: run export_stale_dispositions against a gh
+# stub whose comment read returns <comments-json> (or fails), and print <var>
+# (default STALE_DISPOSITIONS).
 _stale_env() {
-  export STALE_COMMENTS="$1"
+  export STALE_COMMENTS="$1" STALE_VAR="${2:-STALE_DISPOSITIONS}"
   cat > "$STUB_BIN_DIR/gh" <<'GHEOF'
 #!/usr/bin/env bash
 [ "$STALE_COMMENTS" = "FAIL" ] && exit 1
@@ -7686,7 +7687,7 @@ GHEOF
     source '$SCRIPT_DIR/scripts/lib/bot-comment-retry.sh'
     eval \"\$(sed -n '/^export_stale_dispositions()/,/^}/p' '$FIX_REVIEWS_SCRIPT')\"
     export_stale_dispositions >/dev/null 2>&1
-    printf '%s' \"\$STALE_DISPOSITIONS\"
+    printf '%s' \"\${!STALE_VAR}\"
   "
 }
 
@@ -7878,4 +7879,69 @@ GHEOF
   DEV_LEAD_NOCHANGE_EPOCH="2026-10-12T00:00:00Z" run nochange_epoch_cutoff
   [ "$status" -eq 0 ]
   [ "$output" = "2026-10-12T00:00:00Z" ]
+}
+
+# ── #2247: a stale-disposition pass records that it started ────────────────────
+# The sweep caps fix-reviews passes per edit by counting their markers. A pass that
+# dies before its terminal marker (runner lost, timeout, cancel) left nothing to
+# count, so it posts a start marker before the model runs.
+
+@test "fix-reviews(#2247): export_stale_dispositions records the latest stale edit time, empty when none is stale" {
+  _stale_env "$(_stale_nodes 2026-10-10T12:18:39Z)" STALE_LATEST_EDIT
+  [ "$output" = "2026-10-10T13:03:53Z" ]
+  _stale_env "$(_stale_nodes 2026-10-10T13:10:00Z)" STALE_LATEST_EDIT
+  [ -z "$output" ]
+  _stale_env FAIL STALE_LATEST_EDIT
+  [ -z "$output" ]
+}
+
+# _start_post <STALE_LATEST_EDIT> [DEV_LEAD_DRY_RUN]: run post_stale_pass_start and
+# print what the gh stub was asked to post.
+_start_post() {
+  export POSTED="$BATS_TEST_TMPDIR/posted"
+  : > "$POSTED"
+  cat > "$STUB_BIN_DIR/gh" <<'GHEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >> "$POSTED"
+GHEOF
+  chmod +x "$STUB_BIN_DIR/gh"
+  run bash -c "
+    export PATH='$STUB_BIN_DIR':\"\$PATH\" REPO=o/r PR_NUMBER=54 HEAD_SHA=ddd444eee555
+    export STALE_LATEST_EDIT='$1' DEV_LEAD_DRY_RUN='${2:-false}' PASS_STARTED_AT=2026-10-10T13:20:00Z
+    REVIEWS_MARKER_PREFIX='<!-- dev-lead-fix-reviews pr='
+    eval \"\$(sed -n '/^post_stale_pass_start()/,/^}/p' '$FIX_REVIEWS_SCRIPT')\"
+    post_stale_pass_start
+  "
+}
+
+@test "fix-reviews(#2247): a pass with a stale disposition posts a start marker carrying pr, sha, edit and read_at" {
+  _start_post 2026-10-10T13:03:53Z
+  [ "$status" -eq 0 ]
+  grep -qF '<!-- dev-lead-fix-reviews-start pr=54 sha=ddd444eee555 intent=fix-reviews edit=2026-10-10T13:03:53Z read_at=2026-10-10T13:20:00Z -->' "$POSTED"
+}
+
+@test "fix-reviews(#2247): no start marker when nothing is stale, or in dry-run" {
+  _start_post ""
+  [ "$status" -eq 0 ]
+  [ ! -s "$POSTED" ]
+  _start_post 2026-10-10T13:03:53Z true
+  [ "$status" -eq 0 ]
+  [ ! -s "$POSTED" ]
+}
+
+@test "fix-reviews(#2247): the start marker the pass posts is the one the sweep counts" {
+  _start_post 2026-10-10T13:03:53Z
+  local marker nodes
+  marker=$(grep -o '<!-- dev-lead-fix-reviews-start [^>]*-->' "$POSTED")
+  nodes=$(jq -c --arg m "$marker" '. + [{id:"IC_start", author:{login:"don-petry", __typename:"User"},
+      authorAssociation:"OWNER", body:$m, createdAt:"2026-10-10T13:20:01Z", lastEditedAt:null,
+      isMinimized:false, minimizedReason:null}]' <<< "$(_stale_nodes 2026-10-10T12:18:39Z)")
+  run bash -c "source '$SCRIPT_DIR/scripts/dev-lead-retry.sh'; STALE_DISPOSITION_MAX_PASSES=1 stale_disposition_needs_dispatch \"\$1\" 54" _ "$nodes"
+  [ "$status" -eq 3 ]
+}
+
+@test "fix-reviews(#2247): the start marker is posted after the stale set is computed and before the model runs" {
+  local block
+  block="$(sed -n '/^  fix-reviews)$/,/build_and_run "fix-reviews"/p' "$FIX_REVIEWS_SCRIPT")"
+  [[ "$block" == *"export_stale_dispositions"*"post_stale_pass_start"*"build_and_run"* ]]
 }
