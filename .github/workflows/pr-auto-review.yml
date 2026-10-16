@@ -44,19 +44,34 @@ on:
 
 permissions: {}
 
+# Deduplicate ONLY the default-branch-context triggers (issue #1126). On GitHub
+# Free (20 concurrent jobs, org-wide) this stub fanned out per trigger. Its runs
+# split by context:
+#   • check_suite / workflow_run — head_branch=main, the check does NOT attach to
+#     the PR head, so superseding an in-flight run is SAFE. Both events collapse
+#     onto one group per PR (`…-pr-<number>`) with cancel-in-progress: true.
+#   • pull_request / pull_request_review — run on the PR head; a cancelled run
+#     would leave a cancelled `pr-auto-review / check-and-dispatch` check on the
+#     head. They get a unique-per-run group and never cancel, so they behave
+#     exactly as before.
+# A default-branch trigger with no associated PR (fork / no PR) also falls back to
+# the unique-per-run group so unrelated PRs never collapse into one group.
+concurrency:
+  group: >-
+    ${{
+    (github.event_name == 'check_suite' && github.event.check_suite.pull_requests[0].number)
+    && format('pr-auto-review-ready-check-pr-{0}', github.event.check_suite.pull_requests[0].number)
+    || (github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number)
+    && format('pr-auto-review-ready-check-pr-{0}', github.event.workflow_run.pull_requests[0].number)
+    || format('pr-auto-review-ready-check-unique-{0}', github.run_id)
+    }}
+  cancel-in-progress: ${{ github.event_name == 'check_suite' || github.event_name == 'workflow_run' }}
+
 jobs:
   pr-auto-review:
-    # Skip Dependabot-authored events (#1390, mirrors the #864 guard in
-    # dev-lead-reusable.yml): a Dependabot `pull_request` run has no access to
-    # GH_PAT_WORKFLOWS, so the secrets expression below resolves empty and the
-    # reusable's ready-check checkout fails at startup with
-    # "Input required and not supplied: token". Dependabot PRs are handled by
-    # dependabot-automerge.yml and never need the review-agent dispatch, so
-    # skipping cleanly here removes the false failure without touching the
-    # channel, trigger event types, or permissions block.
-    # Two conditions: actor covers Dependabot-triggered events (pull_request,
-    # workflow_run); PR-author login covers pull_request_review events where the
-    # actor is the human reviewer, not Dependabot.
+    # Skip Dependabot-authored events (#1390): Dependabot-triggered events have
+    # no access to GH_PAT_WORKFLOWS, so the reusable's checkout fails. Dependabot
+    # PRs are handled by dependabot-automerge.yml and never need review dispatch.
     if: github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]'
     permissions:
       pull-requests: read
