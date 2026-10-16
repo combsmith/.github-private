@@ -10,6 +10,7 @@ LIB="$SCRIPT_DIR/scripts/lib/engine-chain.sh"
 setup() {
   unset AI_ENGINES DEV_LEAD_ENGINES AI_DUCK_ENGINE AI_DUCK_MODEL
   unset CLAUDE_AVAILABLE GEMINI_AVAILABLE COPILOT_AVAILABLE REVIEW_ENGINE
+  unset GOOGLE_API_KEY GOOGLE_API_KEY_2 GOOGLE_API_KEY_3 GOOGLE_API_KEY_4 GEMINI_API_KEY
   # shellcheck source=../../../scripts/lib/engine-chain.sh
   source "$LIB"
 }
@@ -718,4 +719,25 @@ EOS
   [ "$status" -eq 0 ]
   grep -q '^gemini rl=\[claude\]$' "$BDIR/engine_calls.txt"
   rm -rf "$BDIR"
+}
+
+@test "preflight: tokenless claude later in the chain passes when CLAUDE_UNAVAILABLE=1" {
+  export AI_ENGINES="gemini,claude" CLAUDE_UNAVAILABLE=1
+  run _preflight
+  [ "$status" -eq 0 ]
+}
+
+@test "preflight: CLAUDE_UNAVAILABLE does not excuse a missing token without the flag" {
+  export AI_ENGINES="gemini,claude"
+  unset CLAUDE_UNAVAILABLE
+  run _preflight
+  [ "$status" -eq 1 ]
+}
+
+@test "engine.sh: REVIEW_ENGINE_FORCE pins REVIEW_ENGINE past a disabled provider (model A/B)" {
+  export AI_ENGINES="gemini"
+  run bash -c "REVIEW_ENGINE=claude; source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1; echo \$REVIEW_ENGINE"
+  [ "${lines[-1]}" = "gemini" ]
+  run bash -c "REVIEW_ENGINE=claude REVIEW_ENGINE_FORCE=1; source '$SCRIPT_DIR/scripts/engine.sh' >/dev/null 2>&1; echo \$REVIEW_ENGINE"
+  [ "${lines[-1]}" = "claude" ]
 }

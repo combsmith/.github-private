@@ -213,7 +213,7 @@ jobs:
       # The primary is derived here (expressions cannot split a list) from the
       # first AI_ENGINES entry; the scripts enforce the full list.
       AI_ENGINES: ${{ vars.AI_ENGINES || '' }}
-      REVIEW_ENGINE: ${{ vars.REVIEW_ENGINE || (startsWith(vars.AI_ENGINES, 'gemini') && 'gemini') || (startsWith(vars.AI_ENGINES, 'copilot') && 'copilot') || 'claude' }}
+      REVIEW_ENGINE: ${{ vars.REVIEW_ENGINE || (startsWith(vars.AI_ENGINES, 'gemini') && 'gemini') || (startsWith(vars.AI_ENGINES, 'copilot') && 'copilot') || '' }}
       AI_DUCK_ENGINE: ${{ vars.AI_DUCK_ENGINE || '' }}
       AI_DUCK_MODEL: ${{ vars.AI_DUCK_MODEL || '' }}
       GEMINI_FLASH_MODEL: ${{ vars.GEMINI_FLASH_MODEL || '' }}
@@ -328,9 +328,19 @@ jobs:
         # and install claude only best-effort, so they legitimately run WITHOUT this
         # token — failing them here would be a regression, not the fail-loud we want.
         env:
-          REVIEW_ENGINE: ${{ vars.REVIEW_ENGINE || (startsWith(vars.AI_ENGINES, 'gemini') && 'gemini') || (startsWith(vars.AI_ENGINES, 'copilot') && 'copilot') || 'claude' }}
+          REVIEW_ENGINE: ${{ vars.REVIEW_ENGINE || (startsWith(vars.AI_ENGINES, 'gemini') && 'gemini') || (startsWith(vars.AI_ENGINES, 'copilot') && 'copilot') || '' }}
+          AGENT_REF: ${{ inputs.agent_ref || 'main' }}
+          GH_TOKEN: ${{ secrets.DON_PETRY_BOT_GH_PAT_CLASSIC || secrets.DON_PETRY_BOT_GH_PAT || github.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
+          # The file's enabled providers in fallback_order (what the runtime's
+          # default chain is). Fetched through the API (this step precedes
+          # checkout); when it cannot be read, fall back to claude-first and keep
+          # requiring the token (fail closed).
+          file_chain="$(gh api -H 'Accept: application/vnd.github.raw' \
+            "repos/combsmith/.github-private/contents/config/ai-engines.json?ref=${AGENT_REF}" 2>/dev/null \
+            | jq -r '. as $c | [$c.providers.fallback_order[] | select($c.providers[.].enabled == true)] | join(" ")' 2>/dev/null || true)"
+          [ -n "$file_chain" ] || file_chain="claude gemini copilot"
           effective_primary() {
             local pref spec e chain="" valid=true first
             pref="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
@@ -344,7 +354,15 @@ jobs:
             done
             set +f
             if [ "$valid" = false ]; then chain=""; pref=""; fi
-            [ -n "${chain// /}" ] || chain=" claude gemini copilot"
+            if [ -n "${chain// /}" ]; then
+              # AI_ENGINES narrows the file; it cannot re-enable a provider the file disables.
+              local kept=""
+              for e in $chain; do case " $file_chain " in *" $e "*) kept="$kept $e" ;; esac; done
+              chain="$kept"
+            else
+              chain=" $file_chain"
+            fi
+            [ -n "${chain// /}" ] || { printf '%s' none; return; }
             if [ -n "$pref" ] && [[ "$chain " == *" $pref "* ]]; then printf '%s' "$pref"; return; fi
             first="${chain# }"
             printf '%s' "${first%% *}"
@@ -527,6 +545,20 @@ jobs:
             # Log the version actually in use on a fresh install too (#1957).
             echo "claude-code installed: $(claude --version 2>/dev/null || echo unavailable)"
           }
+
+          # REVIEW_ENGINE is only a preference: it is empty when no legacy
+          # override is set and AI_ENGINES does not start with gemini/copilot,
+          # and it can name an engine the config disables. Always resolve the
+          # enabled primary from the checked-out config so the case below sees
+          # the engine the run actually uses; fall back to the preference, then
+          # claude, when the config cannot be read.
+          # shellcheck source=scripts/lib/engine-chain.sh
+          if source scripts/lib/engine-chain.sh 2>/dev/null \
+             && primary="$(ai_engine_primary "${REVIEW_ENGINE:-}")" && [ -n "$primary" ]; then
+            REVIEW_ENGINE="$primary"
+          else
+            REVIEW_ENGINE="${REVIEW_ENGINE:-claude}"
+          fi
 
           case "$REVIEW_ENGINE" in
             claude)

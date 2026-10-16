@@ -181,7 +181,7 @@ jobs:
       # legacy DEV_LEAD_ENGINES name is still honoured); DEV_LEAD_ENGINE is a
       # legacy primary override — leave it unset to let AI_ENGINES decide.
       AI_ENGINES: ${{ vars.AI_ENGINES || vars.DEV_LEAD_ENGINES || '' }}
-      DEV_LEAD_ENGINE: ${{ vars.DEV_LEAD_ENGINE || (startsWith(vars.AI_ENGINES || vars.DEV_LEAD_ENGINES, 'gemini') && 'gemini') || (startsWith(vars.AI_ENGINES || vars.DEV_LEAD_ENGINES, 'copilot') && 'copilot') || 'claude' }}
+      DEV_LEAD_ENGINE: ${{ vars.DEV_LEAD_ENGINE || (startsWith(vars.AI_ENGINES || vars.DEV_LEAD_ENGINES, 'gemini') && 'gemini') || (startsWith(vars.AI_ENGINES || vars.DEV_LEAD_ENGINES, 'copilot') && 'copilot') || '' }}
       AI_DUCK_ENGINE: ${{ vars.AI_DUCK_ENGINE || '' }}
       AI_DUCK_MODEL: ${{ vars.AI_DUCK_MODEL || '' }}
       GEMINI_FLASH_MODEL: ${{ vars.GEMINI_FLASH_MODEL || '' }}
@@ -204,32 +204,59 @@ jobs:
       - name: Engine token preflight (#1525)
         # With the secret declaration relaxed to required:false, presence is
         # enforced here instead — one actionable line, not a secrets-evaluation
-        # stack error on every event. Skipped when AI_ENGINES leaves claude out.
+        # stack error on every event. Skipped when AI_ENGINES leaves claude out or
+        # config/ai-engines.json disables Claude (provider disablement takes
+        # precedence over AI_ENGINES, so check the file before requiring the token).
         env:
           AI_ENGINES: ${{ vars.AI_ENGINES || vars.DEV_LEAD_ENGINES || '' }}
+          DEV_LEAD_ENGINE: ${{ vars.DEV_LEAD_ENGINE || '' }}
+          AGENT_REF: ${{ inputs.agent_ref }}
+          GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
-          # Is Claude enabled? Only a valid AI_ENGINES list that omits claude turns it
-          # off; empty or invalid values fall back to the default chain, which includes
-          # claude (scripts/lib/engine-chain.sh — mirrored inline because this runs
-          # before the scripts are checked out).
-          claude_enabled=true
-          spec="$(printf '%s' "${AI_ENGINES:-}" | tr '[:upper:],' '[:lower:] ')"
-          if [ -n "${spec//[[:space:]]/}" ]; then
+          # Require the token only when the EFFECTIVE primary engine is claude, as
+          # scripts/lib/engine-chain.sh's ai_engine_primary resolves it (mirrored
+          # inline: this runs before checkout). The file's enabled providers in
+          # fallback_order are the default chain; AI_ENGINES narrows it (a valid list
+          # cannot re-enable a disabled provider; an invalid one means the default
+          # chain and primary); DEV_LEAD_ENGINE wins only when the chain enables it.
+          # Fetched through the API; unreadable config fails closed (claude first).
+          file_chain="$(gh api -H 'Accept: application/vnd.github.raw' \
+            "repos/combsmith/.github-private/contents/config/ai-engines.json?ref=${AGENT_REF}" 2>/dev/null \
+            | jq -r '. as $c | [$c.providers.fallback_order[] | select($c.providers[.].enabled == true)] | join(" ")' 2>/dev/null || true)"
+          [ -n "$file_chain" ] || file_chain="claude gemini copilot"
+          effective_primary() {
+            local pref spec e chain="" valid=true first kept=""
+            pref="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+            spec="$(printf '%s' "${AI_ENGINES:-}" | tr '[:upper:],' '[:lower:] ')"
             set -f
-            known=true; has_claude=false
             for e in $spec; do
               case "$e" in
-                claude) has_claude=true ;;
-                gemini|copilot) ;;
-                *) known=false ;;
+                claude|gemini|copilot) case " $chain " in *" $e "*) ;; *) chain="$chain $e" ;; esac ;;
+                *) valid=false ;;
               esac
             done
             set +f
-            if [ "$known" = true ] && [ "$has_claude" = false ]; then claude_enabled=false; fi
-          fi
-          if [ "$claude_enabled" = false ]; then
-            echo "claude not in AI_ENGINES (${AI_ENGINES}) — CLAUDE_CODE_OAUTH_TOKEN not required"
+            if [ "$valid" = false ]; then chain=""; pref=""; fi
+            if [ -n "${chain// /}" ]; then
+              for e in $chain; do case " $file_chain " in *" $e "*) kept="$kept $e" ;; esac; done
+              chain="$kept"
+            else
+              chain=" $file_chain"
+            fi
+            [ -n "${chain// /}" ] || { printf '%s' none; return; }
+            if [ -n "$pref" ] && [[ "$chain " == *" $pref "* ]]; then printf '%s' "$pref"; return; fi
+            first="${chain# }"
+            printf '%s' "${first%% *}"
+          }
+          primary="$(effective_primary "$DEV_LEAD_ENGINE")"
+          if [ "$primary" != claude ]; then
+            if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+              # claude may still sit later in the chain; mark it unavailable so
+              # run_writer_with_fallback skips it instead of hitting a terminal auth error.
+              echo "CLAUDE_UNAVAILABLE=1" >> "$GITHUB_ENV"
+            fi
+            echo "effective primary engine is ${primary} (AI_ENGINES=${AI_ENGINES}) — CLAUDE_CODE_OAUTH_TOKEN not required"
             exit 0
           fi
           if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
@@ -258,8 +285,10 @@ jobs:
           # Cross-repo callers: github.token cannot read a private org repo — ensure
           # GH_PAT_WORKFLOWS is set as an org or repo secret in the calling repo.
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+          # config/ holds ai-engines.json, the engine defaults the scripts read (#1973).
           sparse-checkout: |
             scripts
+            config
             prompts/dev-lead
             personas/dev-lead
 
@@ -457,7 +486,22 @@ jobs:
           # Log the CLI version in use, cached or fresh (#1957).
           echo "claude-code version: $(claude --version 2>/dev/null || echo unavailable)"
 
-          case "$DEV_LEAD_ENGINE" in
+          # DEV_LEAD_ENGINE is empty when no legacy override is set and AI_ENGINES
+          # does not start with gemini/copilot. Resolve the primary from the
+          # checked-out config so the fallback CLIs still install; claude is the
+          # last resort when the config cannot be read.
+          engine="${DEV_LEAD_ENGINE:-}"
+          if [ -z "$engine" ]; then
+            # shellcheck source=scripts/lib/engine-chain.sh
+            if source .dev-lead/scripts/lib/engine-chain.sh 2>/dev/null \
+               && primary="$(ai_engine_primary "")" && [ -n "$primary" ]; then
+              engine="$primary"
+            else
+              engine=claude
+            fi
+          fi
+
+          case "$engine" in
             claude)
               npm install -g @google/gemini-cli || true
               if ! gh copilot --version >/dev/null 2>&1; then
@@ -795,8 +839,10 @@ jobs:
           ref: ${{ inputs.agent_ref }}
           path: .dev-lead
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+          # config/ holds ai-engines.json, the engine defaults the scripts read (#1973).
           sparse-checkout: |
             scripts
+            config
             prompts/dev-lead
             personas/dev-lead
 
@@ -972,29 +1018,54 @@ jobs:
       - name: Engine token preflight (#1525)
         env:
           AI_ENGINES: ${{ vars.AI_ENGINES || vars.DEV_LEAD_ENGINES || '' }}
+          DEV_LEAD_ENGINE: ${{ vars.DEV_LEAD_ENGINE || '' }}
+          AGENT_REF: ${{ inputs.agent_ref }}
+          GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
-          # Is Claude enabled? Only a valid AI_ENGINES list that omits claude turns it
-          # off; empty or invalid values fall back to the default chain, which includes
-          # claude (scripts/lib/engine-chain.sh — mirrored inline because this runs
-          # before the scripts are checked out).
-          claude_enabled=true
-          spec="$(printf '%s' "${AI_ENGINES:-}" | tr '[:upper:],' '[:lower:] ')"
-          if [ -n "${spec//[[:space:]]/}" ]; then
+          # Require the token only when the EFFECTIVE primary engine is claude, as
+          # scripts/lib/engine-chain.sh's ai_engine_primary resolves it (mirrored
+          # inline: this runs before checkout). The file's enabled providers in
+          # fallback_order are the default chain; AI_ENGINES narrows it (a valid list
+          # cannot re-enable a disabled provider; an invalid one means the default
+          # chain and primary); DEV_LEAD_ENGINE wins only when the chain enables it.
+          # Fetched through the API; unreadable config fails closed (claude first).
+          file_chain="$(gh api -H 'Accept: application/vnd.github.raw' \
+            "repos/combsmith/.github-private/contents/config/ai-engines.json?ref=${AGENT_REF}" 2>/dev/null \
+            | jq -r '. as $c | [$c.providers.fallback_order[] | select($c.providers[.].enabled == true)] | join(" ")' 2>/dev/null || true)"
+          [ -n "$file_chain" ] || file_chain="claude gemini copilot"
+          effective_primary() {
+            local pref spec e chain="" valid=true first kept=""
+            pref="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+            spec="$(printf '%s' "${AI_ENGINES:-}" | tr '[:upper:],' '[:lower:] ')"
             set -f
-            known=true; has_claude=false
             for e in $spec; do
               case "$e" in
-                claude) has_claude=true ;;
-                gemini|copilot) ;;
-                *) known=false ;;
+                claude|gemini|copilot) case " $chain " in *" $e "*) ;; *) chain="$chain $e" ;; esac ;;
+                *) valid=false ;;
               esac
             done
             set +f
-            if [ "$known" = true ] && [ "$has_claude" = false ]; then claude_enabled=false; fi
-          fi
-          if [ "$claude_enabled" = false ]; then
-            echo "claude not in AI_ENGINES (${AI_ENGINES}) — CLAUDE_CODE_OAUTH_TOKEN not required"
+            if [ "$valid" = false ]; then chain=""; pref=""; fi
+            if [ -n "${chain// /}" ]; then
+              for e in $chain; do case " $file_chain " in *" $e "*) kept="$kept $e" ;; esac; done
+              chain="$kept"
+            else
+              chain=" $file_chain"
+            fi
+            [ -n "${chain// /}" ] || { printf '%s' none; return; }
+            if [ -n "$pref" ] && [[ "$chain " == *" $pref "* ]]; then printf '%s' "$pref"; return; fi
+            first="${chain# }"
+            printf '%s' "${first%% *}"
+          }
+          primary="$(effective_primary "$DEV_LEAD_ENGINE")"
+          if [ "$primary" != claude ]; then
+            if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+              # claude may still sit later in the chain; mark it unavailable so
+              # run_writer_with_fallback skips it instead of hitting a terminal auth error.
+              echo "CLAUDE_UNAVAILABLE=1" >> "$GITHUB_ENV"
+            fi
+            echo "effective primary engine is ${primary} (AI_ENGINES=${AI_ENGINES}) — CLAUDE_CODE_OAUTH_TOKEN not required"
             exit 0
           fi
           if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
@@ -1017,8 +1088,10 @@ jobs:
           path: .dev-lead
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
           persist-credentials: false
+          # config/ holds ai-engines.json, the engine defaults the scripts read (#1973).
           sparse-checkout: |
             scripts
+            config
 
       - name: Resolve PR from check_run
         id: relay

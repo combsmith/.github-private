@@ -47,9 +47,16 @@ CLAUDE_REQUIRED=required
 _PREFLIGHT_CHAIN_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-chain.sh"
 # shellcheck source=lib/engine-chain.sh
 [ -f "$_PREFLIGHT_CHAIN_LIB" ] && source "$_PREFLIGHT_CHAIN_LIB"
-if declare -F ai_engine_enabled >/dev/null 2>&1 && ! ai_engine_enabled claude; then
-  CLAUDE_REQUIRED=optional
+if declare -F ai_engine_enabled >/dev/null 2>&1; then
+  _chain="$(ai_engine_chain)" || {
+    echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable"
+    exit 1
+  }
+  [[ " $_chain " == *" claude "* ]] || CLAUDE_REQUIRED=optional
 fi
+# The workflow's token preflight sets CLAUDE_UNAVAILABLE=1 when a non-Claude effective
+# primary runs without the token; claude is then skipped by the fallback, not required.
+[ "${CLAUDE_UNAVAILABLE:-}" = "1" ] && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && CLAUDE_REQUIRED=optional
 
 if [ "$CLAUDE_REQUIRED" = required ]; then
   check_required "CLAUDE_CODE_OAUTH_TOKEN" "Claude Code CLI authentication" || FAILED=1

@@ -230,6 +230,14 @@ calling it a regression, and treat CI as authoritative.**
   agentic workflow compilation. It is not covered by the org template and must not be removed by template
   syncs. If the org template gains a `gh-aw-compile` equivalent, remove this exception and defer to the
   template instead.
+- **Exception:** The `validate-ai-engines` job in `lint.yml` (#1973) is a documented repo-specific addition
+  that runs `scripts/validate-ai-engines.py` against `config/ai-engines.json`; the `paths:` filters also carry
+  `config/**` for it. It is not covered by the org template and must not be removed by template syncs. If the
+  org template gains an equivalent, remove this exception and defer to the template instead.
+- **Exception:** `.github/workflows/engine-config-validate.yml` (#1973) is a documented repo-specific
+  workflow that runs `scripts/validate-ai-engines.py` when `config/ai-engines.json`, its schema, or the
+  pricing table change. It is not covered by the org template and must not be removed by template syncs.
+  If the org template gains an equivalent, remove this exception and defer to the template instead.
 - **Exception:** the `lint.yml` `paths:` filters (pull_request and push) carry the repo-specific entry
   `docs/initiatives/agent-ingress-collapse-markets.md`, which is read by
   `tests/agent_ingress_markets_package.bats` (#2038). It must not be removed as template drift on a sync;
@@ -249,7 +257,7 @@ calling it a regression, and treat CI as authoritative.**
   Because this is a **gate** workflow whose `failure` conclusion is intentional enforcement (it blocks a
   bad PR), it is exempt from the Fleet Monitor's high-failure issue tracking via `FLEET_GATE_WORKFLOWS`
   in `scripts/fleet_report.sh` (#941) — otherwise a guard doing its job produces false-positive trackers.
-  `holdout-guard.yml` is exempt for the same reason. Add new gate workflows of this class to that list.
+  `holdout-guard.yml` and `engine-config-validate.yml` are exempt for the same reason. Add new gate workflows of this class to that list.
 - **Exception:** `pr-review-sweep.yml` (stuck-review sweep, #573/#898) is a documented repo-specific
   workflow with no corresponding org template in `standards/workflows/`. It re-dispatches reviews for PRs
   that went green after a ci-pending/ci-failing skip, via two triggers: a scheduled cron (the EVENTUAL
@@ -781,12 +789,13 @@ current concrete id at run time; do **not** hard-pin `claude-<family>-<version>`
 ids across the tree (#1979, companion
 [`combsmith/.github#1199`](https://github.com/combsmith/.github/issues/1199)).
 A model swap should be one edit to the chains in
-[`scripts/lib/engine-models.sh`](./scripts/lib/engine-models.sh), not a hunt for
+[`config/ai-engines.json`](./config/ai-engines.json) (validated by
+`scripts/validate-ai-engines.py`), not a hunt for
 scattered ids.
 
 - **Resolve with `ai_model_for_family <family>`** (`scripts/lib/engine-models.sh`):
   it returns the current id for the family, honouring `CLAUDE_<TIER>_MODEL_CHAIN`
-  then `AI_MODELS_CLAUDE` then the built-in default. A shell caller sources the lib
+  then `AI_MODELS_CLAUDE` then `config/ai-engines.json`. A shell caller sources the lib
   and calls the function; a workflow adds a resolve step that writes the id to a
   step output. In gh-aw front-matter, `engine:` names the runner engine (e.g.
   `claude`) and the model family is named in `models:` (e.g.
