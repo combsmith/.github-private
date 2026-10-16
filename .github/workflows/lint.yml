@@ -236,12 +236,14 @@ jobs:
             tests/test_review_one_pr_self_dismissed_reeval.bats \
             tests/test_review_one_pr_metadata_rearm.bats \
             tests/test_review_one_pr_claim_observe.bats \
+            tests/test_review_one_pr_gate4_idempotent.bats \
             tests/test_pr_metadata_digest.bats \
             tests/test_pr_review_claim.bats \
             tests/test_post_pr_review_meta_stamp.bats \
             tests/test_post_pr_review_approval_verification.bats \
             tests/test_post_pr_review_escalation.bats \
             tests/test_merge_queue_dequeue.bats \
+            tests/test_post_pr_review_gate4.bats \
             tests/test_release_registry.bats \
             tests/test_readme_refresh_helpers.bats \
             tests/test_readme_refresh_push.bats \
