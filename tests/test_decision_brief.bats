@@ -54,6 +54,15 @@ validate() { run bash "$DB_DIR/validate-package.sh" "$@"; }
   db_slug_is_valid "$s"
 }
 
+@test "slug: a short label prefix ('Idea: X', 'RFC: X') is dropped so ideas do not collapse to one slug" {
+  source "$DB_DIR/lib/slug.sh"
+  [ "$(db_slug_from_title 'Idea: WidgetLint')" = "widget-lint" ]
+  [ "$(db_slug_from_title 'Idea: DemandRadar')" = "demand-radar" ]
+  [ "$(db_slug_from_title 'RFC: Agent passports for CI')" = "agent-passports-for-ci" ]
+  # A long clause before the colon is a title, not a label: the subtitle rule applies.
+  [ "$(db_slug_from_title 'Widget manifests keep breaking production: a lint')" = "widget-manifests-keep-breaking-production" ]
+}
+
 @test "slug: the same title always yields the same slug (stable folder, stable branch)" {
   source "$DB_DIR/lib/slug.sh"
   [ "$(db_slug_from_title '💡 WidgetLint — a lint')" = "$(db_slug_from_title '💡 WidgetLint — a different pitch')" ]
@@ -164,17 +173,34 @@ validate() { run bash "$DB_DIR/validate-package.sh" "$@"; }
   validate "$pkg"
   [ "$status" -ne 0 ]
   grep -q 'FAIL|brief.md|assumptions|.*no fully-filled row' <<<"$output"
+  # Four filled cells with an EMPTY Cheapest-test cell is not a full row.
+  pkg3="$TMP/pkg3"; cp -R "$FIX/good" "$pkg3"
+  sed -i.bak 's/^| 1 | The three incidents.*$/| 1 | The incidents were shape errors | the lint prevents nothing | | — |/' "$pkg3/brief.md"
+  validate "$pkg3"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|brief.md|assumptions|.*Cheapest test' <<<"$output"
   pkg2="$TMP/pkg2"; cp -R "$FIX/good" "$pkg2"
   sed -i.bak 's/Cheapest test/Next step/' "$pkg2/brief.md"
   validate "$pkg2"
   grep -q "FAIL|brief.md|assumptions|.*no 'Cheapest test' column" <<<"$output"
 }
 
-@test "validate: the recommendation must take a position and name the idea:approved gate" {
+@test "validate: the recommendation must state exactly one BOLD position and name the idea:approved gate" {
   pkg="$(copy_good)"
-  sed -i.bak 's/\*\*Recommendation: go\*\*/**Recommendation: it depends**/; s/say no if/say maybe if/' "$pkg/brief.md"
+  # "go" / "park" in plain prose is not a position.
+  sed -i.bak 's/\*\*Recommendation: go\*\*/We could go ahead or park this/; s/say no if/say maybe if/' "$pkg/brief.md"
   validate "$pkg"
-  grep -q 'FAIL|brief.md|decision|.*takes no position' <<<"$output"
+  grep -q 'FAIL|brief.md|decision|.*exactly one bold position' <<<"$output"
+  # Two bold positions is not a decision either.
+  pkg4="$TMP/pkg4"; cp -R "$FIX/good" "$pkg4"
+  sed -i.bak 's/\*\*Recommendation: go\*\*/**go** now, or **park** —/' "$pkg4/brief.md"
+  validate "$pkg4"
+  grep -q 'FAIL|brief.md|decision|.*exactly one bold position' <<<"$output"
+  # The bare bold form passes.
+  pkg5="$TMP/pkg5"; cp -R "$FIX/good" "$pkg5"
+  sed -i.bak 's/\*\*Recommendation: go\*\*/**park**/' "$pkg5/brief.md"
+  validate "$pkg5"
+  [ "$status" -eq 0 ]
   pkg2="$TMP/pkg2"; cp -R "$FIX/good" "$pkg2"
   sed -i.bak 's/`idea:approved`/the label/' "$pkg2/brief.md"
   validate "$pkg2"
@@ -214,6 +240,62 @@ The addressable market is $2.4B and growing 30% a year.
   validate "$pkg"
   [ "$status" -ne 0 ]
   grep -q 'FAIL|market-research.md|provenance|.*2.4B' <<<"$output"
+}
+
+@test "provenance: the scan follows nested sub-headings inside a section" {
+  pkg="$(copy_good)"
+  sed -i.bak '/^## Market signal$/a\
+### Market size\
+The segment is worth $2.4B a year.
+' "$pkg/market-research.md"
+  validate "$pkg"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|market-research.md|provenance|.*2.4B' <<<"$output"
+  pkg2="$TMP/pkg2"; cp -R "$FIX/good" "$pkg2"
+  sed -i.bak '/^## 3\. Market & competitive context$/a\
+### Sizing\
+Roughly 10,000 companies publish manifests.
+' "$pkg2/brief.md"
+  validate "$pkg2"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|brief.md|provenance|.*10,000 companies' <<<"$output"
+}
+
+@test "provenance: a dangling [^n] footnote is not a source; compact units (2.4bn, 300k) are claims" {
+  pkg="$(copy_good)"
+  sed -i.bak '/^## Market signal$/a\
+The category did 2.4bn in revenue last year [^9].
+' "$pkg/market-research.md"
+  validate "$pkg"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|market-research.md|provenance|.*2.4bn' <<<"$output"
+  # Define the footnote with a URL and it passes.
+  printf '[^9]: https://example.com/category-report\n' >>"$pkg/market-research.md"
+  validate "$pkg"
+  [ "$status" -eq 0 ]
+  # A footnote defined WITHOUT a URL still does not count.
+  pkg2="$TMP/pkg2"; cp -R "$FIX/good" "$pkg2"
+  sed -i.bak '/^## Market signal$/a\
+About 300k teams use a scheduler [^8].
+' "$pkg2/market-research.md"
+  printf '[^8]: internal estimate\n' >>"$pkg2/market-research.md"
+  validate "$pkg2"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|market-research.md|provenance|.*300k' <<<"$output"
+}
+
+@test "provenance: §4–§8 of the brief and the OST node labels are scanned too" {
+  pkg="$(copy_good)"
+  sed -i.bak 's/^  - Impact = 3\/5, Confidence/  - Reach = 5,000 developers per quarter\
+  - Impact = 3\/5, Confidence/' "$pkg/brief.md"
+  validate "$pkg"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|brief.md|provenance|.*5,000 developers' <<<"$output"
+  pkg2="$TMP/pkg2"; cp -R "$FIX/good" "$pkg2"
+  sed -i.bak 's/Outcome: manifest incidents per quarter → 0/Outcome: 40% of the $1.2B market/' "$pkg2/ost.md"
+  validate "$pkg2"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|ost.md|provenance' <<<"$output"
 }
 
 @test "provenance: an unsourced figure in brief.md Problem / Market sections fails; §5 arithmetic does not" {
@@ -359,10 +441,28 @@ exit 0'
 
 # ── ripe-from-queue ───────────────────────────────────────────────────────────
 
-@test "ripe-from-queue helpers: only the Ripe section is read; numbers are distinct and in order" {
-  source "$DB_DIR/ripe-from-queue.sh"
+@test "ripe-from-queue helpers: only the Ripe section's Idea column is read; numbers are distinct and in order" {
+  # #999 (Why now) and #777 (promotion note) are issues in other cells, not ideas.
   run bash -c "source '$DB_DIR/ripe-from-queue.sh'; dbq_ripe_section < '$FIX/queue-body.md' | dbq_discussion_numbers | paste -sd, -"
   [ "$output" = "413,44" ]
+  # Prose (no table) is read whole.
+  run bash -c "source '$DB_DIR/ripe-from-queue.sh'; printf -- '- #12 and #15 are ripe\n' | dbq_discussion_numbers | paste -sd, -"
+  [ "$output" = "12,15" ]
+}
+
+@test "ripe-from-queue: an API failure reading a Discussion fails the sweep loudly instead of skipping the idea" {
+  export QUEUE_FILE="$FIX/queue-body.md"
+  mock_gh '
+case "$*" in
+  *"issue list --repo acme/widgets --label idea-triage"*) jq -Rs "{title:\"🧭 Idea Promotion Queue\", body:.}" < "$QUEUE_FILE" | jq -r ".body" ;;
+  *graphql*) echo "gh: HTTP 502" >&2; exit 1 ;;
+  *) : ;;
+esac
+exit 0'
+  REPO="acme/widgets" run bash "$DB_DIR/ripe-from-queue.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"API error, not a missing idea"* ]]
+  ! grep -q 'workflow run' "$GH_LOG" || false
 }
 
 # gh stub for the sweep: queue issue, per-discussion GraphQL, contents/PR probes.
@@ -431,12 +531,16 @@ mock_gh_gather() {
   mock_gh '
 case "$*" in
   *graphql*) echo "{\"data\":{\"repository\":{\"discussion\":{\"id\":\"D_target\",\"title\":\"💡 WidgetLint — a lint for manifests\",\"body\":\"see #12\",\"url\":\"https://github.com/acme/widgets/discussions/413\",\"createdAt\":\"t\",\"updatedAt\":\"t\",\"author\":{\"login\":\"don\"},\"category\":{\"name\":\"Ideas\",\"slug\":\"ideas\"},\"labels\":{\"nodes\":[{\"name\":\"needs-brief\"}]},\"comments\":{\"nodes\":[{\"author\":{\"login\":\"bot\"},\"body\":\"<!-- feature-ideation:enhanced -->\\n## Enhancement\",\"createdAt\":\"t\",\"url\":\"u\"}]}}}}}" ;;
-  *"issue list --repo acme/widgets --label idea-triage"*) echo "" ;;
+  *"issue list --repo acme/widgets --label idea-triage"*) echo "${QUEUE_JSON:-}" ;;
   *"contents/ideas/_TEMPLATE/brief.md"*) if [ "${NO_TEMPLATE:-0}" = 1 ]; then exit 1; fi; base64 < "'"$FIX"'/template/brief.md" | tr -d "\n" ;;
   *"contents/ideas/_TEMPLATE/market-research.md"*) base64 < "'"$FIX"'/template/market-research.md" | tr -d "\n" ;;
   *"contents/ideas/_TEMPLATE/ost.md"*) base64 < "'"$FIX"'/template/ost.md" | tr -d "\n" ;;
   *"contents/ideas/package-spec.json"*) printf "{\"required_artifacts\":[]}" | base64 | tr -d "\n" ;;
-  *"contents/ideas/widget-lint"*) exit 1 ;;
+  *"git/ref/heads/incubate/widget-lint"*) if [ "${BRANCH_EXISTS:-0}" = 1 ]; then echo headsha; else exit 1; fi ;;
+  *"contents/ideas/widget-lint/brief.md?ref=incubate/widget-lint"*) printf "%s" "${BRANCH_BRIEF:-}" | base64 | tr -d "\n" ;;
+  *"contents/ideas/widget-lint?ref=incubate/widget-lint"*) echo "[\"brief.md\"]" ;;
+  *"contents/ideas/widget-lint/brief.md"*) printf "%s" "${DEFAULT_BRIEF:-}" | base64 | tr -d "\n" ;;
+  *"contents/ideas/widget-lint"*) if [ -n "${DEFAULT_BRIEF:-}" ]; then echo "[\"brief.md\"]"; else exit 1; fi ;;
   "api repos/acme/widgets/issues/12 --jq "*) echo "{\"number\":12,\"title\":\"prereq\",\"state\":\"open\",\"url\":\"u\"}" ;;
   *) echo "{}" ;;
 esac
@@ -462,6 +566,46 @@ exit 0'
   [ "$(jq -r '.referenced_issues[0].number' "$CTX")" = "12" ]
   grep -q '^DISCUSSION_NODE_ID=D_target$' "$TMP/env"
   grep -q '^SLUG=widget-lint$' "$TMP/env"
+}
+
+@test "gather-context: writes the target package-spec to SPEC_PATH for the validator" {
+  mock_gh_gather
+  SPEC_PATH="$TMP/spec.json" REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx.json" \
+    run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -eq 0 ]
+  jq -e '.required_artifacts' "$TMP/spec.json" >/dev/null
+}
+
+@test "gather-context: the queue excerpt matches the discussion number exactly (#4 is not #44 or #413)" {
+  export QUEUE_JSON='{"number":1,"title":"🧭 Idea Promotion Queue","body":"| #4 Foo | ripe |\n| #44 Bar | ripe |\n| #413 Baz | ripe |\n| see /discussions/4 | note |\n| /discussions/413 | x |"}'
+  mock_gh_gather
+  mock="$MOCK_BIN/gh"; sed -i.bak 's#"\${QUEUE_JSON:-}"#"$QUEUE_JSON"#' "$mock"
+  REPO="acme/widgets" DISCUSSION_NUMBER=4 CONTEXT_PATH="$TMP/ctx.json" SLUG=foo run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.queue_excerpt.lines | length' "$TMP/ctx.json")" = "2" ]
+  jq -e '.queue_excerpt.lines | all(test("#4 |/discussions/4 "))' "$TMP/ctx.json" >/dev/null
+}
+
+@test "gather-context: an in-flight incubate/<slug> branch is read instead of the default branch" {
+  export BRANCH_EXISTS=1 BRANCH_BRIEF="# brief for https://github.com/acme/widgets/discussions/413 (edited in flight)"
+  mock_gh_gather
+  REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx.json" run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.existing_package.ref' "$TMP/ctx.json")" = "incubate/widget-lint" ]
+  jq -e '.existing_package["brief.md"] | contains("edited in flight")' "$TMP/ctx.json" >/dev/null
+}
+
+@test "gather-context: a package under the same slug for ANOTHER discussion is a collision, not an update" {
+  export DEFAULT_BRIEF="# brief for https://github.com/acme/widgets/discussions/99"
+  mock_gh_gather
+  REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx.json" run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"slug collision"* ]]
+  # The same package linking THIS discussion is an update.
+  export DEFAULT_BRIEF="# brief for https://github.com/acme/widgets/discussions/413"
+  REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx2.json" run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -eq 0 ]
+  jq -e '.existing_package["brief.md"] | contains("discussions/413")' "$TMP/ctx2.json" >/dev/null
 }
 
 @test "gather-context: fails loud when the target has no ideas/_TEMPLATE/brief.md" {

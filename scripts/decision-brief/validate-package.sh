@@ -20,9 +20,11 @@
 #                (Confidence must be stated — the BA advisory ties it to how
 #                strong the cited evidence is)
 #   assumptions  the riskiest-assumptions table has a "Cheapest test" column
-#                and at least one fully-filled row
-#   decision     the Recommendation section takes a position (go / no-go /
-#                park) and names the human gate (`idea:approved`)
+#                and at least one fully-filled row whose Cheapest-test cell is
+#                not empty
+#   decision     the Recommendation section states exactly one bold position
+#                (**go** / **no-go** / **park**) and names the human gate
+#                (`idea:approved`)
 #   provenance   in the Problem / Target user / Market sections of brief.md and
 #                every section of market-research.md except Sources, any line
 #                that states a quantified market claim (a number with %, $,
@@ -62,15 +64,20 @@ vp_has_section() {
 }
 
 # vp_section_body <file> <needle> — the lines of the first section whose header
-# contains <needle>, up to (not including) the next header of any level. The
-# header line itself is excluded. Fenced code blocks are passed through.
+# contains <needle>, up to (not including) the next header of the SAME or a
+# HIGHER level. Nested sub-headings (### under a ##) stay inside, so a claim
+# under "### Market size" inside "## Market" is still scanned. The header line
+# itself is excluded. Fenced code blocks are passed through.
 vp_section_body() {
-  local file="$1" needle="$2"
+  local file="$1"
   awk -v needle="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')" '
     /^#{1,6}[[:space:]]/ {
-      if (insec) exit
-      h=tolower($0)
-      if (index(h, needle) > 0) { insec=1; next }
+      lvl = match($0, /^#+/) ? RLENGTH : 0
+      if (insec && lvl <= seclvl) exit
+      if (!insec) {
+        h = tolower($0)
+        if (index(h, needle) > 0) { insec = 1; seclvl = lvl; next }
+      }
     }
     insec { print }
   ' "$file"
@@ -96,35 +103,60 @@ vp_placeholders() {
 }
 
 # A quantified market claim: a number next to a unit that reads as market size,
-# price, share, adoption or demand.
-VP_QUANT_RE='([0-9][0-9,.]*[[:space:]]*(%|percent|million|billion|trillion|thousand|[kKMB]\+?([^A-Za-z]|$)|users|customers|companies|orgs|organizations|organisations|downloads|stars|installs|teams|developers|repos|subscribers|seats|businesses|nonprofits|non-profits|SMBs)|\$[[:space:]]*[0-9]|€[[:space:]]*[0-9]|£[[:space:]]*[0-9]|[0-9][0-9,.]*[[:space:]]*(USD|EUR|GBP)([^A-Za-z]|$))'
-# What makes such a line honest: a source, the explicit unknown, or a tagged assumption.
-VP_CITED_RE='(https?://|\[\^[0-9]+\]|unknown — needs discovery|unknown - needs discovery|\[ASSUMPTION|\(assumption)'
+# price, share, adoption or demand (compact forms such as 2.4bn / 300k / 5M too).
+VP_QUANT_RE='([0-9][0-9,.]*[[:space:]]*(%|percent|million|billion|trillion|thousand|([kKMB]\+?|bn|mn|tn)([^A-Za-z]|$)|users|customers|companies|orgs|organizations|organisations|downloads|stars|installs|teams|developers|repos|subscribers|seats|businesses|nonprofits|non-profits|SMBs)|\$[[:space:]]*[0-9]|€[[:space:]]*[0-9]|£[[:space:]]*[0-9]|[0-9][0-9,.]*[[:space:]]*(USD|EUR|GBP)([^A-Za-z]|$))'
+# What makes such a line honest on its own: a URL, the explicit unknown, or a
+# tagged assumption. A [^n] footnote counts only when the file defines it with a
+# URL (see vp_unsourced_claims).
+VP_CITED_RE='(https?://|unknown — needs discovery|unknown - needs discovery|\[ASSUMPTION|\(assumption)'
 
-# vp_unsourced_claims <text-on-stdin> — print each line that quantifies a
-# market claim without a citation / unknown / assumption tag. Table separator
-# rows and headers are skipped; fenced code is skipped.
+# vp_unsourced_claims [defs-file] <text-on-stdin> — print each line that
+# quantifies a market claim without a citation / unknown / assumption tag.
+# Table separator rows and headers are skipped; fenced code is skipped. A line
+# whose only citation is a [^n] footnote is accepted only when <defs-file>
+# (the artifact itself) carries a `[^n]: … http(s)://…` definition — a dangling
+# footnote is not a source.
 vp_unsourced_claims() {
-  awk '
+  local defs="${1:-}" line ref ok
+  while IFS= read -r line; do
+    ok=0
+    if printf '%s\n' "$line" | grep -qiE -- "$VP_CITED_RE"; then ok=1
+    else
+      for ref in $(printf '%s\n' "$line" | grep -oE '\[\^[0-9]+\]' | tr -d '[]^' | sort -u); do
+        if [[ -n "$defs" && -f "$defs" ]] && grep -qE "^\[\^${ref}\]:.*https?://" "$defs"; then ok=1; break; fi
+      done
+    fi
+    [[ "$ok" == 1 ]] || printf '%s\n' "$line"
+  done < <(awk '
     /^```/ { fence = !fence; next }
     fence { next }
     /^#{1,6}[[:space:]]/ { next }
     /^\|[[:space:]]*-+/ { next }
     { print }
-  ' | grep -iE -- "$VP_QUANT_RE" | grep -viE -- "$VP_CITED_RE" || true
+  ' | grep -iE -- "$VP_QUANT_RE" || true)
 }
 
-# vp_table_data_rows <text-on-stdin> <min-cells> — print table rows (not the
-# header, not the separator) that have at least <min-cells> non-empty cells.
+# vp_table_data_rows <min-cells> [required-col-header] <text-on-stdin> — print
+# table rows (not the header, not the separator) that have at least <min-cells>
+# non-empty cells AND, when a column header is named, a non-empty cell in the
+# column whose header contains it (case-insensitive).
 vp_table_data_rows() {
-  local min="${1:-4}"
-  awk -v min="$min" '
+  local min="${1:-4}" col
+  col="$(printf '%s' "${2:-}" | tr '[:upper:]' '[:lower:]')"
+  awk -v min="$min" -v col="$col" '
     /^\|/ {
       if ($0 ~ /^\|[[:space:]]*-+/) { sep_seen = 1; next }   # separator row
-      if (!sep_seen) next                                   # header row(s)
-      n = split($0, c, "|"); filled = 0
-      for (i = 2; i < n; i++) { v = c[i]; gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); if (v != "") filled++ }
-      if (filled >= min) print
+      if (!sep_seen) {                                      # header row: find the column
+        n = split($0, c, "|")
+        for (i = 2; i < n; i++) { v = tolower(c[i]); gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); if (col != "" && index(v, col) > 0 && colidx == 0) colidx = i }
+        next
+      }
+      n = split($0, c, "|"); filled = 0; colok = (col == "") ? 1 : 0
+      for (i = 2; i < n; i++) {
+        v = c[i]; gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+        if (v != "") { filled++; if (i == colidx) colok = 1 }
+      }
+      if (filled >= min && colok) print
     }
   '
 }
@@ -194,9 +226,9 @@ vp_check_assumptions() {
     vp_fail brief.md assumptions "riskiest-assumptions table has no 'Cheapest test' column"
     return 0
   fi
-  rows="$(printf '%s\n' "$body" | vp_table_data_rows 4)"
+  rows="$(printf '%s\n' "$body" | vp_table_data_rows 4 "cheapest test")"
   if [[ -z "$rows" ]]; then
-    vp_fail brief.md assumptions "riskiest-assumptions table has no fully-filled row (assumption, if wrong, cheapest test)"
+    vp_fail brief.md assumptions "riskiest-assumptions table has no fully-filled row with a concrete Cheapest test (assumption, if wrong, cheapest test)"
   else
     vp_pass brief.md assumptions
   fi
@@ -207,8 +239,11 @@ vp_check_decision() {
   local path="$dir/brief.md"
   [[ -f "$path" ]] || return 0
   body="$(vp_section_body "$path" "recommendation")"
-  if ! printf '%s\n' "$body" | grep -qiE '\b(go|no-go|no go|park)\b'; then
-    vp_fail brief.md decision "Recommendation section takes no position (expected go / no-go / park)"
+  # Exactly ONE bold position — `**go**`, `**no-go**`, `**park**` or
+  # `**Recommendation: <position>**` — so an incidental "go or park" in prose
+  # is not read as a decision.
+  if [[ "$(printf '%s\n' "$body" | grep -oiE '\*\*(Recommendation:?[[:space:]]*)?(go|no-go|no go|park)\*\*' | wc -l | tr -d ' ')" -ne 1 ]]; then
+    vp_fail brief.md decision "Recommendation section must state exactly one bold position: **go**, **no-go** or **park** (or **Recommendation: <position>**)"
   elif ! printf '%s\n' "$body" | grep -q 'idea:approved'; then
     vp_fail brief.md decision "Recommendation section must name the human gate: the decision is made by applying \`idea:approved\`"
   else
@@ -218,17 +253,29 @@ vp_check_decision() {
 
 vp_check_provenance() {
   local dir="$1" path hits sec
-  # brief.md: the evidence sections.
+  # brief.md: every section (a Reach figure in §5 or a number in §8 is a market
+  # claim too). Footnotes resolve against the brief itself.
   path="$dir/brief.md"
   if [[ -f "$path" ]]; then
     hits=""
-    for sec in problem "target user" market; do
-      hits+="$(vp_section_body "$path" "$sec" | vp_unsourced_claims)"
+    for sec in problem "target user" market opportunity value "riskiest assumption" recommendation "open questions"; do
+      hits+="$(vp_section_body "$path" "$sec" | vp_unsourced_claims "$path")"
     done
     if [[ -n "$hits" ]]; then
       vp_fail brief.md provenance "quantified market claim without a source / 'unknown — needs discovery' / [ASSUMPTION]: $(printf '%s' "$hits" | head -2 | tr '\n' ' ' | cut -c1-220)"
     else
       vp_pass brief.md provenance
+    fi
+  fi
+  # ost.md: the Mermaid node labels are prose too — strip the fence markers so
+  # the block is scanned instead of skipped.
+  path="$dir/ost.md"
+  if [[ -f "$path" ]]; then
+    hits="$(sed '/^```/d' "$path" | vp_unsourced_claims "$path")"
+    if [[ -n "$hits" ]]; then
+      vp_fail ost.md provenance "quantified market claim without a source / 'unknown — needs discovery' / [ASSUMPTION]: $(printf '%s' "$hits" | head -2 | tr '\n' ' ' | cut -c1-220)"
+    else
+      vp_pass ost.md provenance
     fi
   fi
   # market-research.md: everything but Sources.
@@ -237,7 +284,7 @@ vp_check_provenance() {
     hits="$(awk '
       /^#{1,6}[[:space:]]/ { insrc = (tolower($0) ~ /sources/) }
       !insrc { print }
-    ' "$path" | vp_unsourced_claims)"
+    ' "$path" | vp_unsourced_claims "$path")"
     if [[ -n "$hits" ]]; then
       vp_fail market-research.md provenance "quantified market claim without a source / 'unknown — needs discovery' / [ASSUMPTION]: $(printf '%s' "$hits" | head -2 | tr '\n' ' ' | cut -c1-220)"
     else

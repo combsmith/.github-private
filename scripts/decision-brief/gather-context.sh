@@ -23,9 +23,11 @@
 #                      repo controls its own brief shape
 #   package_spec       ideas/package-spec.json (the gate's required sections), or
 #                      null when the target has none
-#   existing_package   files already under ideas/<slug>/ on the default branch
-#                      (with brief.md's content, so a re-brief updates rather
-#                      than overwrites blind)
+#   existing_package   files already under ideas/<slug>/ — on the open
+#                      incubate/<slug> branch when one exists, else the default
+#                      branch (with brief.md's content, so a re-brief updates
+#                      rather than overwrites blind; a brief for ANOTHER
+#                      discussion under the same slug is a collision → error)
 #   referenced_issues  issues / PRs the Discussion thread links by #N
 #
 # Emits:
@@ -34,7 +36,9 @@
 #
 # Env: REPO, DISCUSSION_NUMBER, CONTEXT_PATH (required); GH_TOKEN;
 #      SLUG (optional override — otherwise derived from the title);
-#      TEMPLATE_DIR (default ideas/_TEMPLATE); IDEAS_DIR (default ideas).
+#      SPEC_PATH (optional: where to write the fetched package-spec.json);
+#      TEMPLATE_DIR (default ideas/_TEMPLATE); IDEAS_DIR (default ideas);
+#      BRANCH_PREFIX (default incubate).
 set -euo pipefail
 
 REPO="${REPO:?REPO required}"
@@ -42,6 +46,7 @@ DISCUSSION_NUMBER="${DISCUSSION_NUMBER:?DISCUSSION_NUMBER required}"
 CONTEXT_PATH="${CONTEXT_PATH:?CONTEXT_PATH required}"
 TEMPLATE_DIR="${TEMPLATE_DIR:-ideas/_TEMPLATE}"
 IDEAS_DIR="${IDEAS_DIR:-ideas}"
+BRANCH_PREFIX="${BRANCH_PREFIX:-incubate}"
 
 [[ "$DISCUSSION_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
   echo "::error::DISCUSSION_NUMBER must be a positive integer, got: '$DISCUSSION_NUMBER'" >&2
@@ -99,9 +104,11 @@ queue_excerpt='null'
 if queue_body="$(gh issue list --repo "$REPO" --label idea-triage --state open \
   --json number,title,body --jq 'map(select(.title | test("Idea Promotion Queue"))) | .[0] // empty' 2>/dev/null)" \
   && [[ -n $queue_body ]]; then
-  queue_excerpt="$(printf '%s' "$queue_body" | jq -c --arg n "#${DISCUSSION_NUMBER}" '
+  # Exact token match: "#4" must not pick up the rows for #44 or #413.
+  queue_excerpt="$(printf '%s' "$queue_body" | jq -c --arg n "$DISCUSSION_NUMBER" '
     {number, title,
-     lines: ((.body // "") | split("\n") | map(select(contains($n))))}')"
+     lines: ((.body // "") | split("\n")
+             | map(select(test("(^|[^0-9#])#" + $n + "([^0-9]|$)|/discussions/" + $n + "([^0-9]|$)"))))}')"
 fi
 
 # ── the target repo's template + package spec (default branch) ───────────────
@@ -119,14 +126,32 @@ spec_raw="$(_fetch_file "${IDEAS_DIR}/package-spec.json")"
 package_spec='null'
 if [[ -n $spec_raw ]] && printf '%s' "$spec_raw" | jq -e . >/dev/null 2>&1; then
   package_spec="$(printf '%s' "$spec_raw" | jq -c .)"
+  # Materialise it so validate-package.sh can enforce the target's own
+  # required_sections (--spec), not just the stage's built-in list.
+  if [[ -n "${SPEC_PATH:-}" ]]; then printf '%s\n' "$package_spec" >"$SPEC_PATH"; fi
 fi
 
 # ── anything already under ideas/<slug>/ (re-brief / update mode) ────────────
-existing_files="$(gh api "repos/${REPO}/contents/${IDEAS_DIR}/${slug}" --jq '[.[] | select(.type=="file") | .name]' 2>/dev/null || echo '[]')"
+# A brief PR may already be open from incubate/<slug>; a re-dispatch must see
+# THAT branch's files (reviewed / hand-edited in flight), not the default
+# branch's, because open-pr.sh appends to the same branch.
+pkg_ref=""
+if gh api "repos/${REPO}/git/ref/heads/${BRANCH_PREFIX}/${slug}" --jq '.object.sha' >/dev/null 2>&1; then
+  pkg_ref="${BRANCH_PREFIX}/${slug}"
+fi
+_ref_q=""; [[ -n $pkg_ref ]] && _ref_q="?ref=${pkg_ref}"
+existing_files="$(gh api "repos/${REPO}/contents/${IDEAS_DIR}/${slug}${_ref_q}" --jq '[.[] | select(.type=="file") | .name]' 2>/dev/null || echo '[]')"
 printf '%s' "$existing_files" | jq -e 'type=="array"' >/dev/null 2>&1 || existing_files='[]'
 existing_brief=""
 if printf '%s' "$existing_files" | jq -e 'index("brief.md") != null' >/dev/null; then
-  existing_brief="$(_fetch_file "${IDEAS_DIR}/${slug}/brief.md")"
+  existing_brief="$(gh api "repos/${REPO}/contents/${IDEAS_DIR}/${slug}/brief.md${_ref_q}" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  # Collision guard: the same slug derived from a different idea's title would
+  # overwrite another package. A brief that does not link THIS discussion is
+  # someone else's — stop and ask for an explicit SLUG.
+  if [[ -n $existing_brief ]] && ! grep -qE "/discussions/${DISCUSSION_NUMBER}([^0-9]|$)" <<<"$existing_brief"; then
+    echo "::error::${IDEAS_DIR}/${slug}/brief.md (ref ${pkg_ref:-default}) belongs to another Discussion — slug collision; dispatch again with an explicit slug" >&2
+    exit 1
+  fi
 fi
 
 # ── issues / PRs the thread references (#N) ───────────────────────────────────
@@ -156,6 +181,7 @@ jq -n \
   --argjson spec "$package_spec" \
   --argjson existing "$existing_files" \
   --arg existing_brief "$existing_brief" \
+  --arg pkg_ref "$pkg_ref" \
   --argjson refs "$ref_json" \
   '{
      repo: $repo,
@@ -171,7 +197,7 @@ jq -n \
      queue_excerpt: $queue,
      template: {"brief.md": $tb, "market-research.md": $tm, "ost.md": $to},
      package_spec: $spec,
-     existing_package: {files: $existing, "brief.md": (if $existing_brief == "" then null else $existing_brief end)},
+     existing_package: {ref: (if $pkg_ref == "" then null else $pkg_ref end), files: $existing, "brief.md": (if $existing_brief == "" then null else $existing_brief end)},
      referenced_issues: $refs
    }' >"$CONTEXT_PATH"
 

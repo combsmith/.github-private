@@ -110,8 +110,9 @@ known"). Adaptations, in order of precedence:
   row (`#`, Assumption, If wrong…, Cheapest test, Result = `—`). The cheapest
   test is a concrete artifact (five problem interviews, a fake door, a 1-day
   spike), not "more research".
-- **§7 Recommendation (go / no-go)** — one bold position: **go**, **no-go** or
-  **park** (buy evidence first), the reasoning, *what a POC would need to
+- **§7 Recommendation (go / no-go)** — exactly one bold position, written as
+  `**go**`, `**no-go**` or `**park**` (or `**Recommendation: park**`); park means
+  buy evidence first. Then the reasoning, *what a POC would need to
   prove* to graduate, and *what would make the decider say no*. State that the
   decision is the human's, made by applying `idea:approved`.
 - **§8 Open questions** — everything unresolved that the decider should know is

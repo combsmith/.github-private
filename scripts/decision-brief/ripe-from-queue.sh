@@ -48,9 +48,17 @@ dbq_ripe_section() {
 }
 
 # dbq_discussion_numbers <text-on-stdin> — every distinct #N (and
-# /discussions/N) reference, in first-seen order, one per line.
+# /discussions/N) reference, in first-seen order, one per line. When the text
+# holds a Markdown table, ONLY the first (Idea) cell of each data row is read:
+# an issue or prerequisite mentioned in a "Why now" / promotion-note cell is
+# not a Ripe idea and must not get a paid brief. Prose (no table) is read whole.
 dbq_discussion_numbers() {
-  grep -oE '(#|/discussions/)[0-9]+' | grep -oE '[0-9]+' | awk '!seen[$0]++'
+  awk '
+    /^\|[[:space:]]*-+/ { sep = 1; next }
+    /^\|/ { if (!sep) next; n = split($0, c, "|"); if (n > 2) print c[2]; table = 1; next }
+    { other[++o] = $0 }
+    END { if (!table) for (i = 1; i <= o; i++) print other[i] }
+  ' | grep -oE '(#|/discussions/)[0-9]+' | grep -oE '[0-9]+' | awk '!seen[$0]++'
 }
 
 dbq_main() {
@@ -90,14 +98,20 @@ dbq_main() {
       echo "::notice::cap reached (MAX_BRIEFS=${MAX_BRIEFS}); #${n} and later wait for the next sweep"
       break
     fi
-    disc="$(gh api graphql -f query='
+    # An API/auth/rate-limit failure here is NOT "no such idea": fail the sweep
+    # loudly rather than silently leaving a Ripe idea unbriefed (AGENTS.md,
+    # "a failure read as nothing to do").
+    if ! disc="$(gh api graphql -f query='
       query($owner:String!,$name:String!,$num:Int!){
         repository(owner:$owner,name:$name){
           discussion(number:$num){ title category{ name } labels(first:20){ nodes{ name } } }
         }
-      }' -F owner="$owner" -F name="$name" -F num="$n" 2>/dev/null || true)"
+      }' -F owner="$owner" -F name="$name" -F num="$n")"; then
+      echo "::error::could not read discussion #${n} in ${REPO} (API error, not a missing idea) — sweep aborted" >&2
+      return 1
+    fi
     title="$(printf '%s' "$disc" | jq -r '.data.repository.discussion.title // empty')"
-    if [[ -z "$title" ]]; then echo "skip #${n}: not a readable Discussion"; skipped=$((skipped+1)); continue; fi
+    if [[ -z "$title" ]]; then echo "skip #${n}: not a Discussion (an issue/PR number in the Ripe table)"; skipped=$((skipped+1)); continue; fi
     category="$(printf '%s' "$disc" | jq -r '.data.repository.discussion.category.name // ""')"
     labels="$(printf '%s' "$disc" | jq -r '[.data.repository.discussion.labels.nodes[].name] | join(",")')"
     if [[ "$category" != "Ideas" ]]; then echo "skip #${n}: category '${category}'"; skipped=$((skipped+1)); continue; fi

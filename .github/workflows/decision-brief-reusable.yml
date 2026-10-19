@@ -134,10 +134,15 @@ jobs:
             echo "Dispatched decision-brief.yml (discussion=${DISCUSSION_NUMBER}, target_repo=${TARGET_REPO}, dry_run=false)."
           else
             echo "${EVENT} on ${TARGET_REPO} → dispatching central decision-brief SWEEP (Ripe ideas without a brief) in ${CENTRAL_REPO}."
+            if ! [[ "${MAX_BRIEFS}" =~ ^[0-9]+$ ]]; then
+              echo "::error::max_briefs must be an integer, got: '${MAX_BRIEFS}'"
+              exit 1
+            fi
             gh workflow run decision-brief.yml \
               --repo "${CENTRAL_REPO}" \
               -f from_queue=true \
+              -f max_briefs="${MAX_BRIEFS}" \
               -f target_repo="${TARGET_REPO}" \
               -f dry_run=false
-            echo "Dispatched decision-brief.yml (from_queue=true, target_repo=${TARGET_REPO}, dry_run=false)."
+            echo "Dispatched decision-brief.yml (from_queue=true, max_briefs=${MAX_BRIEFS}, target_repo=${TARGET_REPO}, dry_run=false)."
           fi

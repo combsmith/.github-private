@@ -69,11 +69,35 @@ setup() { cd "$ROOT"; }
   grep -q 'NEVER applies' "$CENTRAL"
 }
 
-@test "central: target_repo parameterizes reads + writes; self path uses GITHUB_TOKEN, cross-repo the PAT" {
+@test "central: target_repo parameterizes reads + writes; the write token is the PAT on every path" {
   grep -q "REPO: \${{ github.event.inputs.target_repo || github.repository }}" "$CENTRAL"
-  grep -qE "TARGET_GH_TOKEN: .*github\.event\.inputs\.target_repo == '' .*secrets\.GITHUB_TOKEN .*secrets\.GH_PAT_DON_PETRY" "$CENTRAL"
-  grep -q 'GH_TOKEN: ${{ env.TARGET_GH_TOKEN }}' "$CENTRAL"
-  grep -q 'github_token: ${{ env.TARGET_GH_TOKEN }}' "$CENTRAL"
+  grep -q 'TARGET_GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}' "$CENTRAL"
+  # gather-context and open-pr use it; the job never asks for contents: write.
+  [ "$(grep -c 'GH_TOKEN: ${{ env.TARGET_GH_TOKEN }}' "$CENTRAL")" -ge 2 ]
+  ! sed -n '/^  brief:/,/^  fleet-paused:/p' "$CENTRAL" | grep -qE '^\s+contents: write' || false
+}
+
+@test "central: the model step never sees the write PAT — only the read-scoped GITHUB_TOKEN" {
+  step="$(sed -n '/name: Draft the decision brief (BMAD Analyst)/,/name: Provenance + structure gate/p' "$CENTRAL")"
+  grep -q 'github_token: ${{ secrets.GITHUB_TOKEN }}' <<<"$step"
+  grep -q 'GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}' <<<"$step"
+  ! grep -q 'TARGET_GH_TOKEN' <<<"$step" || false
+  ! grep -qE 'GH_PAT_(DON_PETRY|WORKFLOWS)' <<<"$step" || false
+}
+
+@test "central: the gate and Mary both receive the target package-spec (--spec)" {
+  grep -q 'SPEC_PATH=${{ runner.temp }}/package-spec.json' "$CENTRAL"
+  gate="$(sed -n '/name: Provenance + structure gate/,/name: Open (or refresh)/p' "$CENTRAL")"
+  grep -q -- '--spec "$SPEC_PATH"' <<<"$gate"
+  prompt="$(sed -n '/name: Draft the decision brief (BMAD Analyst)/,/name: Provenance + structure gate/p' "$CENTRAL")"
+  grep -q -- '--spec "$SPEC_PATH"' <<<"$prompt"
+}
+
+@test "central: max_briefs and slug are dispatch inputs; the sweep honours the cap" {
+  grep -qE '^      max_briefs:' "$CENTRAL"
+  grep -qE '^      slug:' "$CENTRAL"
+  grep -q "MAX_BRIEFS: \${{ github.event.inputs.max_briefs || '3' }}" "$CENTRAL"
+  grep -q 'SLUG: ${{ github.event.inputs.slug }}' "$CENTRAL"
 }
 
 @test "central: one lane per (target repo, discussion); sweep takes the queue lane; never cancels" {
@@ -118,6 +142,8 @@ setup() { cd "$ROOT"; }
   grep -qE -- '-f target_repo="\$\{TARGET_REPO\}"' "$REUSABLE"
   grep -q -- '-f dry_run=false' "$REUSABLE"
   grep -q -- '-f from_queue=true' "$REUSABLE"
+  # The caller's max_briefs cap reaches the central sweep.
+  grep -q -- '-f max_briefs="${MAX_BRIEFS}"' "$REUSABLE"
   grep -q 'TARGET_REPO: ${{ github.repository }}' "$REUSABLE"
   grep -q 'positive integer' "$REUSABLE"
 }

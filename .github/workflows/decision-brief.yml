@@ -55,6 +55,16 @@ on:
         required: false
         default: false
         type: boolean
+      max_briefs:
+        description: 'Sweep cap: how many Ripe ideas one sweep may dispatch briefs for.'
+        required: false
+        default: '3'
+        type: string
+      slug:
+        description: 'Explicit ideas/<slug> folder name (kebab-case). Empty => derived from the Discussion title. Use it when the title yields no valid slug or collides with another package.'
+        required: false
+        default: ''
+        type: string
       dry_run:
         description: 'Draft and validate the package but log the intended PR to an artifact instead of opening it (sweep mode: log the intended dispatches).'
         required: false
@@ -132,6 +142,7 @@ jobs:
       REPO: ${{ github.event.inputs.target_repo || github.repository }}
       CENTRAL_REPO: ${{ github.repository }}
       DRY_RUN: ${{ inputs.dry_run == true && '1' || '0' }}
+      MAX_BRIEFS: ${{ github.event.inputs.max_briefs || '3' }}
       # Reads (queue issue, discussions, contents, PRs) on the TARGET + the
       # dispatch of this workflow: a PAT is needed for the dispatch regardless
       # of target (GITHUB_TOKEN never starts a workflow_dispatch run).
@@ -168,11 +179,10 @@ jobs:
     if: vars.AGENTS_PAUSED != 'true' && github.event_name == 'workflow_dispatch' && inputs.from_queue != true
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # contents: read is also the ceiling of the token the MODEL step gets
+    # (read-only); no write permission is granted to this job on purpose.
     permissions:
       contents: read       # checkout, read prompts/ frameworks/ scripts/
-      issues: read         # the Idea Promotion Queue excerpt (self path)
-      pull-requests: write # open the brief PR (self path)
-      discussions: write   # link the PR from the Discussion (self path)
       id-token: write      # claude-code-action OIDC
     env:
       # This job only runs on workflow_dispatch (the discussion path re-dispatches
@@ -180,18 +190,26 @@ jobs:
       # REPO is the TARGET repo to brief for; empty target_repo => this repo (self).
       REPO: ${{ github.event.inputs.target_repo || github.repository }}
       # Token for every READ of and WRITE to the TARGET repo (gather-context, the
-      # PR, the Discussion back-link). GITHUB_TOKEN is scoped only to
-      # .github-private, so it is valid for the self path only; cross-repo runs
-      # use GH_PAT_DON_PETRY (same pattern as initiative-planner.yml / idea-triage.yml).
-      TARGET_GH_TOKEN: ${{ (github.event.inputs.target_repo == '' || github.event.inputs.target_repo == github.repository) && secrets.GITHUB_TOKEN || secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+      # PR, the Discussion back-link) — ALWAYS the org PAT, on the self path too.
+      # GITHUB_TOKEN is deliberately not used for writes: that would force
+      # contents:write onto this job, and the model step's token inherits the
+      # job's permissions — so the PAT stays out of the model step (below) and
+      # GITHUB_TOKEN stays read-only. (A PAT-authored PR also gets CI; a
+      # GITHUB_TOKEN-authored one does not.)
+      TARGET_GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
       DISCUSSION_NUMBER: ${{ github.event.inputs.discussion }}
+      SLUG: ${{ github.event.inputs.slug }}
       DRY_RUN: ${{ inputs.dry_run == true && '1' || '0' }}
       TOOLING_DIR: ${{ github.workspace }}/scripts/decision-brief
     steps:
-      - name: Guard — discussion number present
+      - name: Guard — discussion number present, PAT present
         run: |
           if ! [[ "${DISCUSSION_NUMBER}" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::discussion must be a positive integer (got '${DISCUSSION_NUMBER}'). Pass discussion=N, or from_queue=true to sweep the Idea Promotion Queue."
+            exit 1
+          fi
+          if [ -z "${TARGET_GH_TOKEN}" ]; then
+            echo "::error::GH_PAT_DON_PETRY (or legacy GH_PAT_WORKFLOWS) is required — it reads the target Discussion and opens the brief PR."
             exit 1
           fi
 
@@ -205,6 +223,7 @@ jobs:
           echo "DRY_RUN_LOG=${{ runner.temp }}/dry-run.jsonl" >> "$GITHUB_ENV"
           echo "CONTEXT_PATH=${{ runner.temp }}/brief-context.json" >> "$GITHUB_ENV"
           echo "STATUS_PATH=${{ runner.temp }}/brief-status.json" >> "$GITHUB_ENV"
+          echo "SPEC_PATH=${{ runner.temp }}/package-spec.json" >> "$GITHUB_ENV"
           echo "BRIEF_ROOT=${{ runner.temp }}/package" >> "$GITHUB_ENV"
           mkdir -p "${{ runner.temp }}/package"
 
@@ -245,15 +264,18 @@ jobs:
 
       - name: Draft the decision brief (BMAD Analyst)
         id: mary
+        # SECURITY: the model reads untrusted text (Discussion bodies, comments,
+        # web pages) with Bash allowed. It therefore gets ONLY the read-scoped
+        # GITHUB_TOKEN of this job (contents: read on this repo) — never the org
+        # PAT that open-pr.sh uses two steps later. Everything grounded is already
+        # in $CONTEXT_PATH (gather-context ran with the PAT); the target repos
+        # are public, so unauthenticated reads still work for extra grounding.
         env:
-          # Mary needs no GitHub write here: the package is written to
-          # $BRIEF_ROOT and landed by open-pr.sh in the next steps. The read token
-          # lets her `gh` into the target for extra grounding (issues, files).
-          GH_TOKEN: ${{ env.TARGET_GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         uses: anthropics/claude-code-action@6c690188da61cf16ee7debb28383ba67f02abb4c # v1.0.242
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ env.TARGET_GH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: |
             --model ${{ steps.model.outputs.model }}
             --allowedTools Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch
@@ -301,10 +323,11 @@ jobs:
                `status: final`; every section of the template filled, no
                `<placeholders>`; §5 shows the RICE or ICE arithmetic with
                Confidence stated and tied to the evidence; §6 table has ≥1 full
-               row (most dangerous assumption first, cheapest test named); §7 is a
-               position — **go / no-go / park** — with what a POC must prove and
-               what would make the decider say no, and names the human gate
-               (`idea:approved`).
+               row (most dangerous assumption first, cheapest test named); §7 states
+               exactly one bold position — `**go**`, `**no-go**` or `**park**`
+               (or `**Recommendation: <position>**`) — with what a POC must
+               prove and what would make the decider say no, and names the
+               human gate (`idea:approved`).
             2. `$BRIEF_ROOT/ideas/$SLUG/market-research.md` — `artifact:
                market-research`; the detail behind brief §3; ends with a
                `## Sources` section listing every URL you cited (or the sentence
@@ -321,7 +344,8 @@ jobs:
 
             ```bash
             bash scripts/decision-brief/validate-package.sh "$BRIEF_ROOT/ideas/$SLUG" \
-              --slug "$SLUG" --discussion "$DISCUSSION_NUMBER"
+              --slug "$SLUG" --discussion "$DISCUSSION_NUMBER" \
+              ${SPEC_PATH:+--spec "$SPEC_PATH"}
             ```
 
             Fix every FAIL line and re-run until it passes. The workflow runs the
@@ -343,8 +367,10 @@ jobs:
         # The deterministic half of the guard: re-run the validator the model
         # already ran. A package that fails here stays an artifact, never a PR.
         run: |
+          spec_args=()
+          [ -s "$SPEC_PATH" ] && spec_args=(--spec "$SPEC_PATH")
           bash scripts/decision-brief/validate-package.sh "$BRIEF_ROOT/ideas/$SLUG" \
-            --slug "$SLUG" --discussion "$DISCUSSION_NUMBER"
+            --slug "$SLUG" --discussion "$DISCUSSION_NUMBER" "${spec_args[@]}"
 
       - name: Open (or refresh) the brief PR in the target repo
         id: pr

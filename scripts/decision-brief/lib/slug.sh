@@ -18,6 +18,11 @@
 db_slug_from_title() {
   local title="${1:-}" s
   s="$title"
+  # "Idea: Name" / "RFC: Name" — a short label prefix, not the title: drop it
+  # (otherwise every "Idea: …" would collapse to the slug "idea").
+  if [[ "$s" =~ ^[[:alpha:][:space:]]{1,15}:[[:space:]]*(.+)$ ]]; then
+    s="${BASH_REMATCH[1]}"
+  fi
   # Keep only the part before an em-dash / en-dash / " - " / ":" subtitle separator.
   s="${s%%—*}"
   s="${s%%–*}"
