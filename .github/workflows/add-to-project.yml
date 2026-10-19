@@ -47,11 +47,11 @@ jobs:
   add-to-project:
     permissions:
       contents: read
-    uses: combsmith/.github/.github/workflows/add-to-project-reusable.yml@add-to-project/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/add-to-project-reusable.yml@add-to-project/v1-next  # NOSONAR(githubactions:S7637) first-party channel ref
     with:
       project_id: PVT_kwDOD2inqs4BZq3-
       project_url: https://github.com/orgs/combsmith/projects/1
-      agent_ref: add-to-project/v1-stable
+      agent_ref: add-to-project/v1-next
     # Pass only the secrets the reusable declares (least privilege; avoids
     # `secrets: inherit` handing the reusable every org secret).
     secrets:
