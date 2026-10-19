@@ -1,0 +1,143 @@
+# Reusable Decision Brief — fleet dispatch workflow.
+# Single source of truth for the org: the dispatch logic lives here. Repo-level
+# decision-brief.yml files are thin caller stubs
+# (standards/workflows/decision-brief.yml in this repo until it is promoted to
+# combsmith/.github/standards/workflows/).
+#
+# Two signals from the CALLER repo reach the CENTRAL decision-brief workflow in
+# combsmith/.github-private, which runs Mary (the BMAD Analyst) there with the
+# caller as `target_repo` — the brief PR is opened in the caller:
+#   - `needs-brief` added to an Ideas Discussion  -> one brief for that idea
+#   - the caller's schedule / manual dispatch      -> sweep: one brief per idea
+#     idea-triage ranked "Ripe" in the caller's Idea Promotion Queue that has no
+#     brief yet (capped per sweep)
+#
+# It does NOT draft inline: the vendored BMAD frameworks and the provenance
+# guard live centrally, and claude-code-action aborts on `discussion` event
+# contexts ("Unsupported event type: discussion"). The `needs-brief` label stays
+# the human request; the dispatch is an invisible bridge (same pattern as
+# initiative-planner-reusable.yml / idea-triage-reusable.yml in combsmith/.github).
+#
+# IMPORTANT — the dispatch requires a PAT, not GITHUB_TOKEN:
+#   GitHub does not start new workflow runs from a workflow_dispatch fired with
+#   the default GITHUB_TOKEN (loop prevention). The dispatch MUST use a PAT with
+#   workflow scope (GH_PAT_DON_PETRY, or the legacy GH_PAT_WORKFLOWS).
+#
+# Requires (org secrets): GH_PAT_DON_PETRY (or GH_PAT_WORKFLOWS).
+name: Decision Brief — Fleet Dispatch (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      central_repo:
+        description: "owner/repo hosting the central decision-brief.yml workflow."
+        required: false
+        default: "combsmith/.github-private"
+        type: string
+      discussion:
+        description: "Ideas Discussion number to brief (manual dispatch from the caller). Empty on label/schedule events."
+        required: false
+        default: ""
+        type: string
+      label:
+        description: "Discussion label that requests a brief."
+        required: false
+        default: "needs-brief"
+        type: string
+      max_briefs:
+        description: "Sweep cap: how many Ripe ideas one sweep may dispatch briefs for."
+        required: false
+        default: "3"
+        type: string
+    secrets:
+      GH_PAT_DON_PETRY:
+        description: "Canonical org PAT — preferred over GH_PAT_WORKFLOWS when present"
+        required: false
+      GH_PAT_WORKFLOWS:
+        description: "Classic PAT with repo + workflow scope used to dispatch the central decision-brief (GITHUB_TOKEN cannot start a workflow_dispatch run)."
+        required: false
+
+permissions: {}  # no default permissions; each job grants only what it needs
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    # Fire on: the configured label added to a Discussion; a schedule or manual
+    # dispatch of the caller (sweep, or a single idea when `discussion` is set).
+    # Any other caller event is ignored.
+    if: >-
+      (github.event_name == 'discussion' && github.event.action == 'labeled' && github.event.label.name == inputs.label) ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch'
+    env:
+      GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+      CENTRAL_REPO: ${{ inputs.central_repo }}
+      TARGET_REPO: ${{ github.repository }}
+    steps:
+      - name: Guard — PAT present
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::GH_PAT_DON_PETRY (or legacy GH_PAT_WORKFLOWS) is required — a workflow_dispatch fired with GITHUB_TOKEN will not start a run."
+            exit 1
+          fi
+
+      - name: Guard — trusted actor
+        id: trust
+        # Only admin/write collaborators may spend brief budget by labelling a
+        # Discussion. The discussion `labeled` payload carries no
+        # author_association, so query the collaborator permission API.
+        # Schedule and manual dispatch are trusted by construction.
+        env:
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.event.sender.login || github.actor }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "discussion" ]; then
+            echo "trusted=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          PERM=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" --jq '.permission' 2>/dev/null || echo "none")
+          case "$PERM" in
+            admin|write)
+              echo "Actor @${ACTOR} has permission ${PERM} — trusted."
+              echo "trusted=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::warning::Actor @${ACTOR} has permission ${PERM} — not trusted; not dispatching the brief."
+              echo "trusted=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Dispatch central decision-brief for this repo
+        if: steps.trust.outputs.trusted == 'true'
+        env:
+          EVENT: ${{ github.event_name }}
+          # The label event carries the Discussion number; a manual dispatch may
+          # pass one through `discussion`; a schedule never has one (sweep).
+          DISCUSSION_NUMBER: ${{ github.event.discussion.number || inputs.discussion }}
+          MAX_BRIEFS: ${{ inputs.max_briefs }}
+        run: |
+          if [ -n "${DISCUSSION_NUMBER}" ]; then
+            # Validate the discussion number before it reaches the gh command line.
+            if ! [[ "${DISCUSSION_NUMBER}" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::discussion number must be a positive integer, got: '${DISCUSSION_NUMBER}'"
+              exit 1
+            fi
+            echo "${EVENT} on ${TARGET_REPO} discussion #${DISCUSSION_NUMBER} → dispatching central decision-brief in ${CENTRAL_REPO}."
+            gh workflow run decision-brief.yml \
+              --repo "${CENTRAL_REPO}" \
+              -f discussion="${DISCUSSION_NUMBER}" \
+              -f target_repo="${TARGET_REPO}" \
+              -f dry_run=false
+            echo "Dispatched decision-brief.yml (discussion=${DISCUSSION_NUMBER}, target_repo=${TARGET_REPO}, dry_run=false)."
+          else
+            echo "${EVENT} on ${TARGET_REPO} → dispatching central decision-brief SWEEP (Ripe ideas without a brief) in ${CENTRAL_REPO}."
+            gh workflow run decision-brief.yml \
+              --repo "${CENTRAL_REPO}" \
+              -f from_queue=true \
+              -f target_repo="${TARGET_REPO}" \
+              -f dry_run=false
+            echo "Dispatched decision-brief.yml (from_queue=true, target_repo=${TARGET_REPO}, dry_run=false)."
+          fi

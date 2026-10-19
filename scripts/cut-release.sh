@@ -69,7 +69,7 @@ CROSS_REPO_TARGET="combsmith/.github"
 # six #482 reusables brought under the ring model in #870).
 valid_agent() {
   case "$1" in
-    pr-review | dev-lead | ci-failure-analyst) return 0 ;;
+    pr-review | dev-lead | ci-failure-analyst | decision-brief) return 0 ;;
     *) cross_repo_agent "$1" ;;
   esac
 }

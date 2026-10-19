@@ -1,0 +1,77 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SOURCE OF TRUTH: combsmith/.github-private/standards/workflows/decision-brief.yml
+#                  (staging copy — to be promoted to
+#                  combsmith/.github/standards/workflows/decision-brief.yml, the
+#                  home of every other caller stub, in a follow-up standards PR)
+# Reusable:        combsmith/.github-private/.github/workflows/decision-brief-reusable.yml
+# Central:         combsmith/.github-private/.github/workflows/decision-brief.yml
+#
+# AGENTS — READ BEFORE EDITING:
+#   • This file is a THIN CALLER STUB. All dispatch logic lives in the reusable
+#     above; Mary (the BMAD Analyst), the vendored BMAD skills and the provenance
+#     guard live in the central workflow.
+#   • You MUST NOT change: the `uses:` ref — it is pinned to the
+#     `decision-brief/v1-stable` channel, a moving tag advanced centrally. Never
+#     repoint it to `@main`, a SHA, or a frozen `@vX`. Do not change the
+#     `secrets:` block or the trigger event shape.
+#   • You MAY change: the cron schedule (keep it after your idea-triage run and
+#     off minute 0), and the `max_briefs` sweep cap.
+#   • If you need different behaviour, open a PR against the reusable in the
+#     central repo. A new release is rolled out by moving the channel tag
+#     centrally — never by editing callers.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Decision Brief — Mary drafts ideas/<slug>/brief.md for a ripe idea, as a PR here.
+#
+# Two ways a brief is requested:
+#   1. A maintainer adds the `needs-brief` label to an Ideas Discussion.
+#   2. Weekly, after idea-triage refreshes this repo's "🧭 Idea Promotion Queue",
+#      every idea in its "Ripe" table that has no ideas/<slug>/brief.md yet gets
+#      one (capped by max_briefs per sweep).
+# Either way the central workflow in combsmith/.github-private runs Mary, fills
+# THIS repo's ideas/_TEMPLATE/{brief,market-research,ost}.md, enforces the
+# provenance guard (every market claim cited, tagged [ASSUMPTION], or
+# "unknown — needs discovery"), and opens a PR from `incubate/<slug>` with the
+# package. It never applies `idea:approved` — read the brief, then decide on
+# the Discussion.
+#
+# To adopt:
+#   1. Copy this file to .github/workflows/decision-brief.yml in your repo.
+#   2. Ensure GitHub Discussions is enabled with an "Ideas" category, and that
+#      ideas/_TEMPLATE/{brief,market-research,ost}.md exist (copy them from
+#      combsmith/incubator).
+#   3. Create the labels `needs-brief` (request a brief) and `idea:approved`
+#      (the go decision; fires initiative-planner).
+#   4. Confirm the org-level secret GH_PAT_DON_PETRY (or GH_PAT_WORKFLOWS) is
+#      accessible.
+#   5. (Optional) Adjust the schedule cron and max_briefs.
+name: Decision Brief — Draft the go/no-go brief for a ripe idea
+
+on:
+  # Request a brief for one idea by labelling its Discussion `needs-brief`.
+  discussion:
+    types: [labeled]
+  # Sweep: brief every Ripe idea in the Idea Promotion Queue (after Monday's
+  # idea-triage run) that has no brief yet.
+  schedule:
+    - cron: '43 14 * * 1' # Monday 14:43 UTC (idea-triage stubs run 13:30)
+  workflow_dispatch:
+    inputs:
+      discussion:
+        description: 'Ideas Discussion number to brief now. Empty => sweep the Idea Promotion Queue.'
+        required: false
+        default: ''
+        type: string
+
+permissions: {}
+
+jobs:
+  decision-brief:
+    uses: combsmith/.github-private/.github/workflows/decision-brief-reusable.yml@decision-brief/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    with:
+      # `github.event.inputs.*` (not the `inputs` context) so this evaluates to
+      # '' on the discussion/schedule events instead of failing at workflow
+      # setup (the #571 class).
+      discussion: ${{ github.event.inputs.discussion }}
+      max_briefs: '3'
+    secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable

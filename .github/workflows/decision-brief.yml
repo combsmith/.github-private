@@ -1,0 +1,388 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Decision Brief — BMAD Analyst (Mary)
+#
+# Turns ONE ripe idea (an Ideas Discussion) into the decision-grade artifact a
+# human approves `idea:approved` on: ideas/<slug>/brief.md (+ market-research.md
+# and ost.md), filled from the TARGET repo's own ideas/_TEMPLATE/, scored with
+# RICE or ICE, with a riskiest-assumption + cheapest-test table and a go/no-go
+# recommendation — opened as a PR in the target repo. It NEVER applies
+# `idea:approved`: the brief informs the go/no-go, the human makes it.
+#
+# Pipeline position (closes the gap named in combsmith/incubator#3):
+#   feature-ideation (Discussions) -> idea-triage (shortlist: Ripe)
+#   -> THIS (brief PR)  -> ★ human adds idea:approved
+#   -> initiative-planner (epic + DAG) -> ★ human adds initiative:auto
+#   -> initiative-driver -> dev-lead
+#
+# Triggers:
+#   workflow_dispatch   discussion=N (+ target_repo) — the only path the model
+#                       step runs on (claude-code-action aborts on `discussion`
+#                       events). Fleet callers reach it through
+#                       decision-brief-reusable.yml; a human can run it by hand.
+#   workflow_dispatch   from_queue=true — brief every Ripe idea in the target's
+#                       Idea Promotion Queue that has no brief yet (one dispatch
+#                       of this same workflow per idea, capped).
+#   discussion:labeled  `needs-brief` on THIS repo's Discussions (dogfood path)
+#                       — bridged to workflow_dispatch by the redispatch job.
+#
+# Provenance guard (.github-private#1160): every market claim in the package
+# cites a source, is tagged [ASSUMPTION], or says "unknown — needs discovery".
+# scripts/decision-brief/validate-package.sh enforces this as its own step AFTER
+# the model step, so a package that fabricates never becomes a PR.
+#
+# This is org-private automation (like initiative-planner.yml), not a thin
+# caller. All tooling + the vendored BMAD skills live in this repo and are
+# unit-tested (scripts/decision-brief/, prompts/incubation/).
+# ─────────────────────────────────────────────────────────────────────────────
+name: Decision Brief (BMAD Analyst)
+# readme-agent: Decision-brief agent (BMAD Analyst) — drafts the go/no-go brief for a ripe idea as a PR in the target repo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      discussion:
+        description: 'Ideas Discussion number to brief. Leave empty with from_queue=true to brief every Ripe idea in the target Idea Promotion Queue.'
+        required: false
+        default: ''
+        type: string
+      target_repo:
+        description: 'Target repo (owner/repo) to brief FOR — read its Discussion + ideas/_TEMPLATE/, open the PR there. Empty => this repo (the dogfood/self path).'
+        required: false
+        default: ''
+        type: string
+      from_queue:
+        description: 'Sweep mode: read the target Idea Promotion Queue (idea-triage) and dispatch one brief run per Ripe idea that has no brief yet.'
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: 'Draft and validate the package but log the intended PR to an artifact instead of opening it (sweep mode: log the intended dispatches).'
+        required: false
+        default: true
+        type: boolean
+      model:
+        description: 'Model family (opus|sonnet|haiku) for Mary, resolved to the current id at run time; a concrete claude-* id is honoured as-is'
+        required: false
+        default: 'opus'
+        type: string
+  # Ask for a brief by labelling an Ideas Discussion `needs-brief`; that fires here.
+  discussion:
+    types: [labeled]
+
+permissions: {}
+
+concurrency:
+  # One brief per (target repo, discussion) at a time; never cancel an in-flight
+  # draft. A sweep run has no discussion number and takes the `queue` lane.
+  group: decision-brief-${{ github.event.inputs.target_repo || github.repository }}-${{ github.event.inputs.discussion || github.event.discussion.number || 'queue' }}
+  cancel-in-progress: false
+
+jobs:
+  # ── discussion [labeled] bridge ───────────────────────────────────────────────
+  # claude-code-action aborts on `discussion` event contexts ("Unsupported event
+  # type: discussion"), so we never brief inline on a discussion event. The
+  # `needs-brief` label fires this bridge job, which resolves the discussion
+  # number and re-invokes THIS workflow via workflow_dispatch — under which the
+  # action runs. The label stays the human request; the re-dispatch is an
+  # invisible bridge (same shape as initiative-planner.yml, #618).
+  redispatch:
+    if: github.event_name == 'discussion' && github.event.label.name == 'needs-brief'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read  # actions/checkout; the workflow_dispatch is fired with the PAT
+    steps:
+      - name: Checkout agent repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Guard — PAT present
+        # PAT required: a workflow_dispatch fired with GITHUB_TOKEN is accepted but
+        # NEVER starts a run (loop prevention) — the brief would silently no-op.
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::GH_PAT_DON_PETRY (or legacy GH_PAT_WORKFLOWS) is required — a workflow_dispatch fired with GITHUB_TOKEN will not start a run."
+            exit 1
+          fi
+
+      - name: Re-dispatch under workflow_dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+          REPO: ${{ github.repository }}
+          # Dogfood path: this repo briefs its own discussions, so the target is
+          # self. Fleet callers live in their own repos and set their host via
+          # decision-brief-reusable.yml.
+          TARGET_REPO: ${{ github.repository }}
+          DISCUSSION_NUMBER: ${{ github.event.discussion.number }}
+        run: bash scripts/decision-brief/redispatch.sh
+
+  # ── sweep mode: Ripe in idea-triage → one brief run per idea ─────────────────
+  # No model call here: it reads the queue issue and dispatches `brief` runs of
+  # this same workflow (one per idea, each with its own concurrency lane).
+  sweep:
+    if: github.event_name == 'workflow_dispatch' && inputs.from_queue == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read  # checkout
+    env:
+      REPO: ${{ github.event.inputs.target_repo || github.repository }}
+      CENTRAL_REPO: ${{ github.repository }}
+      DRY_RUN: ${{ inputs.dry_run == true && '1' || '0' }}
+      # Reads (queue issue, discussions, contents, PRs) on the TARGET + the
+      # dispatch of this workflow: a PAT is needed for the dispatch regardless
+      # of target (GITHUB_TOKEN never starts a workflow_dispatch run).
+      GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+    steps:
+      - name: Checkout agent repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Guard — PAT present
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::GH_PAT_DON_PETRY (or legacy GH_PAT_WORKFLOWS) is required to dispatch the per-idea brief runs."
+            exit 1
+          fi
+
+      - name: Dispatch a brief run per Ripe idea without a brief
+        run: |
+          echo "DRY_RUN_LOG=${{ runner.temp }}/dry-run.jsonl" >> "$GITHUB_ENV"
+          DRY_RUN_LOG="${{ runner.temp }}/dry-run.jsonl" bash scripts/decision-brief/ripe-from-queue.sh
+
+      - name: Upload dry-run dispatch log
+        if: ${{ env.DRY_RUN == '1' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: decision-brief-sweep-dry-run
+          path: ${{ runner.temp }}/dry-run.jsonl
+          if-no-files-found: warn
+
+  brief:
+    # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
+    # (neutral, not red) and `fleet-paused` below reports why.
+    if: vars.AGENTS_PAUSED != 'true' && github.event_name == 'workflow_dispatch' && inputs.from_queue != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read       # checkout, read prompts/ frameworks/ scripts/
+      issues: read         # the Idea Promotion Queue excerpt (self path)
+      pull-requests: write # open the brief PR (self path)
+      discussions: write   # link the PR from the Discussion (self path)
+      id-token: write      # claude-code-action OIDC
+    env:
+      # This job only runs on workflow_dispatch (the discussion path re-dispatches
+      # here via the `redispatch` job), so inputs are always present.
+      # REPO is the TARGET repo to brief for; empty target_repo => this repo (self).
+      REPO: ${{ github.event.inputs.target_repo || github.repository }}
+      # Token for every READ of and WRITE to the TARGET repo (gather-context, the
+      # PR, the Discussion back-link). GITHUB_TOKEN is scoped only to
+      # .github-private, so it is valid for the self path only; cross-repo runs
+      # use GH_PAT_DON_PETRY (same pattern as initiative-planner.yml / idea-triage.yml).
+      TARGET_GH_TOKEN: ${{ (github.event.inputs.target_repo == '' || github.event.inputs.target_repo == github.repository) && secrets.GITHUB_TOKEN || secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+      DISCUSSION_NUMBER: ${{ github.event.inputs.discussion }}
+      DRY_RUN: ${{ inputs.dry_run == true && '1' || '0' }}
+      TOOLING_DIR: ${{ github.workspace }}/scripts/decision-brief
+    steps:
+      - name: Guard — discussion number present
+        run: |
+          if ! [[ "${DISCUSSION_NUMBER}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::discussion must be a positive integer (got '${DISCUSSION_NUMBER}'). Pass discussion=N, or from_queue=true to sweep the Idea Promotion Queue."
+            exit 1
+          fi
+
+      - name: Checkout agent repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set temp paths
+        run: |
+          echo "DRY_RUN_LOG=${{ runner.temp }}/dry-run.jsonl" >> "$GITHUB_ENV"
+          echo "CONTEXT_PATH=${{ runner.temp }}/brief-context.json" >> "$GITHUB_ENV"
+          echo "STATUS_PATH=${{ runner.temp }}/brief-status.json" >> "$GITHUB_ENV"
+          echo "BRIEF_ROOT=${{ runner.temp }}/package" >> "$GITHUB_ENV"
+          mkdir -p "${{ runner.temp }}/package"
+
+      - name: Gather brief context
+        env:
+          # Reads the TARGET repo's Discussion, template, package spec and queue.
+          GH_TOKEN: ${{ env.TARGET_GH_TOKEN }}
+        run: bash scripts/decision-brief/gather-context.sh
+
+      # Resolve the model FAMILY (opus|sonnet|haiku) to the current concrete id via
+      # the single-source-of-truth resolver (#1979). A concrete claude-* id an
+      # operator supplied is passed through unchanged.
+      - name: Resolve model
+        id: model
+        env:
+          # Read the dispatch input via env, never interpolated into the shell
+          # source, so a quote in the value can't break out and inject commands.
+          REQUESTED_MODEL: ${{ github.event.inputs.model }}
+          # Operator model override for the family resolver (#1979).
+          AI_MODELS_CLAUDE: ${{ vars.AI_MODELS_CLAUDE || '' }}
+        run: |
+          source scripts/lib/engine-models.sh
+          want="$REQUESTED_MODEL"
+          [ -n "$want" ] || want=opus
+          case "$want" in
+            opus|sonnet|haiku) model="$(ai_model_for_family "$want")" ;;
+            claude-*)          model="$want" ;;
+            *)                 echo "::error::invalid model: $want (expected opus|sonnet|haiku, or a concrete claude-* id)" >&2; exit 1 ;;
+          esac
+          # The id is spliced into claude_args unquoted below, so it must be a
+          # single safe token (no whitespace, not option-like) or it would split
+          # into unintended CLI arguments.
+          if [[ ! "$model" =~ ^[A-Za-z0-9][A-Za-z0-9._:/@-]*$ ]]; then
+            echo "::error::invalid model id: $model" >&2
+            exit 1
+          fi
+          echo "model=$model" >> "$GITHUB_OUTPUT"
+
+      - name: Draft the decision brief (BMAD Analyst)
+        id: mary
+        env:
+          # Mary needs no GitHub write here: the package is written to
+          # $BRIEF_ROOT and landed by open-pr.sh in the next steps. The read token
+          # lets her `gh` into the target for extra grounding (issues, files).
+          GH_TOKEN: ${{ env.TARGET_GH_TOKEN }}
+        uses: anthropics/claude-code-action@6c690188da61cf16ee7debb28383ba67f02abb4c # v1.0.242
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ env.TARGET_GH_TOKEN }}
+          claude_args: |
+            --model ${{ steps.model.outputs.model }}
+            --allowedTools Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch
+          prompt: |
+            You are **Mary** 📊, the BMAD Business Analyst, running as an automated,
+            non-interactive decision-brief producer for the ${{ env.REPO }} repo.
+            Never ask, never greet, never wait (headless contract).
+
+            ## Method — follow the stage overlay (by path)
+
+            Read the orchestration overlay and follow every step. It binds the
+            vendored BMAD analysis skills (`frameworks/bmad-method/src/bmm-skills/1-analysis/`)
+            to this stage's output contract — the TARGET repo's own template,
+            RICE/ICE with evidence-tied Confidence, the riskiest-assumption +
+            cheapest-test table, the go/no-go — and to the provenance rules:
+
+            ```bash
+            cat prompts/incubation/shared.md
+            cat prompts/incubation/decision-brief-stage.md
+            ```
+
+            ## Your input
+
+            Everything you may treat as grounded fact is in `$CONTEXT_PATH`
+            (JSON): the Discussion (title, body, comments), the feature-ideation
+            enhancement comment (if any), the idea-triage queue verdict (if any),
+            the target repo's `ideas/_TEMPLATE/` files you must fill, its
+            `package-spec.json`, anything already under `ideas/<slug>/`, and the
+            issues the thread references:
+
+            ```bash
+            cat "$CONTEXT_PATH" | jq .
+            ```
+
+            The slug is `$SLUG`; the package dir you write is
+            `$BRIEF_ROOT/ideas/$SLUG/`. Web research (WebSearch/WebFetch) is
+            allowed and encouraged for the market sections — **cite every figure
+            you bring in with its URL**. If the tools are unavailable or a search
+            finds nothing, write "unknown — needs discovery" — never a plausible
+            number.
+
+            ## Your output
+
+            1. `$BRIEF_ROOT/ideas/$SLUG/brief.md` — frontmatter `artifact: brief`,
+               `status: final`; every section of the template filled, no
+               `<placeholders>`; §5 shows the RICE or ICE arithmetic with
+               Confidence stated and tied to the evidence; §6 table has ≥1 full
+               row (most dangerous assumption first, cheapest test named); §7 is a
+               position — **go / no-go / park** — with what a POC must prove and
+               what would make the decider say no, and names the human gate
+               (`idea:approved`).
+            2. `$BRIEF_ROOT/ideas/$SLUG/market-research.md` — `artifact:
+               market-research`; the detail behind brief §3; ends with a
+               `## Sources` section listing every URL you cited (or the sentence
+               "No external sources were consulted — every market claim above is
+               marked unknown — needs discovery.").
+            3. `$BRIEF_ROOT/ideas/$SLUG/ost.md` — `artifact: ost`; the Mermaid
+               opportunity-solution tree (outcome → opportunities → solutions →
+               cheapest assumption tests), consistent with brief §4 and §6.
+            4. `$STATUS_PATH` — the `create` JSON status from `shared.md`, plus
+               `"recommendation"` (go|no-go|park), `"score"` (e.g. "ICE 3×1×2=6"),
+               and `"sources"` (array of URLs cited).
+
+            ## Validate before you finish
+
+            ```bash
+            bash scripts/decision-brief/validate-package.sh "$BRIEF_ROOT/ideas/$SLUG" \
+              --slug "$SLUG" --discussion "$DISCUSSION_NUMBER"
+            ```
+
+            Fix every FAIL line and re-run until it passes. The workflow runs the
+            same check again after you; a failing package is never opened as a PR.
+
+            ## Hard constraints
+
+            - **No fabrication.** Do not invent market sizes, competitor prices,
+              user counts, quotes or metrics. Cite, tag `[ASSUMPTION]`, or write
+              "unknown — needs discovery". An honestly thin brief that recommends
+              *park: buy evidence first* is a correct output.
+            - Do not apply labels, open PRs, or comment on the Discussion yourself
+              — open-pr.sh does that, DRY_RUN-aware. Do not modify this repo.
+            - Keep the brief to a page or two; detail goes to market-research.md.
+            - Finish with a 3–5 line summary: the recommendation, the score and
+              its Confidence, the riskiest assumption, and the open questions.
+
+      - name: Provenance + structure gate
+        # The deterministic half of the guard: re-run the validator the model
+        # already ran. A package that fails here stays an artifact, never a PR.
+        run: |
+          bash scripts/decision-brief/validate-package.sh "$BRIEF_ROOT/ideas/$SLUG" \
+            --slug "$SLUG" --discussion "$DISCUSSION_NUMBER"
+
+      - name: Open (or refresh) the brief PR in the target repo
+        id: pr
+        env:
+          GH_TOKEN: ${{ env.TARGET_GH_TOKEN }}
+          PACKAGE_DIR: ${{ env.BRIEF_ROOT }}/ideas/${{ env.SLUG }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash scripts/decision-brief/open-pr.sh
+
+      - name: Upload the drafted package
+        # Always: in dry-run it is the only output; live, it is the audit copy.
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: decision-brief-${{ env.SLUG || 'package' }}
+          path: |
+            ${{ runner.temp }}/package
+            ${{ runner.temp }}/brief-status.json
+            ${{ runner.temp }}/dry-run.jsonl
+          if-no-files-found: warn
+
+  # Fleet pause notice (#2249). With AGENTS_PAUSED=true the `brief` job above is
+  # skipped by its `if:`, and a skipped job cannot log. This job runs instead, on
+  # the same events, and says why in one line. Inventory and rules: AGENTS.md
+  # "Pausing the agent fleet" and scripts/lib/fleet-pause-registry.tsv.
+  fleet-paused:
+    if: >-
+      vars.AGENTS_PAUSED == 'true' &&
+      github.event_name == 'workflow_dispatch' && inputs.from_queue != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    env:
+      PAUSE_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
+      PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
+    steps:
+      - name: Report the fleet pause
+        run: |
+          echo "::notice title=Agent fleet paused::Decision Brief: not run, the agent fleet is paused (AGENTS_PAUSED=true)." \
+            "Pause source: ${PAUSE_SOURCE:-not set (paused by hand)}." \
+            "Paused until: ${PAUSE_UNTIL:-not set}."

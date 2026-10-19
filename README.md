@@ -49,6 +49,7 @@ Autonomous agents that run as GitHub Actions, triggered by events or schedules a
 | [`ci-failure-analyst-reusable.yml`](.github/workflows/ci-failure-analyst-reusable.yml) | CI failure analyst — diagnoses failed CI/Lint/Test runs and comments root-cause analysis |
 | [`feature-ideation.yml`](.github/workflows/feature-ideation.yml) | Feature research & ideation agent (BMAD Analyst) — turns sources into scoped feature ideas |
 | [`idea-triage.yml`](.github/workflows/idea-triage.yml) | Idea triage agent — scores queued ideas and promotes them into the backlog |
+| [`decision-brief.yml`](.github/workflows/decision-brief.yml) | Decision-brief agent (BMAD Analyst) — drafts the go/no-go brief for a ripe idea as a PR in the target repo |
 | [`initiative-driver.yml`](.github/workflows/initiative-driver.yml) | Initiative driver — auto-releases an epic's ready sub-issues to Dev-Lead |
 | [`initiative-planner.yml`](.github/workflows/initiative-planner.yml) | Initiative planner (BMAD Scrum Master) — breaks an approved initiative into an epic + sub-issues |
 | [`issue-triage-runner.yml`](.github/workflows/issue-triage-runner.yml) | Issue triage agent — labels and routes newly opened issues |

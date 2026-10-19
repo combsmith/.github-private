@@ -80,6 +80,7 @@ gh-aw-cross-org.yml	job-gate	dispatch	-
 issue-triage-runner.yml	job-gate	triage	The apply job needs triage, so it is skipped with it.
 initiative-planner.yml	job-gate	plan	The redispatch bridge makes no model call and still runs; the run it starts is the one that reports the pause.
 idea-triage.yml	job-gate	triage	-
+decision-brief.yml	job-gate	brief	The redispatch bridge and the queue sweep make no model call and still run; the brief run they start is the one that reports the pause.
 spec-drift.yml	job-gate-silent	spec-drift	Opt-in and off by default. No notice job: its contract test requires every job to hold issues: write and the workflow to cost nothing when it does not run.
 dependency-advisory.yml	job-gate	advisory	-
 docs-health-check.yml	job-gate	health-check	-
