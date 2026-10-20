@@ -390,7 +390,7 @@ case "$*" in
   "api repos/acme/widgets/git/trees -X POST --input - --jq .sha") cat >>"$GH_LOG.tree"; echo tree444 ;;
   "api repos/acme/widgets/git/commits -X POST --input - --jq .sha") cat >>"$GH_LOG.commit"; echo commit555 ;;
   *"pr list --repo acme/widgets --head incubate/widget-lint"*) if [ "${PR_EXISTS:-0}" = 1 ]; then echo "https://github.com/acme/widgets/pull/9"; fi ;;
-  *"pr create"*) echo "https://github.com/acme/widgets/pull/10" ;;
+  *"pr create"*) for a in "$@"; do [ -n "$prev_body" ] && cp "$a" "$GH_LOG.body" && break; [ "$a" = "--body-file" ] && prev_body=1; done; echo "https://github.com/acme/widgets/pull/10" ;;
   *) : ;;
 esac
 exit 0'
@@ -410,6 +410,10 @@ exit 0'
   grep -q '"author":{"name":"don-petry","email":"don-petry@users.noreply.github.com"}' "$GH_LOG.commit"
   grep -qF 'api repos/acme/widgets/git/refs -X POST -f ref=refs/heads/incubate/widget-lint -f sha=commit555' "$GH_LOG"
   grep -q 'pr create --repo acme/widgets --base main --head incubate/widget-lint' "$GH_LOG"
+  # The PR body lists every file under its full path, one per line.
+  [ "$(grep -c '^- `ideas/widget-lint/' "$GH_LOG.body")" -eq 3 ]
+  grep -qx -- '- `ideas/widget-lint/market-research.md`' "$GH_LOG.body"
+  grep -qx -- '- `ideas/widget-lint/ost.md`' "$GH_LOG.body"
   grep -q -- '--label decision-brief' "$GH_LOG"
   grep -q 'addDiscussionComment' "$GH_LOG"
   grep -q 'pr_url=https://github.com/acme/widgets/pull/10' "$TMP/out"

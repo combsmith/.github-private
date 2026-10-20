@@ -90,7 +90,12 @@ if [[ -n "${STATUS_PATH:-}" && -s "${STATUS_PATH}" ]] && jq -e . "$STATUS_PATH" 
     "**Sources cited:** " + ((.sources // []) | length | tostring)
   ' "$STATUS_PATH")"
 fi
-file_list="$(printf -- '- `%s/%s`\n' "$dest_prefix" "${files[@]}")"
+# One list line per file (a single printf with two %s would reuse the format
+# across the argument list and pair the files with each other).
+file_list=""
+for f in "${files[@]}"; do
+  file_list+="- \`${dest_prefix}/${f}\`"$'\n'
+done
 body="$(cat <<EOF
 <!-- decision-brief:slug=${SLUG} discussion=${DISCUSSION_NUMBER} -->
 ## Decision brief — ${IDEA_TITLE}
