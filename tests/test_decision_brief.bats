@@ -395,6 +395,52 @@ Roughly 40% of SMBs want this.\
   grep -q 'FAIL|brief.md|provenance|.*10,000 companies' <<<"$output"
 }
 
+@test "provenance: a URL or footnote definition hidden in an HTML comment is not a source" {
+  pkg="$(copy_good)"
+  sed -i.bak '/^## Market signal$/a\
+TAM is $20B <!-- https://example.com/report -->.\
+About 300k teams use one [^7]. <!-- [^7]: https://example.com/x -->
+' "$pkg/market-research.md"
+  validate "$pkg"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|market-research.md|provenance|.*20B' <<<"$output"
+  # and a claim that is itself commented out is not reported
+  pkg2="$TMP/pkg2"; cp -R "$FIX/good" "$pkg2"
+  sed -i.bak '/^## Market signal$/a\
+<!-- draft: the market is $9B -->
+' "$pkg2/market-research.md"
+  validate "$pkg2"
+  [ "$status" -eq 0 ]
+}
+
+@test "validate: an unclosed frontmatter block is not frontmatter — its values are rejected and its text is scanned" {
+  pkg="$(copy_good)"
+  # Remove the closing delimiter and bury an unsourced figure right after it.
+  python3 - "$pkg/brief.md" <<'PY2'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); t = p.read_text().split("\n")
+assert t[0] == "---" and t[3] == "---"
+t[3] = "The market is $20B."
+p.write_text("\n".join(t))
+PY2
+  validate "$pkg"
+  [ "$status" -ne 0 ]
+  grep -q "FAIL|brief.md|frontmatter|artifact='none'" <<<"$output"
+  grep -q 'FAIL|brief.md|provenance|.*20B' <<<"$output"
+}
+
+@test "validate: an empty mermaid block is a missing OST" {
+  pkg="$(copy_good)"
+  python3 - "$pkg/ost.md" <<'PY2'
+import sys, pathlib, re
+p = pathlib.Path(sys.argv[1]); t = p.read_text()
+p.write_text(re.sub(r"```mermaid\n.*?```", "```mermaid\n```", t, flags=re.S))
+PY2
+  validate "$pkg"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|ost.md|mermaid|.*edge' <<<"$output"
+}
+
 @test "provenance: lines inside the Sources section and fenced code are not scanned" {
   pkg="$(copy_good)"
   printf '%s\n' '[^3]: https://example.com/report — "$5B market, 20% CAGR"' >>"$pkg/market-research.md"
@@ -492,6 +538,7 @@ exit 0'
   grep -q '"parents":\["head111"\]' "$GH_LOG.commit"
   grep -qF 'api repos/acme/widgets/git/refs/heads/incubate/widget-lint -X PATCH -f sha=commit555' "$GH_LOG"
   ! grep -q 'pr create' "$GH_LOG" || false
+  grep -q 'pr edit https://github.com/acme/widgets/pull/9 --repo acme/widgets --title brief(widget-lint)' "$GH_LOG"
   grep -q 'pr comment https://github.com/acme/widgets/pull/9' "$GH_LOG"
   [[ "$output" == *"refreshed existing PR"* ]]
 }
@@ -542,6 +589,23 @@ exit 0'
   # Prose (no table) is read whole.
   run bash -c "source '$DB_DIR/ripe-from-queue.sh'; printf -- '- #12 and #15 are ripe\n' | dbq_discussion_numbers | paste -sd, -"
   [ "$output" = "12,15" ]
+  # A GFM table WITHOUT leading pipes is still a table: only the Idea column counts.
+  run bash -c "source '$DB_DIR/ripe-from-queue.sh'; printf 'Idea | Why now | Note\n--- | --- | ---\n#413 Widget | blocked by #999 | see #777\n#44 Radar | demand | x\n' | dbq_discussion_numbers | paste -sd, -"
+  [ "$output" = "413,44" ]
+}
+
+@test "ripe-from-queue: dispatches the per-idea runs at its own branch/tag ref, or CENTRAL_REF" {
+  export QUEUE_FILE="$FIX/queue-body.md"
+  mock_gh_sweep
+  GITHUB_REF=refs/tags/decision-brief/v1-stable REPO="acme/widgets" run bash "$DB_DIR/ripe-from-queue.sh"
+  [ "$status" -eq 0 ]
+  grep -qF -- "--ref refs/tags/decision-brief/v1-stable -f discussion=413" "$GH_LOG"
+  : >"$GH_LOG"
+  CENTRAL_REF=decision-brief/v1-next GITHUB_REF=refs/pull/9/merge REPO="acme/widgets" run bash "$DB_DIR/ripe-from-queue.sh"
+  grep -qF -- "--ref decision-brief/v1-next -f discussion=413" "$GH_LOG"
+  : >"$GH_LOG"
+  GITHUB_REF=refs/pull/9/merge REPO="acme/widgets" run bash "$DB_DIR/ripe-from-queue.sh"
+  ! grep -q -- '--ref' "$GH_LOG" || false
 }
 
 @test "ripe-from-queue: a GraphQL NOT_FOUND (an issue number in the Ripe table) is skipped, not fatal" {
@@ -660,7 +724,7 @@ mock_gh_gather() {
   mock_gh '
 case "$*" in
   *graphql*) echo "{\"data\":{\"repository\":{\"discussion\":{\"id\":\"D_target\",\"title\":\"💡 WidgetLint — a lint for manifests\",\"body\":\"see #12\",\"url\":\"https://github.com/acme/widgets/discussions/413\",\"createdAt\":\"t\",\"updatedAt\":\"t\",\"author\":{\"login\":\"don\"},\"category\":{\"name\":\"Ideas\",\"slug\":\"ideas\"},\"labels\":{\"nodes\":[{\"name\":\"needs-brief\"}]},\"comments\":{\"totalCount\":1,\"nodes\":[{\"author\":{\"login\":\"bot\"},\"body\":\"<!-- feature-ideation:enhanced -->\\n## Enhancement\",\"createdAt\":\"t\",\"url\":\"u\"}]}}}}}" ;;
-  *"issue list --repo acme/widgets --label idea-triage"*) echo "${QUEUE_JSON:-}" ;;
+  *"issue list --repo acme/widgets --label idea-triage"*) if [ "${QUEUE_OUTAGE:-0}" = 1 ]; then echo "gh: HTTP 503" >&2; exit 1; fi; echo "${QUEUE_JSON:-}" ;;
   *"contents/ideas/_TEMPLATE/brief.md"*) if [ "${NO_TEMPLATE:-0}" = 1 ]; then echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi; base64 < "'"$FIX"'/template/brief.md" | tr -d "\n" ;;
   *"contents/ideas/_TEMPLATE/market-research.md"*) base64 < "'"$FIX"'/template/market-research.md" | tr -d "\n" ;;
   *"contents/ideas/_TEMPLATE/ost.md"*) if [ "${NO_OST:-0}" = 1 ]; then echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi; base64 < "'"$FIX"'/template/ost.md" | tr -d "\n" ;;
@@ -671,12 +735,13 @@ case "$*" in
        absent) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
        outage) echo "gh: HTTP 502 Bad Gateway" >&2; exit 1 ;;
      esac ;;
-  *"git/ref/heads/incubate/widget-lint"*) if [ "${BRANCH_EXISTS:-0}" = 1 ]; then echo headsha; else exit 1; fi ;;
+  *"git/ref/heads/incubate/widget-lint"*) if [ "${BRANCH_EXISTS:-0}" = 1 ]; then echo headsha; elif [ "${REF_OUTAGE:-0}" = 1 ]; then echo "gh: HTTP 503" >&2; exit 1; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
   *"contents/ideas/widget-lint/brief.md?ref=incubate/widget-lint"*) printf "%s" "${BRANCH_BRIEF:-}" | base64 | tr -d "\n" ;;
   *"contents/ideas/widget-lint?ref=incubate/widget-lint"*) echo "[\"brief.md\"]" ;;
   *"contents/ideas/widget-lint/brief.md"*) printf "%s" "${DEFAULT_BRIEF:-}" | base64 | tr -d "\n" ;;
   *"contents/ideas/widget-lint"*) if [ -n "${DEFAULT_BRIEF:-}" ]; then echo "[\"brief.md\"]"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
-  "api repos/acme/widgets/issues/12 --jq "*) echo "{\"number\":12,\"title\":\"prereq\",\"state\":\"open\",\"url\":\"u\"}" ;;
+  "api repos/acme/widgets/issues/12 --jq "*) if [ "${ISSUE_OUTAGE:-0}" = 1 ]; then echo "gh: HTTP 503" >&2; exit 1; fi; echo "{\"number\":12,\"title\":\"prereq\",\"state\":\"open\",\"url\":\"u\"}" ;;
+  "api repos/acme/widgets/issues/"*) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
   *) echo "{}" ;;
 esac
 exit 0'
@@ -745,6 +810,20 @@ exit 0'
   REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx2.json" run bash "$DB_DIR/gather-context.sh"
   [ "$status" -eq 0 ]
   jq -e '.existing_package["brief.md"] | contains("discussions/413")' "$TMP/ctx2.json" >/dev/null
+}
+
+@test "gather-context: API failures on the queue, the branch probe or a referenced issue fail loud; 404s do not" {
+  mock_gh_gather
+  QUEUE_OUTAGE=1 REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx.json" run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -ne 0 ]; [[ "$output" == *"could not list the Idea Promotion Queue"* ]]
+  REF_OUTAGE=1 REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx.json" run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -ne 0 ]; [[ "$output" == *"could not read acme/widgets repos/acme/widgets/git/ref/heads/incubate/widget-lint"* ]]
+  ISSUE_OUTAGE=1 REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx.json" run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -ne 0 ]; [[ "$output" == *"referenced issue could not be read"* ]]
+  # The happy path (404 on the branch ref, a 404-able issue list) still succeeds.
+  REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx.json" run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -eq 0 ]
+  grep -q 'labels(first:100)' "$GH_LOG"
 }
 
 @test "gather-context: fails loud when the target lacks ANY of the three templates" {

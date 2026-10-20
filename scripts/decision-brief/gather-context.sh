@@ -70,7 +70,7 @@ disc="$(gh api graphql -f query='
         id title body url createdAt updatedAt
         author{ login }
         category{ name slug }
-        labels(first:20){ nodes{ name } }
+        labels(first:100){ nodes{ name } }
         comments(last:50){ totalCount nodes{ author{login} body createdAt url } }
       }
     }
@@ -104,9 +104,13 @@ enhancement="$(printf '%s' "$disc" | jq -c '
 
 # ── the Idea Promotion Queue verdict for this idea (if triage runs here) ──────
 queue_excerpt='null'
-if queue_body="$(gh issue list --repo "$REPO" --label idea-triage --state open \
-  --json number,title,body --jq 'map(select(.title | test("Idea Promotion Queue"))) | .[0] // empty' 2>/dev/null)" \
-  && [[ -n $queue_body ]]; then
+# No queue issue is fine (idea-triage not adopted); a failed listing is not.
+if ! queue_body="$(gh issue list --repo "$REPO" --label idea-triage --state open \
+  --json number,title,body --jq 'map(select(.title | test("Idea Promotion Queue"))) | .[0] // empty')"; then
+  echo "::error::could not list the Idea Promotion Queue in ${REPO} (API error) — refusing to brief with partial context" >&2
+  exit 1
+fi
+if [[ -n $queue_body ]]; then
   # Exact token match: "#4" must not pick up the rows for #44 or #413.
   queue_excerpt="$(printf '%s' "$queue_body" | jq -c --arg n "$DISCUSSION_NUMBER" '
     {number, title,
@@ -160,13 +164,26 @@ fi
 # A brief PR may already be open from incubate/<slug>; a re-dispatch must see
 # THAT branch's files (reviewed / hand-edited in flight), not the default
 # branch's, because open-pr.sh appends to the same branch.
+# _probe_404 <api-path> <jq> — prints the result; prints nothing on a 404;
+# exits the script on any other failure (an outage must not read as "absent").
+_probe_404() {
+  local out rc=0 err="${TMPDIR:-/tmp}/db-probe-err.$$"
+  out="$(gh api "$1" --jq "$2" 2>"$err")" || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    if grep -qE 'HTTP 404|Not Found' "$err"; then rm -f "$err"; return 0; fi
+    echo "::error::could not read ${REPO} ${1} — $(tr '\n' ' ' <"$err" | cut -c1-200)" >&2
+    rm -f "$err"; exit 1
+  fi
+  rm -f "$err"; printf '%s' "$out"
+}
+# _probe_404 runs inside $(...): its `exit 1` ends only that subshell, so every
+# call carries `|| exit 1` to propagate the failure to this script.
 pkg_ref=""
-if gh api "repos/${REPO}/git/ref/heads/${BRANCH_PREFIX}/${slug}" --jq '.object.sha' >/dev/null 2>&1; then
-  pkg_ref="${BRANCH_PREFIX}/${slug}"
-fi
+pkg_sha="$(_probe_404 "repos/${REPO}/git/ref/heads/${BRANCH_PREFIX}/${slug}" '.object.sha')" || exit 1
+[[ -n $pkg_sha ]] && pkg_ref="${BRANCH_PREFIX}/${slug}"
 _ref_q=""; [[ -n $pkg_ref ]] && _ref_q="?ref=${pkg_ref}"
-existing_files="$(gh api "repos/${REPO}/contents/${IDEAS_DIR}/${slug}${_ref_q}" --jq '[.[] | select(.type=="file") | .name]' 2>/dev/null || echo '[]')"
-printf '%s' "$existing_files" | jq -e 'type=="array"' >/dev/null 2>&1 || existing_files='[]'
+existing_files="$(_probe_404 "repos/${REPO}/contents/${IDEAS_DIR}/${slug}${_ref_q}" '[.[] | select(.type=="file") | .name]')" || exit 1
+[[ -n $existing_files ]] && printf '%s' "$existing_files" | jq -e 'type=="array"' >/dev/null 2>&1 || existing_files='[]'
 existing_brief=""
 if printf '%s' "$existing_files" | jq -e 'index("brief.md") != null' >/dev/null; then
   existing_brief="$(_fetch_file "${IDEAS_DIR}/${slug}/brief.md" "$pkg_ref")"
@@ -188,9 +205,15 @@ if [[ -n $refs ]]; then
   ref_json="$(while IFS= read -r n; do
       [[ -n $n ]] || continue
       [[ "$n" == "$DISCUSSION_NUMBER" ]] && continue
-      gh api "repos/${REPO}/issues/${n}" --jq '{number, title, state, url: .html_url}' 2>/dev/null \
-        || echo "::notice::skipping referenced #${n} (not a fetchable issue/PR — discussion/self-ref)" >&2
-    done <<<"$refs" | jq -sc '.')"
+      # A 404 is a Discussion number or a dead link — skip. Anything else is
+      # an API failure: abort rather than draft without evidence the thread
+      # explicitly linked (_probe_404 exits the script).
+      r="$(_probe_404 "repos/${REPO}/issues/${n}" '{number, title, state, url: .html_url}')" || exit 1
+      if [[ -n "$r" ]]; then printf '%s\n' "$r"; else echo "::notice::skipping referenced #${n} (not a fetchable issue/PR — discussion/self-ref)" >&2; fi
+    done <<<"$refs" | jq -sc '.')" || { echo "::error::aborting: a referenced issue could not be read" >&2; exit 1; }
+  # The loop runs in a subshell; _probe_404's exit surfaces as an empty/invalid
+  # JSON document — treat that as the failure it is.
+  printf '%s' "$ref_json" | jq -e 'type=="array"' >/dev/null 2>&1 || { echo "::error::aborting: a referenced issue could not be read" >&2; exit 1; }
 fi
 
 # ── assemble ──────────────────────────────────────────────────────────────────

@@ -34,6 +34,15 @@ on:
         required: false
         default: "combsmith/.github-private"
         type: string
+      central_ref:
+        # Must match the channel the caller's `uses:` pins (the dev-lead
+        # stub's `agent_ref` convention): `gh workflow run` without --ref runs
+        # the central workflow and its tooling from the DEFAULT branch, which
+        # would defeat the release isolation the channel tag exists for.
+        description: "Ref (channel tag or branch) of central_repo to run the central workflow at. Keep it equal to the channel this reusable is pinned at."
+        required: false
+        default: "decision-brief/v1-stable"
+        type: string
       discussion:
         description: "Ideas Discussion number to brief (manual dispatch from the caller). Empty on label/schedule events."
         required: false
@@ -74,12 +83,17 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
       CENTRAL_REPO: ${{ inputs.central_repo }}
+      CENTRAL_REF: ${{ inputs.central_ref }}
       TARGET_REPO: ${{ github.repository }}
     steps:
-      - name: Guard — PAT present
+      - name: Guard — PAT present, ref well-formed
         run: |
           if [ -z "${GH_TOKEN}" ]; then
             echo "::error::GH_PAT_DON_PETRY (or legacy GH_PAT_WORKFLOWS) is required — a workflow_dispatch fired with GITHUB_TOKEN will not start a run."
+            exit 1
+          fi
+          if ! [[ "${CENTRAL_REF}" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+            echo "::error::central_ref must be a branch or tag name, got: '${CENTRAL_REF}'"
             exit 1
           fi
 
@@ -131,21 +145,21 @@ jobs:
               echo "::error::discussion number must be a positive integer, got: '${DISCUSSION_NUMBER}'"
               exit 1
             fi
-            echo "${EVENT} on ${TARGET_REPO} discussion #${DISCUSSION_NUMBER} → dispatching central decision-brief in ${CENTRAL_REPO}."
+            echo "${EVENT} on ${TARGET_REPO} discussion #${DISCUSSION_NUMBER} → dispatching central decision-brief in ${CENTRAL_REPO}@${CENTRAL_REF}."
             gh workflow run decision-brief.yml \
-              --repo "${CENTRAL_REPO}" \
+              --repo "${CENTRAL_REPO}" --ref "${CENTRAL_REF}" \
               -f discussion="${DISCUSSION_NUMBER}" \
               -f target_repo="${TARGET_REPO}" \
               -f dry_run=false
             echo "Dispatched decision-brief.yml (discussion=${DISCUSSION_NUMBER}, target_repo=${TARGET_REPO}, dry_run=false)."
           else
-            echo "${EVENT} on ${TARGET_REPO} → dispatching central decision-brief SWEEP (Ripe ideas without a brief) in ${CENTRAL_REPO}."
+            echo "${EVENT} on ${TARGET_REPO} → dispatching central decision-brief SWEEP (Ripe ideas without a brief) in ${CENTRAL_REPO}@${CENTRAL_REF}."
             if ! [[ "${MAX_BRIEFS}" =~ ^[0-9]+$ ]]; then
               echo "::error::max_briefs must be an integer, got: '${MAX_BRIEFS}'"
               exit 1
             fi
             gh workflow run decision-brief.yml \
-              --repo "${CENTRAL_REPO}" \
+              --repo "${CENTRAL_REPO}" --ref "${CENTRAL_REF}" \
               -f from_queue=true \
               -f max_briefs="${MAX_BRIEFS}" \
               -f target_repo="${TARGET_REPO}" \

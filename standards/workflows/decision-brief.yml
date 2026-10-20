@@ -12,8 +12,9 @@
 #     guard live in the central workflow.
 #   • You MUST NOT change: the `uses:` ref — it is pinned to the
 #     `decision-brief/v1-stable` channel, a moving tag advanced centrally. Never
-#     repoint it to `@main`, a SHA, or a frozen `@vX`. Do not change the
-#     `secrets:` block or the trigger event shape.
+#     repoint it to `@main`, a SHA, or a frozen `@vX`. `central_ref` below must
+#     always equal that pin. Do not change the `secrets:` block or the trigger
+#     event shape.
 #   • You MAY change: the cron schedule (keep it after your idea-triage run and
 #     off minute 0), and the `max_briefs` sweep cap.
 #   • If you need different behaviour, open a PR against the reusable in the
@@ -69,6 +70,10 @@ jobs:
   decision-brief:
     uses: combsmith/.github-private/.github/workflows/decision-brief-reusable.yml@decision-brief/v1-stable  # NOSONAR(githubactions:S7637) first-party channel ref
     with:
+      # Same channel as the `uses:` pin above (the dev-lead stub's `agent_ref`
+      # convention): the central workflow is dispatched at THIS ref, never at
+      # main. Change both together when repinning.
+      central_ref: decision-brief/v1-stable
       # `github.event.inputs.*` (not the `inputs` context) so this evaluates to
       # '' on the discussion/schedule events instead of failing at workflow
       # setup (the #571 class).

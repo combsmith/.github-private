@@ -24,6 +24,8 @@
 # Env:
 #   REPO           owner/repo whose queue to read and whose ideas to brief (required)
 #   CENTRAL_REPO   owner/repo hosting decision-brief.yml (default: REPO)
+#   CENTRAL_REF    ref (branch/tag) to dispatch at; default: this run's own
+#                  GITHUB_REF when it is a branch or tag
 #   WORKFLOW_FILE  default decision-brief.yml
 #   MAX_BRIEFS     default 3
 #   IDEAS_DIR      default ideas
@@ -54,8 +56,15 @@ dbq_ripe_section() {
 # not a Ripe idea and must not get a paid brief. Prose (no table) is read whole.
 dbq_discussion_numbers() {
   awk '
-    /^\|[[:space:]]*-+/ { sep = 1; next }
-    /^\|/ { if (!sep) next; n = split($0, c, "|"); if (n > 2) print c[2]; table = 1; next }
+    # Any line with a pipe is a table row; the leading pipe is optional in
+    # GitHub-flavored Markdown. The separator row is dashes/colons/pipes only.
+    /\|/ && /^[[:space:]|:-]+$/ && /-/ { sep = 1; next }
+    /\|/ {
+      if (!sep) next
+      line = $0; sub(/^[[:space:]]*\|/, "", line)
+      n = split(line, c, "|"); if (n >= 1) print c[1]
+      table = 1; next
+    }
     { other[++o] = $0 }
     END { if (!table) for (i = 1; i <= o; i++) print other[i] }
   ' | grep -oE '(#|/discussions/)[0-9]+' | grep -oE '[0-9]+' | awk '!seen[$0]++'
@@ -74,6 +83,12 @@ dbq_main() {
   # shellcheck source=scripts/decision-brief/lib/slug.sh
   source "$(dirname "${BASH_SOURCE[0]}")/lib/slug.sh"
   local is_dry=0; [[ "${DRY_RUN:-0}" == "1" ]] && is_dry=1
+  # Dispatch the per-idea runs at the SAME ref this sweep runs at (a channel
+  # tag or branch), never silently at main — the release isolation callers
+  # pinned for. CENTRAL_REF overrides; else GITHUB_REF when it is a branch/tag.
+  local ref_flags=()
+  if [[ -n "${CENTRAL_REF:-}" ]]; then ref_flags=(--ref "$CENTRAL_REF")
+  elif [[ -n "${GITHUB_REF:-}" && ( "$GITHUB_REF" == refs/heads/* || "$GITHUB_REF" == refs/tags/* ) ]]; then ref_flags=(--ref "$GITHUB_REF"); fi
   local owner="${REPO%/*}" name="${REPO#*/}"
 
   local queue_body
@@ -104,7 +119,7 @@ dbq_main() {
     if ! disc="$(gh api graphql -f query='
       query($owner:String!,$name:String!,$num:Int!){
         repository(owner:$owner,name:$name){
-          discussion(number:$num){ title category{ name } labels(first:20){ nodes{ name } } }
+          discussion(number:$num){ title category{ name } labels(first:100){ nodes{ name } } }
         }
       }' -F owner="$owner" -F name="$name" -F num="$n")"; then
       # gh exits non-zero on a GraphQL `errors` body too. A NOT_FOUND on the
@@ -149,7 +164,7 @@ dbq_main() {
         >>"${DRY_RUN_LOG:-./dry-run.jsonl}"
       echo "[dry-run] would dispatch ${WORKFLOW_FILE} in ${CENTRAL_REPO} for #${n} (${slug})"
     else
-      gh workflow run "$WORKFLOW_FILE" --repo "$CENTRAL_REPO" \
+      gh workflow run "$WORKFLOW_FILE" --repo "$CENTRAL_REPO" "${ref_flags[@]}" \
         -f discussion="$n" -f target_repo="$REPO" -f dry_run=false
       echo "dispatched ${WORKFLOW_FILE} for #${n} (${slug})"
     fi

@@ -112,8 +112,12 @@ setup() { cd "$ROOT"; }
   grep -q 'SPEC_PATH=${{ runner.temp }}/package-spec.json' "$CENTRAL"
   gate="$(sed -n '/name: Provenance + structure gate/,/name: Open (or refresh)/p' "$CENTRAL")"
   grep -q -- '--spec "$SPEC_PATH"' <<<"$gate"
-  # The land job re-fetches the spec from the target, not from the model's workspace.
-  grep -q 'name: Fetch the target package spec' "$CENTRAL"
+  # The land job re-fetches the spec from the target, not from the model's workspace,
+  # and fails closed on anything but a 404.
+  spec="$(sed -n '/name: Fetch the target package spec/,/name: Provenance + structure gate/p' "$CENTRAL")"
+  grep -q 'HTTP 404|Not Found' <<<"$spec"
+  grep -q 'is not valid JSON' <<<"$spec"
+  grep -q 'could not read' <<<"$spec"
   prompt="$(sed -n '/name: Draft the decision brief (BMAD Analyst)/,/name: Upload the drafted package/p' "$CENTRAL")"
   grep -q -- '--spec "$SPEC_PATH"' <<<"$prompt"
 }
@@ -167,6 +171,9 @@ setup() { cd "$ROOT"; }
 
 @test "reusable: dispatches the central workflow with target_repo=caller, dry_run=false; sweep uses from_queue=true" {
   grep -q 'gh workflow run decision-brief.yml' "$REUSABLE"
+  # Dispatched at the pinned channel, never implicitly at main.
+  [ "$(grep -c -- '--repo "${CENTRAL_REPO}" --ref "${CENTRAL_REF}"' "$REUSABLE")" -eq 2 ]
+  grep -q 'default: "decision-brief/v1-stable"' "$REUSABLE"
   grep -qE -- '-f discussion="\$\{DISCUSSION_NUMBER\}"' "$REUSABLE"
   grep -qE -- '-f target_repo="\$\{TARGET_REPO\}"' "$REUSABLE"
   grep -q -- '-f dry_run=false' "$REUSABLE"
@@ -182,6 +189,8 @@ setup() { cd "$ROOT"; }
 @test "stub: pins the hosted reusable to the decision-brief/v1-stable channel with the S7637 marker" {
   [ -f "$STUB" ]
   grep -qF "uses: ${REUSABLE_REF}@${CHANNEL}" "$STUB"
+  # central_ref travels with the pin (agent_ref convention).
+  grep -qF "central_ref: ${CHANNEL}" "$STUB"
   grep -q 'NOSONAR(githubactions:S7637)' "$STUB"
   grep -q 'secrets: inherit' "$STUB"
   grep -qE '^permissions: \{\}' "$STUB"

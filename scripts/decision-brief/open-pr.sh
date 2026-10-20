@@ -193,11 +193,18 @@ fi
 existing_pr="$(gh pr list --repo "$REPO" --head "$branch" --state open --json number,url \
   --jq '.[0].url // empty' 2>/dev/null || true)"
 if [[ -n "$existing_pr" ]]; then
+  # A re-brief may change the recommendation, score or open questions: the
+  # PR's title and body must say what the files now say, not what the first
+  # run said. Then a short comment points reviewers at the new commit.
+  body_file="$(mktemp)"
+  printf '%s\n' "$body" >"$body_file"
+  gh pr edit "$existing_pr" --repo "$REPO" --title "$title" --body-file "$body_file" >/dev/null
+  rm -f "$body_file"
   gh pr comment "$existing_pr" --repo "$REPO" \
-    --body "$(printf '<!-- decision-brief:refresh -->\nRefreshed by the decision-brief stage: commit %s updates `%s/`.%s' \
+    --body "$(printf '<!-- decision-brief:refresh -->\nRefreshed by the decision-brief stage: commit %s updates `%s/`; the PR title and summary above reflect the current brief.%s' \
       "${commit_sha:0:7}" "$dest_prefix" "${RUN_URL:+ Run: ${RUN_URL}}")" >/dev/null
   pr_url="$existing_pr"
-  echo "refreshed existing PR ${pr_url}"
+  echo "refreshed existing PR ${pr_url} (title + summary updated)"
 else
   gh label create "$PR_LABEL" --repo "$REPO" \
     --description "Decision brief drafted by the org decision-brief stage (Mary)" --color 5319e7 2>/dev/null || true

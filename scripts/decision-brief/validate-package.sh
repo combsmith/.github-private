@@ -46,15 +46,30 @@
 # ── text helpers (pure) ──────────────────────────────────────────────────────
 
 # vp_fm_value <file> <key> — the frontmatter value of <key> (empty if none).
+# A frontmatter block that never closes is not frontmatter (and would swallow
+# the whole file out of the provenance scan): values are printed only once the
+# closing `---` has been seen.
 vp_fm_value() {
   local f="$1" key="$2"
   [[ -f "$f" ]] || return 0
   awk -v key="$key" '
     NR==1 && $0=="---" { infm=1; next }
-    infm && $0=="---" { exit }
-    infm && index($0, key ":")==1 { v=$0; sub("^" key ":[[:space:]]*", "", v); sub(/[[:space:]]*#.*$/, "", v); gsub(/["'\''` ]/, "", v); print v; exit }
+    infm && $0=="---" { if (found) print v; exit }
+    infm && !found && index($0, key ":")==1 { v=$0; sub("^" key ":[[:space:]]*", "", v); sub(/[[:space:]]*#.*$/, "", v); gsub(/["'\''` ]/, "", v); found=1 }
   ' "$f"
   return 0
+}
+
+# vp_body_after_frontmatter <file> — the file without a CLOSED frontmatter
+# block; an unclosed block is treated as body (so it gets scanned).
+vp_body_after_frontmatter() {
+  awk '
+    NR==1 && $0=="---" { infm=1; buf=""; next }
+    infm && $0=="---" { infm=0; next }
+    infm { buf = buf $0 "\n"; next }
+    { print }
+    END { if (infm) printf "%s", buf }
+  ' "$1"
 }
 
 # vp_has_section <file> <needle> — 0 iff a markdown header line contains
@@ -147,17 +162,20 @@ VP_CITED_RE='(https?://|unknown — needs discovery|unknown - needs discovery|\[
 # (the artifact itself) carries a `[^n]: … http(s)://…` definition — a dangling
 # footnote is not a source.
 vp_unsourced_claims() {
-  local defs="${1:-}" line ref ok
+  local defs="${1:-}" line ref ok defs_text=""
+  # HTML comments are invisible to the reader: a URL or a footnote definition
+  # inside one is not a source, and a claim inside one is not a claim.
+  if [[ -n "$defs" && -f "$defs" ]]; then defs_text="$(vp_strip_comments "$defs")"; fi
   while IFS= read -r line; do
     ok=0
     if printf '%s\n' "$line" | grep -qiE -- "$VP_CITED_RE"; then ok=1
     else
       for ref in $(printf '%s\n' "$line" | grep -oE '\[\^[0-9]+\]' | tr -d '[]^' | sort -u); do
-        if [[ -n "$defs" && -f "$defs" ]] && grep -qE "^\[\^${ref}\]:.*https?://" "$defs"; then ok=1; break; fi
+        if printf '%s\n' "$defs_text" | grep -qE "^\[\^${ref}\]:.*https?://"; then ok=1; break; fi
       done
     fi
     [[ "$ok" == 1 ]] || printf '%s\n' "$line"
-  done < <(awk '
+  done < <(perl -0pe 's/<!--.*?-->//gs' | awk '
     /^```/ { fence = !fence; next }
     fence { next }
     /^#{1,6}[[:space:]]/ { sub(/^#+[[:space:]]+/, ""); print; next }   # a claim in a heading is still a claim
@@ -293,8 +311,7 @@ vp_check_provenance() {
   # the brief itself.
   path="$dir/brief.md"
   if [[ -f "$path" ]]; then
-    hits="$(awk 'NR==1 && $0=="---" {infm=1; next} infm && $0=="---" {infm=0; next} !infm {print}' "$path" \
-      | vp_unsourced_claims "$path")"
+    hits="$(vp_body_after_frontmatter "$path" | vp_unsourced_claims "$path")"
     if [[ -n "$hits" ]]; then
       vp_fail brief.md provenance "quantified market claim without a source / 'unknown — needs discovery' / [ASSUMPTION]: $(printf '%s' "$hits" | head -2 | tr '\n' ' ' | cut -c1-220)"
     else
@@ -359,8 +376,11 @@ vp_check_ost() {
   local dir="$1"
   local path="$dir/ost.md"
   [[ -f "$path" ]] || return 0
-  if grep -q '^```mermaid' "$path"; then vp_pass ost.md mermaid
-  else vp_fail ost.md mermaid "no \`\`\`mermaid block (the tree is rendered as Mermaid)"; fi
+  local edges
+  edges="$(awk '/^```mermaid/{f=1;next} /^```/{f=0} f' "$path" | grep -cE -- '-->' || true)"
+  if ! grep -q '^```mermaid' "$path"; then vp_fail ost.md mermaid "no \`\`\`mermaid block (the tree is rendered as Mermaid)"
+  elif [[ "$edges" -lt 3 ]]; then vp_fail ost.md mermaid "the mermaid block has ${edges} edge(s); the tree needs outcome → opportunity → solution → assumption test (≥3 edges)"
+  else vp_pass ost.md mermaid; fi
 }
 
 # vp_spec_sections <spec> <file> — the gate's required_sections for <file>, one per line.

@@ -452,13 +452,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
         run: |
-          if gh api "repos/${REPO}/contents/ideas/package-spec.json" --jq '.content' 2>/dev/null | base64 -d > "$SPEC_PATH" \
-             && jq -e . "$SPEC_PATH" >/dev/null 2>&1; then
+          # Only a 404 means "no spec"; a fetch failure or a spec that does not
+          # parse must not weaken the gate to its built-in sections.
+          err="$(mktemp)"
+          if content="$(gh api "repos/${REPO}/contents/ideas/package-spec.json" --jq '.content' 2>"$err")"; then
+            printf '%s' "$content" | base64 -d > "$SPEC_PATH"
+            if ! jq -e . "$SPEC_PATH" >/dev/null 2>&1; then
+              echo "::error::${REPO}:ideas/package-spec.json is not valid JSON — fix it before briefing"
+              exit 1
+            fi
             echo "package-spec.json fetched from ${REPO}"
-          else
+          elif grep -qE 'HTTP 404|Not Found' "$err"; then
             rm -f "$SPEC_PATH"
             echo "::notice::${REPO} has no ideas/package-spec.json — validating against the stage's built-in sections only"
+          else
+            echo "::error::could not read ${REPO}:ideas/package-spec.json — $(tr '\n' ' ' <"$err" | cut -c1-200)"
+            exit 1
           fi
+          rm -f "$err"
 
       - name: Provenance + structure gate
         # The deterministic half of the guard, run from the clean checkout: the
