@@ -28,12 +28,14 @@ bats suite that guards them.
 ## Local Development Commands
 
 - Install: none (no application dependencies). Tests need `bats`, `shellcheck`,
-  `yq`, `python3` with PyYAML, and GNU bash 5 (`brew install bats-core shellcheck yq`;
+  `yq`, `python3` with PyYAML, and GNU bash 5 (`brew install bash bats-core shellcheck yq`;
   on macOS run tests with Homebrew bash first on `PATH`, stock bash 3.2 cannot
   parse the test heredocs).
 - Dev run: n/a
 - Test: `bats tests/`
-- Lint: `shellcheck *.sh` (no shell scripts ship today; CI runs it anyway)
+- Lint: `find . -path ./.git -prune -o -name '*.sh' -exec shellcheck {} +` (no
+  shell scripts ship today, so a bare `shellcheck *.sh` fails on the unmatched
+  glob; CI uses `shopt -s nullglob` for the same reason)
 - Typecheck: n/a
 
 ## Required Environment Variables

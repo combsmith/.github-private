@@ -114,6 +114,12 @@ gh api repos/combsmith/.github/contents/standards/dependabot/${STACK}.yml \
 Adjust only `directory:` paths if manifests are not at the repo root. Policy:
 [`standards/dependabot-policy.md`](https://github.com/combsmith/.github/blob/main/standards/dependabot-policy.md).
 
+`fullstack.yml` carries `npm`, `gomod`, `terraform` and `github-actions`
+entries but **no `pip` entry**. A `fullstack` repo that also has Python code
+adds the `pip` block from `backend-python.yml` (same `schedule`, `groups` and
+`labels` shape as the other entries; adjust `directory:`), still with a single
+`github-actions` entry.
+
 **Python stacks (`backend-python`, or `fullstack` with Python) also need
 `scripts/pip-audit-requirements.txt`.** The org `dependency-audit` reusable's
 `pip-audit` job installs pip-audit from that hash-pinned file in the consumer
@@ -224,11 +230,19 @@ Check: `! grep -q 'TODO: Replace this' .github/workflows/feature-ideation.yml` e
 
 ## 6. `sonar-project.properties` — set the project key
 
+Set the values as follows. Java properties files only treat `#` as a comment
+at the start of a line: a trailing `# note` after a value becomes part of the
+value, so do not annotate the lines themselves.
+
+- `sonar.projectKey` — `REPO` with `/` replaced by `_` (`combsmith_<name>`).
+- `sonar.sources` — the source directories, e.g. `src`, or `.` for small repos.
+- `sonar.tests` — the test directory; omit the line if there are no tests yet.
+
 ```properties
-sonar.projectKey=combsmith_<name>      # REPO with "/" replaced by "_"
+sonar.projectKey=combsmith_<name>
 sonar.organization=combsmith
-sonar.sources=<source dirs>            # e.g. src  or  .  for small repos
-sonar.tests=<test dir>                 # omit if none yet
+sonar.sources=<source dirs>
+sonar.tests=<test dir>
 sonar.exclusions=**/node_modules/**,**/vendor/**,**/dist/**
 ```
 
@@ -256,13 +270,43 @@ org-wide; no console step is needed for a public repo.
    Standards). Keep it to about two pages.
 4. **`.github/instructions/`** — for each language in `STACK`, copy the
    canonical path-scoped file and list it under `## Org Standards` in
-   `copilot-instructions.md`. The canonical repo has no Rust file, so
-   `STACK=backend-rust` gets no language-specific instruction file:
+   `copilot-instructions.md`. The language list follows from `STACK`; add
+   `shell` whenever the repo has shell scripts of its own, whatever the stack,
+   and `python` for a `fullstack` repo that has Python code (the same repos
+   that add the `pip` Dependabot block in step 2). The canonical repo has no
+   Rust file, so `STACK=backend-rust` gets no language-specific instruction
+   file:
+
+   | `STACK` | Languages |
+   |---|---|
+   | `frontend` | `typescript javascript` |
+   | `backend-go` | `go` |
+   | `backend-python` | `python` |
+   | `backend-rust` | none |
+   | `infra-terraform` | `terraform` |
+   | `fullstack` | `typescript javascript go terraform`, plus `python` when the repo has Python code |
+   | `none` | none |
 
    ```bash
    set -o pipefail
    mkdir -p .github/instructions
-   for lang in python shell; do   # pick from: typescript javascript python go terraform shell
+   case "$STACK" in
+     frontend)          langs="typescript javascript" ;;
+     backend-go)        langs="go" ;;
+     backend-python)    langs="python" ;;
+     infra-terraform)   langs="terraform" ;;
+     fullstack)         langs="typescript javascript go terraform" ;;
+     backend-rust|none) langs="" ;;
+     *) echo "unknown STACK: $STACK" >&2; exit 1 ;;
+   esac
+   if find . -path ./.git -prune -o -name '*.sh' -print -quit | grep -q .; then
+     langs="$langs shell"
+   fi
+   if [ "$STACK" = fullstack ] \
+     && find . -path ./.git -prune -o -name '*.py' -print -quit | grep -q .; then
+     langs="$langs python"
+   fi
+   for lang in $langs; do
      gh api repos/combsmith/.github/contents/.github/instructions/${lang}.instructions.md \
        --jq '.content' | base64 -d > .github/instructions/${lang}.instructions.md \
        && [ -s .github/instructions/${lang}.instructions.md ]
@@ -280,28 +324,48 @@ org-wide; no console step is needed for a public repo.
 
 Check: no template placeholder text survives. The patterns below are the
 template's own wording, so a project that legitimately mentions
-`repo-template` (for example in a provenance line) still passes:
+`repo-template` (for example in a provenance line) still passes. `grep` exits
+`1` for "no match" and `2` for an error such as a missing file; only `1` is a
+pass, so a negated `! grep -q …` would silently pass when a listed file is
+absent. Branch on the exit code instead:
 
 ```bash
-! grep -qE 'Org baseline scaffold|combsmith_repo-template|Copilot Instructions — repo-template|What this repository is' \
-    README.md AGENTS.md .github/copilot-instructions.md sonar-project.properties
+rc=0
+grep -E 'Org baseline scaffold|combsmith_repo-template|Copilot Instructions — repo-template|What this repository is' \
+    README.md AGENTS.md .github/copilot-instructions.md sonar-project.properties || rc=$?
+case "$rc" in
+  1) echo "OK: no template placeholder text" ;;
+  0) echo "FAIL: template placeholder text survives (matches above)" >&2; exit 1 ;;
+  *) echo "ERROR: grep exited $rc — a listed file is missing or unreadable" >&2; exit "$rc" ;;
+esac
 ```
 
 ---
 
 ## 8. Remove template-only files; install BMAD if a product repo
 
+Every template Bats file other than `tests/ci-*.bats` (the `*-stub.bats`
+guards, `gitignore-baseline.bats`, `pr-quality-ruleset.bats`,
+`dependabot-github-actions-ecosystem.bats`, `pr-auto-review-concurrency.bats`)
+tests the template, not the project, and goes in every repo. Derive the set
+from the directory rather than naming files, so nothing is left behind:
+
 ```bash
-git rm tests/*.bats
+find tests -maxdepth 1 -name '*.bats' ! -name 'ci-*.bats' -exec git rm {} +
 git rm -r standards
 ```
 
+The `tests/ci-*.bats` files guard the template's shell `ci.yml` and go too,
+with one exception: a `STACK=none` repo whose code is itself shell scripts
+tested with Bats may keep individual `tests/ci-*.bats` files as a starting
+point. For every other repo:
+
+```bash
+git rm tests/ci-*.bats
+```
+
 Remove only the Bats files, not the `tests/` directory: your own test suite
-(`tests/test_*.py`, `tests/*.test.ts`, …) may already live there or will. The
-one exception: a `STACK=none` repo whose code is itself shell scripts tested
-with Bats may keep individual `tests/ci-*.bats` files as a starting point, but
-must still delete the `*-stub.bats`, `gitignore-baseline.bats` and
-`pr-quality-ruleset.bats` guards, which test the template, not the project.
+(`tests/test_*.py`, `tests/*.test.ts`, …) may already live there or will.
 
 If `BMAD=yes`, install the BMAD Method (org standard for product repos:
 spec-driven development, planning artifacts in `_bmad-output/`):
