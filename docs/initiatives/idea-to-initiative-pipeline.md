@@ -10,7 +10,14 @@ feature-ideation.yml        (weekly, automated)   ──>  Ideas DISCUSSIONS
 idea-triage.yml             (weekly, automated)    ──>  "🧭 Idea Promotion Queue"
   ranks ripeness; never approves                        tracking issue (shortlist)
         │
-   ★ HUMAN — add `idea:approved` to a Discussion
+        ▼
+decision-brief.yml          (Ripe in the queue, or `needs-brief`; automated)
+  BMAD Analyst "Mary"       ──>  PR: ideas/<slug>/{brief,market-research,ost}.md
+                                 (RICE/ICE, riskiest assumption + cheapest test,
+                                  go/no-go; every market claim cited or
+                                  "unknown — needs discovery")
+        │
+   ★ HUMAN — read the brief, then add `idea:approved` to the Discussion
         │
         ▼
 initiative-planner.yml      (on approval / dispatch, automated)
@@ -151,6 +158,36 @@ inputs.
   idea. It **never** applies `idea:approved` — that's the human's pick.
 - Tooling: `scripts/idea-triage/{gather-ideas,upsert-queue}.sh`.
 
+### `decision-brief.yml` — BMAD Analyst "Mary" (the go/no-go brief)
+- Closes the gap named in [combsmith/incubator#3](https://github.com/combsmith/incubator/issues/3):
+  before it, a human applied `idea:approved` on one enhancement comment and a
+  triage score. Now a **decision brief** is the artifact they approve on.
+- Trigger: an Ideas Discussion gets the `needs-brief` label (bridged to
+  `workflow_dispatch` by the `redispatch` job — claude-code-action aborts on
+  `discussion` events), or a `from_queue=true` dispatch that briefs every idea
+  idea-triage ranked **Ripe** in the target's Idea Promotion Queue and that has
+  no brief yet (capped per sweep). Manual dispatch defaults `dry_run: true`.
+- Mary fills the **target repo's own** `ideas/_TEMPLATE/{brief,market-research,ost}.md`
+  (`prompts/incubation/decision-brief-stage.md` + the per-artifact producers,
+  wrapping the vendored BMAD analysis skills by path): problem + JTBD with the
+  evidence, cited market context, OST, **ICE by default** (RICE only when a Reach
+  figure is cited; Confidence tied to the evidence rung), a **riskiest-assumption
+  and cheapest-test** table, and a **go / no-go / park** recommendation that says
+  what a POC must prove and what would make the decider say no.
+- **Provenance guard (#1160).** `scripts/decision-brief/validate-package.sh`
+  runs in a separate `land` job from a clean checkout after the model job: any quantified market claim without a
+  URL / `[^n]` footnote / `[ASSUMPTION]` tag / "unknown — needs discovery", a
+  missing score or Confidence, an empty assumptions table, a recommendation that
+  takes no position, or a leftover template placeholder fails the run — the
+  package stays an artifact and never becomes a PR.
+- `open-pr.sh` (same isolated `land` job, the only one holding the org PAT)
+  lands the package on `incubate/<slug>` in the target (one commit via the Git
+  Data API, author = the business-analyst persona's runtime account),
+  opens or refreshes the PR, and links it from the Discussion. **It never applies
+  `idea:approved`.**
+- Tooling: `scripts/decision-brief/` (tests: `tests/test_decision_brief.bats`,
+  `tests/test_decision_brief_workflow.bats`).
+
 ### `initiative-planner.yml` — BMAD Scrum Master "Bob"
 - Trigger: a Discussion gets labelled `idea:approved`, or manual
   `workflow_dispatch` with a discussion number (`dry_run` defaults to **true**).
@@ -193,6 +230,8 @@ inputs.
 |-------|----|---------|
 | `idea:approved` | Discussion | Human blessed this idea for planning → fires the planner |
 | `idea-triage` | Issue | Marks the Idea Promotion Queue tracking issue |
+| `needs-brief` | Discussion | Human asks Mary for a decision brief → fires decision-brief |
+| `decision-brief` | PR | The brief package PR Mary opened in the target repo |
 | `initiative` | Epic + stories | Part of a tracked initiative |
 | `initiative:auto` | Epic | Human activated auto-implementation (driver may release) |
 | `initiative:hold` / `dev-lead:hands-off` | Story | Never auto-released; needs a human |
@@ -250,6 +289,14 @@ inert epic + DAG in the fleet repo; the **driver** leg releases that epic's
 ready stories to `dev-lead` cross-repo once a human arms it. Both ship only a
 thin per-repo stub and dispatch the central workflow with `target_repo`.
 
+- **decision-brief leg (hosted here).** `standards/workflows/decision-brief.yml`
+  (staging copy; to be promoted to `combsmith/.github/standards/workflows/`) is the
+  thin caller a fleet repo adds. It pins
+  `combsmith/.github-private/.github/workflows/decision-brief-reusable.yml@decision-brief/v1-stable`,
+  which forwards `needs-brief` label events and the weekly post-triage sweep to the
+  central `decision-brief.yml` with `target_repo=<fleet repo>`; the brief PR lands
+  THERE. The fleet repo needs `ideas/_TEMPLATE/`, the `needs-brief` and
+  `idea:approved` labels, and the org PAT.
 - **`target_repo`** parameterizes the central planner/triage/enhancer **and the
   driver**; empty ⇒ the dogfood/self path (`.github-private` plans + drives its
   own issues), non-empty ⇒ the named fleet repo.

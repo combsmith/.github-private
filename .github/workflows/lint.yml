@@ -176,6 +176,8 @@ jobs:
             tests/test_initiative_planner_redispatch.bats \
             tests/test_initiative_reconcile.bats \
             tests/test_idea_triage.bats \
+            tests/test_decision_brief.bats \
+            tests/test_decision_brief_workflow.bats \
             tests/test_oversized_pr.bats \
             tests/test_dependabot.bats \
             tests/dependency_advisory.bats \

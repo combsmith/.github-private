@@ -327,6 +327,27 @@ calling it a regression, and treat CI as authoritative.**
   `scripts/auto_rebase_health.sh`, tests in `tests/auto_rebase_health.bats`) and runs on `github.token`
   only — no cross-org PAT. It must not be removed by template syncs. If the org template gains an
   auto-rebase instrumentation equivalent, remove this exception and defer to the template instead.
+- **Exception:** `decision-brief.yml` (combsmith/incubator#3) is a documented repo-specific workflow with
+  no corresponding org template in `standards/workflows/`. It is org-private automation in the same class as
+  `initiative-planner.yml` / `idea-triage.yml`: the BMAD Analyst (Mary) drafts `ideas/<slug>/brief.md`
+  (+ `market-research.md`, `ost.md`) for ONE ripe Ideas Discussion of a `target_repo` from that repo's own
+  `ideas/_TEMPLATE/`, scored RICE/ICE with a riskiest-assumption + cheapest-test table and a go/no-go, and
+  opens the package as a PR there. Its `needs-brief` `discussion:[labeled]` trigger is bridged to
+  `workflow_dispatch` by a `redispatch` job (claude-code-action aborts on `discussion` contexts); its
+  `from_queue` sweep briefs every idea idea-triage ranked Ripe that has no brief yet. The **provenance
+  guard** (`scripts/decision-brief/validate-package.sh`, #1160) runs in a separate `land` job from a
+  clean checkout after the model job (the only job holding the org PAT; the model step gets the
+  read-scoped `GITHUB_TOKEN`): an
+  unsourced market figure, a missing score/Confidence, an empty assumptions table or a positionless
+  recommendation fails the run before any PR exists. It never applies `idea:approved`. Tooling in
+  `scripts/decision-brief/` (tests: `tests/test_decision_brief.bats`,
+  `tests/test_decision_brief_workflow.bats`). Its companion **`decision-brief-reusable.yml`** is a
+  first-party reusable HOSTED HERE (like `dev-lead-reusable.yml`): the fleet dispatch bridge that caller
+  stubs pin at `@decision-brief/v1-stable` (cut with `scripts/cut-release.sh decision-brief …`; the
+  `release-channel-tags` ruleset must gain the `decision-brief/**` namespace — an admin step). The thin
+  caller stub lives at `standards/workflows/decision-brief.yml` as a **staging copy** until it is promoted
+  to `combsmith/.github/standards/workflows/` (org standards belong there; this repo only hosts it so
+  the stub and the reusable ship in one reviewed change). Neither file must be removed by template syncs.
 - **Exception:** `initiative-planner-canary.yml` (#822, closes #655 item 3) is a documented repo-specific
   workflow with no corresponding org template in `standards/workflows/`. It is a daily (≤1/day) +
   `workflow_dispatch` post-merge canary that fires a **dry-run** dispatch of `initiative-planner.yml`
@@ -932,6 +953,7 @@ gated (with the one upstream exception above), and a test keeps it that way.
 | `issue-triage-runner.yml` | Job condition | `triage` | The apply job needs triage, so it is skipped with it. |
 | `initiative-planner.yml` | Job condition | `plan` | The redispatch bridge makes no model call and still runs; the run it starts is the one that reports the pause. |
 | `idea-triage.yml` | Job condition | `triage` |  |
+| `decision-brief.yml` | Job condition | `brief` | The redispatch bridge and the queue sweep make no model call and still run; the brief run they start is the one that reports the pause. |
 | `spec-drift.yml` | Job condition, no notice | `spec-drift` | Opt-in and off by default. No notice job: its contract test requires every job to hold issues: write and the workflow to cost nothing when it does not run. |
 | `dependency-advisory.yml` | Job condition | `advisory` |  |
 | `docs-health-check.yml` | Job condition | `health-check` |  |

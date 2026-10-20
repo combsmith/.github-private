@@ -33,6 +33,7 @@ REGISTRY_REL="scripts/lib/fleet-pause-registry.tsv"
 NEWLY_GATED=(
   persona-runner-reusable.yml
   gh-aw-cross-org.yml issue-triage-runner.yml initiative-planner.yml idea-triage.yml
+  decision-brief.yml
   dependency-advisory.yml docs-health-check.yml readme-refresh.yml
   release-notes.yml stale-manager.yml skill-eval-report.yml model-ab.yml
   dev-lead-retry.yml pr-review-sweep.yml
