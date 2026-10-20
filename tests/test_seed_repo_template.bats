@@ -413,7 +413,7 @@ GHEOF
   [[ "$output" == *"* @combsmith/org-leads"* ]]
 }
 
-@test "baseline: AGENTS.md is a consumer pointer to the org AGENTS.md" {
+@test "baseline: AGENTS.md points to the org AGENTS.md and carries the template-specific sections" {
   run bash "$SEED" --emit-baseline AGENTS.md
   [ "$status" -eq 0 ]
   [[ "$output" == *"combsmith/.github"* ]]
@@ -442,12 +442,12 @@ GHEOF
   [ "$status" -eq 0 ]
   # Q1: framework subtrees (frameworks/) are opt-in, NOT seeded by the template.
   [[ "$output" == *"frameworks/"* ]]
-  [[ "$output" == *"opt-in"* ]]
-  [[ "$output" == *"not"*"seed"* || "$output" == *"not seeded"* ]]
+  [[ "$output" == *"not seeded"* ]]
+  [[ "$output" == *"on demand"* ]]
   # Q2: app installs (Claude/CodeRabbit) are a manual org-admin step, not done by bootstrap.
   [[ "$output" == *"Claude"* ]]
   [[ "$output" == *"CodeRabbit"* ]]
-  [[ "$output" == *"manual"* ]]
+  [[ "$output" == *"org-level"* ]]
   [[ "$output" == *"auto-trigger"* ]]
 }
 
@@ -905,12 +905,13 @@ GHEOF
 
 # ── #2233: commercial-support sections + one open seed PR per repo ─────────────
 # Fixtures: standards/commercial-support-standard.md at standards/v1.2.0, and
-# README.md / BOOTSTRAP.md from combsmith/repo-template main at a1b4fb23.
+# README.md / BOOTSTRAP.md / AGENTS.md from combsmith/repo-template main at 68eb6a18 (#252).
 SEED_FIXTURES="$SCRIPT_DIR/tests/fixtures/seed-repo-template"
 # Git blob SHAs of those two repo-template files (guards the fixtures themselves
 # against an editor/hook adding a trailing newline).
-REPO_TEMPLATE_README_BLOB=0aba9ec3a18ab29660f71d12a26403fd0c05c0d1
-REPO_TEMPLATE_BOOTSTRAP_BLOB=484d2ce52affd774d89dd9c6a98aae7ad9917a8b
+REPO_TEMPLATE_README_BLOB=c3fd7433e1b962846e569f3f2a9988a3a47967b4
+REPO_TEMPLATE_BOOTSTRAP_BLOB=286476738f88fb3ce3b9d584f82aeb5c167b6342
+REPO_TEMPLATE_AGENTS_BLOB=081d3599b35270c3f15144e0ef646ace4ed25057
 
 _fixture_commercial_standard() {
   cp "$SEED_FIXTURES/commercial-support-standard.md" \
@@ -927,12 +928,20 @@ _standard_readme_block() { # <standard-file>
 # newlines and _put_file encodes it with printf '%s'.
 _seeded_blob() { printf '%s' "$1" | git hash-object --stdin; }
 
-@test "#2233: BOOTSTRAP.md emission is blob-identical to repo-template main (a1b4fb23)" {
+@test "#2233: BOOTSTRAP.md emission is blob-identical to repo-template main (68eb6a18)" {
   [ "$(git hash-object "$SEED_FIXTURES/repo-template-BOOTSTRAP.md")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
   run bash "$SEED" --emit-baseline BOOTSTRAP.md
   [ "$status" -eq 0 ]
-  [[ "$output" == *"## 4. Contributing & Commercial Support"* ]]
+  [[ "$output" == *"## 10. Done criteria"* ]]
   [ "$(_seeded_blob "$output")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
+}
+
+@test "repo-template#253: AGENTS.md emission is blob-identical to repo-template main (68eb6a18)" {
+  [ "$(git hash-object "$SEED_FIXTURES/repo-template-AGENTS.md")" = "$REPO_TEMPLATE_AGENTS_BLOB" ]
+  run bash "$SEED" --emit-baseline AGENTS.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"## Local Development Commands"* ]]
+  [ "$(_seeded_blob "$output")" = "$REPO_TEMPLATE_AGENTS_BLOB" ]
 }
 
 @test "#2233: README.md keeps repo-template's preamble and appends the standard's canonical section" {
