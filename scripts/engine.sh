@@ -44,39 +44,10 @@ set -euo pipefail
 # concurrent runs do not read each other's values.
 DEV_LEAD_SIDECAR_DIR="${DEV_LEAD_SIDECAR_DIR:-/tmp}"
 
-# Configured engine chain (AI_ENGINES): which engines are enabled and in what
-# order. The primary is REVIEW_ENGINE when that is set AND enabled, otherwise
-# the first engine in AI_ENGINES — so a disabled engine is never used, even when
-# a legacy REVIEW_ENGINE / DEV_LEAD_ENGINE variable still names it.
-_ENGINE_CHAIN_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-chain.sh"
-# shellcheck source=lib/engine-chain.sh
-[ -f "$_ENGINE_CHAIN_LIB" ] && source "$_ENGINE_CHAIN_LIB"
-unset _ENGINE_CHAIN_LIB
-if declare -F ai_engine_primary >/dev/null 2>&1; then
-  _requested_engine="${REVIEW_ENGINE:-}"
-  REVIEW_ENGINE="$(ai_engine_primary "$_requested_engine")"
-  if [ -n "$_requested_engine" ] && [ "$_requested_engine" != "$REVIEW_ENGINE" ]; then
-    echo "::warning::REVIEW_ENGINE=$_requested_engine is not enabled in AI_ENGINES ($(ai_engine_chain)) — using $REVIEW_ENGINE" >&2
-  fi
-  unset _requested_engine
-  # Report an unusable AI_ENGINES here too: dev-lead sources engine.sh without
-  # running validate_engines. The exported flag keeps it to one warning per run.
-  if [ -z "${AI_ENGINES_PROBLEM_REPORTED:-}" ]; then
-    _chain_problem="$(ai_engine_chain_problem)"
-    if [ -n "$_chain_problem" ]; then
-      echo "::warning::$_chain_problem" >&2
-      export AI_ENGINES_PROBLEM_REPORTED=1
-    fi
-    unset _chain_problem
-  fi
-else
-  REVIEW_ENGINE="${REVIEW_ENGINE:-claude}"
-fi
-export REVIEW_ENGINE
-
-# Each provider's model list (AI_MODELS_CLAUDE / AI_MODELS_GEMINI /
-# AI_MODELS_COPILOT) and its defaults live in lib/engine-models.sh, so a retired
-# or renamed model is an Actions-variable edit, not a code change.
+# Each provider's model list: the defaults in config/ai-engines.json, read by
+# lib/engine-models.sh, with AI_MODELS_CLAUDE / AI_MODELS_GEMINI /
+# AI_MODELS_COPILOT as break-glass overrides. Sourced before the engine chain,
+# which takes the enabled providers and their order from the same file.
 _ENGINE_MODELS_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-models.sh"
 if [ ! -f "$_ENGINE_MODELS_LIB" ]; then
   echo "::error::engine.sh: missing $_ENGINE_MODELS_LIB (model lists and defaults)" >&2
@@ -85,6 +56,12 @@ fi
 # shellcheck source=lib/engine-models.sh
 source "$_ENGINE_MODELS_LIB"
 unset _ENGINE_MODELS_LIB
+# The defaults come from config/ai-engines.json (#1973). Read it once here:
+# the lookups below and in child $(…) shells reuse the table, and a missing or
+# malformed file fails the step instead of running on stale defaults.
+if ! ai_engines_config_load; then
+  return 1 2>/dev/null || exit 1
+fi
 if [ -z "${AI_MODELS_PROBLEM_REPORTED:-}" ]; then
   _models_problems="$(ai_models_problems)"
   if [ -n "$_models_problems" ]; then
@@ -105,6 +82,40 @@ if [ -z "${AI_MODELS_FABLE_WARNED:-}" ]; then
   fi
   unset _fable_warn
 fi
+
+# Configured engine chain (AI_ENGINES): which engines are enabled and in what
+# order. The primary is REVIEW_ENGINE when that is set AND enabled, otherwise
+# the first engine in AI_ENGINES — so a disabled engine is never used, even when
+# a legacy REVIEW_ENGINE / DEV_LEAD_ENGINE variable still names it.
+_ENGINE_CHAIN_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-chain.sh"
+# shellcheck source=lib/engine-chain.sh
+[ -f "$_ENGINE_CHAIN_LIB" ] && source "$_ENGINE_CHAIN_LIB"
+unset _ENGINE_CHAIN_LIB
+if [ -n "${REVIEW_ENGINE_FORCE:-}" ] && [[ "${REVIEW_ENGINE:-}" =~ ^(claude|gemini|copilot)$ ]]; then
+  # Model A/B evals pin the engine regardless of provider enablement: scoring a
+  # Claude model on the configured non-Claude primary would invalidate the run.
+  :
+elif declare -F ai_engine_primary >/dev/null 2>&1; then
+  _requested_engine="${REVIEW_ENGINE:-}"
+  REVIEW_ENGINE="$(ai_engine_primary "$_requested_engine")"
+  if [ -n "$_requested_engine" ] && [ "$_requested_engine" != "$REVIEW_ENGINE" ]; then
+    echo "::warning::REVIEW_ENGINE=$_requested_engine is not enabled in AI_ENGINES ($(ai_engine_chain)) — using $REVIEW_ENGINE" >&2
+  fi
+  unset _requested_engine
+  # Report an unusable AI_ENGINES here too: dev-lead sources engine.sh without
+  # running validate_engines. The exported flag keeps it to one warning per run.
+  if [ -z "${AI_ENGINES_PROBLEM_REPORTED:-}" ]; then
+    _chain_problem="$(ai_engine_chain_problem)"
+    if [ -n "$_chain_problem" ]; then
+      echo "::warning::$_chain_problem" >&2
+      export AI_ENGINES_PROBLEM_REPORTED=1
+    fi
+    unset _chain_problem
+  fi
+else
+  REVIEW_ENGINE="${REVIEW_ENGINE:-claude}"
+fi
+export REVIEW_ENGINE
 
 # Cross-engine rubber-duck model (issue #773). The duck deliberately routes to
 # Copilot/o4-mini even when the primary engine is NOT copilot (e.g. the default
@@ -2172,6 +2183,14 @@ run_writer_with_fallback() {
   # distinct `unconfigured` so the caller escalates to a human instead of retrying.
   local any_unconfigured=0
   for engine in "${engines[@]}"; do
+    # The workflow's token preflight sets CLAUDE_UNAVAILABLE=1 when claude is a later
+    # fallback but CLAUDE_CODE_OAUTH_TOKEN is absent. A tokenless claude auth error is
+    # terminal, so skip it as a config-gap and let a later usable provider run.
+    if [ "$engine" = "claude" ] && [ "${CLAUDE_UNAVAILABLE:-}" = "1" ]; then
+      echo "::warning::Skipping claude fallback: no CLAUDE_CODE_OAUTH_TOKEN (configuration gap, not a rate limit)" >&2
+      any_unconfigured=1
+      continue
+    fi
     if [ "$engine" = "copilot" ] && [[ "${COPILOT_GITHUB_TOKEN:-}" == ghp_* ]]; then
       echo "::warning::Skipping copilot fallback: classic PAT in COPILOT_GITHUB_TOKEN is unsupported (configuration gap, not a rate limit)" >&2
       any_unconfigured=1

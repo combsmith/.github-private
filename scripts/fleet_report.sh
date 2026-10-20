@@ -13,7 +13,7 @@
 # (#941). Matched by workflow file basename. See AGENTS.md "Exception:
 # test-deletion-guard.yml". Override via env with the full space-separated
 # gate list for testing; add permanent gates to the default below.
-FLEET_GATE_WORKFLOWS="${FLEET_GATE_WORKFLOWS:-test-deletion-guard.yml holdout-guard.yml}"
+FLEET_GATE_WORKFLOWS="${FLEET_GATE_WORKFLOWS:-test-deletion-guard.yml holdout-guard.yml engine-config-validate.yml}"
 
 # Dev-Lead status-marker prefix (#1019, story C of #901). Mirrors
 # ISSUE_MARKER_PREFIX in dev-lead-fix-issue.sh / dev-lead-retry.sh: every

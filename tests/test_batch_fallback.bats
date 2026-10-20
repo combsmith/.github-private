@@ -176,6 +176,9 @@ EOF
 # answering 404 for any model listed in $BAD_MODELS.
 _copilot_smoke_setup() {
   cp "$BATS_TEST_DIRNAME/../scripts/lib/engine-models.sh" "scripts/lib/"
+  # The lib reads its defaults from config/ai-engines.json beside scripts/ (#1973).
+  mkdir -p config
+  cp "$BATS_TEST_DIRNAME/../config/ai-engines.json" config/
   cat > "scripts/validate-engines.sh" <<'EOS'
 source "$(dirname "${BASH_SOURCE[0]}")/lib/engine-models.sh"
 validate_engines() {

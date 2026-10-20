@@ -15,6 +15,7 @@ on:
       - 'interaction-contracts/**'
       - 'evals/**'
       - 'release/**'
+      - 'config/**'  # config/ai-engines.json + schema (validate-ai-engines)
       - '.gitleaks.toml'
   # Post-merge coverage parity with `unit` (#1486, epic #1402): re-run the bats
   # suite against actual trunk state after every merge so shell-script behavioral
@@ -30,6 +31,7 @@ on:
       - 'prompts/**'
       - '.github/workflows/**'
       - '.github/**'  # check-model-pins scans all of .github
+      - 'config/**'
   workflow_dispatch:
 
 permissions:
@@ -210,6 +212,9 @@ jobs:
             tests/test_discover_parity_skills.bats \
             tests/test_eval_health_notify.bats \
             tests/test_consumer_manifest.bats \
+            tests/test_validate_ai_engines.bats \
+            tests/dev-lead/unit/test_ai_engines_config.bats \
+            tests/dev-lead/unit/test_install_step_engine.bats \
             tests/test_downstream_impact_map.bats \
             tests/test_downstream_impact_assemble.bats \
             tests/test_downstream_impact_triage_inline.bats \
@@ -534,6 +539,28 @@ jobs:
 
       - name: Validate per-case eval schema conformance across the tree
         run: python3 evals/validate-cases.py --schema-tree evals
+
+  validate-ai-engines:
+    # The engine config gate (#1973). config/ai-engines.json is the source of
+    # truth for enabled providers, the model catalog and each task's chain, so a
+    # bad value is caught at PR time instead of in a failing review. Validates
+    # the file against config/ai-engines.schema.json (draft 2020-12, the same
+    # jsonschema setup as validate-eval-cases), then fails on a task model that is
+    # missing from `models` or `retired`, a model in another provider's chain, an
+    # enabled provider's model with no row in scripts/lib/model-pricing.tsv, and a
+    # duck or Copilot chain with more than one model. Fully HERMETIC.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Python deps
+        run: pip3 install --quiet "jsonschema==4.26.0" --only-binary=":all:"
+
+      - name: Validate config/ai-engines.json
+        run: python3 scripts/validate-ai-engines.py
 
   validate-interaction-contracts:
     # Interaction-contract well-formedness gate (Story 2 / #1404, AC #5). Parses

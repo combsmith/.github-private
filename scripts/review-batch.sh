@@ -115,10 +115,17 @@ fi
 # Primary engine: REVIEW_ENGINE when AI_ENGINES enables it, otherwise the first
 # engine in AI_ENGINES — a disabled engine is never used.
 _requested_engine="${REVIEW_ENGINE:-}"
-REVIEW_ENGINE="$(ai_engine_primary "$_requested_engine")"
+REVIEW_ENGINE="$(ai_engine_primary "$_requested_engine")" || {
+  echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable"
+  exit 1
+}
 export REVIEW_ENGINE
 if [ -n "$_requested_engine" ] && [ "$_requested_engine" != "$REVIEW_ENGINE" ]; then
-  echo "::warning::REVIEW_ENGINE=$_requested_engine is not enabled in AI_ENGINES ($(ai_engine_chain)) — using $REVIEW_ENGINE"
+  _chain_msg="$(ai_engine_chain)" || {
+    echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable"
+    exit 1
+  }
+  echo "::warning::REVIEW_ENGINE=$_requested_engine is not enabled in AI_ENGINES ($_chain_msg) — using $REVIEW_ENGINE"
 fi
 unset _requested_engine
 
@@ -132,10 +139,18 @@ if ! ai_engine_available "$REVIEW_ENGINE"; then
     echo "::warning::Primary $(ai_engine_label "$REVIEW_ENGINE") engine unavailable per pre-flight probe — switching to $(ai_engine_label "$_start_engine") for this batch"
     export REVIEW_ENGINE="$_start_engine"
   elif [ "$REVIEW_ENGINE" != "claude" ]; then
-    echo "::error::Primary $(ai_engine_label "$REVIEW_ENGINE") engine unavailable and no other engine in AI_ENGINES ($(ai_engine_chain)) is available (e.g. Copilot fallback also unavailable: gh copilot not installed, classic PAT, or COPILOT_GITHUB_TOKEN not set) — aborting batch"
+    _chain_msg="$(ai_engine_chain)" || {
+      echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable"
+      exit 1
+    }
+    echo "::error::Primary $(ai_engine_label "$REVIEW_ENGINE") engine unavailable and no other engine in AI_ENGINES ($_chain_msg) is available (e.g. Copilot fallback also unavailable: gh copilot not installed, classic PAT, or COPILOT_GITHUB_TOKEN not set) — aborting batch"
     exit 1
   else
-    echo "::warning::Claude unavailable per pre-flight probe and no other engine in AI_ENGINES ($(ai_engine_chain)) is available — continuing on Claude"
+    _chain_msg="$(ai_engine_chain)" || {
+      echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable"
+      exit 1
+    }
+    echo "::warning::Claude unavailable per pre-flight probe and no other engine in AI_ENGINES ($_chain_msg) is available — continuing on Claude"
   fi
   unset _start_engine
 fi
@@ -280,8 +295,12 @@ total_candidates=$(grep -c . "$PRS_FILE" || true)
 # _chain_has_later_engine <engine> — 0 when AI_ENGINES lists any engine after
 # <engine> (available or not).
 _chain_has_later_engine() {
-  local e seen=0
-  for e in $(ai_engine_chain); do
+  local e seen=0 _chain
+  _chain="$(ai_engine_chain)" || {
+    echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable" >&2
+    exit 1
+  }
+  for e in $_chain; do
     if [ "$seen" -eq 1 ]; then
       return 0
     fi
@@ -349,7 +368,11 @@ while IFS= read -r pr_url; do
       echo "::notice::$(ai_engine_label "$REVIEW_ENGINE") unavailable or rate-limited earlier in this batch — reviewing on $(ai_engine_label "$_start_engine")"
       export REVIEW_ENGINE="$_start_engine"
     elif [ -n "$AI_ENGINES_RATE_LIMITED" ]; then
-      echo "::error::Every engine in AI_ENGINES ($(ai_engine_chain)) is rate-limited or unavailable in this batch — stopping; the next scheduled run retries"
+      _chain_msg="$(ai_engine_chain)" || {
+        echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable" >&2
+        exit 1
+      }
+      echo "::error::Every engine in AI_ENGINES ($_chain_msg) is rate-limited or unavailable in this batch — stopping; the next scheduled run retries"
       processed=$((processed - 1))
       session_aborted=1
       abort_pr="$pr_url"
@@ -407,7 +430,11 @@ while IFS= read -r pr_url; do
   # notice and keep the batch going. Only a genuinely rate-limited, exhausted
   # chain falls through to the session-abort branch below.
   if [ "$rc" -eq 2 ] && { _chain_has_later_engine "$REVIEW_ENGINE" || [ "$_fallback_unavailable" -eq 1 ]; }; then
-    echo "::warning::No later engine in AI_ENGINES ($(ai_engine_chain)) is available after $(ai_engine_label "$REVIEW_ENGINE") — skipping $pr_url and continuing batch"
+    _chain_msg="$(ai_engine_chain)" || {
+      echo "::error::Failed to read engine configuration file — config/ai-engines.json may be missing or unreadable" >&2
+      exit 1
+    }
+    echo "::warning::No later engine in AI_ENGINES ($_chain_msg) is available after $(ai_engine_label "$REVIEW_ENGINE") — skipping $pr_url and continuing batch"
     post_engine_unavailable_notice "$pr_url" "$REVIEW_ENGINE"
     failed=$((failed + 1))
     echo "::endgroup::"
