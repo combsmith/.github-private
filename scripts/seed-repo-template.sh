@@ -425,10 +425,7 @@ EOF
 EOF
       ;;
     sonar-project.properties) cat <<'EOF'
-# Customize sonar.projectKey / sonar.organization for this repo before enabling
-# the sonarcloud workflow. See BOOTSTRAP.md.
-sonar.projectKey=combsmith_repo-template
-sonar.organization=combsmith
+# Project key / organization are derived from the repo by .github/workflows/sonarcloud.yml.
 sonar.sources=.
 sonar.exclusions=**/node_modules/**,**/vendor/**,**/dist/**
 EOF
@@ -513,7 +510,7 @@ verification checks, and the short list of org-admin steps a human finishes.
 | CI (`build-and-test`, `Secret scan (gitleaks)`, `coverage`) and SonarCloud | `ci.yml`, `sonarcloud.yml` | Green out of the box; replace the shell steps with your stack's |
 | Copilot cloud-agent setup | `copilot-setup-steps.yml` | Uncomment your stack block |
 | Dependabot | `.github/dependabot.yml` | `frontend` stack by default; swap for yours |
-| Baseline files | `CODEOWNERS`, `AGENTS.md`, `CLAUDE.md`, `SECURITY.md`, `LICENSE`, `.gitignore` (secrets baseline), `.gitleaks.toml`, `sonar-project.properties`, `copilot-instructions.md` | Docs and Sonar key need the project's name |
+| Baseline files | `CODEOWNERS`, `AGENTS.md`, `CLAUDE.md`, `SECURITY.md`, `LICENSE`, `.gitignore` (secrets baseline), `.gitleaks.toml`, `sonar-project.properties`, `copilot-instructions.md` | Docs need the project's name; the Sonar key is derived from the repo by `sonarcloud.yml` |
 | Repo settings, rulesets, labels, GHAS | not files | Applied by `bootstrap-new-repo.sh` in `combsmith/.github` (org admin) |
 | Initiatives board (`add-to-project`) | stub only | Red until an org admin both grants the repo the `INITIATIVES_APP_*` org secrets (selected visibility) and adds it to the `combsmith-planner` app installation |
 
@@ -555,7 +552,7 @@ that run._
 
 | Input | Example | Used by |
 |---|---|---|
-| `REPO` — `owner/name` of the new repo | `combsmith/hive-health` | `sonar-project.properties`, `README.md`, `copilot-instructions.md`, `feature-ideation.yml` |
+| `REPO` — `owner/name` of the new repo | `combsmith/hive-health` | `README.md`, `copilot-instructions.md`, `feature-ideation.yml` |
 | `DESCRIPTION` — one sentence, what the repo is | `Beehive telemetry dashboard and alerting service` | `README.md`, `copilot-instructions.md`, repo description |
 | `STACK` — one of `frontend`, `backend-go`, `backend-python`, `backend-rust`, `fullstack`, `infra-terraform`, `none` | `backend-python` | `dependabot.yml`, `ci.yml`, `copilot-setup-steps.yml`, `.gitignore` L2, `.github/instructions/` |
 | `PROJECT_CONTEXT` — 3 to 5 sentences: product, target users, competitive landscape | see `feature-ideation.yml` header | `feature-ideation.yml` (`project_context`) |
@@ -603,7 +600,7 @@ by PR, and the compliance audit flags any hand edit as drift):
 | `CLAUDE.md`, `SECURITY.md`, `LICENSE` | Org pointers and license. |
 | `.gitignore` — the block between `>>> BEGIN combsmith secrets baseline` and `<<< END` | Hash-checked by the compliance audit. Edit only **below** the END marker. |
 | `.gitleaks.toml` | Keep the file; you may only **append** allowlist paths under `[allowlist]`. |
-| `.github/workflows/sonarcloud.yml` | Keep as shipped; the `SonarCloud` job name is a required check. |
+| `.github/workflows/sonarcloud.yml` | Keep as shipped; the `SonarCloud` job name is a required check, and it derives `sonar.projectKey` / `sonar.organization` from the repo (`<owner>_<name>` / `<owner>`), so no per-repo key is needed. |
 
 **Customize** (step numbers below):
 
@@ -613,7 +610,7 @@ by PR, and the compliance audit flags any hand edit as drift):
 | `.github/workflows/ci.yml` | 3 |
 | `.github/workflows/copilot-setup-steps.yml` | 4 |
 | `.github/workflows/feature-ideation.yml` | 5 |
-| `sonar-project.properties` | 6 |
+| `sonar-project.properties` | 6 (only if `sonar.sources` / `sonar.tests` need narrowing) |
 | `README.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `.github/instructions/` | 7 |
 | `.gitignore` (below the END marker), `.worktreeinclude` | 7 |
 
@@ -759,26 +756,34 @@ Check: `! grep -q 'TODO: Replace this' .github/workflows/feature-ideation.yml` e
 
 ---
 
-## 6. `sonar-project.properties` — set the project key
+## 6. `sonar-project.properties` — nothing to set unless you narrow the sources
 
-Set the values as follows. Java properties files only treat `#` as a comment
-at the start of a line: a trailing `# note` after a value becomes part of the
-value, so do not annotate the lines themselves.
+`sonarcloud.yml` derives `sonar.projectKey` (`<owner>_<name>`) and
+`sonar.organization` (`<owner>`) from the repo at run time, so the shipped
+file needs no project key and **no edit** for most repos. SonarCloud
+auto-provisions the project on the first scan; it is enabled org-wide and no
+console step is needed for a public repo. Do not add `sonar.projectKey` or
+`sonar.organization` to the file: the workflow's `-D` arguments take precedence
+over the properties file, so a value there cannot override the derived identity
+and would only mislead the next reader.
 
-- `sonar.projectKey` — `REPO` with `/` replaced by `_` (`combsmith_<name>`).
-- `sonar.sources` — the source directories, e.g. `src`, or `.` for small repos.
+Edit the file only if the defaults (`sonar.sources=.` plus the
+`node_modules`/`vendor`/`dist` exclusions) are wrong for this repo:
+
+- `sonar.sources` — the source directories, e.g. `src`, if scanning `.` pulls
+  in generated or vendored code the exclusions do not cover.
 - `sonar.tests` — the test directory; omit the line if there are no tests yet.
+  If you add it, also narrow `sonar.sources` so the two do not overlap: with
+  `sonar.sources=.` and `sonar.tests=tests` every file under `tests/` is in
+  both scopes and the analysis fails with `can't be indexed twice`.
 
-```properties
-sonar.projectKey=combsmith_<name>
-sonar.organization=combsmith
-sonar.sources=<source dirs>
-sonar.tests=<test dir>
-sonar.exclusions=**/node_modules/**,**/vendor/**,**/dist/**
-```
+If the repo is ever renamed, the derived key changes with it. Keep the history
+by updating the key on the existing SonarCloud project (Administration → Update
+Key) to the new `<owner>_<name>` rather than adding an override here.
 
-Remove the two "Customize…" comment lines at the top. SonarCloud is enabled
-org-wide; no console step is needed for a public repo.
+Java properties files only treat `#` as a comment at the start of a line: a
+trailing `# note` after a value becomes part of the value, so do not annotate
+the lines themselves.
 
 ---
 
@@ -936,7 +941,6 @@ because the CodeQL and check-suite-preference reads return 404 otherwise.
 - [ ] `ci.yml` runs the stack's lint / format / typecheck / tests / coverage; jobs `build-and-test`, `Secret scan (gitleaks)`, `coverage` still exist; workflow is still named `CI`.
 - [ ] `copilot-setup-steps.yml` has exactly the stack block(s) enabled.
 - [ ] `feature-ideation.yml` carries a real `project_context`.
-- [ ] `sonar-project.properties` names `combsmith_<name>`.
 - [ ] `README.md`, `AGENTS.md`, `copilot-instructions.md` describe this repo; language instruction files copied and listed.
 - [ ] `tests/*.bats` and `standards/` removed (step 8 exception aside).
 - [ ] No stub listed under *Keep verbatim* has a diff.
