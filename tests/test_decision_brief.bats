@@ -490,6 +490,7 @@ case "$*" in
      # Real gh prints the error BODY to stdout and the HTTP line to stderr.
      if [ "${BRANCH_EXISTS:-0}" = 1 ]; then echo 4ead111111111111111111111111111111111111;
      elif [ "${BRANCH_REF_MODE:-absent}" = outage ]; then echo "{\"message\":\"Server Error\"}"; echo "gh: HTTP 503" >&2; exit 1;
+     elif [ "${BRANCH_REF_MODE:-absent}" = notfound503 ]; then echo "{\"message\":\"Not Found\"}"; echo "gh: Not Found (HTTP 503)" >&2; exit 1;
      else echo "{\"message\":\"Not Found\",\"status\":\"404\"}"; echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
   *"contents/ideas/widget-lint/brief.md?ref=incubate/widget-lint"*)
      case "${BRANCH_BRIEF_MODE:-ok}" in
@@ -583,6 +584,16 @@ exit 0'
   ! grep -q 'git/blobs' "$GH_LOG" || false
   ! grep -q 'git/refs' "$GH_LOG" || false
   ! grep -q 'pr create' "$GH_LOG" || false
+}
+
+@test "open-pr (live): a 'Not Found' message on a non-404 status is not read as an absent branch" {
+  pkg="$(copy_good)"
+  mock_gh_live
+  BRANCH_REF_MODE=notfound503 REPO="acme/widgets" SLUG="widget-lint" PACKAGE_DIR="$pkg" DISCUSSION_NUMBER=413 \
+    GIT_USER_NAME=t run bash "$DB_DIR/open-pr.sh"
+  [ "$status" -ne 0 ]
+  ! grep -q 'git/blobs' "$GH_LOG" || false
+  ! grep -q 'git/refs' "$GH_LOG" || false
 }
 
 @test "open-pr (live): a 404 on the branch brief means no collision; any other read failure fails closed" {
