@@ -83,6 +83,34 @@ vp_section_body() {
   ' "$file"
 }
 
+# vp_has_sources <file> / vp_sources_body <file> — the `## Sources` section by
+# EXACT heading text (any level, case-insensitive, trailing punctuation
+# ignored). A heading such as "## Sources of demand" is prose that must be
+# provenance-scanned, not the source list.
+VP_SOURCES_HEADING_RE='^#{1,6}[[:space:]]+sources[[:space:]:.]*$'
+vp_has_sources() { grep -qiE -- "$VP_SOURCES_HEADING_RE" "$1" 2>/dev/null; }
+vp_sources_body() {
+  awk -v re="$VP_SOURCES_HEADING_RE" '
+    /^#{1,6}[[:space:]]/ {
+      lvl = match($0, /^#+/) ? RLENGTH : 0
+      if (insec && lvl <= seclvl) exit
+      if (!insec && tolower($0) ~ re) { insec = 1; seclvl = lvl; next }
+    }
+    insec { print }
+  ' "$1"
+}
+# vp_body_outside_sources <file> — every line except the exact Sources section.
+vp_body_outside_sources() {
+  awk -v re="$VP_SOURCES_HEADING_RE" '
+    /^#{1,6}[[:space:]]/ {
+      lvl = match($0, /^#+/) ? RLENGTH : 0
+      if (insrc && lvl <= srclvl) insrc = 0
+      if (!insrc && tolower($0) ~ re) { insrc = 1; srclvl = lvl }
+    }
+    !insrc { print }
+  ' "$1"
+}
+
 # vp_strip_comments <file> — the file with HTML comments removed (multi-line).
 vp_strip_comments() {
   perl -0pe 's/<!--.*?-->//gs' "$1"
@@ -281,19 +309,16 @@ vp_check_provenance() {
   # market-research.md: everything but Sources.
   path="$dir/market-research.md"
   if [[ -f "$path" ]]; then
-    hits="$(awk '
-      /^#{1,6}[[:space:]]/ { insrc = (tolower($0) ~ /sources/) }
-      !insrc { print }
-    ' "$path" | vp_unsourced_claims "$path")"
+    hits="$(vp_body_outside_sources "$path" | vp_unsourced_claims "$path")"
     if [[ -n "$hits" ]]; then
       vp_fail market-research.md provenance "quantified market claim without a source / 'unknown — needs discovery' / [ASSUMPTION]: $(printf '%s' "$hits" | head -2 | tr '\n' ' ' | cut -c1-220)"
     else
       vp_pass market-research.md provenance
     fi
     local src
-    src="$(vp_section_body "$path" "sources")"
-    if ! vp_has_section "$path" "Sources"; then
-      vp_fail market-research.md sources "no '## Sources' section"
+    src="$(vp_sources_body "$path")"
+    if ! vp_has_sources "$path"; then
+      vp_fail market-research.md sources "no '## Sources' section (exact heading)"
     elif ! printf '%s\n' "$src" | grep -qE 'https?://' && ! printf '%s\n' "$src" | grep -qi 'no external sources were consulted'; then
       vp_fail market-research.md sources "Sources lists no URL and does not state 'No external sources were consulted'"
     else

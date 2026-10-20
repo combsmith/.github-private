@@ -403,6 +403,13 @@ jobs:
       needs.brief.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Two Discussions can derive the same slug; the workflow-level group keys on
+    # the Discussion number (the slug is unknown until gather runs). Landing is
+    # therefore serialized per (target, slug) here, and open-pr.sh refuses a
+    # branch whose brief belongs to another Discussion.
+    concurrency:
+      group: decision-brief-land-${{ github.event.inputs.target_repo || github.repository }}-${{ needs.brief.outputs.slug }}
+      cancel-in-progress: false
     permissions:
       contents: read       # fresh checkout of the tooling
     env:

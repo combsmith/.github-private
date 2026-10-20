@@ -350,6 +350,22 @@ Willingness to pay per seat: unknown — needs discovery.
   [ "$status" -eq 0 ]
 }
 
+@test "provenance: only the EXACT '## Sources' heading is the source list; 'Sources of demand' is scanned" {
+  pkg="$(copy_good)"
+  sed -i.bak 's/^## Sources$/## Sources of demand\
+Roughly 40% of SMBs want this.\
+\
+## Sources/' "$pkg/market-research.md"
+  validate "$pkg"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|market-research.md|provenance|.*40%' <<<"$output"
+  # Only "Sources of demand", no real Sources section → the sources check fails too.
+  pkg2="$TMP/pkg2"; cp -R "$FIX/good" "$pkg2"
+  sed -i.bak 's/^## Sources$/## Sources of demand/; s/^Roughly.*//' "$pkg2/market-research.md"
+  validate "$pkg2"
+  grep -q "FAIL|market-research.md|sources|no '## Sources' section" <<<"$output"
+}
+
 @test "provenance: lines inside the Sources section and fenced code are not scanned" {
   pkg="$(copy_good)"
   printf '%s\n' '[^3]: https://example.com/report — "$5B market, 20% CAGR"' >>"$pkg/market-research.md"
@@ -397,6 +413,7 @@ case "$*" in
   "api repos/acme/widgets/git/ref/heads/main --jq .object.sha") echo base000 ;;
   "api repos/acme/widgets/git/ref/heads/incubate/widget-lint --jq .object.sha")
      if [ "${BRANCH_EXISTS:-0}" = 1 ]; then echo head111; else echo "not found" >&2; exit 1; fi ;;
+  *"contents/ideas/widget-lint/brief.md?ref=incubate/widget-lint"*) printf "%s" "${BRANCH_BRIEF:-# brief for https://github.com/acme/widgets/discussions/413}" | base64 | tr -d "\n" ;;
   api\ repos/acme/widgets/git/commits/*) echo tree222 ;;
   "api repos/acme/widgets/git/blobs -X POST --input - --jq .sha") cat >>"$GH_LOG.blobs"; echo blob333 ;;
   "api repos/acme/widgets/git/trees -X POST --input - --jq .sha") cat >>"$GH_LOG.tree"; echo tree444 ;;
@@ -445,6 +462,18 @@ exit 0'
   [[ "$output" == *"refreshed existing PR"* ]]
 }
 
+@test "open-pr (live): refuses to append to a branch whose brief belongs to another Discussion" {
+  pkg="$(copy_good)"
+  mock_gh_live
+  BRANCH_EXISTS=1 BRANCH_BRIEF="# brief for https://github.com/acme/widgets/discussions/99" \
+    REPO="acme/widgets" SLUG="widget-lint" PACKAGE_DIR="$pkg" DISCUSSION_NUMBER=413 GIT_USER_NAME=t \
+    run bash "$DB_DIR/open-pr.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"slug collision"* ]]
+  ! grep -q 'git/blobs' "$GH_LOG" || false
+  ! grep -q 'git/refs' "$GH_LOG" || false
+}
+
 @test "open-pr: the commit author defaults to the business-analyst persona's runtime account" {
   pkg="$(copy_good)"
   mock_gh_live
@@ -476,7 +505,7 @@ case "$*" in
        *"num=413"*) echo "{\"data\":{\"repository\":{\"discussion\":null}},\"errors\":[{\"type\":\"NOT_FOUND\",\"path\":[\"repository\",\"discussion\"],\"message\":\"Could not resolve to a Discussion\"}]}"; exit 1 ;;
        *) echo "{\"data\":{\"repository\":{\"discussion\":{\"title\":\"DemandRadar\",\"category\":{\"name\":\"Ideas\"},\"labels\":{\"nodes\":[]}}}}}" ;;
      esac ;;
-  *"contents/"*) exit 1 ;;
+  *"contents/"*) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
   *) : ;;
 esac
 exit 0'
@@ -513,9 +542,9 @@ case "$*" in
        *"num=44"*)  echo "{\"data\":{\"repository\":{\"discussion\":{\"title\":\"DemandRadar\",\"category\":{\"name\":\"Ideas\"},\"labels\":{\"nodes\":[]}}}}}" ;;
        *) echo "{}" ;;
      esac ;;
-  *"contents/ideas/widget-lint/brief.md"*) if [ "${BRIEF_EXISTS:-0}" = 1 ]; then echo sha; else exit 1; fi ;;
-  *"contents/"*) exit 1 ;;
-  *"pr list"*) : ;;
+  *"contents/ideas/widget-lint/brief.md"*) if [ "${BRIEF_EXISTS:-0}" = 1 ]; then echo sha; elif [ "${PROBE_OUTAGE:-0}" = 1 ]; then echo "gh: HTTP 503" >&2; exit 1; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
+  *"contents/"*) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+  *"pr list"*) if [ "${PRLIST_OUTAGE:-0}" = 1 ]; then echo "gh: HTTP 503" >&2; exit 1; fi ;;
   *) : ;;
 esac
 exit 0'
@@ -549,6 +578,20 @@ exit 0'
   [[ "$output" == *"cap reached"* ]]
 }
 
+@test "ripe-from-queue: an API error on the idempotency probes aborts instead of dispatching" {
+  export QUEUE_FILE="$FIX/queue-body.md"
+  mock_gh_sweep
+  PROBE_OUTAGE=1 REPO="acme/widgets" run bash "$DB_DIR/ripe-from-queue.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not probe"* ]]
+  ! grep -q 'workflow run' "$GH_LOG" || false
+  : >"$GH_LOG"
+  PRLIST_OUTAGE=1 REPO="acme/widgets" run bash "$DB_DIR/ripe-from-queue.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not list open PRs"* ]]
+  ! grep -q 'workflow run' "$GH_LOG" || false
+}
+
 @test "ripe-from-queue: DRY_RUN logs the intended dispatches; no queue issue is a clean no-op" {
   export QUEUE_FILE="$FIX/queue-body.md"
   mock_gh_sweep
@@ -567,17 +610,23 @@ exit 0'
 mock_gh_gather() {
   mock_gh '
 case "$*" in
-  *graphql*) echo "{\"data\":{\"repository\":{\"discussion\":{\"id\":\"D_target\",\"title\":\"💡 WidgetLint — a lint for manifests\",\"body\":\"see #12\",\"url\":\"https://github.com/acme/widgets/discussions/413\",\"createdAt\":\"t\",\"updatedAt\":\"t\",\"author\":{\"login\":\"don\"},\"category\":{\"name\":\"Ideas\",\"slug\":\"ideas\"},\"labels\":{\"nodes\":[{\"name\":\"needs-brief\"}]},\"comments\":{\"nodes\":[{\"author\":{\"login\":\"bot\"},\"body\":\"<!-- feature-ideation:enhanced -->\\n## Enhancement\",\"createdAt\":\"t\",\"url\":\"u\"}]}}}}}" ;;
+  *graphql*) echo "{\"data\":{\"repository\":{\"discussion\":{\"id\":\"D_target\",\"title\":\"💡 WidgetLint — a lint for manifests\",\"body\":\"see #12\",\"url\":\"https://github.com/acme/widgets/discussions/413\",\"createdAt\":\"t\",\"updatedAt\":\"t\",\"author\":{\"login\":\"don\"},\"category\":{\"name\":\"Ideas\",\"slug\":\"ideas\"},\"labels\":{\"nodes\":[{\"name\":\"needs-brief\"}]},\"comments\":{\"totalCount\":1,\"nodes\":[{\"author\":{\"login\":\"bot\"},\"body\":\"<!-- feature-ideation:enhanced -->\\n## Enhancement\",\"createdAt\":\"t\",\"url\":\"u\"}]}}}}}" ;;
   *"issue list --repo acme/widgets --label idea-triage"*) echo "${QUEUE_JSON:-}" ;;
-  *"contents/ideas/_TEMPLATE/brief.md"*) if [ "${NO_TEMPLATE:-0}" = 1 ]; then exit 1; fi; base64 < "'"$FIX"'/template/brief.md" | tr -d "\n" ;;
+  *"contents/ideas/_TEMPLATE/brief.md"*) if [ "${NO_TEMPLATE:-0}" = 1 ]; then echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi; base64 < "'"$FIX"'/template/brief.md" | tr -d "\n" ;;
   *"contents/ideas/_TEMPLATE/market-research.md"*) base64 < "'"$FIX"'/template/market-research.md" | tr -d "\n" ;;
-  *"contents/ideas/_TEMPLATE/ost.md"*) base64 < "'"$FIX"'/template/ost.md" | tr -d "\n" ;;
-  *"contents/ideas/package-spec.json"*) printf "{\"required_artifacts\":[]}" | base64 | tr -d "\n" ;;
+  *"contents/ideas/_TEMPLATE/ost.md"*) if [ "${NO_OST:-0}" = 1 ]; then echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi; base64 < "'"$FIX"'/template/ost.md" | tr -d "\n" ;;
+  *"contents/ideas/package-spec.json"*)
+     case "${SPEC_MODE:-ok}" in
+       ok) printf "{\"required_artifacts\":[]}" | base64 | tr -d "\n" ;;
+       invalid) printf "{not json" | base64 | tr -d "\n" ;;
+       absent) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+       outage) echo "gh: HTTP 502 Bad Gateway" >&2; exit 1 ;;
+     esac ;;
   *"git/ref/heads/incubate/widget-lint"*) if [ "${BRANCH_EXISTS:-0}" = 1 ]; then echo headsha; else exit 1; fi ;;
   *"contents/ideas/widget-lint/brief.md?ref=incubate/widget-lint"*) printf "%s" "${BRANCH_BRIEF:-}" | base64 | tr -d "\n" ;;
   *"contents/ideas/widget-lint?ref=incubate/widget-lint"*) echo "[\"brief.md\"]" ;;
   *"contents/ideas/widget-lint/brief.md"*) printf "%s" "${DEFAULT_BRIEF:-}" | base64 | tr -d "\n" ;;
-  *"contents/ideas/widget-lint"*) if [ -n "${DEFAULT_BRIEF:-}" ]; then echo "[\"brief.md\"]"; else exit 1; fi ;;
+  *"contents/ideas/widget-lint"*) if [ -n "${DEFAULT_BRIEF:-}" ]; then echo "[\"brief.md\"]"; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
   "api repos/acme/widgets/issues/12 --jq "*) echo "{\"number\":12,\"title\":\"prereq\",\"state\":\"open\",\"url\":\"u\"}" ;;
   *) echo "{}" ;;
 esac
@@ -649,12 +698,42 @@ exit 0'
   jq -e '.existing_package["brief.md"] | contains("discussions/413")' "$TMP/ctx2.json" >/dev/null
 }
 
-@test "gather-context: fails loud when the target has no ideas/_TEMPLATE/brief.md" {
-  NO_TEMPLATE=1 mock_gh_gather
+@test "gather-context: fails loud when the target lacks ANY of the three templates" {
+  mock_gh_gather
   export NO_TEMPLATE=1
   REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx.json" run bash "$DB_DIR/gather-context.sh"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"has no ideas/_TEMPLATE/brief.md"* ]]
+  [[ "$output" == *"missing ideas/_TEMPLATE/{brief.md}"* ]]
+  unset NO_TEMPLATE; export NO_OST=1
+  REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx.json" run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"missing ideas/_TEMPLATE/{ost.md}"* ]]
+}
+
+@test "gather-context: an absent package-spec is fine; an invalid one or a fetch outage fails loud" {
+  mock_gh_gather
+  export SPEC_MODE=absent
+  REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx.json" SPEC_PATH="$TMP/spec.json" run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.package_spec' "$TMP/ctx.json")" = "null" ]
+  [ ! -e "$TMP/spec.json" ]
+  export SPEC_MODE=invalid
+  REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx2.json" run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not valid JSON"* ]]
+  export SPEC_MODE=outage
+  REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx3.json" run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not read acme/widgets:ideas/package-spec.json"* ]]
+}
+
+@test "gather-context: keeps the NEWEST comments page and flags truncation" {
+  mock_gh_gather
+  REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$TMP/ctx.json" run bash "$DB_DIR/gather-context.sh"
+  [ "$status" -eq 0 ]
+  grep -q 'comments(last:50)' "$GH_LOG"
+  [ "$(jq -r '.discussion.comments_total' "$TMP/ctx.json")" = "1" ]
+  [ "$(jq -r '.discussion.comments_truncated' "$TMP/ctx.json")" = "false" ]
 }
 
 @test "gather-context: an explicit SLUG override wins; an invalid one is rejected" {

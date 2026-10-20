@@ -124,11 +124,24 @@ dbq_main() {
     if [[ ",${labels}," == *",idea:approved,"* ]]; then echo "skip #${n}: already idea:approved"; skipped=$((skipped+1)); continue; fi
     slug="$(db_slug_from_title "$title")"
     if ! db_slug_is_valid "$slug"; then echo "skip #${n}: no valid slug from '${title}'"; skipped=$((skipped+1)); continue; fi
-    if gh api "repos/${REPO}/contents/${IDEAS_DIR}/${slug}/brief.md" --jq '.sha' >/dev/null 2>&1; then
-      echo "skip #${n}: ${IDEAS_DIR}/${slug}/brief.md already exists"; skipped=$((skipped+1)); continue
+    # Idempotency probes: "absent" is only a 404 / an empty list. Any other
+    # failure (auth, rate limit, outage) aborts rather than dispatching a paid
+    # run that could regenerate a landed package or overwrite one in flight.
+    local probe_err="${TMPDIR:-/tmp}/db-probe-err.$$" rc=0
+    if gh api "repos/${REPO}/contents/${IDEAS_DIR}/${slug}/brief.md" --jq '.sha' >/dev/null 2>"$probe_err"; then
+      rm -f "$probe_err"; echo "skip #${n}: ${IDEAS_DIR}/${slug}/brief.md already exists"; skipped=$((skipped+1)); continue
+    elif ! grep -qE 'HTTP 404|Not Found' "$probe_err"; then
+      echo "::error::could not probe ${REPO}:${IDEAS_DIR}/${slug}/brief.md — $(tr '\n' ' ' <"$probe_err" | cut -c1-200) — sweep aborted" >&2
+      rm -f "$probe_err"; return 1
     fi
-    if [[ -n "$(gh pr list --repo "$REPO" --head "${BRANCH_PREFIX}/${slug}" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)" ]]; then
-      echo "skip #${n}: a brief PR from ${BRANCH_PREFIX}/${slug} is already open"; skipped=$((skipped+1)); continue
+    rm -f "$probe_err"
+    local open_pr
+    open_pr="$(gh pr list --repo "$REPO" --head "${BRANCH_PREFIX}/${slug}" --state open --json number --jq '.[0].number // empty')" || rc=$?
+    if [[ $rc -ne 0 ]]; then
+      echo "::error::could not list open PRs from ${BRANCH_PREFIX}/${slug} in ${REPO} — sweep aborted" >&2; return 1
+    fi
+    if [[ -n "$open_pr" ]]; then
+      echo "skip #${n}: a brief PR from ${BRANCH_PREFIX}/${slug} is already open (#${open_pr})"; skipped=$((skipped+1)); continue
     fi
     if [[ "$is_dry" == "1" ]]; then
       printf '%s\n' "$(jq -nc --arg op dispatch_brief --arg central "$CENTRAL_REPO" --arg target "$REPO" \

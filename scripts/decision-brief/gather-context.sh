@@ -8,7 +8,9 @@
 # anything else Mary states must be cited or marked "unknown — needs discovery".
 #
 # What goes in:
-#   discussion         title / body / url / labels / first 50 comments
+#   discussion         title / body / url / labels / the NEWEST 50 comments
+#                      (comments_total + comments_truncated say when older
+#                      ones were left out)
 #   enhancement        the feature-ideation enhancement comment, if one exists
 #                      (marker <!-- feature-ideation:enhanced --> or the legacy
 #                      <!-- idea-enhancer:enhanced -->) — the sharpened problem,
@@ -69,7 +71,7 @@ disc="$(gh api graphql -f query='
         author{ login }
         category{ name slug }
         labels(first:20){ nodes{ name } }
-        comments(first:50){ nodes{ author{login} body createdAt url } }
+        comments(last:50){ totalCount nodes{ author{login} body createdAt url } }
       }
     }
   }' -F owner="$owner" -F name="$name" -F num="$DISCUSSION_NUMBER")"
@@ -113,20 +115,42 @@ if queue_body="$(gh issue list --repo "$REPO" --label idea-triage --state open \
 fi
 
 # ── the target repo's template + package spec (default branch) ───────────────
-_fetch_file() { # <path> — prints decoded content, or nothing when absent
-  gh api "repos/${REPO}/contents/${1}" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || true
+# _fetch_file <path> [ref] — prints the decoded content. A 404 prints nothing
+# and returns 0 (the file is absent); any OTHER failure (auth, rate limit,
+# outage) returns 1 so the caller fails loudly instead of reading "absent".
+_fetch_file() {
+  local path="$1" ref="${2:-}" out rc=0
+  out="$(gh api "repos/${REPO}/contents/${path}${ref:+?ref=$ref}" --jq '.content' 2>"${TMPDIR:-/tmp}/db-fetch-err.$$")" || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    if grep -qE 'HTTP 404|Not Found' "${TMPDIR:-/tmp}/db-fetch-err.$$"; then rm -f "${TMPDIR:-/tmp}/db-fetch-err.$$"; return 0; fi
+    echo "::error::could not read ${REPO}:${path}${ref:+@$ref} — $(tr '\n' ' ' <"${TMPDIR:-/tmp}/db-fetch-err.$$" | cut -c1-200)" >&2
+    rm -f "${TMPDIR:-/tmp}/db-fetch-err.$$"; return 1
+  fi
+  rm -f "${TMPDIR:-/tmp}/db-fetch-err.$$"
+  printf '%s' "$out" | base64 -d
 }
 tmpl_brief="$(_fetch_file "${TEMPLATE_DIR}/brief.md")"
 tmpl_mr="$(_fetch_file "${TEMPLATE_DIR}/market-research.md")"
 tmpl_ost="$(_fetch_file "${TEMPLATE_DIR}/ost.md")"
-if [[ -z $tmpl_brief ]]; then
-  echo "::error::${REPO} has no ${TEMPLATE_DIR}/brief.md on its default branch — the decision-brief stage fills the TARGET repo's own template (copy ideas/_TEMPLATE/ from combsmith/incubator first)" >&2
+# All three templates are the target's contract for this package; a missing one
+# would have Mary invent a shape of her own for that artifact.
+missing_tmpl=()
+[[ -n $tmpl_brief ]] || missing_tmpl+=("brief.md")
+[[ -n $tmpl_mr ]] || missing_tmpl+=("market-research.md")
+[[ -n $tmpl_ost ]] || missing_tmpl+=("ost.md")
+if [[ ${#missing_tmpl[@]} -gt 0 ]]; then
+  echo "::error::${REPO} is missing ${TEMPLATE_DIR}/{${missing_tmpl[*]}} on its default branch — the decision-brief stage fills the TARGET repo's own templates (copy ideas/_TEMPLATE/ from combsmith/incubator first)" >&2
   exit 1
 fi
 spec_raw="$(_fetch_file "${IDEAS_DIR}/package-spec.json")"
 package_spec='null'
-if [[ -n $spec_raw ]] && printf '%s' "$spec_raw" | jq -e . >/dev/null 2>&1; then
-  package_spec="$(printf '%s' "$spec_raw" | jq -c .)"
+if [[ -n $spec_raw ]]; then
+  # A spec that exists but does not parse is a broken target contract, not "no
+  # spec": refuse to brief against a weaker, built-in-only gate.
+  if ! package_spec="$(printf '%s' "$spec_raw" | jq -c . 2>/dev/null)"; then
+    echo "::error::${REPO}:${IDEAS_DIR}/package-spec.json is not valid JSON — fix it before briefing" >&2
+    exit 1
+  fi
   # Materialise it so validate-package.sh can enforce the target's own
   # required_sections (--spec), not just the stage's built-in list.
   if [[ -n "${SPEC_PATH:-}" ]]; then printf '%s\n' "$package_spec" >"$SPEC_PATH"; fi
@@ -145,7 +169,7 @@ existing_files="$(gh api "repos/${REPO}/contents/${IDEAS_DIR}/${slug}${_ref_q}" 
 printf '%s' "$existing_files" | jq -e 'type=="array"' >/dev/null 2>&1 || existing_files='[]'
 existing_brief=""
 if printf '%s' "$existing_files" | jq -e 'index("brief.md") != null' >/dev/null; then
-  existing_brief="$(gh api "repos/${REPO}/contents/${IDEAS_DIR}/${slug}/brief.md${_ref_q}" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  existing_brief="$(_fetch_file "${IDEAS_DIR}/${slug}/brief.md" "$pkg_ref")"
   # Collision guard: the same slug derived from a different idea's title would
   # overwrite another package. A brief that does not link THIS discussion is
   # someone else's — stop and ask for an explicit SLUG.
@@ -193,7 +217,9 @@ jq -n \
           author: (.author.login // null),
           category: .category.name,
           labels: [.labels.nodes[].name],
-          comments: [.comments.nodes[] | {author: (.author.login // null), body, createdAt, url}]}),
+          comments: [.comments.nodes[] | {author: (.author.login // null), body, createdAt, url}],
+          comments_total: .comments.totalCount,
+          comments_truncated: (.comments.totalCount > (.comments.nodes | length))}),
      enhancement: $enhancement,
      queue_excerpt: $queue,
      template: {"brief.md": $tb, "market-research.md": $tm, "ost.md": $to},

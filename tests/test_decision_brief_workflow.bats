@@ -62,6 +62,8 @@ setup() { cd "$ROOT"; }
   [ "$co_line" -lt "$gate_line" ] && [ "$gate_line" -lt "$pr_line" ]
   # Its inputs come from the gather step's outputs, not from $GITHUB_ENV the model could append to.
   grep -q 'SLUG: ${{ needs.brief.outputs.slug }}' <<<"$land"
+  # Landing is serialized per (target, slug) so same-slug ideas cannot race.
+  grep -q 'group: decision-brief-land-${{ github.event.inputs.target_repo || github.repository }}-${{ needs.brief.outputs.slug }}' <<<"$land"
   grep -q 'slug: ${{ steps.gather.outputs.slug }}' "$CENTRAL"
   grep -q 'id: gather' "$CENTRAL"
   # The validator is run by the model (prompt) and by the land job.
@@ -157,6 +159,10 @@ setup() { cd "$ROOT"; }
   grep -q "github.event_name == 'schedule'" "$REUSABLE"
   grep -q 'collaborators/${ACTOR}/permission' "$REUSABLE"
   grep -q "if: steps.trust.outputs.trusted == 'true'" "$REUSABLE"
+  # maintain counts as trusted; a failed lookup is fatal, not "untrusted".
+  grep -qE '^\s+admin\|maintain\|write\)' "$REUSABLE"
+  grep -q "could not read @\${ACTOR}'s permission" "$REUSABLE"
+  ! grep -q '|| echo "none"' "$REUSABLE" || false
 }
 
 @test "reusable: dispatches the central workflow with target_repo=caller, dry_run=false; sweep uses from_queue=true" {

@@ -139,7 +139,19 @@ default_branch="$(gh api "repos/${REPO}" --jq '.default_branch')"
 base_sha="$(gh api "repos/${REPO}/git/ref/heads/${default_branch}" --jq '.object.sha')"
 parent_sha="$(gh api "repos/${REPO}/git/ref/heads/${branch}" --jq '.object.sha' 2>/dev/null || true)"
 branch_exists=0
-if [[ -n "$parent_sha" ]]; then branch_exists=1; else parent_sha="$base_sha"; fi
+if [[ -n "$parent_sha" ]]; then
+  branch_exists=1
+  # Two Discussions can derive the same slug and reach this point in parallel
+  # (gather's collision check ran before either branch existed). Before
+  # appending, the branch's brief must link THIS Discussion.
+  branch_brief="$(gh api "repos/${REPO}/contents/${dest_prefix}/brief.md?ref=${branch}" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  if [[ -n "$branch_brief" ]] && ! grep -qE "/discussions/${DISCUSSION_NUMBER}([^0-9]|$)" <<<"$branch_brief"; then
+    echo "::error::${branch} already carries a brief for another Discussion — slug collision; dispatch again with an explicit slug" >&2
+    exit 1
+  fi
+else
+  parent_sha="$base_sha"
+fi
 base_tree="$(gh api "repos/${REPO}/git/commits/${parent_sha}" --jq '.tree.sha')"
 
 # ── one commit: blobs → tree → commit → ref ───────────────────────────────────
