@@ -905,13 +905,13 @@ GHEOF
 
 # ── #2233: commercial-support sections + one open seed PR per repo ─────────────
 # Fixtures: standards/commercial-support-standard.md at standards/v1.2.0, and
-# README.md / BOOTSTRAP.md / AGENTS.md from combsmith/repo-template main at 68eb6a18 (#252).
+# README.md / BOOTSTRAP.md / AGENTS.md from combsmith/repo-template main at e648a2eb (#255).
 SEED_FIXTURES="$SCRIPT_DIR/tests/fixtures/seed-repo-template"
 # Git blob SHAs of those two repo-template files (guards the fixtures themselves
 # against an editor/hook adding a trailing newline).
 REPO_TEMPLATE_README_BLOB=c3fd7433e1b962846e569f3f2a9988a3a47967b4
-REPO_TEMPLATE_BOOTSTRAP_BLOB=286476738f88fb3ce3b9d584f82aeb5c167b6342
-REPO_TEMPLATE_AGENTS_BLOB=081d3599b35270c3f15144e0ef646ace4ed25057
+REPO_TEMPLATE_BOOTSTRAP_BLOB=bcea59b3be30f4cc3273b8de22212f826615db82
+REPO_TEMPLATE_AGENTS_BLOB=1c5e6cb3b131037b7a103ebf33c243fac9facd0c
 
 _fixture_commercial_standard() {
   cp "$SEED_FIXTURES/commercial-support-standard.md" \
@@ -928,7 +928,7 @@ _standard_readme_block() { # <standard-file>
 # newlines and _put_file encodes it with printf '%s'.
 _seeded_blob() { printf '%s' "$1" | git hash-object --stdin; }
 
-@test "#2233: BOOTSTRAP.md emission is blob-identical to repo-template main (68eb6a18)" {
+@test "#2233: BOOTSTRAP.md emission is blob-identical to repo-template main (e648a2eb)" {
   [ "$(git hash-object "$SEED_FIXTURES/repo-template-BOOTSTRAP.md")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
   run bash "$SEED" --emit-baseline BOOTSTRAP.md
   [ "$status" -eq 0 ]
@@ -936,7 +936,7 @@ _seeded_blob() { printf '%s' "$1" | git hash-object --stdin; }
   [ "$(_seeded_blob "$output")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
 }
 
-@test "repo-template#253: AGENTS.md emission is blob-identical to repo-template main (68eb6a18)" {
+@test "repo-template#253: AGENTS.md emission is blob-identical to repo-template main (e648a2eb)" {
   [ "$(git hash-object "$SEED_FIXTURES/repo-template-AGENTS.md")" = "$REPO_TEMPLATE_AGENTS_BLOB" ]
   run bash "$SEED" --emit-baseline AGENTS.md
   [ "$status" -eq 0 ]
