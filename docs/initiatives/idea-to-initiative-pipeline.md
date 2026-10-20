@@ -175,13 +175,14 @@ inputs.
   and cheapest-test** table, and a **go / no-go / park** recommendation that says
   what a POC must prove and what would make the decider say no.
 - **Provenance guard (#1160).** `scripts/decision-brief/validate-package.sh`
-  runs as its own step after the model: any quantified market claim without a
+  runs in a separate `land` job from a clean checkout after the model job: any quantified market claim without a
   URL / `[^n]` footnote / `[ASSUMPTION]` tag / "unknown — needs discovery", a
   missing score or Confidence, an empty assumptions table, a recommendation that
   takes no position, or a leftover template placeholder fails the run — the
   package stays an artifact and never becomes a PR.
-- `open-pr.sh` lands the package on `incubate/<slug>` in the target (one commit
-  via the Git Data API, author = the business-analyst persona's runtime account),
+- `open-pr.sh` (same isolated `land` job, the only one holding the org PAT)
+  lands the package on `incubate/<slug>` in the target (one commit via the Git
+  Data API, author = the business-analyst persona's runtime account),
   opens or refreshes the PR, and links it from the Discussion. **It never applies
   `idea:approved`.**
 - Tooling: `scripts/decision-brief/` (tests: `tests/test_decision_brief.bats`,

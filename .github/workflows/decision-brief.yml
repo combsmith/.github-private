@@ -27,8 +27,9 @@
 #
 # Provenance guard (.github-private#1160): every market claim in the package
 # cites a source, is tagged [ASSUMPTION], or says "unknown — needs discovery".
-# scripts/decision-brief/validate-package.sh enforces this as its own step AFTER
-# the model step, so a package that fabricates never becomes a PR.
+# scripts/decision-brief/validate-package.sh enforces this in a SEPARATE job
+# (`land`) from a clean checkout AFTER the model job, so a package that
+# fabricates — or a model step that tampers with the tooling — never becomes a PR.
 #
 # This is org-private automation (like initiative-planner.yml), not a thin
 # caller. All tooling + the vendored BMAD skills live in this repo and are
@@ -184,6 +185,13 @@ jobs:
     permissions:
       contents: read       # checkout, read prompts/ frameworks/ scripts/
       id-token: write      # claude-code-action OIDC
+    # Handed to the `land` job as STEP outputs of the gather step (fixed before
+    # the model runs); the model step can append to $GITHUB_ENV but cannot
+    # change these.
+    outputs:
+      slug: ${{ steps.gather.outputs.slug }}
+      discussion_node_id: ${{ steps.gather.outputs.discussion_node_id }}
+      idea_title: ${{ steps.gather.outputs.idea_title }}
     env:
       # This job only runs on workflow_dispatch (the discussion path re-dispatches
       # here via the `redispatch` job), so inputs are always present.
@@ -230,6 +238,7 @@ jobs:
           mkdir -p "${{ runner.temp }}/package"
 
       - name: Gather brief context
+        id: gather
         env:
           # Reads the TARGET repo's Discussion, template, package spec and queue.
           GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
@@ -267,11 +276,11 @@ jobs:
       - name: Draft the decision brief (BMAD Analyst)
         id: mary
         # SECURITY: the model reads untrusted text (Discussion bodies, comments,
-        # web pages) with Bash allowed. It therefore gets ONLY the read-scoped
-        # GITHUB_TOKEN of this job (contents: read on this repo) — never the org
-        # PAT that open-pr.sh uses two steps later, which is why that PAT is a
-        # per-step env on those steps and not a job-level env (every step would
-        # inherit it, `env` would print it). Everything grounded is already
+        # web pages) with Bash/Write/Edit allowed. It therefore gets ONLY the
+        # read-scoped GITHUB_TOKEN of this job (contents: read on this repo),
+        # never the org PAT (a per-step env on the gather step, never job-level),
+        # and NOTHING privileged runs after it in this job: validation and the
+        # PR happen in the separate `land` job from a clean checkout. Everything grounded is already
         # in $CONTEXT_PATH (gather-context ran with the PAT); the target repos
         # are public, so unauthenticated reads still work for extra grounding.
         env:
@@ -367,34 +376,108 @@ jobs:
             - Finish with a 3–5 line summary: the recommendation, the score and
               its Confidence, the riskiest assumption, and the open questions.
 
+      - name: Upload the drafted package
+        # Always: in dry-run it is the only output; live, it is what the `land`
+        # job validates and opens as the PR — from a CLEAN checkout, so nothing
+        # the model step could have changed in this workspace (scripts, env)
+        # reaches the privileged steps.
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: decision-brief-${{ steps.gather.outputs.slug || 'package' }}
+          path: |
+            ${{ runner.temp }}/package
+            ${{ runner.temp }}/brief-status.json
+          if-no-files-found: warn
+
+  # ── validate + land, isolated from the model step ────────────────────────────
+  # The model step above has Bash/Write/Edit in the `brief` job's workspace and
+  # reads untrusted text. Nothing it can touch runs here: this job starts from a
+  # fresh checkout of THIS repo's tooling, downloads only the package artifact,
+  # takes its inputs from the gather step's outputs (fixed before the model ran),
+  # and is the only job that holds the org PAT.
+  land:
+    needs: [brief]
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.from_queue != true &&
+      needs.brief.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read       # fresh checkout of the tooling
+    env:
+      REPO: ${{ github.event.inputs.target_repo || github.repository }}
+      DISCUSSION_NUMBER: ${{ github.event.inputs.discussion }}
+      SLUG: ${{ needs.brief.outputs.slug }}
+      DISCUSSION_NODE_ID: ${{ needs.brief.outputs.discussion_node_id }}
+      IDEA_TITLE: ${{ needs.brief.outputs.idea_title }}
+      DRY_RUN: ${{ inputs.dry_run == true && '1' || '0' }}
+    steps:
+      - name: Checkout agent repo (clean)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Guard — slug present
+        run: |
+          if ! [[ "${SLUG}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+            echo "::error::no valid slug reached the land job (got '${SLUG}') — the gather step did not complete"
+            exit 1
+          fi
+
+      - name: Download the drafted package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: decision-brief-${{ env.SLUG }}
+          path: ${{ runner.temp }}/landing
+
+      - name: Set paths
+        run: |
+          echo "PACKAGE_DIR=${{ runner.temp }}/landing/package/ideas/${SLUG}" >> "$GITHUB_ENV"
+          echo "STATUS_PATH=${{ runner.temp }}/landing/brief-status.json" >> "$GITHUB_ENV"
+          echo "SPEC_PATH=${{ runner.temp }}/package-spec.json" >> "$GITHUB_ENV"
+          echo "DRY_RUN_LOG=${{ runner.temp }}/dry-run.jsonl" >> "$GITHUB_ENV"
+
+      - name: Fetch the target package spec
+        # Re-fetched here (not taken from the artifact) so the gate's extra
+        # required_sections come from the target repo, not from the model's
+        # workspace.
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+        run: |
+          if gh api "repos/${REPO}/contents/ideas/package-spec.json" --jq '.content' 2>/dev/null | base64 -d > "$SPEC_PATH" \
+             && jq -e . "$SPEC_PATH" >/dev/null 2>&1; then
+            echo "package-spec.json fetched from ${REPO}"
+          else
+            rm -f "$SPEC_PATH"
+            echo "::notice::${REPO} has no ideas/package-spec.json — validating against the stage's built-in sections only"
+          fi
+
       - name: Provenance + structure gate
-        # The deterministic half of the guard: re-run the validator the model
-        # already ran. A package that fails here stays an artifact, never a PR.
+        # The deterministic half of the guard, run from the clean checkout: the
+        # same validator the model was told to run. A package that fails here
+        # stays an artifact, never a PR.
         run: |
           spec_args=()
           [ -s "$SPEC_PATH" ] && spec_args=(--spec "$SPEC_PATH")
-          bash scripts/decision-brief/validate-package.sh "$BRIEF_ROOT/ideas/$SLUG" \
+          bash scripts/decision-brief/validate-package.sh "$PACKAGE_DIR" \
             --slug "$SLUG" --discussion "$DISCUSSION_NUMBER" "${spec_args[@]}"
 
       - name: Open (or refresh) the brief PR in the target repo
         id: pr
         env:
-          # The only write-capable credential in this job, scoped to this step.
+          # The only write-capable credential in the run, scoped to this step
+          # of this isolated job.
           GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
-          PACKAGE_DIR: ${{ env.BRIEF_ROOT }}/ideas/${{ env.SLUG }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash scripts/decision-brief/open-pr.sh
 
-      - name: Upload the drafted package
-        # Always: in dry-run it is the only output; live, it is the audit copy.
-        if: ${{ always() }}
+      - name: Upload dry-run PR log
+        if: ${{ env.DRY_RUN == '1' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: decision-brief-${{ env.SLUG || 'package' }}
-          path: |
-            ${{ runner.temp }}/package
-            ${{ runner.temp }}/brief-status.json
-            ${{ runner.temp }}/dry-run.jsonl
+          name: decision-brief-${{ env.SLUG }}-dry-run
+          path: ${{ runner.temp }}/dry-run.jsonl
           if-no-files-found: warn
 
   # Fleet pause notice (#2249). With AGENTS_PAUSED=true the `brief` job above is

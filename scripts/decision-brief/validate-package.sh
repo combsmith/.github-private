@@ -252,15 +252,15 @@ vp_check_decision() {
 }
 
 vp_check_provenance() {
-  local dir="$1" path hits sec
-  # brief.md: every section (a Reach figure in §5 or a number in §8 is a market
-  # claim too). Footnotes resolve against the brief itself.
+  local dir="$1" path hits
+  # brief.md: the whole body after the frontmatter, whatever the target's
+  # template names its sections (a Reach figure in §5, a number in §8 or in a
+  # "## Proposed solution" is a market claim too). Footnotes resolve against
+  # the brief itself.
   path="$dir/brief.md"
   if [[ -f "$path" ]]; then
-    hits=""
-    for sec in problem "target user" market opportunity value "riskiest assumption" recommendation "open questions"; do
-      hits+="$(vp_section_body "$path" "$sec" | vp_unsourced_claims "$path")"
-    done
+    hits="$(awk 'NR==1 && $0=="---" {infm=1; next} infm && $0=="---" {infm=0; next} !infm {print}' "$path" \
+      | vp_unsourced_claims "$path")"
     if [[ -n "$hits" ]]; then
       vp_fail brief.md provenance "quantified market claim without a source / 'unknown — needs discovery' / [ASSUMPTION]: $(printf '%s' "$hits" | head -2 | tr '\n' ' ' | cut -c1-220)"
     else

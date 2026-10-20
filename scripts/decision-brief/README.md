@@ -18,7 +18,7 @@ through the headless overlays in [`prompts/incubation/`](../../prompts/incubatio
 | `redispatch.sh` | Bridge the `discussion [labeled needs-brief]` trigger to `workflow_dispatch` (claude-code-action rejects `discussion` event contexts). Fired with a PAT so the dispatch actually starts a run. |
 | `gather-context.sh` | Fetch the Discussion + comments, the feature-ideation enhancement comment, the idea-triage queue verdict, the TARGET repo's `ideas/_TEMPLATE/*` and `package-spec.json`, anything already under `ideas/<slug>/`, and referenced issues → `$CONTEXT_PATH`; export `DISCUSSION_NODE_ID`, `SLUG`, `IDEA_TITLE`. |
 | `lib/slug.sh` | Pure, deterministic slug from the Discussion title (`💡 DemandRadar — …` → `demand-radar`), so a re-brief lands in the same folder and branch. |
-| `validate-package.sh` | The **provenance + structure gate** (#1160): frontmatter, required sections (gate-compatible prefix match, plus `package-spec.json`), no placeholders, a RICE/ICE line with Confidence, a filled riskiest-assumption + cheapest-test row, a go/no-go that names `idea:approved`, and — the hard rule — every quantified market claim cited (URL / `[^n]`), tagged `[ASSUMPTION]`, or "unknown — needs discovery"; `market-research.md` ends with `## Sources`. Mary runs it; the workflow runs it again as its own step. |
+| `validate-package.sh` | The **provenance + structure gate** (#1160): frontmatter, required sections (gate-compatible prefix match, plus `package-spec.json`), no placeholders, a RICE/ICE line with Confidence, a filled riskiest-assumption + cheapest-test row, a go/no-go that names `idea:approved`, and — the hard rule — every quantified market claim cited (URL / `[^n]`), tagged `[ASSUMPTION]`, or "unknown — needs discovery"; `market-research.md` ends with `## Sources`. Mary runs it; the workflow runs it again in the isolated `land` job (clean checkout, artifact download). |
 | `open-pr.sh` | Land the package on `incubate/<slug>` in the target via the Git Data API (one commit, author = the business-analyst persona's runtime account), open or refresh the PR (label `decision-brief`), link it from the Discussion. Idempotent; `DRY_RUN=1` logs instead. **Never applies `idea:approved`.** |
 | `ripe-from-queue.sh` | The sweep: read the target's "🧭 Idea Promotion Queue" Ripe table and dispatch one central brief run per idea that has no brief / open brief PR yet (skips `idea:approved`; capped by `MAX_BRIEFS`). |
 
@@ -37,7 +37,8 @@ decision-brief.yml (stub, standards/workflows/) ──> decision-brief-reusable.
    │   trusted-actor guard; re-DISPATCHES the central workflow (PAT) with target_repo=<fleet repo>
    ▼
 combsmith/.github-private  decision-brief.yml  -f discussion=N  -f target_repo=<fleet repo>  [-f from_queue=true]
-   │   gather → Mary (claude-code-action) → validate-package.sh → open-pr.sh
+   │   brief job: gather (PAT) → Mary (read-only GITHUB_TOKEN) → artifact
+   │   land job (clean checkout, PAT): validate-package.sh → open-pr.sh
    ▼
 PR in the fleet repo: incubate/<slug> with ideas/<slug>/{brief,market-research,ost}.md
    │

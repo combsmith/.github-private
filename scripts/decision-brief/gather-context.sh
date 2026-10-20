@@ -33,6 +33,7 @@
 # Emits:
 #   - $CONTEXT_PATH (JSON)
 #   - DISCUSSION_NODE_ID, SLUG, IDEA_TITLE -> $GITHUB_ENV
+#   - discussion_node_id, slug, idea_title -> $GITHUB_OUTPUT (step outputs)
 #
 # Env: REPO, DISCUSSION_NUMBER, CONTEXT_PATH (required); GH_TOKEN;
 #      SLUG (optional override — otherwise derived from the title);
@@ -201,11 +202,20 @@ jq -n \
      referenced_issues: $refs
    }' >"$CONTEXT_PATH"
 
-{
-  printf 'DISCUSSION_NODE_ID=%s\n' "$node_id"
-  printf 'SLUG=%s\n' "$slug"
-  # Multi-line safe: titles are single-line, but guard anyway.
-  printf 'IDEA_TITLE<<__EOT__\n%s\n__EOT__\n' "$title"
-} >>"${GITHUB_ENV:-/dev/null}"
+# Exported twice on purpose. $GITHUB_ENV serves the model step in this job;
+# $GITHUB_OUTPUT (step outputs, fixed once this step ends) serves the separate
+# `land` job that validates and opens the PR — a later step (the model) can
+# append to $GITHUB_ENV but cannot rewrite a finished step's outputs.
+for target in "${GITHUB_ENV:-}" "${GITHUB_OUTPUT:-}"; do
+  [[ -n "$target" ]] || continue
+  if [[ "$target" == "${GITHUB_OUTPUT:-}" ]]; then
+    { printf 'discussion_node_id=%s\n' "$node_id"; printf 'slug=%s\n' "$slug"
+      printf 'idea_title<<__EOT__\n%s\n__EOT__\n' "$title"; } >>"$target"
+  else
+    { printf 'DISCUSSION_NODE_ID=%s\n' "$node_id"; printf 'SLUG=%s\n' "$slug"
+      # Multi-line safe: titles are single-line, but guard anyway.
+      printf 'IDEA_TITLE<<__EOT__\n%s\n__EOT__\n' "$title"; } >>"$target"
+  fi
+done
 
 echo "context written to ${CONTEXT_PATH} (repo=${REPO}, discussion=#${DISCUSSION_NUMBER}, slug=${slug}, enhancement=$(if [[ $enhancement != "null" ]]; then echo yes; else echo no; fi), existing=$(printf '%s' "$existing_files" | jq 'length'), refs=$(printf '%s' "$ref_json" | jq 'length'))"

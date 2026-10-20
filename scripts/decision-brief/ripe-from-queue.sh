@@ -107,6 +107,12 @@ dbq_main() {
           discussion(number:$num){ title category{ name } labels(first:20){ nodes{ name } } }
         }
       }' -F owner="$owner" -F name="$name" -F num="$n")"; then
+      # gh exits non-zero on a GraphQL `errors` body too. A NOT_FOUND on the
+      # discussion field is a Ripe row naming an issue/PR number, not an
+      # outage: skip it and keep sweeping.
+      if jq -e 'any(.errors[]?; .type == "NOT_FOUND" and ((.path // []) | index("discussion")) != null)' <<<"$disc" >/dev/null 2>&1; then
+        echo "skip #${n}: not a Discussion (an issue/PR number in the Ripe table)"; skipped=$((skipped+1)); continue
+      fi
       echo "::error::could not read discussion #${n} in ${REPO} (API error, not a missing idea) — sweep aborted" >&2
       return 1
     fi

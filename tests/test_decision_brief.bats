@@ -298,6 +298,18 @@ About 300k teams use a scheduler [^8].
   grep -q 'FAIL|ost.md|provenance' <<<"$output"
 }
 
+@test "provenance: the whole brief body is scanned, whatever the target template names its sections" {
+  pkg="$(copy_good)"
+  sed -i.bak '/^## 8\. Open questions$/i\
+## Proposed solution\
+Ship it to the 5,000 developers in the org.\
+
+' "$pkg/brief.md"
+  validate "$pkg"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|brief.md|provenance|.*5,000 developers' <<<"$output"
+}
+
 @test "provenance: an unsourced figure in brief.md Problem / Market sections fails; §5 arithmetic does not" {
   pkg="$(copy_good)"
   sed -i.bak '/^## 1\. Problem$/a\
@@ -454,6 +466,27 @@ exit 0'
   [ "$output" = "12,15" ]
 }
 
+@test "ripe-from-queue: a GraphQL NOT_FOUND (an issue number in the Ripe table) is skipped, not fatal" {
+  export QUEUE_FILE="$FIX/queue-body.md"
+  mock_gh '
+case "$*" in
+  *"issue list --repo acme/widgets --label idea-triage"*) jq -Rs "{title:\"🧭 Idea Promotion Queue\", body:.}" < "$QUEUE_FILE" | jq -r ".body" ;;
+  *graphql*)
+     case "$*" in
+       *"num=413"*) echo "{\"data\":{\"repository\":{\"discussion\":null}},\"errors\":[{\"type\":\"NOT_FOUND\",\"path\":[\"repository\",\"discussion\"],\"message\":\"Could not resolve to a Discussion\"}]}"; exit 1 ;;
+       *) echo "{\"data\":{\"repository\":{\"discussion\":{\"title\":\"DemandRadar\",\"category\":{\"name\":\"Ideas\"},\"labels\":{\"nodes\":[]}}}}}" ;;
+     esac ;;
+  *"contents/"*) exit 1 ;;
+  *) : ;;
+esac
+exit 0'
+  REPO="acme/widgets" run bash "$DB_DIR/ripe-from-queue.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skip #413: not a Discussion"* ]]
+  grep -qF -- "-f discussion=44" "$GH_LOG"
+  ! grep -qF -- "-f discussion=413" "$GH_LOG" || false
+}
+
 @test "ripe-from-queue: an API failure reading a Discussion fails the sweep loudly instead of skipping the idea" {
   export QUEUE_FILE="$FIX/queue-body.md"
   mock_gh '
@@ -554,7 +587,7 @@ exit 0'
 @test "gather-context: reads the TARGET repo only, derives the slug, finds the enhancement comment and the template" {
   mock_gh_gather
   CTX="$TMP/ctx.json"
-  GITHUB_ENV="$TMP/env" REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$CTX" \
+  GITHUB_ENV="$TMP/env" GITHUB_OUTPUT="$TMP/out" REPO="acme/widgets" DISCUSSION_NUMBER=413 CONTEXT_PATH="$CTX" \
     run bash "$DB_DIR/gather-context.sh"
   [ "$status" -eq 0 ]
   grep -qF -- "owner=acme" "$GH_LOG"
@@ -570,6 +603,10 @@ exit 0'
   [ "$(jq -r '.referenced_issues[0].number' "$CTX")" = "12" ]
   grep -q '^DISCUSSION_NODE_ID=D_target$' "$TMP/env"
   grep -q '^SLUG=widget-lint$' "$TMP/env"
+  # Also exported as step outputs for the isolated land job.
+  grep -q '^slug=widget-lint$' "$TMP/out"
+  grep -q '^discussion_node_id=D_target$' "$TMP/out"
+  grep -q 'WidgetLint' "$TMP/out"
 }
 
 @test "gather-context: writes the target package-spec to SPEC_PATH for the validator" {

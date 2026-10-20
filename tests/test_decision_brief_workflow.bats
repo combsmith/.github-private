@@ -43,15 +43,28 @@ setup() { cd "$ROOT"; }
   grep -qE "vars\.AGENTS_PAUSED == 'true' &&" "$CENTRAL"
 }
 
-@test "central: the provenance gate is its own step AFTER the model step and BEFORE the PR step" {
-  action_line="$(grep -n 'uses: anthropics/claude-code-action' "$CENTRAL" | cut -d: -f1)"
-  gate_line="$(grep -n 'name: Provenance + structure gate' "$CENTRAL" | cut -d: -f1)"
-  pr_line="$(grep -n 'run: bash scripts/decision-brief/open-pr.sh' "$CENTRAL" | cut -d: -f1)"
-  [ -n "$action_line" ] && [ -n "$gate_line" ] && [ -n "$pr_line" ]
-  [ "$action_line" -lt "$gate_line" ]
-  [ "$gate_line" -lt "$pr_line" ]
-  # The gate step runs the validator the model is also told to run.
-  grep -qc 'scripts/decision-brief/validate-package.sh' "$CENTRAL"
+@test "central: the provenance gate and the PR run in a separate land job, isolated from the model step" {
+  # The brief job ends with the artifact upload: nothing privileged runs after
+  # the model step in its (model-writable) workspace.
+  brief="$(sed -n '/^  brief:/,/^  # ── validate + land/p' "$CENTRAL")"
+  grep -q 'uses: anthropics/claude-code-action' <<<"$brief"
+  ! grep -q 'name: Provenance + structure gate' <<<"$brief" || false
+  ! grep -q 'run: bash scripts/decision-brief/open-pr.sh' <<<"$brief" || false
+  ! grep -qE 'GH_PAT_(DON_PETRY|WORKFLOWS)' <<<"$(sed -n '/uses: anthropics\/claude-code-action/,$p' <<<"$brief")" || false
+  # The land job: needs brief, fresh checkout, downloads only the artifact, gate before PR.
+  land="$(sed -n '/^  land:/,/^  fleet-paused:/p' "$CENTRAL")"
+  grep -q 'needs: \[brief\]' <<<"$land"
+  grep -q 'uses: actions/checkout@' <<<"$land"
+  grep -qE 'uses: actions/download-artifact@[0-9a-f]{40}' <<<"$land"
+  gate_line="$(grep -n 'name: Provenance + structure gate' <<<"$land" | cut -d: -f1)"
+  pr_line="$(grep -n 'run: bash scripts/decision-brief/open-pr.sh' <<<"$land" | cut -d: -f1)"
+  co_line="$(grep -n 'uses: actions/checkout@' <<<"$land" | cut -d: -f1)"
+  [ "$co_line" -lt "$gate_line" ] && [ "$gate_line" -lt "$pr_line" ]
+  # Its inputs come from the gather step's outputs, not from $GITHUB_ENV the model could append to.
+  grep -q 'SLUG: ${{ needs.brief.outputs.slug }}' <<<"$land"
+  grep -q 'slug: ${{ steps.gather.outputs.slug }}' "$CENTRAL"
+  grep -q 'id: gather' "$CENTRAL"
+  # The validator is run by the model (prompt) and by the land job.
   [ "$(grep -c 'scripts/decision-brief/validate-package.sh' "$CENTRAL")" -ge 2 ]
 }
 
@@ -71,16 +84,16 @@ setup() { cd "$ROOT"; }
 
 @test "central: target_repo parameterizes reads + writes; the write token is the PAT on every path, per step" {
   grep -q "REPO: \${{ github.event.inputs.target_repo || github.repository }}" "$CENTRAL"
-  # gather-context and open-pr carry the PAT in their OWN env; the job never asks for contents: write.
+  # gather-context and open-pr carry the PAT in their OWN env; no job asks for contents: write.
   gather="$(sed -n '/name: Gather brief context/,/name: Resolve model/p' "$CENTRAL")"
   grep -q 'GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}' <<<"$gather"
-  openpr="$(sed -n '/name: Open (or refresh) the brief PR/,/name: Upload the drafted package/p' "$CENTRAL")"
+  openpr="$(sed -n '/name: Open (or refresh) the brief PR/,/name: Upload dry-run PR log/p' "$CENTRAL")"
   grep -q 'GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}' <<<"$openpr"
-  ! sed -n '/^  brief:/,/^  fleet-paused:/p' "$CENTRAL" | grep -qE '^\s+contents: write' || false
+  ! sed -n '/^  brief:/,$p' "$CENTRAL" | grep -qE '^\s+contents: write' || false
 }
 
 @test "central: the model step never sees the write PAT — not in its block, not via a job-level env" {
-  step="$(sed -n '/name: Draft the decision brief (BMAD Analyst)/,/name: Provenance + structure gate/p' "$CENTRAL")"
+  step="$(sed -n '/name: Draft the decision brief (BMAD Analyst)/,/name: Upload the drafted package/p' "$CENTRAL")"
   grep -q 'github_token: ${{ secrets.GITHUB_TOKEN }}' <<<"$step"
   grep -q 'GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}' <<<"$step"
   ! grep -qE 'GH_PAT_(DON_PETRY|WORKFLOWS)|TARGET_GH_TOKEN' <<<"$step" || false
@@ -97,7 +110,9 @@ setup() { cd "$ROOT"; }
   grep -q 'SPEC_PATH=${{ runner.temp }}/package-spec.json' "$CENTRAL"
   gate="$(sed -n '/name: Provenance + structure gate/,/name: Open (or refresh)/p' "$CENTRAL")"
   grep -q -- '--spec "$SPEC_PATH"' <<<"$gate"
-  prompt="$(sed -n '/name: Draft the decision brief (BMAD Analyst)/,/name: Provenance + structure gate/p' "$CENTRAL")"
+  # The land job re-fetches the spec from the target, not from the model's workspace.
+  grep -q 'name: Fetch the target package spec' "$CENTRAL"
+  prompt="$(sed -n '/name: Draft the decision brief (BMAD Analyst)/,/name: Upload the drafted package/p' "$CENTRAL")"
   grep -q -- '--spec "$SPEC_PATH"' <<<"$prompt"
 }
 
@@ -121,7 +136,7 @@ setup() { cd "$ROOT"; }
 }
 
 @test "central: a dry run uploads the drafted package and the intended-PR log" {
-  grep -q 'name: decision-brief-${{ env.SLUG || ' "$CENTRAL"
+  grep -q "name: decision-brief-\${{ steps.gather.outputs.slug || 'package' }}" "$CENTRAL"
   grep -q 'dry-run.jsonl' "$CENTRAL"
   grep -qE 'default: true' "$CENTRAL"   # dry_run defaults to true on manual dispatch
 }

@@ -335,7 +335,9 @@ calling it a regression, and treat CI as authoritative.**
   opens the package as a PR there. Its `needs-brief` `discussion:[labeled]` trigger is bridged to
   `workflow_dispatch` by a `redispatch` job (claude-code-action aborts on `discussion` contexts); its
   `from_queue` sweep briefs every idea idea-triage ranked Ripe that has no brief yet. The **provenance
-  guard** (`scripts/decision-brief/validate-package.sh`, #1160) is a separate step after the model: an
+  guard** (`scripts/decision-brief/validate-package.sh`, #1160) runs in a separate `land` job from a
+  clean checkout after the model job (the only job holding the org PAT; the model step gets the
+  read-scoped `GITHUB_TOKEN`): an
   unsourced market figure, a missing score/Confidence, an empty assumptions table or a positionless
   recommendation fails the run before any PR exists. It never applies `idea:approved`. Tooling in
   `scripts/decision-brief/` (tests: `tests/test_decision_brief.bats`,
