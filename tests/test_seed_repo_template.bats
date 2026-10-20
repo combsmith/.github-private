@@ -905,12 +905,12 @@ GHEOF
 
 # ── #2233: commercial-support sections + one open seed PR per repo ─────────────
 # Fixtures: standards/commercial-support-standard.md at standards/v1.2.0, and
-# README.md / BOOTSTRAP.md / AGENTS.md from combsmith/repo-template main at e0f994b0 (#258).
+# README.md / BOOTSTRAP.md / AGENTS.md from combsmith/repo-template main at 3e073f87 (#259).
 SEED_FIXTURES="$SCRIPT_DIR/tests/fixtures/seed-repo-template"
 # Git blob SHAs of those two repo-template files (guards the fixtures themselves
 # against an editor/hook adding a trailing newline).
 REPO_TEMPLATE_README_BLOB=a6b17a8c32f6181248e55a17f9254bb0480f0f3d
-REPO_TEMPLATE_BOOTSTRAP_BLOB=9afcd88693581dde1c2027970ae5174c4945a6eb
+REPO_TEMPLATE_BOOTSTRAP_BLOB=18f42406609dcb019362fc012c2ffc70b5c8de43
 REPO_TEMPLATE_AGENTS_BLOB=1c5e6cb3b131037b7a103ebf33c243fac9facd0c
 
 _fixture_commercial_standard() {
@@ -928,7 +928,7 @@ _standard_readme_block() { # <standard-file>
 # newlines and _put_file encodes it with printf '%s'.
 _seeded_blob() { printf '%s' "$1" | git hash-object --stdin; }
 
-@test "#2233: BOOTSTRAP.md emission is blob-identical to repo-template main (e0f994b0)" {
+@test "#2233: BOOTSTRAP.md emission is blob-identical to repo-template main (3e073f87)" {
   [ "$(git hash-object "$SEED_FIXTURES/repo-template-BOOTSTRAP.md")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
   run bash "$SEED" --emit-baseline BOOTSTRAP.md
   [ "$status" -eq 0 ]
@@ -936,7 +936,7 @@ _seeded_blob() { printf '%s' "$1" | git hash-object --stdin; }
   [ "$(_seeded_blob "$output")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
 }
 
-@test "repo-template#253: AGENTS.md emission is blob-identical to repo-template main (e0f994b0)" {
+@test "repo-template#253: AGENTS.md emission is blob-identical to repo-template main (3e073f87)" {
   [ "$(git hash-object "$SEED_FIXTURES/repo-template-AGENTS.md")" = "$REPO_TEMPLATE_AGENTS_BLOB" ]
   run bash "$SEED" --emit-baseline AGENTS.md
   [ "$status" -eq 0 ]

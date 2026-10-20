@@ -556,7 +556,6 @@ that run._
 | `DESCRIPTION` — one sentence, what the repo is | `Beehive telemetry dashboard and alerting service` | `README.md`, `copilot-instructions.md`, repo description |
 | `STACK` — one of `frontend`, `backend-go`, `backend-python`, `backend-rust`, `fullstack`, `infra-terraform`, `none` | `backend-python` | `dependabot.yml`, `ci.yml`, `copilot-setup-steps.yml`, `.gitignore` L2, `.github/instructions/` |
 | `PROJECT_CONTEXT` — 3 to 5 sentences: product, target users, competitive landscape | see `feature-ideation.yml` header | `feature-ideation.yml` (`project_context`) |
-| `BMAD` — `yes` for product repos (org default), `no` for data/tooling repos | `yes` | step 8 |
 
 Rules for an agent:
 
@@ -878,7 +877,7 @@ esac
 
 ---
 
-## 8. Remove template-only files; install BMAD if a product repo
+## 8. Remove template-only files
 
 Every template Bats file other than `tests/ci-*.bats` (the `*-stub.bats`
 guards, `gitignore-baseline.bats`, `pr-quality-ruleset.bats`,
@@ -903,14 +902,11 @@ git rm tests/ci-*.bats
 Remove only the Bats files, not the `tests/` directory: your own test suite
 (`tests/test_*.py`, `tests/*.test.ts`, …) may already live there or will.
 
-If `BMAD=yes`, install the BMAD Method (org standard for product repos:
-spec-driven development, planning artifacts in `_bmad-output/`):
-
-```bash
-npx bmad-method install
-```
-
-`_bmad/` is already allowlisted in `.gitleaks.toml`. Commit the generated files.
+Do **not** install agent frameworks here. BMAD and the other frameworks are
+**vendored** into a repo as `git subtree` from `combsmith/.github-private` (or
+`software-factory`) when a project needs them; never run `npx bmad-method
+install`, and never ask the maintainer whether to. `_bmad/` stays allowlisted
+in `.gitleaks.toml` for the vendored case.
 
 ---
 
