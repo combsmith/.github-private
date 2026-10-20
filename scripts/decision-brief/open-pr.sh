@@ -144,7 +144,18 @@ if [[ -n "$parent_sha" ]]; then
   # Two Discussions can derive the same slug and reach this point in parallel
   # (gather's collision check ran before either branch existed). Before
   # appending, the branch's brief must link THIS Discussion.
-  branch_brief="$(gh api "repos/${REPO}/contents/${dest_prefix}/brief.md?ref=${branch}" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  # Only a 404 means "no brief on the branch yet"; any other failure must not
+  # read as "no collision" — fail closed.
+  err_file="$(mktemp)"
+  if branch_brief_b64="$(gh api "repos/${REPO}/contents/${dest_prefix}/brief.md?ref=${branch}" --jq '.content' 2>"$err_file")"; then
+    branch_brief="$(printf '%s' "$branch_brief_b64" | base64 -d)"
+  elif grep -qE 'HTTP 404|Not Found' "$err_file"; then
+    branch_brief=""
+  else
+    echo "::error::could not read ${dest_prefix}/brief.md on ${branch} to check for a slug collision — $(tr '\n' ' ' <"$err_file" | cut -c1-200); not appending" >&2
+    rm -f "$err_file"; exit 1
+  fi
+  rm -f "$err_file"
   if [[ -n "$branch_brief" ]] && ! grep -qE "/discussions/${DISCUSSION_NUMBER}([^0-9]|$)" <<<"$branch_brief"; then
     echo "::error::${branch} already carries a brief for another Discussion — slug collision; dispatch again with an explicit slug" >&2
     exit 1

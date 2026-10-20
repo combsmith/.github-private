@@ -165,6 +165,16 @@ validate() { run bash "$DB_DIR/validate-package.sh" "$@"; }
   sed -i.bak 's/Confidence = 2\/5 (thread evidence, no measured rate)/Conf. 2/' "$pkg2/brief.md"
   validate "$pkg2"
   grep -q 'FAIL|brief.md|score|.*Confidence' <<<"$output"
+  # A bare result with no factor arithmetic is not auditable.
+  pkg3="$TMP/pkg3"; cp -R "$FIX/good" "$pkg3"
+  sed -i.bak 's/ICE = 3 × 2 × 4 = 24 \/ 125/ICE = 24 (Confidence: low)/' "$pkg3/brief.md"
+  validate "$pkg3"
+  grep -q 'FAIL|brief.md|score|.*factor arithmetic' <<<"$output"
+  # ASCII operators and RICE with a divisor pass.
+  pkg4="$TMP/pkg4"; cp -R "$FIX/good" "$pkg4"
+  sed -i.bak 's#ICE = 3 × 2 × 4 = 24 / 125#RICE = (200 * 3 * 2) / 4 = 300#' "$pkg4/brief.md"
+  validate "$pkg4"
+  [ "$status" -eq 0 ]
 }
 
 @test "validate: the riskiest-assumptions table needs a Cheapest-test column and one full row" {
@@ -201,6 +211,12 @@ validate() { run bash "$DB_DIR/validate-package.sh" "$@"; }
   sed -i.bak 's/\*\*Recommendation: go\*\*/**park**/' "$pkg5/brief.md"
   validate "$pkg5"
   [ "$status" -eq 0 ]
+  # A position or the gate hidden in an HTML comment does not count.
+  pkg6="$TMP/pkg6"; cp -R "$FIX/good" "$pkg6"
+  sed -i.bak 's/\*\*Recommendation: go\*\*/<!-- **go** idea:approved --> We will see/; s/`idea:approved`/the label/' "$pkg6/brief.md"
+  validate "$pkg6"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|brief.md|decision' <<<"$output"
   pkg2="$TMP/pkg2"; cp -R "$FIX/good" "$pkg2"
   sed -i.bak 's/`idea:approved`/the label/' "$pkg2/brief.md"
   validate "$pkg2"
@@ -366,6 +382,19 @@ Roughly 40% of SMBs want this.\
   grep -q "FAIL|market-research.md|sources|no '## Sources' section" <<<"$output"
 }
 
+@test "provenance: a quantified claim written in a heading is scanned too" {
+  pkg="$(copy_good)"
+  sed -i.bak 's/^## The gap \/ wedge$/## The gap: a $20B market opportunity/' "$pkg/market-research.md"
+  validate "$pkg"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|market-research.md|provenance|.*20B' <<<"$output"
+  pkg2="$TMP/pkg2"; cp -R "$FIX/good" "$pkg2"
+  sed -i.bak 's/^## 1\. Problem$/## 1. Problem — 10,000 companies affected/' "$pkg2/brief.md"
+  validate "$pkg2"
+  [ "$status" -ne 0 ]
+  grep -q 'FAIL|brief.md|provenance|.*10,000 companies' <<<"$output"
+}
+
 @test "provenance: lines inside the Sources section and fenced code are not scanned" {
   pkg="$(copy_good)"
   printf '%s\n' '[^3]: https://example.com/report — "$5B market, 20% CAGR"' >>"$pkg/market-research.md"
@@ -413,7 +442,12 @@ case "$*" in
   "api repos/acme/widgets/git/ref/heads/main --jq .object.sha") echo base000 ;;
   "api repos/acme/widgets/git/ref/heads/incubate/widget-lint --jq .object.sha")
      if [ "${BRANCH_EXISTS:-0}" = 1 ]; then echo head111; else echo "not found" >&2; exit 1; fi ;;
-  *"contents/ideas/widget-lint/brief.md?ref=incubate/widget-lint"*) printf "%s" "${BRANCH_BRIEF:-# brief for https://github.com/acme/widgets/discussions/413}" | base64 | tr -d "\n" ;;
+  *"contents/ideas/widget-lint/brief.md?ref=incubate/widget-lint"*)
+     case "${BRANCH_BRIEF_MODE:-ok}" in
+       ok) printf "%s" "${BRANCH_BRIEF:-# brief for https://github.com/acme/widgets/discussions/413}" | base64 | tr -d "\n" ;;
+       absent) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+       outage) echo "gh: HTTP 503" >&2; exit 1 ;;
+     esac ;;
   api\ repos/acme/widgets/git/commits/*) echo tree222 ;;
   "api repos/acme/widgets/git/blobs -X POST --input - --jq .sha") cat >>"$GH_LOG.blobs"; echo blob333 ;;
   "api repos/acme/widgets/git/trees -X POST --input - --jq .sha") cat >>"$GH_LOG.tree"; echo tree444 ;;
@@ -472,6 +506,21 @@ exit 0'
   [[ "$output" == *"slug collision"* ]]
   ! grep -q 'git/blobs' "$GH_LOG" || false
   ! grep -q 'git/refs' "$GH_LOG" || false
+}
+
+@test "open-pr (live): a 404 on the branch brief means no collision; any other read failure fails closed" {
+  pkg="$(copy_good)"
+  mock_gh_live
+  BRANCH_EXISTS=1 BRANCH_BRIEF_MODE=absent REPO="acme/widgets" SLUG="widget-lint" PACKAGE_DIR="$pkg" DISCUSSION_NUMBER=413 GIT_USER_NAME=t \
+    run bash "$DB_DIR/open-pr.sh"
+  [ "$status" -eq 0 ]
+  grep -qF 'git/refs/heads/incubate/widget-lint -X PATCH' "$GH_LOG"
+  : >"$GH_LOG"
+  BRANCH_EXISTS=1 BRANCH_BRIEF_MODE=outage REPO="acme/widgets" SLUG="widget-lint" PACKAGE_DIR="$pkg" DISCUSSION_NUMBER=413 GIT_USER_NAME=t \
+    run bash "$DB_DIR/open-pr.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not appending"* ]]
+  ! grep -q 'git/blobs' "$GH_LOG" || false
 }
 
 @test "open-pr: the commit author defaults to the business-analyst persona's runtime account" {

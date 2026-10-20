@@ -16,15 +16,16 @@
 # case-insensitive prefix, no template placeholders) and add the stage's own
 # decision-grade requirements from combsmith/incubator#3:
 #
-#   score        brief.md shows a RICE or ICE score line WITH its factors
-#                (Confidence must be stated — the BA advisory ties it to how
-#                strong the cited evidence is)
+#   score        brief.md shows a RICE or ICE score line WITH the factor
+#                arithmetic ("ICE = 3 × 1 × 2 = 6", not "ICE = 6"; Confidence
+#                must be stated — the BA advisory ties it to how strong the
+#                cited evidence is)
 #   assumptions  the riskiest-assumptions table has a "Cheapest test" column
 #                and at least one fully-filled row whose Cheapest-test cell is
 #                not empty
-#   decision     the Recommendation section states exactly one bold position
-#                (**go** / **no-go** / **park**) and names the human gate
-#                (`idea:approved`)
+#   decision     the visible Recommendation section (HTML comments stripped)
+#                states exactly one bold position (**go** / **no-go** /
+#                **park**) and names the human gate (`idea:approved`)
 #   provenance   in the Problem / Target user / Market sections of brief.md and
 #                every section of market-research.md except Sources, any line
 #                that states a quantified market claim (a number with %, $,
@@ -140,7 +141,8 @@ VP_CITED_RE='(https?://|unknown — needs discovery|unknown - needs discovery|\[
 
 # vp_unsourced_claims [defs-file] <text-on-stdin> — print each line that
 # quantifies a market claim without a citation / unknown / assumption tag.
-# Table separator rows and headers are skipped; fenced code is skipped. A line
+# Headings are scanned as text ("## $20B market opportunity" is a claim);
+# table separator rows and fenced code are skipped. A line
 # whose only citation is a [^n] footnote is accepted only when <defs-file>
 # (the artifact itself) carries a `[^n]: … http(s)://…` definition — a dangling
 # footnote is not a source.
@@ -158,7 +160,7 @@ vp_unsourced_claims() {
   done < <(awk '
     /^```/ { fence = !fence; next }
     fence { next }
-    /^#{1,6}[[:space:]]/ { next }
+    /^#{1,6}[[:space:]]/ { sub(/^#+[[:space:]]+/, ""); print; next }   # a claim in a heading is still a claim
     /^\|[[:space:]]*-+/ { next }
     { print }
   ' | grep -iE -- "$VP_QUANT_RE" || true)
@@ -236,8 +238,10 @@ vp_check_score() {
   [[ -f "$path" ]] || return 0
   body="$(vp_section_body "$path" "value")"
   [[ -n "$body" ]] || body="$(vp_section_body "$path" "prioriti")"
-  if ! printf '%s\n' "$body" | grep -qE '\b(RICE|ICE)\b.*=.*[0-9]'; then
-    vp_fail brief.md score "no RICE/ICE score line (expected e.g. 'ICE = 3 × 1 × 2 = 6') in the Value & feasibility section"
+  # The score line must SHOW the arithmetic — "ICE = 3 × 1 × 2 = 6", not
+  # "ICE = 6": at least two factors combined with ×, *, x or / before the result.
+  if ! printf '%s\n' "$body" | grep -qE '\b(RICE|ICE)\b[^=]*=[[:space:]]*\(?[[:space:]]*[0-9][0-9.]*([[:space:]]*(×|\*|x|/|÷)[[:space:]]*[0-9][0-9.]*)+[[:space:]]*\)?([[:space:]]*/[[:space:]]*[0-9][0-9.]*)?[[:space:]]*=[[:space:]]*[0-9]'; then
+    vp_fail brief.md score "no RICE/ICE score line showing the factor arithmetic (expected e.g. 'ICE = 3 × 1 × 2 = 6') in the Value & feasibility section"
   elif ! printf '%s\n' "$body" | grep -qi 'confidence'; then
     vp_fail brief.md score "score shown without its Confidence factor (state it and tie it to the evidence strength)"
   else
@@ -266,7 +270,9 @@ vp_check_decision() {
   local dir="$1" body
   local path="$dir/brief.md"
   [[ -f "$path" ]] || return 0
-  body="$(vp_section_body "$path" "recommendation")"
+  # Scan the VISIBLE section only: a position hidden in an HTML comment is not
+  # a recommendation. Comments are stripped before the section is cut.
+  body="$(vp_strip_comments "$path" | vp_section_body /dev/stdin "recommendation")"
   # Exactly ONE bold position — `**go**`, `**no-go**`, `**park**` or
   # `**Recommendation: <position>**` — so an incidental "go or park" in prose
   # is not read as a decision.
