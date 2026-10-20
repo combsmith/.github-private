@@ -137,7 +137,22 @@ fi
 # ── base + branch state ───────────────────────────────────────────────────────
 default_branch="$(gh api "repos/${REPO}" --jq '.default_branch')"
 base_sha="$(gh api "repos/${REPO}/git/ref/heads/${default_branch}" --jq '.object.sha')"
-parent_sha="$(gh api "repos/${REPO}/git/ref/heads/${branch}" --jq '.object.sha' 2>/dev/null || true)"
+[[ "$base_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::could not resolve ${default_branch} on ${REPO} to a commit (got '${base_sha:0:80}')" >&2; exit 1; }
+# `gh api` prints the error BODY to stdout on a non-2xx (the HTTP error goes to
+# stderr), so `$(gh api … || true)` captures `{"message":"Not Found",…}` as the
+# SHA on the first run for a slug and the next call becomes
+# git/commits/{"message"…}. Only a 404 means "no branch yet"; anything else
+# must fail closed rather than be read as a fresh branch.
+err_file="$(mktemp)"
+if parent_sha="$(gh api "repos/${REPO}/git/ref/heads/${branch}" --jq '.object.sha' 2>"$err_file")"; then
+  [[ "$parent_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::${branch} resolved to '${parent_sha:0:80}', not a commit SHA" >&2; rm -f "$err_file"; exit 1; }
+elif grep -qE 'HTTP 404([^0-9]|$)' "$err_file"; then
+  parent_sha=""
+else
+  echo "::error::could not resolve ${branch} on ${REPO} — $(tr '\n' ' ' <"$err_file" | cut -c1-200); not landing" >&2
+  rm -f "$err_file"; exit 1
+fi
+rm -f "$err_file"
 branch_exists=0
 if [[ -n "$parent_sha" ]]; then
   branch_exists=1
@@ -149,7 +164,7 @@ if [[ -n "$parent_sha" ]]; then
   err_file="$(mktemp)"
   if branch_brief_b64="$(gh api "repos/${REPO}/contents/${dest_prefix}/brief.md?ref=${branch}" --jq '.content' 2>"$err_file")"; then
     branch_brief="$(printf '%s' "$branch_brief_b64" | base64 -d)"
-  elif grep -qE 'HTTP 404|Not Found' "$err_file"; then
+  elif grep -qE 'HTTP 404([^0-9]|$)' "$err_file"; then
     branch_brief=""
   else
     echo "::error::could not read ${dest_prefix}/brief.md on ${branch} to check for a slug collision — $(tr '\n' ' ' <"$err_file" | cut -c1-200); not appending" >&2

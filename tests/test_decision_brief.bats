@@ -485,9 +485,13 @@ mock_gh_live() {
   mock_gh '
 case "$*" in
   "api repos/acme/widgets --jq .default_branch") echo main ;;
-  "api repos/acme/widgets/git/ref/heads/main --jq .object.sha") echo base000 ;;
+  "api repos/acme/widgets/git/ref/heads/main --jq .object.sha") echo ba5e000000000000000000000000000000000000 ;;
   "api repos/acme/widgets/git/ref/heads/incubate/widget-lint --jq .object.sha")
-     if [ "${BRANCH_EXISTS:-0}" = 1 ]; then echo head111; else echo "not found" >&2; exit 1; fi ;;
+     # Real gh prints the error BODY to stdout and the HTTP line to stderr.
+     if [ "${BRANCH_EXISTS:-0}" = 1 ]; then echo 4ead111111111111111111111111111111111111;
+     elif [ "${BRANCH_REF_MODE:-absent}" = outage ]; then echo "{\"message\":\"Server Error\"}"; echo "gh: HTTP 503" >&2; exit 1;
+     elif [ "${BRANCH_REF_MODE:-absent}" = notfound503 ]; then echo "{\"message\":\"Not Found\"}"; echo "gh: Not Found (HTTP 503)" >&2; exit 1;
+     else echo "{\"message\":\"Not Found\",\"status\":\"404\"}"; echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
   *"contents/ideas/widget-lint/brief.md?ref=incubate/widget-lint"*)
      case "${BRANCH_BRIEF_MODE:-ok}" in
        ok) printf "%s" "${BRANCH_BRIEF:-# brief for https://github.com/acme/widgets/discussions/413}" | base64 | tr -d "\n" ;;
@@ -515,7 +519,7 @@ exit 0'
   [ "$(grep -c 'git/blobs -X POST' "$GH_LOG")" -eq 3 ]
   grep -q '"base_tree":"tree222"' "$GH_LOG.tree"
   grep -q '"path":"ideas/widget-lint/brief.md"' "$GH_LOG.tree"
-  grep -q '"parents":\["base000"\]' "$GH_LOG.commit"
+  grep -q '"parents":\["ba5e000000000000000000000000000000000000"\]' "$GH_LOG.commit"
   grep -q '"author":{"name":"don-petry","email":"don-petry@users.noreply.github.com"}' "$GH_LOG.commit"
   grep -qF 'api repos/acme/widgets/git/refs -X POST -f ref=refs/heads/incubate/widget-lint -f sha=commit555' "$GH_LOG"
   grep -q 'pr create --repo acme/widgets --base main --head incubate/widget-lint' "$GH_LOG"
@@ -535,7 +539,7 @@ exit 0'
   BRANCH_EXISTS=1 PR_EXISTS=1 REPO="acme/widgets" SLUG="widget-lint" PACKAGE_DIR="$pkg" DISCUSSION_NUMBER=413 \
     GIT_USER_NAME=t run bash "$DB_DIR/open-pr.sh"
   [ "$status" -eq 0 ]
-  grep -q '"parents":\["head111"\]' "$GH_LOG.commit"
+  grep -q '"parents":\["4ead111111111111111111111111111111111111"\]' "$GH_LOG.commit"
   grep -qF 'api repos/acme/widgets/git/refs/heads/incubate/widget-lint -X PATCH -f sha=commit555' "$GH_LOG"
   ! grep -q 'pr create' "$GH_LOG" || false
   grep -q 'pr edit https://github.com/acme/widgets/pull/9 --repo acme/widgets --title brief(widget-lint)' "$GH_LOG"
@@ -551,6 +555,43 @@ exit 0'
     run bash "$DB_DIR/open-pr.sh"
   [ "$status" -ne 0 ]
   [[ "$output" == *"slug collision"* ]]
+  ! grep -q 'git/blobs' "$GH_LOG" || false
+  ! grep -q 'git/refs' "$GH_LOG" || false
+}
+
+@test "open-pr (live): a 404 BODY on the branch-ref lookup is a fresh branch, never a parent SHA" {
+  # The first run for a slug: the branch does not exist. gh prints the 404 body
+  # to stdout, so the old `$(gh api … || true)` captured it as the SHA and the
+  # next call became git/commits/{"message"…} (the first live BlockVault run).
+  pkg="$(copy_good)"
+  mock_gh_live
+  REPO="acme/widgets" SLUG="widget-lint" PACKAGE_DIR="$pkg" DISCUSSION_NUMBER=413 GIT_USER_NAME=t \
+    run bash "$DB_DIR/open-pr.sh"
+  [ "$status" -eq 0 ]
+  ! grep -q 'git/commits/{' "$GH_LOG" || false
+  grep -qF 'api repos/acme/widgets/git/commits/ba5e000000000000000000000000000000000000 --jq .tree.sha' "$GH_LOG"
+  grep -q '"parents":\["ba5e000000000000000000000000000000000000"\]' "$GH_LOG.commit"
+  grep -qF 'git/refs -X POST -f ref=refs/heads/incubate/widget-lint' "$GH_LOG"
+}
+
+@test "open-pr (live): a non-404 failure resolving the branch ref fails closed before any write" {
+  pkg="$(copy_good)"
+  mock_gh_live
+  BRANCH_REF_MODE=outage REPO="acme/widgets" SLUG="widget-lint" PACKAGE_DIR="$pkg" DISCUSSION_NUMBER=413 \
+    GIT_USER_NAME=t run bash "$DB_DIR/open-pr.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"could not resolve incubate/widget-lint"* ]]
+  ! grep -q 'git/blobs' "$GH_LOG" || false
+  ! grep -q 'git/refs' "$GH_LOG" || false
+  ! grep -q 'pr create' "$GH_LOG" || false
+}
+
+@test "open-pr (live): a 'Not Found' message on a non-404 status is not read as an absent branch" {
+  pkg="$(copy_good)"
+  mock_gh_live
+  BRANCH_REF_MODE=notfound503 REPO="acme/widgets" SLUG="widget-lint" PACKAGE_DIR="$pkg" DISCUSSION_NUMBER=413 \
+    GIT_USER_NAME=t run bash "$DB_DIR/open-pr.sh"
+  [ "$status" -ne 0 ]
   ! grep -q 'git/blobs' "$GH_LOG" || false
   ! grep -q 'git/refs' "$GH_LOG" || false
 }
