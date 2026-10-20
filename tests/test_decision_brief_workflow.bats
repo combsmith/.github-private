@@ -69,20 +69,28 @@ setup() { cd "$ROOT"; }
   grep -q 'NEVER applies' "$CENTRAL"
 }
 
-@test "central: target_repo parameterizes reads + writes; the write token is the PAT on every path" {
+@test "central: target_repo parameterizes reads + writes; the write token is the PAT on every path, per step" {
   grep -q "REPO: \${{ github.event.inputs.target_repo || github.repository }}" "$CENTRAL"
-  grep -q 'TARGET_GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}' "$CENTRAL"
-  # gather-context and open-pr use it; the job never asks for contents: write.
-  [ "$(grep -c 'GH_TOKEN: ${{ env.TARGET_GH_TOKEN }}' "$CENTRAL")" -ge 2 ]
+  # gather-context and open-pr carry the PAT in their OWN env; the job never asks for contents: write.
+  gather="$(sed -n '/name: Gather brief context/,/name: Resolve model/p' "$CENTRAL")"
+  grep -q 'GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}' <<<"$gather"
+  openpr="$(sed -n '/name: Open (or refresh) the brief PR/,/name: Upload the drafted package/p' "$CENTRAL")"
+  grep -q 'GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}' <<<"$openpr"
   ! sed -n '/^  brief:/,/^  fleet-paused:/p' "$CENTRAL" | grep -qE '^\s+contents: write' || false
 }
 
-@test "central: the model step never sees the write PAT — only the read-scoped GITHUB_TOKEN" {
+@test "central: the model step never sees the write PAT — not in its block, not via a job-level env" {
   step="$(sed -n '/name: Draft the decision brief (BMAD Analyst)/,/name: Provenance + structure gate/p' "$CENTRAL")"
   grep -q 'github_token: ${{ secrets.GITHUB_TOKEN }}' <<<"$step"
   grep -q 'GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}' <<<"$step"
-  ! grep -q 'TARGET_GH_TOKEN' <<<"$step" || false
-  ! grep -qE 'GH_PAT_(DON_PETRY|WORKFLOWS)' <<<"$step" || false
+  ! grep -qE 'GH_PAT_(DON_PETRY|WORKFLOWS)|TARGET_GH_TOKEN' <<<"$step" || false
+  # A job-level (or workflow-level) env reaches every step, so the PAT must not
+  # be declared there: every PAT reference in the brief job sits under a step's
+  # own `env:` (indent 10), never under the job's `env:` (indent 6).
+  jobenv="$(sed -n '/^  brief:/,/^    steps:/p' "$CENTRAL")"
+  ! grep -vE '^\s*#' <<<"$jobenv" | grep -qE 'GH_PAT_(DON_PETRY|WORKFLOWS)' || false
+  ! grep -vE '^\s*#' <<<"$jobenv" | grep -qE '^      TARGET_GH_TOKEN:' || false
+  ! sed -n '1,/^jobs:/p' "$CENTRAL" | grep -vE '^\s*#' | grep -qE 'GH_PAT_(DON_PETRY|WORKFLOWS)' || false
 }
 
 @test "central: the gate and Mary both receive the target package-spec (--spec)" {

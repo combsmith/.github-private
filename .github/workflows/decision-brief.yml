@@ -189,20 +189,22 @@ jobs:
       # here via the `redispatch` job), so inputs are always present.
       # REPO is the TARGET repo to brief for; empty target_repo => this repo (self).
       REPO: ${{ github.event.inputs.target_repo || github.repository }}
-      # Token for every READ of and WRITE to the TARGET repo (gather-context, the
-      # PR, the Discussion back-link) — ALWAYS the org PAT, on the self path too.
-      # GITHUB_TOKEN is deliberately not used for writes: that would force
-      # contents:write onto this job, and the model step's token inherits the
-      # job's permissions — so the PAT stays out of the model step (below) and
-      # GITHUB_TOKEN stays read-only. (A PAT-authored PR also gets CI; a
-      # GITHUB_TOKEN-authored one does not.)
-      TARGET_GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+      # The org PAT (GH_PAT_DON_PETRY, legacy GH_PAT_WORKFLOWS) is the token for
+      # every READ of and WRITE to the TARGET repo — on the self path too. It is
+      # deliberately NOT a job-level env var: a job-level env reaches every step,
+      # including the model step, where Bash + untrusted Discussion text could
+      # read it. It is set per step, only on the three steps that need it
+      # (guard, gather-context, open-pr). GITHUB_TOKEN is never used for writes,
+      # so this job needs no contents:write and the model step's token stays
+      # read-only. (A PAT-authored PR also gets CI; a GITHUB_TOKEN one does not.)
       DISCUSSION_NUMBER: ${{ github.event.inputs.discussion }}
       SLUG: ${{ github.event.inputs.slug }}
       DRY_RUN: ${{ inputs.dry_run == true && '1' || '0' }}
       TOOLING_DIR: ${{ github.workspace }}/scripts/decision-brief
     steps:
       - name: Guard — discussion number present, PAT present
+        env:
+          TARGET_GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
         run: |
           if ! [[ "${DISCUSSION_NUMBER}" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::discussion must be a positive integer (got '${DISCUSSION_NUMBER}'). Pass discussion=N, or from_queue=true to sweep the Idea Promotion Queue."
@@ -230,7 +232,7 @@ jobs:
       - name: Gather brief context
         env:
           # Reads the TARGET repo's Discussion, template, package spec and queue.
-          GH_TOKEN: ${{ env.TARGET_GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
         run: bash scripts/decision-brief/gather-context.sh
 
       # Resolve the model FAMILY (opus|sonnet|haiku) to the current concrete id via
@@ -267,7 +269,9 @@ jobs:
         # SECURITY: the model reads untrusted text (Discussion bodies, comments,
         # web pages) with Bash allowed. It therefore gets ONLY the read-scoped
         # GITHUB_TOKEN of this job (contents: read on this repo) — never the org
-        # PAT that open-pr.sh uses two steps later. Everything grounded is already
+        # PAT that open-pr.sh uses two steps later, which is why that PAT is a
+        # per-step env on those steps and not a job-level env (every step would
+        # inherit it, `env` would print it). Everything grounded is already
         # in $CONTEXT_PATH (gather-context ran with the PAT); the target repos
         # are public, so unauthenticated reads still work for extra grounding.
         env:
@@ -375,7 +379,8 @@ jobs:
       - name: Open (or refresh) the brief PR in the target repo
         id: pr
         env:
-          GH_TOKEN: ${{ env.TARGET_GH_TOKEN }}
+          # The only write-capable credential in this job, scoped to this step.
+          GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
           PACKAGE_DIR: ${{ env.BRIEF_ROOT }}/ideas/${{ env.SLUG }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash scripts/decision-brief/open-pr.sh
