@@ -314,6 +314,16 @@ _mk_metrics() {
   rm -f "$m"
 }
 
+@test "filter_high_failure: sync-scope-guard gate over 10% is excluded (#2373)" {
+  local m
+  m="$(_mk_metrics \
+    $'1\tcombsmith/.github-private\t.github/workflows/sync-scope-guard.yml\t8\t4\t2\t2\t25.0%\t25\t1380\tDEGRADED\t25')"
+  run filter_high_failure "$m"
+  [ "$status" -eq 0 ]
+  [ "$(echo "$output" | jq 'length')" -eq 0 ]
+  rm -f "$m"
+}
+
 @test "filter_high_failure: non-gate workflow over 10% is still tracked" {
   local m
   m="$(_mk_metrics \
