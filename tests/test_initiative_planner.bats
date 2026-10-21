@@ -471,6 +471,7 @@ EOF
   # Non-markdown entries are listed as skipped, not read.
   [ "$(jq -c '.planning_artifacts.skipped' "$CTX")" = '["diagram.png","research"]' ]
   run grep -F -- "diagram.png" "$GH_LOG"
+  [ "$status" -ne 0 ]
   [ "$(grep -c 'contents/_bmad-output/planning-artifacts/' "$GH_LOG")" -eq 2 ]
   # Raw fetch, so content is never base64 and never rides on argv.
   grep -F -- "planning-artifacts/prd.md" "$GH_LOG" | grep -qF -- "application/vnd.github.raw"

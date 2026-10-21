@@ -33,7 +33,7 @@ on:
         default: ''
         type: string
       discussion_repo:
-        description: 'Repo (owner/repo) the Discussion lives in, when it differs from target_repo (graduation: incubator idea -> product repo epic). The plan reply is posted on that Discussion. Empty => target_repo.'
+        description: 'Repo (owner/repo) holding the Discussion when it differs from target_repo (incubator idea -> product repo epic). The plan reply goes there. Empty => target_repo.'
         required: false
         default: ''
         type: string
@@ -74,7 +74,10 @@ concurrency:
   # two fleet repos that happen to share a discussion number from colliding; the
   # discussion repo is keyed too, since a graduated idea's number is the
   # incubator's, not the target's.
-  group: initiative-planner-${{ github.event.inputs.target_repo || github.repository }}-${{ github.event.inputs.discussion_repo || github.event.inputs.target_repo || github.repository }}-${{ github.event.inputs.discussion || github.event.discussion.number }}
+  group: >-
+    initiative-planner-${{ github.event.inputs.target_repo || github.repository
+    }}-${{ github.event.inputs.discussion_repo || github.event.inputs.target_repo || github.repository
+    }}-${{ github.event.inputs.discussion || github.event.discussion.number }}
   cancel-in-progress: false
 
 jobs:
@@ -158,7 +161,10 @@ jobs:
       # role is loop-prevention, not content writes, and is unaffected.
       # GITHUB_TOKEN only when BOTH the target and the discussion repo are self;
       # a cross-repo Discussion read/reply needs the PAT too.
-      TARGET_GH_TOKEN: ${{ (github.event.inputs.target_repo == '' || github.event.inputs.target_repo == github.repository) && (github.event.inputs.discussion_repo == '' || github.event.inputs.discussion_repo == github.repository) && secrets.GITHUB_TOKEN || secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+      TARGET_GH_TOKEN: >-
+        ${{ (github.event.inputs.target_repo == '' || github.event.inputs.target_repo == github.repository)
+        && (github.event.inputs.discussion_repo == '' || github.event.inputs.discussion_repo == github.repository)
+        && secrets.GITHUB_TOKEN || secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
       DISCUSSION_NUMBER: ${{ github.event.inputs.discussion }}
       DRY_RUN: ${{ inputs.dry_run == true && '1' || '0' }}
       FORCE_REPLAN: ${{ inputs.force_replan == true && '1' || '0' }}
