@@ -27,6 +27,9 @@
 #                      callers (per-repo stub, #820) it is the central planner repo.
 #   TARGET_REPO        owner/repo the planner should PLAN FOR (default: REPO).
 #                      The dogfood/self path leaves this unset so target == self.
+#   DISCUSSION_REPO    owner/repo holding the Discussion, when it differs from
+#                      TARGET_REPO (graduation). Forwarded as discussion_repo only
+#                      when set, so the default dispatch is unchanged.
 #   DISCUSSION_NUMBER  Ideas Discussion number to plan (required)
 #   WORKFLOW_FILE      workflow to dispatch (default: initiative-planner.yml)
 #   DRY_RUN            "1"/"true" => dispatch dry_run=true (default: false)
@@ -86,10 +89,20 @@ if [[ -n "${GITHUB_REF:-}" && ( "$GITHUB_REF" == refs/heads/* || "$GITHUB_REF" =
   REF_FLAGS=(--ref "$GITHUB_REF")
 fi
 
-echo "Discussion event → re-dispatching ${WORKFLOW_FILE} for discussion #${DISCUSSION_NUMBER} (target ${TARGET_REPO}) via workflow_dispatch."
+DISC_FLAGS=()
+if [[ -n "${DISCUSSION_REPO:-}" ]]; then
+  [[ "$DISCUSSION_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
+    echo "::error::DISCUSSION_REPO must be owner/repo, got: '$DISCUSSION_REPO'" >&2
+    exit 1
+  }
+  DISC_FLAGS=(-f discussion_repo="$DISCUSSION_REPO")
+fi
+
+echo "Discussion event → re-dispatching ${WORKFLOW_FILE} for discussion ${DISCUSSION_REPO:-}#${DISCUSSION_NUMBER} (target ${TARGET_REPO}) via workflow_dispatch."
 gh workflow run "$WORKFLOW_FILE" --repo "$REPO" "${REF_FLAGS[@]}" \
   -f discussion="$DISCUSSION_NUMBER" \
   -f target_repo="$TARGET_REPO" \
+  "${DISC_FLAGS[@]}" \
   -f dry_run="$DISPATCH_DRY_RUN" \
   -f force_replan="$DISPATCH_FORCE_REPLAN" \
   -f reconcile="$DISPATCH_RECONCILE"

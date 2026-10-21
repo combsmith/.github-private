@@ -25,6 +25,13 @@
 #   DISCUSSION_NUMBER    source discussion number (for the summary text)
 #   DISCUSSION_NODE_ID   source discussion GraphQL node id (optional; if set,
 #                        the plan summary is posted back as a comment)
+#   DISCUSSION_REPO      owner/repo the source discussion lives in (default:
+#                        REPO). Cross-repo (graduation: incubator idea, product
+#                        repo epic) the epic back-reference becomes
+#                        "owner/repo#N" and issue links in the Discussion
+#                        comment are qualified with REPO so they resolve. The
+#                        comment itself goes to the Discussion's own repo via
+#                        its global node id.
 #   FORCE_REPLAN         "1" => supersede an existing epic instead of no-op
 #   DRY_RUN / DRY_RUN_LOG  see lib/mutations.sh
 set -euo pipefail
@@ -100,6 +107,18 @@ REPO="${REPO:?REPO required}"
 PLAN_PATH="${PLAN_PATH:?PLAN_PATH required}"
 DISCUSSION_NUMBER="${DISCUSSION_NUMBER:-}"
 DISCUSSION_NODE_ID="${DISCUSSION_NODE_ID:-}"
+DISCUSSION_REPO="${DISCUSSION_REPO:-$REPO}"
+
+# Cross-repo references. Same-repo both prefixes are empty, so every rendered
+# string (and the idempotency key) is byte-for-byte what it was before.
+#   disc_prefix   qualifies the discussion number in text that lives in REPO
+#   issue_prefix  qualifies REPO issue numbers in text posted to the Discussion
+disc_prefix=""
+issue_prefix=""
+if [ "$DISCUSSION_REPO" != "$REPO" ]; then
+  disc_prefix="$DISCUSSION_REPO"
+  issue_prefix="$REPO"
+fi
 
 [ -s "$PLAN_PATH" ] || { echo "::error::plan file '$PLAN_PATH' missing or empty" >&2; exit 1; }
 
@@ -126,7 +145,7 @@ if [ "$blocking_count" -gt 0 ]; then
     other_list="$(jq -r '(.open_questions // []) | map(select((type=="string") or (type=="object" and .blocking != true))) | map(if type=="string" then . else .question end) | if length>0 then "\n\n_Also worth confirming (non-blocking):_\n" + (map("- " + .) | join("\n")) else "" end' "$PLAN_PATH")"
     printf -v gate_comment '<!-- initiative-planner -->\n**⏸️ Not yet planned — the BMAD Scrum Master (Bob) has blocking open questions.**\n\nThis idea cannot be turned into an epic until these are answered:\n\n%s%s\n\n---\n**No epic or stories were created.** Answer the questions above, then re-approve / re-dispatch the planner and Bob will materialize the full epic + sub-issue DAG.' \
       "$blocking_list" "$other_list"
-    comment_on_discussion "$DISCUSSION_NODE_ID" "$gate_comment"
+    comment_on_discussion "$DISCUSSION_NODE_ID" "$DISCUSSION_REPO" "$gate_comment"
     echo "posted 'not yet planned' open-questions back to discussion #${DISCUSSION_NUMBER:-?}"
   fi
   echo "::warning::initiative-planner: idea #${src_g:-?} has ${blocking_count} blocking open question(s) — no epic created. Answer them and re-dispatch."
@@ -184,7 +203,7 @@ fi
 if [ -n "$src" ]; then
   # idem_key is the idempotency back-reference embedded in every epic body and
   # reused verbatim as the search key by find_existing_epic.
-  idem_key="Planned from idea discussion #${src}"
+  idem_key="Planned from idea discussion ${disc_prefix}#${src}"
   epic_body="${epic_body}"$'\n\n'"---"$'\n'"${idem_key} by the BMAD Scrum Master initiative-planner. **Inert until a maintainer adds \`initiative:auto\`.**"
 
   # Idempotency / supersede guard: a second dispatch/auto-trigger for the same
@@ -222,9 +241,9 @@ if [ -n "$src" ]; then
     materialize_accepted_findings "$existing_epic" 1
 
     if [ "$MATERIALIZED_COUNT" -gt 0 ] && [ -n "$DISCUSSION_NODE_ID" ]; then
-      printf -v reconcile_comment '<!-- initiative-planner -->\n**🔁 Reconciled epic #%s in place.**\n\n%s newly-surfaced item(s) were added as sub-issues of the existing epic (harvested from sub-issue/review comments, vetted through the plan-critic + acceptance gate). No existing story was rewritten; the epic stays inert (labelled `initiative`, NOT `initiative:auto`).' \
-        "$existing_epic" "$MATERIALIZED_COUNT"
-      comment_on_discussion "$DISCUSSION_NODE_ID" "$reconcile_comment"
+      printf -v reconcile_comment '<!-- initiative-planner -->\n**🔁 Reconciled epic %s#%s in place.**\n\n%s newly-surfaced item(s) were added as sub-issues of the existing epic (harvested from sub-issue/review comments, vetted through the plan-critic + acceptance gate). No existing story was rewritten; the epic stays inert (labelled `initiative`, NOT `initiative:auto`).' \
+        "$issue_prefix" "$existing_epic" "$MATERIALIZED_COUNT"
+      comment_on_discussion "$DISCUSSION_NODE_ID" "$DISCUSSION_REPO" "$reconcile_comment"
       echo "posted reconcile summary to discussion #${DISCUSSION_NUMBER:-?}"
     fi
 
@@ -247,8 +266,8 @@ if [ -n "$src" ]; then
     else
       echo "already planned (epic #${existing_epic}) for idea discussion #${src} — skipping creation"
       if [ -n "$DISCUSSION_NODE_ID" ]; then
-        printf -v guard_comment '<!-- initiative-planner -->\n**ℹ️ Already planned — no new epic created.**\n\nThis idea is already materialized as epic #%s. Nothing was created on this run.\n\nTo re-plan from scratch (close the existing epic and its stories and build a fresh DAG), re-dispatch the planner with `force_replan=true`.' "$existing_epic"
-        comment_on_discussion "$DISCUSSION_NODE_ID" "$guard_comment"
+        printf -v guard_comment '<!-- initiative-planner -->\n**ℹ️ Already planned — no new epic created.**\n\nThis idea is already materialized as epic %s#%s. Nothing was created on this run.\n\nTo re-plan from scratch (close the existing epic and its stories and build a fresh DAG), re-dispatch the planner with `force_replan=true`.' "$issue_prefix" "$existing_epic"
+        comment_on_discussion "$DISCUSSION_NODE_ID" "$DISCUSSION_REPO" "$guard_comment"
         echo "posted 'already planned' notice back to discussion #${DISCUSSION_NUMBER:-?}"
       fi
       if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
@@ -350,12 +369,12 @@ if [ -n "$DISCUSSION_NODE_ID" ]; then
   for lid in "${local_ids[@]}"; do
     t="$(jq -r --argjson i "$lid" '.stories[] | select(.id==$i) | .title' "$PLAN_PATH")"
     sz="$(jq -r --argjson i "$lid" '.stories[] | select(.id==$i) | .size' "$PLAN_PATH")"
-    rows="${rows}- #${NUM_BY_LOCAL[$lid]} (${sz}) — ${t}"$'\n'
+    rows="${rows}- ${issue_prefix}#${NUM_BY_LOCAL[$lid]} (${sz}) — ${t}"$'\n'
   done
   oq="$(jq -r '(.open_questions // []) | map(if type=="string" then . else .question end) | if length>0 then "\n**Open questions for review:**\n" + (map("- " + .) | join("\n")) else "" end' "$PLAN_PATH")"
-  comment="$(printf '<!-- initiative-planner -->\n**📋 Initiative planned by the BMAD Scrum Master (Bob).**\n\nEpic **#%s** — %s\n\n%s stories created (inert — labelled `initiative`, NOT `initiative:auto`):\n\n%s\n%s\n---\nReview the epic and its sub-issue DAG, adjust as needed, then add **`initiative:auto`** to epic #%s to hand it to `initiative-driver` for auto-implementation.' \
-    "$epic_number" "$epic_title" "$story_count" "$rows" "$oq" "$epic_number")"
-  comment_on_discussion "$DISCUSSION_NODE_ID" "$comment"
+  comment="$(printf '<!-- initiative-planner -->\n**📋 Initiative planned by the BMAD Scrum Master (Bob).**\n\nEpic **%s#%s** — %s\n\n%s stories created (inert — labelled `initiative`, NOT `initiative:auto`):\n\n%s\n%s\n---\nReview the epic and its sub-issue DAG, adjust as needed, then add **`initiative:auto`** to epic %s#%s to hand it to `initiative-driver` for auto-implementation.' \
+    "$issue_prefix" "$epic_number" "$epic_title" "$story_count" "$rows" "$oq" "$issue_prefix" "$epic_number")"
+  comment_on_discussion "$DISCUSSION_NODE_ID" "$DISCUSSION_REPO" "$comment"
   echo "posted plan summary to discussion #${DISCUSSION_NUMBER:-?}"
 fi
 
@@ -370,10 +389,10 @@ if [ -n "${SUPERSEDE_OLD_EPIC:-}" ]; then
   old_subs="$(list_sub_issue_numbers "$REPO" "$SUPERSEDE_OLD_EPIC")"
   while IFS= read -r old_sub; do
     [ -n "$old_sub" ] || continue
-    close_issue "$REPO" "$old_sub" "Superseded by the re-planned initiative epic #${epic_number} (re-planned from idea discussion #${src})."
+    close_issue "$REPO" "$old_sub" "Superseded by the re-planned initiative epic #${epic_number} (re-planned from idea discussion ${disc_prefix}#${src})."
     echo "  closed superseded story #${old_sub}"
   done <<< "$old_subs"
-  close_issue "$REPO" "$SUPERSEDE_OLD_EPIC" "Superseded by #${epic_number} — re-planned from idea discussion #${src}. This epic and its stories were closed by the initiative-planner \`force_replan\` path."
+  close_issue "$REPO" "$SUPERSEDE_OLD_EPIC" "Superseded by #${epic_number} — re-planned from idea discussion ${disc_prefix}#${src}. This epic and its stories were closed by the initiative-planner \`force_replan\` path."
   echo "  closed superseded epic #${SUPERSEDE_OLD_EPIC}"
 fi
 
