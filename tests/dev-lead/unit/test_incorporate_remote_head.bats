@@ -7,15 +7,17 @@
 # pushed to the branch after dev-lead's last fetch. Before pushing, dev-lead
 # must fetch the true remote head and INCORPORATE it (rebase onto it) — or, when
 # it cannot be incorporated cleanly, STOP and escalate rather than force over it.
-# A commit authored by anyone other than dev-lead's own identity is steering:
-# never discarded, and called out in the run summary.
+# A commit dev-lead has no record of writing is steering: never discarded, and
+# called out in the run summary. Since #2313 that record is the SHAs this run
+# pushed or a Dev-Lead-Stamp trailer, never the committer email — the owner
+# commits with the same noreply address dev-lead does.
 
 BOT_EMAIL_SUFFIX="don-petry@users.noreply.github.com"
 
 setup() {
   GUARD_LIB="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)/scripts/lib/git-push-guard.sh"
 
-  # dev-lead acts as `don-petry`; classify by the bot's noreply email.
+  # dev-lead acts as `don-petry` (ADR-0008), the same account the owner uses.
   export BOT_USER="don-petry"
 
   REMOTE="$BATS_TEST_TMPDIR/remote.git"
@@ -40,7 +42,8 @@ setup() {
   ( cd "$WORK"; _dev_identity )
 }
 
-# dev-lead's own git identity (bot noreply email → classified as OWN).
+# dev-lead's git identity. Since ADR-0008 the owner commits with it too, so it
+# classifies nothing on its own (#2313).
 _dev_identity() {
   git config user.email "12345+${BOT_EMAIL_SUFFIX}"
   git config user.name "don-petry"
@@ -145,31 +148,180 @@ _remote_log()  { git --git-dir="$REMOTE" log --format='%s' main; }
   echo "$output" | grep -q "${discarded:0:12}"
 }
 
-@test "security: only the exact bot noreply local-part is classified as dev-lead (#1610)" {
+# ── #2313: ownership comes from dev-lead's records, not the committer email ──
+# The owner, every Claude Code session on the owner's machine and dev-lead all
+# commit as <id>+don-petry@users.noreply.github.com. On combsmith/.github #1314
+# and #1315 the owner's commits were classified as dev-lead's and force-pushed
+# over.
+
+# The owner pushing to the branch with dev-lead's EXACT identity.
+_owner_push() {
+  local file="$1" content="$2"
+  local other="$BATS_TEST_TMPDIR/owner.$RANDOM"
+  git clone -q "$REMOTE" "$other"
+  (
+    cd "$other"
+    _dev_identity
+    printf '%s\n' "$content" > "$file"; git add "$file"
+    git commit -q -m "owner: $file"
+    git push -q origin main
+  )
+}
+
+# An earlier dev-lead run: a stamped commit pushed from its own clone.
+_earlier_run_push() {
+  local file="$1" content="$2"
+  local other="$BATS_TEST_TMPDIR/earlier.$RANDOM"
+  git clone -q "$REMOTE" "$other"
+  (
+    cd "$other"
+    _dev_identity
+    source "$GUARD_LIB"
+    printf '%s\n' "$content" > "$file"; git add "$file"
+    git commit -q -m "dev-lead: $file" -m "$(dev_lead_stamp_trailer)"
+    git push -q origin main
+  )
+}
+
+@test "#2313: an owner commit with dev-lead's exact email is kept, not force-pushed over" {
   cd "$WORK"
   source "$GUARD_LIB"
+  # The #1314 shape: dev-lead builds a commit on the head it checked out...
+  echo devfix > devfix; git add devfix; git commit -q -m "dev-lead fix"
+  # ...while the owner pushes a fix to the same branch with the same identity.
+  _owner_push owner.txt "the approved fix"
+  local owner_sha; owner_sha=$(_remote_head)
+  [ "$(git --git-dir="$REMOTE" log -1 --format=%ce main)" = "$(git log -1 --format=%ce HEAD)" ]
 
-  # Exact login as the whole local part → OWN.
-  GIT_COMMITTER_EMAIL="don-petry@users.noreply.github.com" \
-    git commit -q --allow-empty -m bare
-  run _commit_is_dev_lead HEAD
+  run push_no_clobber origin main
+  [ "$status" -eq 0 ]
+  # The owner's commit is still on the branch, under dev-lead's.
+  git --git-dir="$REMOTE" merge-base --is-ancestor "$owner_sha" main
+  local head_tree; head_tree=$(git --git-dir="$REMOTE" ls-tree --name-only -r main)
+  echo "$head_tree" | grep -qx owner.txt
+  echo "$head_tree" | grep -qx devfix
+  # And the run says so.
+  grep -q 'owner: owner.txt' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "#2313: an owner commit with dev-lead's email that conflicts stops the push" {
+  cd "$WORK"
+  source "$GUARD_LIB"
+  printf 'dev-lead line\n' >> base; git add base; git commit -q -m "dev-lead edits base"
+  _owner_push base "owner rewrite of base"
+  local preserved; preserved=$(_remote_head)
+
+  run push_no_clobber origin main
+  [ "$status" -eq 2 ]
+  [ "$(_remote_head)" = "$preserved" ]
+  grep -q 'STOPPED' "$GITHUB_STEP_SUMMARY"
+}
+
+@test "#2313: dev-lead's rewrite of a commit an earlier run stamped still force-pushes" {
+  _earlier_run_push work v1
+  cd "$WORK"
+  git pull -q origin main
+  source "$GUARD_LIB"
+  local stamped; stamped=$(git rev-parse HEAD)
+  run _commit_is_dev_lead "$stamped"
   [ "$status" -eq 0 ]
 
-  # Numeric user-id prefix + login → OWN.
+  # This run amends the earlier run's commit: a legitimate self-rewrite.
+  echo v2 > work; git add work; git commit -q --amend -m "dev-lead: work v2"
+  local amended; amended=$(git rev-parse HEAD)
+
+  run push_no_clobber origin main
+  [ "$status" -eq 0 ]
+  [ "$(_remote_head)" = "$amended" ]
+  echo "$output" | grep -q "${stamped:0:12}"
+}
+
+@test "#2313: a commit this run pushed is its own even with no stamp" {
+  cd "$WORK"
+  source "$GUARD_LIB"
+  echo v1 > work; git add work; git commit -q -m "engine commit, unstamped"
+  local pushed; pushed=$(git rev-parse HEAD)
+  run _commit_is_dev_lead "$pushed"
+  [ "$status" -ne 0 ]
+  push_no_clobber origin main
+  run _commit_is_dev_lead "$pushed"
+  [ "$status" -eq 0 ]
+  grep -qxF "$pushed" <<<"$_PUSH_GUARD_PUSHED"
+}
+
+@test "#2313: a stamp copied onto another author's commit is not trusted" {
+  _earlier_run_push work v1
+  # The owner amends dev-lead's stamped commit: new content, same message, so the
+  # Dev-Lead-Stamp line is carried over verbatim onto a commit dev-lead never made.
+  local other="$BATS_TEST_TMPDIR/owner-amend"
+  git clone -q "$REMOTE" "$other"
+  (
+    cd "$other"
+    git config user.email "12345+${BOT_EMAIL_SUFFIX}"
+    git config user.name "Don Petry"
+    echo "owner fix" > work; git add work
+    git commit -q --amend --no-edit
+    git push -q --force origin main
+  )
+  local spoofed; spoofed=$(_remote_head)
+  git --git-dir="$REMOTE" log -1 --format=%B main | grep -q '^Dev-Lead-Stamp: '
+
+  cd "$WORK"
+  source "$GUARD_LIB"
+  run _commit_is_dev_lead "$spoofed"
+  [ "$status" -ne 0 ]
+
+  # dev-lead, behind the owner, pushes its own unrelated fix: the owner's commit
+  # must survive.
+  echo devfix > devfix; git add devfix; git commit -q -m "dev-lead fix"
+  run push_no_clobber origin main
+  [ "$status" -eq 0 ]
+  git --git-dir="$REMOTE" merge-base --is-ancestor "$spoofed" main
+  [ "$(git --git-dir="$REMOTE" show main:work)" = "owner fix" ]
+}
+
+@test "#2313: _push_guard_ownership_verdict — pushed SHA, matching stamp, and nothing else" {
+  source "$GUARD_LIB"
+  local tree=4b825dc642cb6eb9a060e54bf8d69288fbee4904
+  local p1=1111111111111111111111111111111111111111
+  local p2=2222222222222222222222222222222222222222
+  local stamp; stamp=$(dev_lead_stamp_of "$tree" "$p1")
+
+  run _push_guard_ownership_verdict aaaa "$tree" "$p1" "msg" $'bbbb\naaaa'
+  [ "$status" -eq 0 ]; [ "$output" = own-pushed ]
+
+  run _push_guard_ownership_verdict aaaa "$tree" "$p1" $'msg\n\nDev-Lead-Stamp: '"$stamp" ""
+  [ "$status" -eq 0 ]; [ "$output" = own-stamped ]
+
+  # The same stamp on a commit with another parent (a cherry-pick or rebase).
+  run _push_guard_ownership_verdict aaaa "$tree" "$p2" $'msg\n\nDev-Lead-Stamp: '"$stamp" ""
+  [ "$status" -eq 1 ]; [ "$output" = foreign ]
+
+  # A merge commit's stamp covers both parents, in order.
+  local merge_stamp; merge_stamp=$(dev_lead_stamp_of "$tree" "$p1" "$p2")
+  run _push_guard_ownership_verdict aaaa "$tree" "$p1 $p2" "Dev-Lead-Stamp: ${merge_stamp}" ""
+  [ "$status" -eq 0 ]; [ "$output" = own-stamped ]
+  run _push_guard_ownership_verdict aaaa "$tree" "$p2 $p1" "Dev-Lead-Stamp: ${merge_stamp}" ""
+  [ "$status" -eq 1 ]
+
+  # A SHA that merely contains a pushed SHA is not it.
+  run _push_guard_ownership_verdict aaaa "$tree" "$p1" "msg" "aaaab"
+  [ "$status" -eq 1 ]; [ "$output" = foreign ]
+
+  # No record at all: foreign, whatever identity made it.
+  run _push_guard_ownership_verdict aaaa "$tree" "$p1" "msg" ""
+  [ "$status" -eq 1 ]; [ "$output" = foreign ]
+}
+
+@test "#2313: the committer email is not a signal — dev-lead's exact noreply address alone is foreign" {
+  cd "$WORK"
+  source "$GUARD_LIB"
   GIT_COMMITTER_EMAIL="12345+don-petry@users.noreply.github.com" \
     git commit -q --allow-empty -m idprefix
   run _commit_is_dev_lead HEAD
-  [ "$status" -eq 0 ]
-
-  # A spoofed local part that merely ENDS WITH the login is FOREIGN (steering).
-  GIT_COMMITTER_EMAIL="attacker-don-petry@users.noreply.github.com" \
-    git commit -q --allow-empty -m spoof
-  run _commit_is_dev_lead HEAD
   [ "$status" -ne 0 ]
-
-  # A non-numeric prefix before "+login" is also FOREIGN.
-  GIT_COMMITTER_EMAIL="evil+don-petry@users.noreply.github.com" \
-    git commit -q --allow-empty -m evilprefix
+  GIT_COMMITTER_EMAIL="don-petry@users.noreply.github.com" \
+    git commit -q --allow-empty -m bare
   run _commit_is_dev_lead HEAD
   [ "$status" -ne 0 ]
 }

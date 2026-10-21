@@ -224,7 +224,7 @@ checkpoint_push_partial_work() {
   if $has_uncommitted; then
     git add -A >/dev/null 2>&1 || return 1
     git commit -m "${CHECKPOINT_COMMIT_PREFIX} partial work for issue #${ISSUE_NUMBER} (stage timeout — unreviewed, do not merge)" \
-      >/dev/null 2>&1 || return 1
+      -m "$(dev_lead_stamp_trailer)" >/dev/null 2>&1 || return 1
   fi
 
   # Push the branch so the work lands on the remote before the run exits.
@@ -669,7 +669,9 @@ ${lint_output}
 
   if $has_uncommitted; then
     git add -A
-    git commit -m "feat: implement issue #${ISSUE_NUMBER} — ${ISSUE_TITLE}"
+    # Dev-Lead-Stamp: lets a later run's push guard recognise this commit as
+    # dev-lead's own when it reconciles the PR branch (#2313).
+    git commit -m "feat: implement issue #${ISSUE_NUMBER} — ${ISSUE_TITLE}" -m "$(dev_lead_stamp_trailer)"
   fi
 
   # Empty net-diff guard (#1786, slice 1 of #1620): before pushing or opening a

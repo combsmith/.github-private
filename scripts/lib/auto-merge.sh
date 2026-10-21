@@ -147,10 +147,14 @@ push_with_merge_guard() {
     return "$reconcile_rc"
   fi
 
-  local errf
+  local errf publishing
   errf="$(mktemp)"
+  # Record what this push publishes so a later reconcile in the run knows these
+  # commits are dev-lead's own (#2313).
+  publishing=$(_push_guard_publishing "${1:-}")
   if git push "$@" 2>"$errf"; then
     rm -f "$errf"
+    _push_guard_record_pushed "$publishing"
     # Refresh the held SHA after our own push so the EXIT-trap restore uses
     # --match-head-commit against the new head rather than the pre-push SHA.
     _AM_HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || true)
@@ -175,6 +179,7 @@ push_with_merge_guard() {
     echo "::notice::push rejected (non-fast-forward) and HEAD has diverged from ${upstream} — history was rewritten (likely a self-rebase); retrying with a pinned lease. Overwriting dev-lead's own commit(s): ${discarded:-<none>}" >&2
     if _pinned_force_push "$@" 2>>"$errf"; then
       rm -f "$errf"
+      _push_guard_record_pushed "$publishing"
       _AM_HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || true)
       return 0
     fi
