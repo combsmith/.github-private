@@ -216,17 +216,18 @@ upsert_escalation_comment() {
 }
 
 # mark_prior_agent_items_obsolete <pr_url>
-# After successfully posting a new review/comment, dismiss prior agent reviews
-# (state != DISMISSED) and collapse prior agent comments. Identifies agent
-# items by the body marker `<!-- pr-review-agent v1 sha=<HEX> -->`. The newest
-# agent item by timestamp (which is the just-posted one) is preserved.
-# Idempotent: prior comments already wrapped in a `<!-- pr-review-agent
-# superseded -->` sentinel are skipped to avoid recursive nesting.
+#   Dismiss stale prior agent reviews and collapse prior agent comments,
+#   keeping only the globally newest agent review/comment by timestamp.
+#   Preserves human reviews unchanged. After successfully posting a new review/comment,
+#   identify agent items by the body marker `<!-- pr-review-agent v1 sha=<HEX> -->`.
+#   The newest agent item by timestamp (which is the just-posted one) is preserved.
+#   Idempotent: prior comments already wrapped in a `<!-- pr-review-agent
+#   superseded -->` sentinel are skipped to avoid recursive nesting.
 #
-# API failures here do NOT abort the workflow — the new post has already
-# landed. They DO emit ::warning:: annotations so silent stack-up of
-# duplicates becomes visible in the Actions UI rather than degrading
-# unnoticed (e.g., a permissions change on the dismissal endpoint).
+#   API failures here do NOT abort the workflow — the new post has already
+#   landed. They DO emit ::warning:: annotations so silent stack-up of
+#   duplicates becomes visible in the Actions UI rather than degrading
+#   unnoticed (e.g., a permissions change on the dismissal endpoint).
 mark_prior_agent_items_obsolete() {
   local pr_url="$1"
   local owner_repo pr_num
@@ -434,6 +435,37 @@ clear_automated_hold_label() {
   ensure_hold_label_absent "$pr_url"
 }
 
+# Mechanical enforcement of decision gate 4 (#1766). Gate 4 — "No unresolved
+# review threads requesting changes" (prompts/shared.md) — was prompt-advisory
+# only, and the cascade posted APPROVED on PR #1742 over 15 unresolved threads.
+# Here an APPROVE verdict is IMPOSSIBLE while any review thread is unresolved, or
+# while the thread set cannot be enumerated (API failure / pagination /
+# permissions) — an unknown count must never read as zero. In either case the
+# decision is rewritten to escalate BEFORE any approval is posted. This runs at
+# the single point both the tier-2 and tier-3 cascade paths funnel through, and
+# ahead of the DRY_RUN branch so the downgrade is visible in dry runs too.
+if [ "$DECISION" = "approve" ]; then
+  # shellcheck source=lib/unresolved-review-thread-gate.sh
+  source "$POST_PR_SCRIPT_DIR/lib/unresolved-review-thread-gate.sh"
+  URT_SNAPSHOT=$(urtg_fetch_review_threads "$PR_URL")
+  URT_RC=0
+  check_unresolved_review_threads "$URT_SNAPSHOT" || URT_RC=$?
+  if [ "$URT_RC" -eq 1 ]; then
+    URT_COUNT=$(printf '%s' "$URT_SNAPSHOT" | jq -r '[ (.reviewThreads // [])[] | select(.isResolved != true) ] | length' 2>/dev/null || echo "One or more")
+    echo "    gate4: $URT_COUNT unresolved review thread(s) — downgrading approve → escalate (#1766)"
+    DECISION="escalate"
+    # Prepend the gate blocker to the original review body so the escalation
+    # carries the full review summary and findings, not just the gate note.
+    BODY=$(printf -- '- **blocker (decision gate 4)**: %s unresolved review thread(s) request changes and must be resolved before this PR can be approved. Resolve each open thread (or push a commit that addresses it and mark the thread resolved); the cascade will then re-review.\n\n---\n\n%s' "$URT_COUNT" "$BODY")
+  elif [ "$URT_RC" -ne 0 ]; then
+    echo "    gate4: review threads could not be enumerated (rc=$URT_RC) — failing closed, downgrading approve → escalate (#1766)"
+    DECISION="escalate"
+    # Prepend the gate blocker to the original review body so the escalation
+    # carries the full review summary and findings, not just the gate note.
+    BODY=$(printf -- '- **blocker (decision gate 4)**: the PR review-thread state could not be enumerated (API failure, pagination beyond one page, or permissions), so approval is withheld (fail-closed). An unknown thread count must not be treated as zero. The cascade will re-review once the thread set is readable.\n\n---\n\n%s' "$BODY")
+  fi
+fi
+
 if [ "$DRY_RUN" = "true" ]; then
   echo "=== DRY RUN: Would post review ==="
   echo "Decision: $DECISION"
@@ -490,132 +522,204 @@ if [ "$DECISION" = "approve" ]; then
     exit 1
   fi
 
-  # Post an APPROVED review
-  BODY_FILE="/tmp/pr-review-body-$$.txt"
-  echo "$BODY" > "$BODY_FILE"
+  # Re-check before approval: immediately before posting approval, verify the thread state
+  # has not changed (issue #1766 race condition). A thread opened between the initial
+  # gate check and this re-check must block approval. This is not a full re-review —
+  # only the gate 4 check is re-run; if threads are now unresolved, approval is
+  # downgraded to escalation. Note: a TOCTOU race window remains between this check
+  # (line 503) and the approval POST (line 533) — a thread created after the re-check
+  # snapshot but before the approval write would still receive approval. The re-check
+  # mitigates the window (narrows it from ms to μs) and documents the race, but cannot
+  # eliminate it without atomic operations (impossible with GitHub's separate API calls).
+  # This is a documented known limitation of issue #1766's fail-closed design (#1766).
+  URT_RECHECK_SNAPSHOT=$(urtg_fetch_review_threads "$PR_URL")
+  URT_RECHECK_RC=0
+  check_unresolved_review_threads "$URT_RECHECK_SNAPSHOT" || URT_RECHECK_RC=$?
+  RECHECK_ESCALATION_REASON=""
+  if [ "$URT_RECHECK_RC" -eq 1 ]; then
+    URT_RECHECK_COUNT=$(printf '%s' "$URT_RECHECK_SNAPSHOT" | jq -r '[ (.reviewThreads // [])[] | select(.isResolved != true) ] | length' 2>/dev/null || echo "One or more")
+    echo "    gate4 (recheck): $URT_RECHECK_COUNT unresolved review thread(s) detected after initial check — downgrading approve → escalate (#1766)"
+    DECISION="escalate"
+    RECHECK_ESCALATION_REASON="unresolved review thread(s) were detected during the re-check immediately before approval posting. A thread was opened after the initial gate check, so the PR cannot be approved"
+    BODY=$(printf -- '- **blocker (decision gate 4)**: %s unresolved review thread(s) request changes and must be resolved before this PR can be approved (a thread was opened after initial review). Resolve each open thread (or push a commit that addresses it and mark the thread resolved); the cascade will then re-review.\n\n---\n\n%s' "$URT_RECHECK_COUNT" "$BODY")
+  elif [ "$URT_RECHECK_RC" -ne 0 ]; then
+    echo "    gate4 (recheck): review threads could not be re-enumerated (rc=$URT_RECHECK_RC) — failing closed, downgrading approve → escalate (#1766)"
+    DECISION="escalate"
+    RECHECK_ESCALATION_REASON="the PR review-thread state could not be re-enumerated immediately before approval (API failure, pagination, or permissions). An unknown thread count must not be treated as zero, so approval is withheld (fail-closed)"
+    BODY=$(printf -- '- **blocker (decision gate 4)**: the PR review-thread state could not be re-enumerated immediately before approval (API failure, pagination beyond one page, or permissions), so approval is withheld (fail-closed). An unknown thread count must not be treated as zero. The cascade will re-review once the thread set is readable.\n\n---\n\n%s' "$BODY")
+  fi
 
-  echo "Posting APPROVED review..."
-  REVIEW_ERR_FILE="/tmp/pr-review-err-$$.txt"
-  review_err=""
-  body_content=$(cat "$BODY_FILE")
-  # Use an explicit else branch (no `!`) so `rc=$?` captures the REAL exit code of
-  # `gh pr review`. With `if ! gh …; then rc=$?` the `!` inverts the status, so the
-  # failure branch always saw rc=0 and the #1874 diagnostic misreported a success.
-  if gh pr review "$PR_URL" --approve --body "$body_content" 2>"$REVIEW_ERR_FILE"; then
-    rm -f "$BODY_FILE" "$REVIEW_ERR_FILE"
+  # Only proceed with approval posting if decision is still approve
+  if [ "$DECISION" = "approve" ]; then
+    # Post an APPROVED review
+    BODY_FILE="/tmp/pr-review-body-$$.txt"
+    echo "$BODY" > "$BODY_FILE"
+
+    echo "Posting APPROVED review..."
+    REVIEW_ERR_FILE="/tmp/pr-review-err-$$.txt"
+    review_err=""
+    body_content=$(cat "$BODY_FILE")
+    # Use an explicit else branch (no `!`) so `rc=$?` captures the REAL exit code of
+    # `gh pr review`. With `if ! gh …; then rc=$?` the `!` inverts the status, so the
+    # failure branch always saw rc=0 and the #1874 diagnostic misreported a success.
+    if gh pr review "$PR_URL" --approve --body "$body_content" 2>"$REVIEW_ERR_FILE"; then
+      rm -f "$BODY_FILE" "$REVIEW_ERR_FILE"
+    else
+      rc=$?
+      review_err=$(cat "$REVIEW_ERR_FILE" 2>/dev/null || true)
+      cat "$REVIEW_ERR_FILE" >&2 2>/dev/null || true
+      rm -f "$BODY_FILE" "$REVIEW_ERR_FILE"
+      # Self-approval is a permanent, PR-specific constraint — never the runner's
+      # fault and never recoverable on retry. Exit 100 (no-op sentinel) so the
+      # workflow loop skips this PR without aborting the rest of the session.
+      # See issue #96: a single self-authored PR at the top of the queue
+      # previously starved every batch.
+      if [[ "$review_err" =~ [Cc]an\ not\ approve\ your\ own\ pull\ request ]]; then
+        echo "::warning::Cannot self-approve $PR_URL — skipping (exit 100)"
+        exit 100
+      fi
+      # The approval write FAILED (issue #1874). Fail loud and name every fact a
+      # human needs — the PR, the account we acted as, the credential secret, and
+      # the raw API error — then exit non-zero. Never treat a failed write as
+      # success: doing so is exactly how a PR stranded behind an approval that
+      # existed only in a comment (PRs #1788/#1858/#1860).
+      echo "::error::pr-review approval WRITE FAILED on $PR_URL as '$BOT_USER' (credential $POSTING_CREDENTIAL): gh pr review --approve exited $rc and created NO review object. API said: $(echo "$review_err" | head -3 | tr '\n' ' '). The PR is stranded at REVIEW_REQUIRED — do NOT announce an approval that did not land (#1874)."
+      exit 1
+    fi
+
+    # #1874: `gh pr review --approve` can exit 0 while NO review object is created
+    # (a fine-grained PAT authenticates and returns success but cannot
+    # addPullRequestReview). Trusting the exit code is what let the strand go
+    # unreported. Verify the post-condition by reading the reviews back.
+    APPROVAL_STATE=$(verify_approval_landed "$PR_URL")
+    APPROVAL_VERIFIED=false
+    case "$APPROVAL_STATE" in
+      PRESENT)
+        APPROVAL_VERIFIED=true # verified — the review object exists at head
+        ;;
+      ABSENT)
+        echo "::error::pr-review approval WRITE reported success but NO review object exists on $PR_URL for '$BOT_USER' (credential $POSTING_CREDENTIAL). GET /pulls/.../reviews contains no APPROVED review by that account at $PR_HEAD_SHA — the write silently failed (a fine-grained PAT can comment but cannot addPullRequestReview). The PR is stranded at REVIEW_REQUIRED; failing the run rather than announcing a phantom approval (#1874)."
+        exit 1
+        ;;
+      *)
+        # INDETERMINATE — the reviews API could not be read. Fail OPEN: a transient
+        # blip must not turn a genuine approval into a red run (#1776 posture).
+        echo "::warning::could not read back reviews on $PR_URL to confirm the approval landed (transient API error) — proceeding without gating; a later sweep re-verifies (#1874)"
+        ;;
+    esac
+
+    # Dismiss prior agent reviews / collapse prior agent comments now that the
+    # newest review has landed. Best-effort: failures here don't break the run.
+    mark_prior_agent_items_obsolete "$PR_URL"
+
+    # The cleanup above dismissed the prior approval. The new one normally stands,
+    # so this is a no-op; it dequeues only if no approval stands for the head on the
+    # live PR (#2174). Never fails the run.
+    mq_dequeue_if_unapproved "$PR_URL" || true
+
+    # Only a VERIFIED-present approval may trigger the deferred partial-evidence
+    # announcement (#1874 AC3). On INDETERMINATE we could not confirm the review
+    # object exists, so announcing would claim approval evidence that was never
+    # verified — leave the deferred state intact for a later sweep to re-verify (#1875).
+    if [ "$APPROVAL_VERIFIED" = "true" ]; then
+      maybe_post_deferred_partial_evidence "$PR_URL"
+    else
+      echo "::warning::approval unverified on $PR_URL — NOT posting the deferred partial-evidence announcement; the state file is retained for a later sweep to re-verify (#1874 AC3 / #1875)"
+    fi
+
+    # Check merge state and rebase if needed.
+    # This entire section is best-effort — the review is already posted, so a
+    # rebase failure (403 permission, 504 timeout, etc.) must never abort the
+    # batch session. Every command uses || to suppress set -e.
+    MERGE_STATE=$(gh pr view "$PR_URL" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")
+    if [ "$MERGE_STATE" = "BEHIND" ]; then
+      OWNER_REPO=$(echo "$PR_URL" | sed -E 's|.*/([^/]+)/([^/]+)/pull/.*|\1/\2|')
+      PR_NUM=$(echo "$PR_URL" | sed -E 's|.*/([0-9]+)$|\1|')
+
+      echo "Branch is BEHIND, requesting rebase..."
+      REBASE_OK=false
+      for attempt in 1 2 3; do
+        rebase_output=$(gh api -X PUT "repos/$OWNER_REPO/pulls/$PR_NUM/update-branch" \
+          -f expected_head_sha="$PR_HEAD_SHA" 2>&1) && { REBASE_OK=true; break; }
+        rebase_rc=$?
+        if echo "$rebase_output" | grep -qE '"status":\s*"4[0-9][0-9]"'; then
+          echo "::warning::rebase request rejected (client error) — $rebase_output"
+          break
+        fi
+        if [ "$attempt" -lt 3 ]; then
+          delay=$(( 5 * attempt ))
+          echo "  rebase attempt $attempt failed (exit $rebase_rc), retrying in ${delay}s..."
+          sleep "$delay"
+        else
+          echo "::warning::rebase request failed after $attempt attempts — $rebase_output"
+        fi
+      done
+
+      if [ "$REBASE_OK" = "true" ]; then
+        # Poll for rebase completion (up to 30s)
+        for _i in 1 2 3 4 5 6; do
+          MERGE_STATE=$(gh pr view "$PR_URL" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")
+          [ "$MERGE_STATE" != "BEHIND" ] && break
+          sleep 5
+        done
+      fi
+
+      if [ "$MERGE_STATE" = "BEHIND" ]; then
+        echo "::warning::still BEHIND after rebase — skipping auto-merge for $PR_URL"
+      fi
+    fi
+
+    # Clean up an automation-set hold label, confirming the removal (a stale label
+    # would keep review-one-pr.sh on hold while this run reports success, #1754).
+    if ! clear_automated_hold_label "$PR_URL"; then
+      echo "::error::approve: could not confirm needs-human-review removed from $PR_URL after $LABEL_MAX_ATTEMPTS attempts — failing rather than reporting a false success (#1754)"
+      exit 1
+    fi
+
+    echo "Review posted"
   else
-    rc=$?
-    review_err=$(cat "$REVIEW_ERR_FILE" 2>/dev/null || true)
-    cat "$REVIEW_ERR_FILE" >&2 2>/dev/null || true
-    rm -f "$BODY_FILE" "$REVIEW_ERR_FILE"
-    # Self-approval is a permanent, PR-specific constraint — never the runner's
-    # fault and never recoverable on retry. Exit 100 (no-op sentinel) so the
-    # workflow loop skips this PR without aborting the rest of the session.
-    # See issue #96: a single self-authored PR at the top of the queue
-    # previously starved every batch.
-    if [[ "$review_err" =~ [Cc]an\ not\ approve\ your\ own\ pull\ request ]]; then
-      echo "::warning::Cannot self-approve $PR_URL — skipping (exit 100)"
+    # Decision was downgraded to escalate by the recheck (gate 4 race condition).
+    # Post escalation with the gate blocker message updated by the recheck.
+    echo "Escalating to human review (gate 4 recheck downgrade)..."
+
+    # Post the gate blocker message with escalation verdict.
+    BODY_WITHOUT_OLD_MARKER=$(printf '%s' "$BODY" | sed 's/<!-- pr-review-agent v1 sha=[a-f0-9][^>]*-->//g')
+    BODY_FOR_ESCALATION="<!-- pr-review-agent v1 sha=$PR_HEAD_SHA decision=escalated risk=$RISK -->
+$BODY_WITHOUT_OLD_MARKER"
+    if gh pr comment "$PR_URL" --body "$BODY_FOR_ESCALATION"; then
+      mark_prior_agent_items_obsolete "$PR_URL"
+    fi
+
+    # Add the hold label and escalation artifact.
+    if ! ensure_hold_label_present "$PR_URL"; then
+      echo "::error::escalation (gate4-recheck): could not confirm needs-human-review present on $PR_URL after $LABEL_MAX_ATTEMPTS attempts — failing so the escalation is retried (#1754)"
+      exit 1
+    fi
+
+    ESC_RESET_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    ESC_BODY=$(cat <<ESC_END
+$ESCALATION_COMMENT_MARKER
+<!-- pr-review-agent human-escalation reset=$ESC_RESET_TS -->
+## Automated review — escalated to human
+
+The automated review cascade escalated this PR to a human reviewer (risk: $RISK, reviewed commit \`$PR_HEAD_SHA\`).
+
+Why: $RECHECK_ESCALATION_REASON (decision gate 4, #1766).
+
+_This note is updated in place on re-escalation; it is not re-posted._
+ESC_END
+)
+    if ! upsert_escalation_comment "$PR_URL" "$ESC_BODY"; then
+      echo "::error::escalation (gate4-recheck): no human-escalation comment could be confirmed on $PR_URL — exiting 100 (no-op) so the escalated count is not overstated (#1754)"
       exit 100
     fi
-    # The approval write FAILED (issue #1874). Fail loud and name every fact a
-    # human needs — the PR, the account we acted as, the credential secret, and
-    # the raw API error — then exit non-zero. Never treat a failed write as
-    # success: doing so is exactly how a PR stranded behind an approval that
-    # existed only in a comment (PRs #1788/#1858/#1860).
-    echo "::error::pr-review approval WRITE FAILED on $PR_URL as '$BOT_USER' (credential $POSTING_CREDENTIAL): gh pr review --approve exited $rc and created NO review object. API said: $(echo "$review_err" | head -3 | tr '\n' ' '). The PR is stranded at REVIEW_REQUIRED — do NOT announce an approval that did not land (#1874)."
-    exit 1
+
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    bash "$SCRIPT_DIR/request-codeowners-review.sh" "$PR_URL" || true
+
+    echo "Escalated to human review"
+    exit 101
   fi
-
-  # #1874: `gh pr review --approve` can exit 0 while NO review object is created
-  # (a fine-grained PAT authenticates and returns success but cannot
-  # addPullRequestReview). Trusting the exit code is what let the strand go
-  # unreported. Verify the post-condition by reading the reviews back.
-  APPROVAL_STATE=$(verify_approval_landed "$PR_URL")
-  APPROVAL_VERIFIED=false
-  case "$APPROVAL_STATE" in
-    PRESENT)
-      APPROVAL_VERIFIED=true # verified — the review object exists at head
-      ;;
-    ABSENT)
-      echo "::error::pr-review approval WRITE reported success but NO review object exists on $PR_URL for '$BOT_USER' (credential $POSTING_CREDENTIAL). GET /pulls/.../reviews contains no APPROVED review by that account at $PR_HEAD_SHA — the write silently failed (a fine-grained PAT can comment but cannot addPullRequestReview). The PR is stranded at REVIEW_REQUIRED; failing the run rather than announcing a phantom approval (#1874)."
-      exit 1
-      ;;
-    *)
-      # INDETERMINATE — the reviews API could not be read. Fail OPEN: a transient
-      # blip must not turn a genuine approval into a red run (#1776 posture).
-      echo "::warning::could not read back reviews on $PR_URL to confirm the approval landed (transient API error) — proceeding without gating; a later sweep re-verifies (#1874)"
-      ;;
-  esac
-
-  # Dismiss prior agent reviews / collapse prior agent comments now that the
-  # newest review has landed. Best-effort: failures here don't break the run.
-  mark_prior_agent_items_obsolete "$PR_URL"
-
-  # The cleanup above dismissed the prior approval. The new one normally stands,
-  # so this is a no-op; it dequeues only if no approval stands for the head on the
-  # live PR (#2174). Never fails the run.
-  mq_dequeue_if_unapproved "$PR_URL" || true
-
-  # Only a VERIFIED-present approval may trigger the deferred partial-evidence
-  # announcement (#1874 AC3). On INDETERMINATE we could not confirm the review
-  # object exists, so announcing would claim approval evidence that was never
-  # verified — leave the deferred state intact for a later sweep to re-verify (#1875).
-  if [ "$APPROVAL_VERIFIED" = "true" ]; then
-    maybe_post_deferred_partial_evidence "$PR_URL"
-  else
-    echo "::warning::approval unverified on $PR_URL — NOT posting the deferred partial-evidence announcement; the state file is retained for a later sweep to re-verify (#1874 AC3 / #1875)"
-  fi
-
-  # Check merge state and rebase if needed.
-  # This entire section is best-effort — the review is already posted, so a
-  # rebase failure (403 permission, 504 timeout, etc.) must never abort the
-  # batch session. Every command uses || to suppress set -e.
-  MERGE_STATE=$(gh pr view "$PR_URL" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")
-  if [ "$MERGE_STATE" = "BEHIND" ]; then
-    OWNER_REPO=$(echo "$PR_URL" | sed -E 's|.*/([^/]+)/([^/]+)/pull/.*|\1/\2|')
-    PR_NUM=$(echo "$PR_URL" | sed -E 's|.*/([0-9]+)$|\1|')
-
-    echo "Branch is BEHIND, requesting rebase..."
-    REBASE_OK=false
-    for attempt in 1 2 3; do
-      rebase_output=$(gh api -X PUT "repos/$OWNER_REPO/pulls/$PR_NUM/update-branch" \
-        -f expected_head_sha="$PR_HEAD_SHA" 2>&1) && { REBASE_OK=true; break; }
-      rebase_rc=$?
-      if echo "$rebase_output" | grep -qE '"status":\s*"4[0-9][0-9]"'; then
-        echo "::warning::rebase request rejected (client error) — $rebase_output"
-        break
-      fi
-      if [ "$attempt" -lt 3 ]; then
-        delay=$(( 5 * attempt ))
-        echo "  rebase attempt $attempt failed (exit $rebase_rc), retrying in ${delay}s..."
-        sleep "$delay"
-      else
-        echo "::warning::rebase request failed after $attempt attempts — $rebase_output"
-      fi
-    done
-
-    if [ "$REBASE_OK" = "true" ]; then
-      # Poll for rebase completion (up to 30s)
-      for _i in 1 2 3 4 5 6; do
-        MERGE_STATE=$(gh pr view "$PR_URL" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")
-        [ "$MERGE_STATE" != "BEHIND" ] && break
-        sleep 5
-      done
-    fi
-
-    if [ "$MERGE_STATE" = "BEHIND" ]; then
-      echo "::warning::still BEHIND after rebase — skipping auto-merge for $PR_URL"
-    fi
-  fi
-
-  # Clean up an automation-set hold label, confirming the removal (a stale label
-  # would keep review-one-pr.sh on hold while this run reports success, #1754).
-  if ! clear_automated_hold_label "$PR_URL"; then
-    echo "::error::approve: could not confirm needs-human-review removed from $PR_URL after $LABEL_MAX_ATTEMPTS attempts — failing rather than reporting a false success (#1754)"
-    exit 1
-  fi
-
-  echo "Review posted"
 
 elif [ "$DECISION" = "escalate" ]; then
   # Check if AI delegation should be used
@@ -705,6 +809,28 @@ COMMENT_END
     # Escalate to human via CODEOWNERS — avoid hard-coding a single reviewer.
     echo "Escalating to human review..."
 
+    # Post the gate blocker message if present (e.g., gate 4 downgrade reason) so
+    # the author knows why approval was withheld. Match the exact deterministic
+    # prefix the gate-4 block above prepends rather than substring matching
+    # natural-language text; "blocker" is common in review language.
+    if [[ "$BODY" == *"- **blocker (decision gate"* ]]; then
+      # Re-stamp as an escalation verdict instead of posting markerless: the
+      # same-SHA idempotency no-op in review-one-pr.sh keys on a bot marker at
+      # head (decision=(approved|escalated)), and a markerless comment lets the
+      # next trigger re-run the cascade and post a duplicate blocker at the
+      # same SHA. decision=escalated does not match standing-approval/
+      # carry-forward/miss-rate scans, which all require decision=approved.
+      BODY_WITHOUT_OLD_MARKER=$(printf '%s' "$BODY" | sed 's/<!-- pr-review-agent v1 sha=[a-f0-9][^>]*-->//g')
+      BODY_FOR_COMMENT="<!-- pr-review-agent v1 sha=$PR_HEAD_SHA decision=escalated risk=$RISK -->
+$BODY_WITHOUT_OLD_MARKER"
+      if gh pr comment "$PR_URL" --body "$BODY_FOR_COMMENT"; then
+        # A gate downgrade invalidates any prior agent approval at an earlier SHA.
+        # The just-posted escalation carries the newest marker so it is preserved;
+        # everything older (notably a stale APPROVED review) is superseded, closing
+        # the window where standing-approval/carry-forward could act on it.
+        mark_prior_agent_items_obsolete "$PR_URL"
+      fi
+    fi
     # AC3 (#1754): add the hold label only when it is absent, and CONFIRM it is
     # present before returning 101. Re-escalating an already-held PR must not
     # unlabel-then-relabel (four toggles in one day on an unchanged PR was the

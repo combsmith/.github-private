@@ -50,6 +50,22 @@ if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   if [[ "$args" == *"comments"* ]]; then echo '{"comments":[]}'; exit 0; fi
   echo '{}'; exit 0
 fi
+if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
+  # Decision-gate-4 review-thread query (#1766). Default to a complete snapshot
+  # with zero unresolved threads so the gate clears and the approve path runs;
+  # a test may override REVIEW_THREADS_GRAPHQL to exercise the gate directly.
+  if [[ "$args" == *"reviewThreads"* ]]; then
+    if [ -n "${REVIEW_THREADS_GRAPHQL:-}" ]; then
+      printf '%s' "$REVIEW_THREADS_GRAPHQL"
+    else
+      printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+    fi
+  else
+    echo "Unmapped graphql query: $args" >&2
+    exit 1
+  fi
+  exit 0
+fi
 if [ "$1" = "api" ]; then
   if [[ "$args" == *"/reviews"* ]]; then
     printf '%s' "${READBACK_REVIEWS:-[]}"
@@ -67,6 +83,11 @@ GHEOF
 
 teardown() { rm -rf "$TEST_DIR"; }
 
+# approve_verdict
+#   Write an approval verdict JSON file to TEST_DIR/verdict.json with a proper
+#   approval marker containing the current PR_HEAD_SHA. The marker must be
+#   complete (sha= and decision=approved together) to pass #1754 AC4 checks.
+#   Return the file path.
 approve_verdict() {
   # The body must carry a complete approval marker for PR_HEAD_SHA ($SHA) or the
   # #1754 AC4 fail-closed guard rejects it before the #1874 read-back logic under
