@@ -871,6 +871,98 @@ only an **organisation** variable pauses every repository, and a repository vari
 same name overrides the organisation's for that repository. GitHub compares the value without
 regard to case, so `TRUE` pauses too.
 
+#### Setting a pause by hand: three calls, a wait, then a check (#2251)
+
+A pause set by hand is one that carries no `AGENTS_PAUSE_SOURCE`. The budget breaker lifts only
+a pause that carries its own source, so a hand pause is always **delete the source, set the
+pause, delete the source again, wait for any breaker run already under way, then check**, in
+that order, whether or not the breaker is armed:
+
+```bash
+gh api -X DELETE orgs/combsmith/actions/variables/AGENTS_PAUSE_SOURCE
+```
+
+```bash
+gh api -X PATCH orgs/combsmith/actions/variables/AGENTS_PAUSED -f value=true -f visibility=all
+```
+
+```bash
+gh api -X DELETE orgs/combsmith/actions/variables/AGENTS_PAUSE_SOURCE
+```
+
+Then wait until every Budget Breaker run that was already under way has finished. This
+command waits for each run in progress now and says so only if the listing and every wait
+worked (a run that starts later reads your pause and leaves it alone). Run it with your own
+`gh` login: `gh run watch` does not accept a fine-grained token.
+
+```bash
+ok=1
+ids=$(gh run list -R combsmith/.github-private --workflow budget-breaker.yml \
+  --status in_progress --json databaseId --jq '.[].databaseId') || ok=0
+while read -r id; do
+  [ -n "$id" ] || continue
+  gh run watch "$id" -R combsmith/.github-private >/dev/null 2>&1 </dev/null || ok=0
+done <<< "$ids"
+if [ "$ok" = 1 ]; then echo "no earlier breaker run is still in progress"; else echo "WAIT FAILED: do not check yet; run this again"; fi
+```
+
+Then read the state, one variable at a time (no list, so no page can be missed):
+
+```bash
+if p=$(gh api orgs/combsmith/actions/variables/AGENTS_PAUSED --jq '"\(.value) (\(.visibility))"' 2>/dev/null); then echo "AGENTS_PAUSED=$p"; else echo "AGENTS_PAUSED could not be read"; fi
+if v=$(gh api orgs/combsmith/actions/variables/AGENTS_PAUSE_SOURCE --jq .value 2>&1); then echo "AGENTS_PAUSE_SOURCE=$v"
+elif grep -q 'HTTP 404' <<< "$v"; then echo "no AGENTS_PAUSE_SOURCE"; else echo "AGENTS_PAUSE_SOURCE could not be read"; fi
+```
+
+The answer must be exactly `AGENTS_PAUSED=true (all)` and `no AGENTS_PAUSE_SOURCE`; any other
+answer, including "could not be read" for either variable, is a failed check (only a 404
+counts as "no source"; a rate limit or an expired login does not). **If it
+is anything else, run the three calls, the wait and the check again, until it is.** The wait
+and the check are part of the procedure, not extras.
+
+- A `DELETE` answers 404 when there is no source to delete. That is the normal case and it is
+  fine; run the next call anyway.
+- The `PATCH` answers 404 when the variable does not exist yet. Create it instead:
+  `gh api -X POST orgs/combsmith/actions/variables -f name=AGENTS_PAUSED -f value=true -f visibility=all`.
+- **Visibility must be `all`, and the `PATCH` sets it every time.** A variable with visibility
+  `private` reaches only private repositories, and every repository in this organisation is
+  public (14 of 14 on 2026-10-14), so it would pause nothing while reading `true`. A
+  value-only `PATCH` would keep whatever visibility the variable already had. **Do not use
+  `gh variable set --org` without `--visibility all`:** its default is `private`, and it sends
+  that on an update as well as on a create.
+- Why three calls. Ownership of a pause is the source and nothing else, and the breaker can
+  run between any two of these calls.
+  - The first delete removes a source left over from an earlier failed trip. Without it, a
+    breaker run that lands just after the pause is set would read the pause as its own and,
+    if the leftover end time has passed, lift it.
+  - The last delete covers a trip in progress. A trip writes its source before its final
+    check; if the pause is set in the one call between that check and the trip's own write
+    of the pause, the trip's source is still there, and this delete removes it. If the pause
+    is set any earlier, the trip's check sees it and the trip takes back what it wrote.
+  - After the last delete the pause has no source, and the breaker never trips over or
+    resumes a pause with no source.
+- Why the check. The three calls do not cover a **resume** in progress. A breaker run that
+  has made its last read of the state ("my pause, and its time is up") goes on to set
+  `AGENTS_PAUSED=false`; if the first two calls land between that read and that write, the
+  fleet ends up running and every call still looks successful. Nothing done from outside can stop a write the breaker has
+  already decided on. What can be done is to look afterwards, once that run has finished:
+  checking while it is still running can show a pause it is about to lift, which is why the
+  wait comes first. After a resume its source is gone and it will not touch a hand pause.
+  A different run can trip again in the meantime; the next round of three calls covers that,
+  and the breaker's minimum hold (30 minutes by default, `BUDGET_BREAKER_MIN_HOLD_MIN`) stops
+  it from lifting that new pause straight away, so one repeat is normally enough. Repeat
+  until the check passes anyway.
+- How this was checked: an exhaustive interleaving of these steps against the breaker's own
+  read and write sequence (taken from `scripts/budget_breaker.sh` and
+  `scripts/lib/budget-breaker-writer.sh`), with up to four breaker runs and every starting
+  state, found no run that ends anything but paused with no source when the wait and one
+  repeat are kept. Without the repeat the resume race leaves the fleet running; without the
+  wait the check can pass just before a resume lands.
+- This is why no drill of those races is required before arming. What it rests on is that a
+  read of the variable list sees a write or a delete made just before it, which is one of the
+  live checks under "Arming preconditions" and blocks arming until it has passed.
+- To lift a hand pause, set `AGENTS_PAUSED` to `false` the same way (or delete the variable).
+
 #### Which workflows honour the pause (#2249)
 
 Until #2249 only dev-lead read the variable, so a pause stopped one agent while pr-review, the
@@ -1180,9 +1272,12 @@ as soon as the workflow is on `main`.
   first), sets nothing else, and raises a `::warning::` in a green run. This roll-back is the
   only write a run makes outside its plan, and it removes only what the same run wrote and
   that still holds the value it wrote. Two limits to know:
-  - The window is narrowed, not closed: a pause set by hand in the one API call between that
-    second read and the write of `AGENTS_PAUSED` is still claimed. To be sure a pause set by
-    hand stays, check afterwards that `AGENTS_PAUSE_SOURCE` is absent, and delete it if not.
+  - The window is narrowed, not closed, by the breaker alone: a pause set by hand in the one
+    API call between that second read and the write of `AGENTS_PAUSED` would still be
+    claimed. The hand-pause procedure closes it from the other side: delete
+    `AGENTS_PAUSE_SOURCE` before and after setting the pause, wait for any breaker run
+    already under way, then check the state and repeat until it is as expected ("Setting a
+    pause by hand: three calls, a wait, then a check").
   - If the roll-back itself fails, the run is red with one `::error::` that says what is
     left. A failed delete of the source leaves `AGENTS_PAUSE_SOURCE=rate-limit-observed`
     **and** `AGENTS_PAUSE_UNTIL` in place on purpose (a pause carrying the breaker's source
@@ -1217,7 +1312,7 @@ as soon as the workflow is on `main`.
   1. "Budget breaker: close the gaps found in review before it is armed" (#2251) is closed.
   2. "AGENTS_PAUSED stops only dev-lead" (#2249) has landed: until then a pause set by the
      breaker stops dev-lead's dispatch, relay and resume jobs and nothing else.
-  3. The five live checks below are recorded on "Auto-pause companion" (#1565), each with
+  3. The six live checks below are recorded on "Auto-pause companion" (#1565), each with
      the date and what was observed. They are mocked in the tests and must be confirmed
      against the real API by the maintainer, with a **throwaway organisation variable**
      (for example `BUDGET_BREAKER_PROBE`), **never** with `AGENTS_PAUSED`,
@@ -1227,6 +1322,14 @@ as soon as the workflow is on `main`.
      - the variable list paginates as the code expects: `gh api --paginate` on
        `orgs/combsmith/actions/variables?per_page=30` with a `--jq` filter returns every
        variable when there are more than 30 (the filter runs once per page);
+     - a read of the variable list sees a write, and a delete, made just before it. The pause
+       guard and the hand-pause procedure both rest on this, and it replaces a drill of the
+       hand-pause races (there is no test organisation to run one in). Twenty times, with the
+       throwaway variable: create it, read the list as the breaker does (`gh api --paginate`
+       on `orgs/combsmith/actions/variables?per_page=30`) and find it; `PATCH` a new value, read and find that value; delete it, read and find it
+       gone. Once the dedicated write credential exists, make the reads with it, since it is
+       the breaker's reader. **Arming is blocked until this has passed. One stale read fails
+       it, and arming then stays blocked until a drill has been run after all;**
      - the dedicated write credential can read, create, update and delete an organisation
        variable, and nothing else;
      - with the read credential the workflow uses, dev-lead's quota markers read as trusted:
@@ -1256,12 +1359,14 @@ as soon as the workflow is on `main`.
   described above on every run.) This stops further writes; it does not lift a pause that
   is already set (see the next point).
 - **Overriding a breaker pause by hand.** To **keep** the fleet paused past the breaker's
-  time, delete `AGENTS_PAUSE_SOURCE` (leave `AGENTS_PAUSED=true`): the pause is then a human
-  one and automation never lifts it. To **end** a breaker pause early, set
+  time, follow "Setting a pause by hand: three calls, a wait, then a check": the pause then
+  carries no source, and automation never lifts it. Deleting `AGENTS_PAUSE_SOURCE` on its own
+  is not enough, because a resume the breaker has already decided on can still set
+  `AGENTS_PAUSED=false` afterwards. To **end** a breaker pause early, set
   `AGENTS_PAUSED=false` **and delete `AGENTS_PAUSE_SOURCE`**; if the provider is still
   refusing work the next refusals trip it again, so disarm first if you want it to stay up.
-  To hold the fleet paused regardless of the breaker, set `AGENTS_PAUSED=true` **without**
-  `AGENTS_PAUSE_SOURCE` (the manual path). Ownership is the source and nothing else: a
+  To hold the fleet paused regardless of the breaker, use the same procedure (the manual
+  path: `AGENTS_PAUSED=true` **without** `AGENTS_PAUSE_SOURCE`). Ownership is the source and nothing else: a
   `AGENTS_PAUSE_SOURCE=rate-limit-observed` left behind on an unpaused fleet makes the next
   pause set by hand look like the breaker's, so the next armed run removes it (see "Leftover
   ownership markers are removed"); a run that is not armed raises a `::warning::` asking for
