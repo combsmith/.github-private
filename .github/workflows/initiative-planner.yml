@@ -28,7 +28,12 @@ on:
         required: true
         type: string
       target_repo:
-        description: 'Target repo (owner/repo) to plan FOR — read the Discussion, create the epic + DAG, post the reply there. Empty => this repo (the dogfood/self path).'
+        description: 'Target repo (owner/repo) to plan FOR — create the epic + DAG there and read its _bmad-output/planning-artifacts/. Empty => this repo (the dogfood/self path).'
+        required: false
+        default: ''
+        type: string
+      discussion_repo:
+        description: 'Repo (owner/repo) holding the Discussion when it differs from target_repo (incubator idea -> product repo epic). The plan reply goes there. Empty => target_repo.'
         required: false
         default: ''
         type: string
@@ -66,8 +71,13 @@ permissions: {}
 concurrency:
   # One plan per (target repo, discussion) at a time; never cancel an in-flight
   # planning run. Keying on the target repo as well as the discussion number stops
-  # two fleet repos that happen to share a discussion number from colliding.
-  group: initiative-planner-${{ github.event.inputs.target_repo || github.repository }}-${{ github.event.inputs.discussion || github.event.discussion.number }}
+  # two fleet repos that happen to share a discussion number from colliding; the
+  # discussion repo is keyed too, since a graduated idea's number is the
+  # incubator's, not the target's.
+  group: >-
+    initiative-planner-${{ github.event.inputs.target_repo || github.repository
+    }}-${{ github.event.inputs.discussion_repo || github.event.inputs.target_repo || github.repository
+    }}-${{ github.event.inputs.discussion || github.event.discussion.number }}
   cancel-in-progress: false
 
 jobs:
@@ -139,6 +149,9 @@ jobs:
       # here via the `redispatch` job), so inputs are always present.
       # REPO is the TARGET repo to plan for; empty target_repo => this repo (self).
       REPO: ${{ github.event.inputs.target_repo || github.repository }}
+      # DISCUSSION_REPO holds the approved idea's Discussion; empty => REPO. It
+      # differs from REPO when an incubator idea graduates into a product repo.
+      DISCUSSION_REPO: ${{ github.event.inputs.discussion_repo || github.event.inputs.target_repo || github.repository }}
       # Token for every WRITE to the TARGET repo (gather-context, the Bob
       # materialization, apply-reviewed-plan, and the plan reply). GITHUB_TOKEN is
       # scoped only to .github-private, so it is valid for the self path only;
@@ -146,7 +159,12 @@ jobs:
       # S1 (#818) will replace this with a minted GitHub App token for tighter scoping.
       # The workflow_dispatch re-invoke keeps GH_PAT_WORKFLOWS (redispatch job) — that
       # role is loop-prevention, not content writes, and is unaffected.
-      TARGET_GH_TOKEN: ${{ (github.event.inputs.target_repo == '' || github.event.inputs.target_repo == github.repository) && secrets.GITHUB_TOKEN || secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+      # GITHUB_TOKEN only when BOTH the target and the discussion repo are self;
+      # a cross-repo Discussion read/reply needs the PAT too.
+      TARGET_GH_TOKEN: >-
+        ${{ (github.event.inputs.target_repo == '' || github.event.inputs.target_repo == github.repository)
+        && (github.event.inputs.discussion_repo == '' || github.event.inputs.discussion_repo == github.repository)
+        && secrets.GITHUB_TOKEN || secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
       DISCUSSION_NUMBER: ${{ github.event.inputs.discussion }}
       DRY_RUN: ${{ inputs.dry_run == true && '1' || '0' }}
       FORCE_REPLAN: ${{ inputs.force_replan == true && '1' || '0' }}
@@ -203,7 +221,8 @@ jobs:
 
       - name: Gather planning context
         env:
-          # Reads the TARGET repo's Discussion + open epics.
+          # Reads the Discussion from DISCUSSION_REPO, and the open epics +
+          # _bmad-output/planning-artifacts/ from the TARGET repo.
           GH_TOKEN: ${{ env.TARGET_GH_TOKEN }}
         run: bash scripts/initiative-planner/gather-context.sh
 
@@ -281,8 +300,14 @@ jobs:
             ## Your input
 
             The approved idea + repo context is at `$CONTEXT_PATH` (JSON): the
-            Discussion title/body/comments, the open `initiative` epics, and the
-            issues the idea references (likely prerequisites). Read it, then ground
+            Discussion title/body/comments (from `discussion_repo`, which may be
+            an incubator repo rather than `repo`), the open `initiative` epics,
+            the issues the idea references (likely prerequisites), and
+            `planning_artifacts` — the target repo's
+            `_bmad-output/planning-artifacts/` (PRD in full, other docs
+            truncated), or `null` when it has none. When a PRD is present it is
+            your PRIMARY planning input; see "Planning inputs" in
+            `prompts/bmad/scrum-master.md`. Read it, then ground
             stories in the checked-out repo with Read/Grep/Glob (`AGENTS.md`,
             `CLAUDE.md`, `scripts/`, `.github/workflows/`, `docs/initiatives/`):
 
@@ -373,6 +398,7 @@ jobs:
 
             ```bash
             REPO="$REPO" \
+            DISCUSSION_REPO="$DISCUSSION_REPO" \
             PLAN_PATH="$PLAN_PATH" \
             DISCUSSION_NUMBER="$DISCUSSION_NUMBER" \
             DISCUSSION_NODE_ID="$DISCUSSION_NODE_ID" \

@@ -222,7 +222,65 @@ inputs.
   flow is unchanged. The handoff is artifact-download-by-run-ID; the artifact
   is re-fetched from GitHub Actions and not taken from a local file. This plan-review gate is **distinct** from the `initiative:auto` gate: the
   former binds the plan *contents*, the latter activates auto-*implementation*.
+- **Planning inputs.** `gather-context.sh` also reads the target repo's
+  `_bmad-output/planning-artifacts/` (the planning source of truth named in org
+  `AGENTS.md`) into `planning_artifacts`: `prd.md` in full, every other
+  top-level `.md` truncated (12,000 chars by default). When a PRD is present Bob
+  plans from its functional requirements and success metrics and treats the
+  Discussion as context; with no folder (404) or no markdown in it,
+  `planning_artifacts` is `null` and Bob plans from the Discussion as before.
+- **`discussion_repo`** (optional) names the repo the Discussion lives in when it
+  differs from `target_repo` — see [Graduation](#graduation-incubator-idea--product-repo).
 - Tooling: `scripts/initiative-planner/` (persona: `prompts/bmad/scrum-master.md`).
+
+## Graduation: incubator idea → product repo
+
+An idea is approved in `combsmith/incubator`, but its epic belongs in the product
+repo it graduates into. The planner reads the Discussion from one repo and plans
+into another:
+
+```
+combsmith/incubator: ★ Ideas Discussion #N approved (decision brief merged)
+   │
+   ▼
+product repo (e.g. combsmith/worldchest): seed _bmad-output/planning-artifacts/
+   │   prd.md (+ brief.md, architecture.md, ...) committed on the default branch
+   ▼
+combsmith/.github-private  initiative-planner.yml
+   -f discussion=N -f discussion_repo=combsmith/incubator -f target_repo=<product repo>
+   │   reads Discussion #N from the incubator, the PRD + open epics from the
+   │   product repo; Bob plans from the PRD's FRs and success metrics
+   ▼
+inert epic + story DAG in the product repo; the plan reply is posted on the
+incubator Discussion, with links qualified as <product repo>#n
+```
+
+1. **Approve in the incubator.** The decision brief for Discussion #N is merged and
+   the owner decides to build. The incubator has no planner stub, so this does not
+   dispatch anything by itself.
+2. **Seed the artifacts in the product repo.** Copy the PRD and its companions
+   into `_bmad-output/planning-artifacts/` on the product repo's default branch
+   (the planner reads it through the contents API, so it must be merged, not on
+   a branch).
+3. **Dry-run the planner** with both repos set:
+
+   ```bash
+   gh workflow run initiative-planner.yml --repo combsmith/.github-private \
+     -f discussion=N -f discussion_repo=combsmith/incubator \
+     -f target_repo=combsmith/<product> -f dry_run=true
+   ```
+
+4. **Review and apply.** Download the `initiative-plan-dry-run` artifact, review
+   `plan.json`, then re-dispatch the same command with
+   `-f plan_artifact_run_id=<dry-run run id> -f dry_run=false`.
+5. **Arm it.** Add `initiative:auto` to the new epic in the product repo.
+
+The epic's back-reference is `Planned from idea discussion combsmith/incubator#N`,
+which is also the idempotency key, so re-dispatching (or `force_replan` /
+`reconcile`) binds to the same epic. Same-repo runs keep the bare `#N` key, so
+epics planned before this change still bind. A cross-repo run uses the PAT for
+both repos (`GITHUB_TOKEN` only covers `.github-private`). No mirror Discussion in
+the product repo is needed.
 
 ## Labels the pipeline relies on
 
