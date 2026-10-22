@@ -118,7 +118,10 @@ jobs:
       github.event.discussion.user.type != 'Bot'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions: {}
+    permissions:
+      # Post the dispatched-run link back onto the Idea Discussion so a failed
+      # ideate run is a visible red link, not a silent green bridge (#1733 AC#4).
+      discussions: write
     steps:
       - name: Guard — PAT present
         # PAT required: a workflow_dispatch fired with GITHUB_TOKEN is accepted but
@@ -132,17 +135,85 @@ jobs:
             exit 1
           fi
 
-      - name: Re-dispatch under workflow_dispatch
+      - name: Re-dispatch under workflow_dispatch and surface the run on the Idea
         env:
           GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
           REPO: ${{ github.repository }}
           # Discussion numbers are always positive integers, so this is safe to
           # forward directly to the dispatch input.
           DISCUSSION_NUMBER: ${{ github.event.discussion.number }}
+          # GraphQL node id of the Idea — the target for addDiscussionComment.
+          DISCUSSION_NODE_ID: ${{ github.event.discussion.node_id }}
+          SERVER_URL: ${{ github.server_url }}
         run: |
+          set -euo pipefail
           echo "Discussion #${DISCUSSION_NUMBER} created → re-dispatching feature-ideation.yml for single-idea enhancement."
+          # Capture timestamp BEFORE dispatch to correlate the resulting run by creation time.
+          # This is more reliable than picking "newest run not in snapshot" since a manual
+          # dispatch fired during the polling window could otherwise be selected. Note:
+          # createdAt has ~1s resolution, and concurrency serialises EXECUTION not dispatch
+          # creation, so this is best-effort: a manual dispatch fired in the same second
+          # could still be picked, but it's less likely than the original approach.
+          # Subtract a few seconds of slack and compare with >= so runner-vs-server
+          # clock skew and the whole-second truncation do not exclude our own run.
+          dispatch_time="$(date -u -d '-5 seconds' +'%Y-%m-%dT%H:%M:%S')Z"
           gh workflow run feature-ideation.yml --repo "${REPO}" \
             -f target_discussion="${DISCUSSION_NUMBER}"
+
+          # Resolve the dispatched run so the Idea carries a visible link to it.
+          # We look for the newest run created AFTER dispatch_time. This correlates
+          # the run with the specific dispatch (most recent after dispatch) rather than
+          # selecting any run whose ID was not in a snapshot. We fall back to the
+          # workflow runs page if no such run appears within the polling window.
+          run_url=""
+          for _ in 1 2 3 4 5 6; do
+            run_url="$(gh run list --repo "${REPO}" \
+              --workflow feature-ideation.yml --event workflow_dispatch \
+              --json databaseId,url,createdAt \
+              --jq "[.[] | select(.createdAt >= \"${dispatch_time}\")] | sort_by(.createdAt) | last | .url // empty" \
+              2>/dev/null || true)"
+            [ -n "${run_url}" ] && break
+            sleep 5
+          done
+          # Fall back to the workflow's runs page if the specific run isn't listed yet.
+          [ -n "${run_url}" ] || run_url="${SERVER_URL}/${REPO}/actions/workflows/feature-ideation.yml"
+          echo "Dispatched ideation run: ${run_url}"
+
+          # Post the link back onto the Idea so a FAILED ideate run is a visible red
+          # link rather than a silent green bridge (#1733 AC#4). Best-effort: a
+          # posting hiccup must not fail the bridge — the dispatch already succeeded
+          # and the run is discoverable from the logged link above.
+          body="$(printf '%s\n\n%s' \
+            "🔎 **Feature ideation dispatched.** The BMAD Analyst runs in a separate workflow run: ${run_url}" \
+            "This Idea is only enhanced if that run succeeds — a failed run means it was **not** handed off. (claude-code-action cannot run on a \`discussion\` event, so it is bridged to \`workflow_dispatch\`.)")"
+          # Verify PAT is authenticated as expected identity before posting.
+          # The business-analyst manifest declares don-petry, so a misconfigured
+          # fallback could publish announcements under an unintended account.
+          auth_user="$(gh api user --jq .login 2>/dev/null || true)"
+          if [ "${auth_user}" != "don-petry" ]; then
+            echo "::warning::PAT authenticated as '${auth_user}' but expected 'don-petry'; skipping on-Idea link post (non-fatal); run: ${run_url}"
+          else
+            # Retry a few times so a TRANSIENT GraphQL hiccup does not drop the only
+            # on-Idea signal that this run happened — otherwise a later-failing ideate
+            # run stays invisible on the Idea (error-handling gap flagged in review).
+            # Still best-effort/non-fatal BY DESIGN: we must not fail the bridge (the
+            # dispatch already succeeded) and cannot wait on the run itself
+            # (concurrency: feature-ideation would deadlock). If every attempt fails we
+            # emit a ::warning:: annotation (a visible red signal on the bridge run) and
+            # log the run URL, so the failure is surfaced rather than silently green.
+            posted=""
+            for _ in 1 2 3; do
+              if gh api graphql \
+                -f discussionId="${DISCUSSION_NODE_ID}" \
+                -f body="${body}" \
+                -f query="mutation(\$discussionId: ID!, \$body: String!) { addDiscussionComment(input: {discussionId: \$discussionId, body: \$body}) { comment { id } } }"; then
+                posted=1
+                break
+              fi
+              sleep 5
+            done
+            [ -n "${posted}" ] || echo "::warning::Could not post the dispatched-run link to discussion #${DISCUSSION_NUMBER} after retries (non-fatal); run: ${run_url}"
+          fi
 
   # ── #571 input resolution — keep `inputs` out of the reusable `with:` ────────
   # A reusable-workflow call graph (its `uses:` + `with:`) is validated at

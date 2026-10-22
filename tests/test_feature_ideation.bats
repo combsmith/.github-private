@@ -165,3 +165,61 @@ setup() {
   # under workflow_dispatch instead.
   [ "$(yq '.jobs.redispatch.uses' "$FEATURE_IDEATION_YML")" = "null" ]
 }
+
+# ── #1733: tooling_ref lockstep — the requirements file must resolve ──────────
+# The reusable checks out combsmith/.github at `inputs.tooling_ref` (default
+# `v1`) and installs `.feature-ideation-tooling/scripts/feature-ideation-requirements.txt`.
+# That path does NOT exist at the frozen `v1` tag (it was added after v1), so the
+# stale default fails every run at "Install Python jsonschema". This repo pins the
+# reusable FILE to feature-ideation/v1-next, so it must also source the TOOLING from
+# that same channel — keeping the workflow file and its scripts in lockstep.
+# tooling_ref IS declared as a workflow_call input at the pinned channel, so this is
+# a safe forward (not the #1052 channel-skew case).
+
+@test "feature-ideation.yml forwards tooling_ref pinned to the reusable's channel" {
+  # Sourced directly (a fixed ref, not a dispatch input), so it may be a plain
+  # scalar on the ideate reusable call.
+  [ "$(yq '.jobs.ideate.with.tooling_ref' "$FEATURE_IDEATION_YML")" = "$CHANNEL" ]
+}
+
+@test "feature-ideation.yml does not leave tooling_ref at the stale v1 default" {
+  # The whole bug: the reusable's default tooling_ref=v1 predates the requirements
+  # file. A regression back to v1 (or omitting the forward) must fail here.
+  run yq '.jobs.ideate.with.tooling_ref' "$FEATURE_IDEATION_YML"
+  # Assert the yq invocation itself succeeded before trusting its output — a
+  # non-zero exit (bad path / parse error) would otherwise leave $output empty
+  # and satisfy both inequality checks, greening a broken test (gemini review).
+  [ "$status" -eq 0 ]
+  [ "$output" != "null" ]
+  [ "$output" != "v1" ]
+}
+
+# ── #1733 AC#4: the discussion bridge must not silently green over a dead run ──
+# The redispatch bridge fires a SEPARATE workflow_dispatch run and returns success
+# immediately. If that dispatched ideate run later fails, the discussion looked
+# "handed off" while nothing ran (the 3-week silent failure). A bridge-watch would
+# deadlock (concurrency: feature-ideation, cancel-in-progress: false → the dispatched
+# run queues behind the bridge). Instead the bridge surfaces the dispatched run on
+# the Idea Discussion, so a failed ideate is a visible red link, not a silent green.
+
+@test "feature-ideation.yml redispatch job can write to the Idea Discussion" {
+  # Needed to post the dispatched-run link back onto the Discussion.
+  [ "$(yq '.jobs.redispatch.permissions.discussions' "$FEATURE_IDEATION_YML")" = "write" ]
+}
+
+@test "feature-ideation.yml redispatch surfaces the dispatched run on the Discussion" {
+  # Posts a comment on the Idea Discussion (GraphQL addDiscussionComment) linking
+  # the dispatched run, keyed to the discussion node id from the event.
+  grep -qF "addDiscussionComment" "$FEATURE_IDEATION_YML"
+  grep -qE "github\.event\.discussion\.node_id" "$FEATURE_IDEATION_YML"
+  # …and the comment text interpolates the dispatched run's URL.
+  grep -qF 'The BMAD Analyst runs in a separate workflow run: ${run_url}' "$FEATURE_IDEATION_YML"
+}
+
+@test "feature-ideation.yml redispatch correlates the run by dispatch time" {
+  # The dispatched run is identified by recording the dispatch time (with slack for
+  # clock skew) and selecting only runs created at/after it, so a pre-existing run
+  # is never linked by mistake.
+  grep -qF 'dispatch_time=' "$FEATURE_IDEATION_YML"
+  grep -qF 'select(.createdAt >= ' "$FEATURE_IDEATION_YML"
+}
