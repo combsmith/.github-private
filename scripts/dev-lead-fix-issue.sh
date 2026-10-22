@@ -227,7 +227,9 @@ checkpoint_push_partial_work() {
       -m "$(dev_lead_stamp_trailer)" >/dev/null 2>&1 || return 1
   fi
 
-  # Push the branch so the work lands on the remote before the run exits.
+  # Push the branch so the work lands on the remote before the run exits. Stamp
+  # the engine's own commits first so a later run knows them as dev-lead's (#2313).
+  dev_lead_stamp_unpublished --remotes=origin >/dev/null || true
   git push --set-upstream origin "$br" >/dev/null 2>&1 || return 1
 
   printf '%s\n' "$br"
@@ -684,6 +686,9 @@ ${lint_output}
     abort_empty_net_diff "$base_ref"
   fi
 
+  # Stamp the engine's own commits so a later run's push guard knows them as
+  # dev-lead's, not as steering it must rebase onto (#2313).
+  dev_lead_stamp_unpublished --remotes=origin >/dev/null || true
   git push --set-upstream origin "$branch"
 
   # Head SHA of the durable, pushed work — the verifiable artifact the completion

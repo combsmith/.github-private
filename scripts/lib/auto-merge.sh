@@ -147,6 +147,8 @@ push_with_merge_guard() {
     return "$reconcile_rc"
   fi
 
+  _push_guard_stamp_unpublished "${1:-}"
+
   local errf publishing
   errf="$(mktemp)"
   # Record what this push publishes so a later reconcile in the run knows these

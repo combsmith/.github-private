@@ -75,18 +75,8 @@ _push_guard_ownership_verdict() {
   if [ -n "$sha" ] && grep -qxF -- "$sha" <<<"$pushed"; then
     echo own-pushed; return 0
   fi
-  if [ -n "$tree" ]; then
-    local expected claimed
-    # Word-split on purpose: <parents> is the space-separated %P list.
-    # shellcheck disable=SC2086
-    expected=$(dev_lead_stamp_of "$tree" $parent_list 2>/dev/null || true)
-    if [ -n "$expected" ]; then
-      while IFS= read -r claimed; do
-        if [ "$claimed" = "$expected" ]; then
-          echo own-stamped; return 0
-        fi
-      done < <(sed -nE "s/^${DEV_LEAD_STAMP_KEY}:[[:space:]]*([0-9a-f]+)[[:space:]]*\$/\1/p" <<<"$message")
-    fi
+  if dev_lead_stamp_matches "$tree" "$parent_list" "$message"; then
+    echo own-stamped; return 0
   fi
   echo foreign
   return 1
@@ -118,6 +108,31 @@ _push_guard_publishing() {
   else
     git rev-list HEAD --not --remotes="${1:-origin}" 2>/dev/null || true
   fi
+}
+
+# _push_guard_stamp_unpublished [remote] — stamp every commit the push is about
+# to publish (dev_lead_stamp_unpublished), so a later run recognises the
+# engine's own `git commit`s as dev-lead's, not just the harness's (#2313). Runs
+# after incorporate_remote_head: a rebase changes parents, which would void a
+# stamp made earlier. The old→new rows join _PUSH_GUARD_REWRITES, so the claim
+# sweep re-points a "Fixed in <old>" reply at the commit that landed (#2032).
+_push_guard_stamp_unpublished() {
+  local remote="${1:-origin}" rows rc=0
+  local -a exclude=(--remotes="$remote")
+  [ -n "$_PUSH_GUARD_REMOTE_SHA" ] && exclude+=("$_PUSH_GUARD_REMOTE_SHA")
+  rows=$(dev_lead_stamp_unpublished "${exclude[@]}") || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "::warning::could not stamp the commits about to be pushed; a later run will treat them as foreign (rebase or stop, never discard) (#2313)" >&2
+    return 0
+  fi
+  [ -z "$rows" ] && return 0
+  rows="${rows%$'\n'}"
+  if [ -n "$_PUSH_GUARD_REWRITES" ]; then
+    _PUSH_GUARD_REWRITES+=$'\n'"${rows}"
+  else
+    _PUSH_GUARD_REWRITES="$rows"
+  fi
+  return 0
 }
 
 # _push_guard_record_pushed <shas> — add a successful push's SHAs to the ledger.
@@ -309,6 +324,8 @@ push_no_clobber() {
   # #1607: reconcile with the true remote head first — incorporate a concurrent
   # steering commit, or stop/escalate if it cannot be incorporated cleanly.
   incorporate_remote_head "$@" || return $?
+
+  _push_guard_stamp_unpublished "${1:-}"
 
   local errf publishing
   errf="$(mktemp)"

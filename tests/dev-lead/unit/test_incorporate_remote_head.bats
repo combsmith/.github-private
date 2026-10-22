@@ -127,11 +127,12 @@ _remote_log()  { git --git-dir="$REMOTE" log --format='%s' main; }
   echo v1 > work; git add work; git commit -q -m "dev-lead work"
   push_no_clobber origin main
   echo v2 > work; git add work; git commit -q --amend -m "dev-lead work v2"
-  local amended; amended=$(git rev-parse HEAD)
 
   run push_no_clobber origin main
   [ "$status" -eq 0 ]
-  [ "$(_remote_head)" = "$amended" ]
+  # The amend landed (as its stamped copy, #2313) and v1 is gone.
+  [ "$(git --git-dir="$REMOTE" show main:work)" = v2 ]
+  [ "$(git --git-dir="$REMOTE" log -1 --format=%s main)" = "dev-lead work v2" ]
 }
 
 @test "AC3: a force-push logs the discarded SHA(s)" {
@@ -186,6 +187,7 @@ _earlier_run_push() {
 @test "#2313: an owner commit with dev-lead's exact email is kept, not force-pushed over" {
   cd "$WORK"
   source "$GUARD_LIB"
+  _PUSH_GUARD_PUSHED=""
   # The #1314 shape: dev-lead builds a commit on the head it checked out...
   echo devfix > devfix; git add devfix; git commit -q -m "dev-lead fix"
   # ...while the owner pushes a fix to the same branch with the same identity.
@@ -202,6 +204,13 @@ _earlier_run_push() {
   echo "$head_tree" | grep -qx devfix
   # And the run says so.
   grep -q 'owner: owner.txt' "$GITHUB_STEP_SUMMARY"
+  # The owner's commit went into neither the ledger nor a stamp: a second push in
+  # this run still sees it as foreign.
+  run grep -qxF "$owner_sha" <<<"$_PUSH_GUARD_PUSHED"
+  [ "$status" -ne 0 ]
+  run _commit_is_dev_lead "$owner_sha"
+  [ "$status" -ne 0 ]
+  [ "$(git --git-dir="$REMOTE" log -1 --format=%B "$owner_sha" | grep -c '^Dev-Lead-Stamp: ')" -eq 0 ]
 }
 
 @test "#2313: an owner commit with dev-lead's email that conflicts stops the push" {
@@ -228,22 +237,24 @@ _earlier_run_push() {
 
   # This run amends the earlier run's commit: a legitimate self-rewrite.
   echo v2 > work; git add work; git commit -q --amend -m "dev-lead: work v2"
-  local amended; amended=$(git rev-parse HEAD)
 
   run push_no_clobber origin main
   [ "$status" -eq 0 ]
-  [ "$(_remote_head)" = "$amended" ]
+  [ "$(git --git-dir="$REMOTE" show main:work)" = v2 ]
+  [ "$(git --git-dir="$REMOTE" log -1 --format=%s main)" = "dev-lead: work v2" ]
   echo "$output" | grep -q "${stamped:0:12}"
 }
 
-@test "#2313: a commit this run pushed is its own even with no stamp" {
+@test "#2313: a commit this run pushed is its own even when stamping failed" {
   cd "$WORK"
   source "$GUARD_LIB"
+  dev_lead_stamp_unpublished() { return 1; }
   echo v1 > work; git add work; git commit -q -m "engine commit, unstamped"
   local pushed; pushed=$(git rev-parse HEAD)
   run _commit_is_dev_lead "$pushed"
   [ "$status" -ne 0 ]
-  push_no_clobber origin main
+  push_no_clobber origin main 2>/dev/null
+  [ "$(_remote_head)" = "$pushed" ]
   run _commit_is_dev_lead "$pushed"
   [ "$status" -eq 0 ]
   grep -qxF "$pushed" <<<"$_PUSH_GUARD_PUSHED"
@@ -278,6 +289,81 @@ _earlier_run_push() {
   [ "$status" -eq 0 ]
   git --git-dir="$REMOTE" merge-base --is-ancestor "$spoofed" main
   [ "$(git --git-dir="$REMOTE" show main:work)" = "owner fix" ]
+}
+
+# A later dev-lead run: a fresh clone of the branch, with an empty in-run ledger.
+_later_run_clone() {
+  local dir="$BATS_TEST_TMPDIR/later.$RANDOM"
+  git clone -q "$REMOTE" "$dir"
+  ( cd "$dir"; _dev_identity )
+  printf '%s\n' "$dir"
+}
+
+@test "#2313: an engine-made (unstamped) commit is stamped on push and is dev-lead's own on a later run" {
+  cd "$WORK"
+  source "$GUARD_LIB"
+  # The engine commits with its own `git commit`: no trailer, no harness involved.
+  echo v1 > work; git add work; git commit -q -m "fix: engine's own commit"
+  local engine_sha engine_tree
+  engine_sha=$(git rev-parse HEAD); engine_tree=$(git rev-parse HEAD^{tree})
+  push_no_clobber origin main
+
+  # What landed is the stamped copy: same tree, author and subject, new SHA.
+  local landed; landed=$(_remote_head)
+  [ "$landed" != "$engine_sha" ]
+  [ "$(git --git-dir="$REMOTE" rev-parse main^{tree})" = "$engine_tree" ]
+  [ "$(git --git-dir="$REMOTE" log -1 --format=%s main)" = "fix: engine's own commit" ]
+  git --git-dir="$REMOTE" log -1 --format=%B main | grep -q '^Dev-Lead-Stamp: '
+  # The claim sweep can follow the engine's SHA to the one that landed (#2032).
+  grep -qx "${engine_sha}"$'\t'"${landed}" <<<"$_PUSH_GUARD_REWRITES"
+
+  # A later run starts with an empty ledger and amends that commit.
+  local later; later=$(_later_run_clone)
+  cd "$later"
+  _PUSH_GUARD_PUSHED="" _PUSH_GUARD_REWRITES=""
+  source "$GUARD_LIB"
+  [ -z "$_PUSH_GUARD_PUSHED" ]
+  run _commit_is_dev_lead "$landed"
+  [ "$status" -eq 0 ]
+  echo v2 > work; git add work; git commit -q --amend -m "fix: engine's own commit v2"
+
+  run push_no_clobber origin main
+  [ "$status" -eq 0 ]
+  # dev-lead's own rewrite went through: v2 is the head and v1 is gone.
+  [ "$(git --git-dir="$REMOTE" show main:work)" = v2 ]
+  run git --git-dir="$REMOTE" merge-base --is-ancestor "$landed" main
+  [ "$status" -ne 0 ]
+  grep -q 'STOPPED' "$GITHUB_STEP_SUMMARY" && return 1
+  return 0
+}
+
+@test "#2313: stamping before a push leaves commits already on the remote and valid stamps alone" {
+  cd "$WORK"
+  source "$GUARD_LIB"
+  # The owner's commit is on the remote and in HEAD: published, never restamped.
+  _owner_push owner.txt "owner work"
+  git pull -q origin main
+  local owner_sha; owner_sha=$(git rev-parse HEAD)
+  # A harness commit that is already stamped, then an engine commit on top.
+  echo h > harness; git add harness
+  git commit -q -m "fix(reviews): harness commit" -m "$(dev_lead_stamp_trailer)"
+  local harness_sha; harness_sha=$(git rev-parse HEAD)
+  echo e > engine; git add engine; git commit -q -m "engine commit" -m "Test-Change-Justification: review asked for it"
+
+  push_no_clobber origin main
+  # The owner's commit and the stamped harness commit keep their SHAs.
+  git --git-dir="$REMOTE" merge-base --is-ancestor "$harness_sha" main
+  [ "$(git --git-dir="$REMOTE" rev-parse main~1)" = "$harness_sha" ]
+  [ "$(git --git-dir="$REMOTE" rev-parse main~2)" = "$owner_sha" ]
+  [ "$(git --git-dir="$REMOTE" log -1 --format=%B main~2 | grep -c '^Dev-Lead-Stamp: ')" -eq 0 ]
+  # Only the engine commit was rewritten; its other trailer is still a trailer.
+  [ "$(grep -c . <<<"$_PUSH_GUARD_REWRITES")" -eq 1 ]
+  [ "$(git --git-dir="$REMOTE" log -1 --format='%(trailers:key=Test-Change-Justification,valueonly)' main)" = "review asked for it" ]
+  run _commit_is_dev_lead "$(_remote_head)"
+  [ "$status" -eq 0 ]
+  # And the working tree is untouched by the restamp.
+  [ -z "$(git status --porcelain)" ]
+  [ "$(git rev-parse HEAD)" = "$(_remote_head)" ]
 }
 
 @test "#2313: _push_guard_ownership_verdict — pushed SHA, matching stamp, and nothing else" {
@@ -329,7 +415,7 @@ _earlier_run_push() {
 @test "no divergence: plain fast-forward push still works" {
   cd "$WORK"
   source "$GUARD_LIB"
-  echo ff > ff; git add ff; git commit -q -m "ff commit"
+  echo ff > ff; git add ff; git commit -q -m "ff commit" -m "$(dev_lead_stamp_trailer)"
   local head; head=$(git rev-parse HEAD)
 
   run push_no_clobber origin main
@@ -341,6 +427,16 @@ _earlier_run_push() {
 # The model's "Fixed in <sha>" replies cite dev-lead's PRE-rebase commits. When
 # the guard rebases them onto a steering commit, those SHAs exist nowhere on the
 # remote, so the claim sweep needs the map to keep the claims that did land.
+
+# _follow_rewrites <sha> — follow _PUSH_GUARD_REWRITES rows to the last SHA, the
+# way cl_map_sha does.
+_follow_rewrites() {
+  local cur="$1" next
+  while next=$(awk -F'\t' -v s="$cur" '$1 == s { print $2; exit }' <<<"$_PUSH_GUARD_REWRITES") && [ -n "$next" ]; do
+    cur="$next"
+  done
+  printf '%s\n' "$cur"
+}
 
 @test "#2032: a clean rebase onto steering records each dev-lead commit's rebased SHA" {
   cd "$WORK"
@@ -356,15 +452,17 @@ _earlier_run_push() {
   new2=$(git rev-parse HEAD); new1=$(git rev-parse HEAD~1)
   [ "$new2" != "$old2" ]
   [ "$(_remote_head)" = "$new2" ]
-  grep -qx "${old1}"$'\t'"${new1}" <<<"$_PUSH_GUARD_REWRITES"
-  grep -qx "${old2}"$'\t'"${new2}" <<<"$_PUSH_GUARD_REWRITES"
-  [ "$(grep -c . <<<"$_PUSH_GUARD_REWRITES")" -eq 2 ]
+  # The rebase and then the stamp (#2313) each rewrote the commits; the claim
+  # sweep follows the chain (cl_map_sha), so each old SHA reaches what landed.
+  [ "$(_follow_rewrites "$old1")" = "$new1" ]
+  [ "$(_follow_rewrites "$old2")" = "$new2" ]
 }
 
 @test "#2032: no rebase (plain fast-forward) records no rewrites" {
   cd "$WORK"
   source "$GUARD_LIB"
-  echo ff > ff; git add ff; git commit -q -m "ff commit"
+  # A harness commit, stamped when made, so the push rewrites nothing.
+  echo ff > ff; git add ff; git commit -q -m "ff commit" -m "$(dev_lead_stamp_trailer)"
   push_no_clobber origin main
   [ -z "$_PUSH_GUARD_REWRITES" ]
 }
