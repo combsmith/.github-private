@@ -60,14 +60,11 @@ _remote_head() { git --git-dir="$REMOTE" rev-parse main; }
   cd "$WORK"
   source "$GUARD_LIB"
   echo B >> f; git add f; git commit -q -m B
-  local local_tree; local_tree=$(git rev-parse HEAD^{tree})
+  local local_head; local_head=$(git rev-parse HEAD)
 
   run push_no_clobber origin main
   [ "$status" -eq 0 ]
-  # The push stamps the commit first (#2313): the remote holds HEAD as it is
-  # after the push, with the tree that was committed.
-  [ "$(_remote_head)" = "$(git rev-parse HEAD)" ]
-  [ "$(git --git-dir="$REMOTE" rev-parse main^{tree})" = "$local_tree" ]
+  [ "$(_remote_head)" = "$local_head" ]
 }
 
 @test "push_no_clobber: rewritten branch pushes with lease when remote is unchanged" {
@@ -75,12 +72,11 @@ _remote_head() { git --git-dir="$REMOTE" rev-parse main; }
   source "$GUARD_LIB"
   # Rewrite history (rebase-like) so the branch diverges from origin/main.
   echo A2 > f; git add f; git commit -q --amend -m A2
-  local local_tree; local_tree=$(git rev-parse HEAD^{tree})
+  local local_head; local_head=$(git rev-parse HEAD)
 
   run push_no_clobber origin main
   [ "$status" -eq 0 ]
-  [ "$(_remote_head)" = "$(git rev-parse HEAD)" ]
-  [ "$(git --git-dir="$REMOTE" rev-parse main^{tree})" = "$local_tree" ]
+  [ "$(_remote_head)" = "$local_head" ]
 }
 
 @test "push_no_clobber: rewritten branch ABORTS when the remote moved under us — unseen commit survives" {

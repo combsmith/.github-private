@@ -43,10 +43,10 @@ per ADR-0004), not by prompt text alone:
    stops and escalates when that cannot be done cleanly. A foreign commit is
    never discarded (`push_no_clobber`, `scripts/lib/git-push-guard.sh`). A
    commit is foreign unless the persona's own records say it wrote it: a SHA
-   this run pushed, or a `Dev-Lead-Stamp` trailer that matches the commit's
-   tree and parents. The persona stamps every commit it is about to push,
-   including those the model made itself. The committer identity is not a
-   record, because the owner commits as the same account (#2313).
+   it pushed, in this run or an earlier one (the `refs/notes/dev-lead-pushed`
+   ledger on the remote), or a `Dev-Lead-Stamp` trailer that matches the
+   commit's tree and parents. The committer identity is not a record, because
+   the owner commits as the same account (#2313).
 2. **"Pushed" is a verdict, not an assumption.** After the push, the harness
    compares the pre-pass head, the pushed SHA and the re-fetched remote head
    (`cl_push_landed_verdict`, `scripts/lib/claim-landing.sh`). Any result other
