@@ -36,52 +36,36 @@ jobs:
       REPO: ${{ github.repository }}
 
     steps:
+      # The payload resolution lives in scripts/ci-failure-analyst-resolve.sh
+      # (tests: tests/ci_failure_analyst_resolve.bats). Fetch it from THIS
+      # reusable's own commit, so a caller pinned to a channel always runs the
+      # script that matches the workflow it pinned. .github-private is public,
+      # so the caller's token can read it.
+      - name: Checkout analyst tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: combsmith/.github-private
+          ref: ${{ job.workflow_sha }}
+          path: .ci-analyst-tooling
+          sparse-checkout: scripts/ci-failure-analyst-resolve.sh
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+          persist-credentials: false
+
+      # Resolves the head SHA, the non-fork PR and the failing run from either a
+      # check_run payload (third-party checks) or a workflow_run payload (failed
+      # GitHub Actions runs). Anything else ends in a "skipping" notice, exit 0.
       - name: Resolve non-fork PR
         id: pr
-        env:
-          HEAD_SHA: ${{ github.event.check_run.head_sha }}
-          CHECK_RUN_PRS: ${{ toJson(github.event.check_run.pull_requests) }}
-        run: |
-          set -euo pipefail
-          # Prefer the pull_requests array embedded in the check_run payload;
-          # filter to non-fork PRs (head repo must equal base repo).
-          pr_number=$(echo "$CHECK_RUN_PRS" \
-            | jq -r '.[] | select(.head.repo.id == .base.repo.id) | .number' \
-            | head -n 1)
-          if [ -z "$pr_number" ]; then
-            # Fallback: commits-to-pulls API handles edge cases (e.g. a second
-            # push arrived before this check_run completed).
-            # shellcheck disable=SC2016  # $ENV.REPO is jq built-in syntax, not a shell variable
-            pr_number=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" \
-              --jq '.[] | select(.head.repo.full_name == $ENV.REPO) | .number' \
-              2>/dev/null | head -n 1 || true)
-          fi
-          if [ -z "$pr_number" ]; then
-            echo "::notice::No non-fork PR for SHA $HEAD_SHA — skipping"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
-          fi
+        run: bash .ci-analyst-tooling/scripts/ci-failure-analyst-resolve.sh resolve
 
       - name: Check idempotency
         if: steps.pr.outputs.skip == 'false'
         id: idem
         env:
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
-          HEAD_SHA: ${{ github.event.check_run.head_sha }}
-        run: |
-          set -euo pipefail
-          existing=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
-            --paginate \
-            --jq ".[] | select(.body | startswith(\"<!-- ci-analyst sha=$HEAD_SHA -->\")) | .id" \
-            2>/dev/null | head -1 || true)
-          if [ -n "$existing" ]; then
-            echo "::notice::Diagnostic comment already posted (id=$existing) — idempotency skip"
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: bash .ci-analyst-tooling/scripts/ci-failure-analyst-resolve.sh idempotency
 
       - name: Install Claude Code
         if: steps.pr.outputs.skip == 'false' && steps.idem.outputs.exists == 'false'
@@ -97,10 +81,11 @@ jobs:
         if: steps.pr.outputs.skip == 'false' && steps.idem.outputs.exists == 'false'
         env:
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
-          HEAD_SHA: ${{ github.event.check_run.head_sha }}
-          WORKFLOW_NAME: ${{ github.event.check_run.name }}
-          DETAILS_URL: ${{ github.event.check_run.details_url }}
-          CHECK_RUN_ID: ${{ github.event.check_run.id }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          WORKFLOW_NAME: ${{ steps.pr.outputs.check_name }}
+          DETAILS_URL: ${{ steps.pr.outputs.details_url }}
+          RUN_ID: ${{ steps.pr.outputs.run_id }}
+          FAILED_JOBS: ${{ steps.pr.outputs.failed_jobs }}
         run: |
           set -euo pipefail
           export PATH="$HOME/.npm-global/bin:$PATH"
@@ -113,16 +98,15 @@ jobs:
           - Head SHA: $HEAD_SHA
           - Workflow/check name: $WORKFLOW_NAME
           - Details URL: $DETAILS_URL
-          - Check run ID: $CHECK_RUN_ID
+          - GitHub Actions run ID: $RUN_ID
+          - Failed jobs (job / failing step): $FAILED_JOBS
 
           Follow these steps in order:
 
           ### 1. Fetch failure logs
-          Extract the GitHub Actions run ID from the details URL:
-            run_id=$(echo "$DETAILS_URL" | grep -oP '(?<=runs/)\d+' || true)
-          If a run_id is found, fetch the failed-step logs:
-            gh run view "$run_id" --log-failed --repo $REPO 2>/dev/null | tail -200
-          If no run_id (e.g. external quality gate like SonarCloud), use the PR diff:
+          If the run ID above is not empty, fetch the failed-step logs:
+            gh run view $RUN_ID --log-failed --repo $REPO 2>/dev/null | tail -200
+          If the run ID is empty (e.g. an external quality gate like SonarCloud), use the PR diff:
             gh pr diff $PR_NUMBER --repo $REPO 2>/dev/null | head -200
 
           ### 2. Identify the failing step and error
