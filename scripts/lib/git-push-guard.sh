@@ -19,13 +19,22 @@
 #            a. incorporate_remote_head re-fetches the true remote head before
 #               pushing and either rebases HEAD onto it (incorporating a
 #               concurrent commit) or, when it cannot be incorporated cleanly,
-#               STOPS and escalates. A commit authored by anyone other than
-#               dev-lead's own identity is treated as steering: never discarded,
-#               and called out in the run summary.
+#               STOPS and escalates. A commit dev-lead has no record of writing
+#               is treated as steering: never discarded, and called out in the
+#               run summary.
 #            b. every force push adds --force-if-includes, so the force ABORTS
 #               unless the commits being overwritten are reachable from a ref we
 #               actually fetched (i.e. we truly incorporated them) — the lease
 #               alone is not enough once a fetch has refreshed it.
+#
+#   #2313  "Is this commit dev-lead's?" was answered from the committer email.
+#          Since ADR-0008 dev-lead commits as the owner's account, with the same
+#          noreply address as the owner's own machine and every Claude Code
+#          session on it, so every owner commit counted as dev-lead's and was
+#          force-pushed over (combsmith/.github #1314, #1315). Ownership now comes
+#          only from evidence dev-lead records itself: the SHAs this run pushed,
+#          or a Dev-Lead-Stamp trailer bound to the commit's own tree and parents
+#          (git-identity.sh). The committer identity is never consulted.
 #
 # Usage: push_no_clobber [git push args...]   e.g. push_no_clobber origin main
 
@@ -37,29 +46,132 @@ _push_guard_summary() {
   return 0
 }
 
-# _commit_is_dev_lead SHA — true when the commit was authored by dev-lead's own
-# identity. dev-lead commits with the bot's noreply email — exactly
-# <login>@users.noreply.github.com or <id>+<login>@users.noreply.github.com
-# (see setup_git_identity in git-identity.sh) — so match ONLY those two forms.
-# A bare "*<login>@…" suffix match would also accept a spoofed local-part such as
-# attacker-<login>@users.noreply.github.com and misclassify a foreign commit as
-# dev-lead-owned; anchoring the local part to the exact login (optionally an
-# all-digit user-id prefix) closes that. Anything else — a human maintainer's
-# real email, another bot — is foreign (steering) and must never be silently
-# discarded. The email is the reliable signal: a human owner may share the
-# `don-petry` *name* but not the bot noreply address.
-_commit_is_dev_lead() {
-  local sha="$1"
-  local bot="${BOT_USER:-donpetry-bot}"
-  local email
-  email=$(git log -1 --format='%ce' "$sha" 2>/dev/null || true)
-  # Quoted "${bot}" is a literal in the regex; the id-prefix and domain are
-  # anchored so the login must be the WHOLE local part (or follow "<digits>+").
-  if [[ "$email" == "${bot}@users.noreply.github.com" ]] \
-     || [[ "$email" =~ ^[0-9]+\+"${bot}"@users\.noreply\.github\.com$ ]]; then
-    return 0
+# dev_lead_stamp_of (the Dev-Lead-Stamp hash) lives with the code that stamps
+# dev-lead's commits.
+if ! declare -F dev_lead_stamp_of >/dev/null 2>&1; then
+  # shellcheck source=scripts/lib/git-identity.sh
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/git-identity.sh"
+fi
+
+# Newline-separated SHAs this run has published with push_no_clobber or
+# push_with_merge_guard (#2313). A commit on the remote is dev-lead's own when its
+# SHA is here, whatever its author or committer says. Accumulates across pushes
+# in one run.
+_PUSH_GUARD_PUSHED="${_PUSH_GUARD_PUSHED:-}"
+
+# The cross-run ledger (#2313): a git-notes ref on the remote holding one note per
+# SHA dev-lead has pushed, in any run. A note is keyed by the exact commit, so an
+# amended, cherry-picked or rebased copy has none. This is what covers commits the
+# engine makes with its own `git commit`, which carry no Dev-Lead-Stamp; they are
+# never rewritten to add one, because claims, the #2143 handoff and the #2269
+# this-pass checks cite their exact SHAs. Reading or writing it can fail (no
+# remote, no permission); a commit the ledger cannot vouch for is foreign, which
+# means rebase or stop, never discard.
+_PUSH_GUARD_LEDGER_REF="refs/notes/dev-lead-pushed"
+
+# _push_guard_ownership_verdict <sha> <tree> <parents> <message> <pushed> — decide
+# whether a commit is dev-lead's own from evidence dev-lead recorded itself
+# (#2313). The optional 6th argument is `true` when the cross-run ledger holds a
+# note for <sha>. Echoes one token; returns 0 only for the `own-*` tokens:
+#   own-pushed   <sha> is one of the newline-separated SHAs in <pushed>.
+#   own-ledger   <recorded> is `true`: an earlier run pushed exactly this commit.
+#   own-stamped  <message> has a `Dev-Lead-Stamp:` line whose hash equals the
+#                stamp of <tree> and the space-separated <parents>. An amended,
+#                cherry-picked or rebased copy keeps the line but not the tree and
+#                parents it was computed from, so the copy does not match.
+#   foreign      anything else, including a commit whose author and committer
+#                are exactly dev-lead's: the owner commits with the same identity.
+# Pure apart from `git hash-object --stdin` (no repository, network or gh).
+_push_guard_ownership_verdict() {
+  local sha="${1:-}" tree="${2:-}" parent_list="${3:-}" message="${4:-}" pushed="${5:-}" recorded="${6:-false}"
+  if [ -n "$sha" ] && grep -qxF -- "$sha" <<<"$pushed"; then
+    echo own-pushed; return 0
   fi
+  if [ -n "$sha" ] && [ "$recorded" = true ]; then
+    echo own-ledger; return 0
+  fi
+  if dev_lead_stamp_matches "$tree" "$parent_list" "$message"; then
+    echo own-stamped; return 0
+  fi
+  echo foreign
   return 1
+}
+
+# _commit_is_dev_lead SHA — true only when dev-lead's own records say it wrote the
+# commit: this run pushed it, the cross-run ledger has a note for it (fetched by
+# incorporate_remote_head), or it carries a matching Dev-Lead-Stamp (#2313). The
+# committer email is deliberately NOT a signal: since ADR-0008 the owner, every
+# Claude Code session on the owner's machine and dev-lead all commit as
+# <id>+don-petry@users.noreply.github.com. An unreadable commit is foreign.
+_commit_is_dev_lead() {
+  local sha="$1" full meta tree parents message
+  full=$(git rev-parse --verify --quiet "${sha}^{commit}" 2>/dev/null) || return 1
+  meta=$(git show -s --format='%T%x09%P' "$full" 2>/dev/null) || return 1
+  tree="${meta%%$'\t'*}"
+  parents="${meta#*$'\t'}"
+  message=$(git show -s --format='%B' "$full" 2>/dev/null || true)
+  local recorded=false
+  git notes --ref="$_PUSH_GUARD_LEDGER_REF" list "$full" >/dev/null 2>&1 && recorded=true
+  _push_guard_ownership_verdict "$full" "$tree" "$parents" "$message" "$_PUSH_GUARD_PUSHED" "$recorded" >/dev/null
+}
+
+# _push_guard_ledger_fetch [remote] — replace the local ledger with the remote's.
+# A remote without one (or an unreachable remote) leaves the local ref as it is.
+_push_guard_ledger_fetch() {
+  git fetch --quiet "${1:-origin}" "+${_PUSH_GUARD_LEDGER_REF}:${_PUSH_GUARD_LEDGER_REF}" >/dev/null 2>&1 || true
+}
+
+# _push_guard_ledger_publish <remote> <shas> — add a note for each SHA to the
+# remote ledger. Fetch, annotate, push as a fast-forward; when another run moved
+# the ledger in between, fetch again and redo it (three tries). Never forces, so a
+# note another run wrote is never lost. A failure only warns: the SHAs are still
+# in this run's _PUSH_GUARD_PUSHED, and a later run treats them as foreign.
+_push_guard_ledger_publish() {
+  local remote="${1:-origin}" shas="${2:-}" sha _attempt
+  [ -n "$shas" ] || return 0
+  local note="dev-lead pushed this commit (run ${GITHUB_RUN_ID:-local}, #2313)"
+  for _attempt in 1 2 3; do
+    _push_guard_ledger_fetch "$remote"
+    while IFS= read -r sha; do
+      [ -z "$sha" ] && continue
+      git notes --ref="$_PUSH_GUARD_LEDGER_REF" add -f -m "$note" "$sha" >/dev/null 2>&1 || continue 2
+    done <<<"$shas"
+    if git push --quiet "$remote" "${_PUSH_GUARD_LEDGER_REF}:${_PUSH_GUARD_LEDGER_REF}" >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  echo "::warning::could not record the pushed commit(s) in ${remote} ${_PUSH_GUARD_LEDGER_REF}; a later run will treat them as foreign (rebase or stop, never discard) (#2313)" >&2
+  return 0
+}
+
+# _push_guard_publishing [remote] — echo the SHAs a push of HEAD is about to
+# publish: the commits HEAD has beyond the remote head incorporate_remote_head
+# verified, or, when no remote head was read (a new branch, a failed fetch),
+# beyond every remote-tracking ref. Run it BEFORE the push: a successful push
+# moves the remote-tracking ref to HEAD.
+_push_guard_publishing() {
+  if [ -n "$_PUSH_GUARD_REMOTE_SHA" ]; then
+    git rev-list "${_PUSH_GUARD_REMOTE_SHA}..HEAD" 2>/dev/null || true
+  else
+    git rev-list HEAD --not --remotes="${1:-origin}" 2>/dev/null || true
+  fi
+}
+
+# _push_guard_record_pushed <shas> [remote] — add a successful push's SHAs to this
+# run's ledger and, when <remote> is given, to the cross-run ledger on it.
+_push_guard_record_pushed() {
+  local shas="${1:-}" remote="${2:-}" sha
+  while IFS= read -r sha; do
+    [ -z "$sha" ] && continue
+    grep -qxF -- "$sha" <<<"$_PUSH_GUARD_PUSHED" && continue
+    if [ -n "$_PUSH_GUARD_PUSHED" ]; then
+      _PUSH_GUARD_PUSHED+=$'\n'"${sha}"
+    else
+      _PUSH_GUARD_PUSHED="$sha"
+    fi
+  done <<<"$shas"
+  [ -n "$remote" ] && _push_guard_ledger_publish "$remote" "$shas"
+  return 0
 }
 
 # _resolve_remote_branch [remote branch] — echo "<remote> <branch>" for the push
@@ -81,7 +193,8 @@ _resolve_remote_branch() {
 #
 # Returns:
 #   0  safe to push — either HEAD already contains the remote head, or the only
-#      commits the remote has that HEAD lacks are dev-lead's OWN (a legitimate
+#      commits the remote has that HEAD lacks are dev-lead's OWN by its records
+#      (_commit_is_dev_lead: pushed by this run, or stamped) (a legitimate
 #      self-rewrite the caller will publish with --force-with-lease), or foreign
 #      (steering) commits were cleanly rebased in (HEAD now contains them).
 #   2  STOP/escalate — the remote has a steering commit that could not be
@@ -160,6 +273,9 @@ incorporate_remote_head() {
   unincorporated=$(git rev-list --reverse "HEAD..${remote_sha}" 2>/dev/null || true)
   [ -z "$unincorporated" ] && return 0
 
+  # The cross-run ledger vouches for commits earlier runs pushed (#2313).
+  _push_guard_ledger_fetch "$remote"
+
   local sha
   while IFS= read -r sha; do
     [ -z "$sha" ] && continue
@@ -169,8 +285,8 @@ incorporate_remote_head() {
   done <<< "$unincorporated"
 
   if [ -z "$foreign" ]; then
-    # Every remote commit HEAD lacks is dev-lead's own — a legitimate history
-    # rewrite (e.g. amend/rebase of our prior push). The caller publishes it
+    # Every remote commit HEAD lacks is dev-lead's own by its records — a
+    # legitimate history rewrite (e.g. amend/rebase of our prior push). The caller publishes it
     # with --force-with-lease --force-if-includes and logs the discarded SHAs.
     return 0
   fi
@@ -181,7 +297,7 @@ incorporate_remote_head() {
   foreign_oneline=$(while IFS= read -r sha; do
     [ -n "$sha" ] && git log -1 --format='%h %an: %s' "$sha" 2>/dev/null
   done <<< "$foreign")
-  echo "::warning::steering detected on ${remote}/${branch} — commit(s) by a non-dev-lead identity present on the remote that HEAD did not incorporate; rebasing onto them so they are never discarded (#1607):" >&2
+  echo "::warning::steering detected on ${remote}/${branch} — commit(s) dev-lead has no record of writing are on the remote and HEAD did not incorporate them; rebasing onto them so they are never discarded (#1607):" >&2
   printf '%s\n' "$foreign_oneline" >&2
 
   # Record dev-lead's commits before the rebase so their rebased successors can
@@ -198,7 +314,7 @@ incorporate_remote_head() {
       _PUSH_GUARD_REWRITES="$rewrites"
     fi
     _push_guard_summary "### dev-lead: maintainer steering incorporated (#1607)"
-    _push_guard_summary "A commit by a non-dev-lead identity was on \`${remote}/${branch}\` and has been rebased into this push rather than discarded:"
+    _push_guard_summary "A commit dev-lead has no record of writing was on \`${remote}/${branch}\` and has been rebased into this push rather than discarded:"
     _push_guard_summary ""
     _push_guard_summary '```'
     _push_guard_summary "${foreign_oneline}"
@@ -210,7 +326,7 @@ incorporate_remote_head() {
   git rebase --abort 2>/dev/null || true
   echo "::error::steering commit(s) on ${remote}/${branch} could not be rebased into dev-lead's changes cleanly. Refusing to force-push over unincorporated human work — stopping for human review (#1607)." >&2
   _push_guard_summary "### dev-lead: STOPPED — un-incorporable maintainer steering (#1607)"
-  _push_guard_summary "A commit by a non-dev-lead identity is on \`${remote}/${branch}\` and conflicts with dev-lead's changes. dev-lead refused to force-push over it and stopped for human review:"
+  _push_guard_summary "A commit dev-lead has no record of writing is on \`${remote}/${branch}\` and conflicts with dev-lead's changes. dev-lead refused to force-push over it and stopped for human review:"
   _push_guard_summary ""
   _push_guard_summary '```'
   _push_guard_summary "${foreign_oneline}"
@@ -236,11 +352,13 @@ push_no_clobber() {
   # steering commit, or stop/escalate if it cannot be incorporated cleanly.
   incorporate_remote_head "$@" || return $?
 
-  local errf
+  local errf publishing
   errf="$(mktemp)"
+  publishing=$(_push_guard_publishing "${1:-}")
 
   if git push "$@" 2>"$errf"; then
     rm -f "$errf"
+    _push_guard_record_pushed "$publishing" "${1:-origin}"
     return 0
   fi
 
@@ -261,6 +379,7 @@ push_no_clobber() {
     echo "::notice::push rejected (non-fast-forward) and HEAD diverged from ${upstream} — history was rewritten (likely a self-rebase); retrying with a pinned lease (aborts unless the remote is still where dev-lead incorporated). Overwriting dev-lead's own commit(s): ${discarded:-<none>}" >&2
     if _pinned_force_push "$@" 2>>"$errf"; then
       rm -f "$errf"
+      _push_guard_record_pushed "$publishing" "${1:-origin}"
       return 0
     fi
     cat "$errf" >&2

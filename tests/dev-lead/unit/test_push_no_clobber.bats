@@ -11,22 +11,24 @@
 setup() {
   GUARD_LIB="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)/scripts/lib/git-push-guard.sh"
 
-  # dev-lead acts as `don-petry`; its own commits carry the bot noreply email so
-  # the #1607 identity-aware guard classifies them as OWN (a self-rewrite may be
-  # force-with-leased) rather than foreign steering (which is never discarded).
+  # dev-lead acts as `don-petry`. The seed commit stands for an earlier dev-lead
+  # run: it carries a Dev-Lead-Stamp, so the #1607/#2313 guard classifies it as
+  # OWN (a self-rewrite may be force-with-leased) rather than foreign steering
+  # (which is never discarded). The email alone would not (#2313).
   export BOT_USER="don-petry"
 
   REMOTE="$BATS_TEST_TMPDIR/remote.git"
   WORK="$BATS_TEST_TMPDIR/work"
 
-  # Bare remote seeded with commit A on `main` (authored as dev-lead).
+  # Bare remote seeded with commit A on `main` (stamped by dev-lead).
   git init -q --bare "$REMOTE"
   local seed="$BATS_TEST_TMPDIR/seed"
   git init -q "$seed"
   (
     cd "$seed"
+    source "$GUARD_LIB"
     git config user.email "1+don-petry@users.noreply.github.com"; git config user.name don-petry
-    echo A > f; git add f; git commit -q -m A
+    echo A > f; git add f; git commit -q -m A -m "$(dev_lead_stamp_trailer)"
     git branch -M main
     git remote add origin "$REMOTE"
     git push -q -u origin main

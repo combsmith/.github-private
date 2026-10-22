@@ -5,6 +5,9 @@ set -euo pipefail
 
 source "$(dirname "$0")/engine.sh"
 source "$(dirname "$0")/lib/git-identity.sh"
+# _push_guard_record_pushed: record what this run pushes in the cross-run ledger
+# a later run's push guard reads (#2313).
+source "$(dirname "$0")/lib/git-push-guard.sh"
 # Pure completion-claim helpers (#1445): body_has_completion_claim /
 # claim_is_retracted / supersede_claim_body + the PC_CLAIM_RETRACTED_MARKER.
 source "$(dirname "$0")/lib/premature-closure-detect.sh"
@@ -224,11 +227,15 @@ checkpoint_push_partial_work() {
   if $has_uncommitted; then
     git add -A >/dev/null 2>&1 || return 1
     git commit -m "${CHECKPOINT_COMMIT_PREFIX} partial work for issue #${ISSUE_NUMBER} (stage timeout — unreviewed, do not merge)" \
-      >/dev/null 2>&1 || return 1
+      -m "$(dev_lead_stamp_trailer)" >/dev/null 2>&1 || return 1
   fi
 
-  # Push the branch so the work lands on the remote before the run exits.
+  # Push the branch so the work lands on the remote before the run exits, and
+  # record its commits as dev-lead's for later runs' push guard (#2313).
+  local published
+  published=$(git rev-list HEAD --not --remotes=origin 2>/dev/null || true)
   git push --set-upstream origin "$br" >/dev/null 2>&1 || return 1
+  _push_guard_record_pushed "$published" origin
 
   printf '%s\n' "$br"
   return 0
@@ -669,7 +676,9 @@ ${lint_output}
 
   if $has_uncommitted; then
     git add -A
-    git commit -m "feat: implement issue #${ISSUE_NUMBER} — ${ISSUE_TITLE}"
+    # Dev-Lead-Stamp: lets a later run's push guard recognise this commit as
+    # dev-lead's own when it reconciles the PR branch (#2313).
+    git commit -m "feat: implement issue #${ISSUE_NUMBER} — ${ISSUE_TITLE}" -m "$(dev_lead_stamp_trailer)"
   fi
 
   # Empty net-diff guard (#1786, slice 1 of #1620): before pushing or opening a
@@ -682,7 +691,12 @@ ${lint_output}
     abort_empty_net_diff "$base_ref"
   fi
 
+  # Record the pushed commits (the engine's own included) as dev-lead's, so a
+  # later run's push guard does not mistake them for steering (#2313).
+  local published
+  published=$(git rev-list HEAD --not --remotes=origin 2>/dev/null || true)
   git push --set-upstream origin "$branch"
+  _push_guard_record_pushed "$published" origin
 
   # Head SHA of the durable, pushed work — the verifiable artifact the completion
   # claim references (#1445, AC #2).
