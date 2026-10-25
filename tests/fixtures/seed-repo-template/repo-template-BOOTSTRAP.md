@@ -68,7 +68,7 @@ by PR, and the compliance audit flags any hand edit as drift):
 |---|---|
 | `.github/workflows/add-to-project.yml`, `agent-shield.yml`, `auto-rebase.yml`, `dependabot-automerge.yml`, `dependabot-rebase.yml`, `dependency-audit.yml`, `dev-lead.yml`, `initiative-driver.yml`, `persona-mention.yml`, `pr-auto-review.yml`, `pr-review-mention.yml` | Thin caller stubs. Behaviour lives in the org reusables; the `uses:` pin is moved centrally. `agent-shield.yml` is additionally a security boundary agents must never modify. |
 | `.github/CODEOWNERS` | `* @combsmith/org-leads` must stay the first owner on every line. Add path lines only *after* it. |
-| `CLAUDE.md`, `SECURITY.md`, `LICENSE` | Org pointers and license. |
+| `CLAUDE.md`, `LICENSE` | Org pointer and license (`SECURITY.md` is inherited org-wide from `combsmith/.github`). |
 | `.gitignore` — the block between `>>> BEGIN combsmith secrets baseline` and `<<< END` | Hash-checked by the compliance audit. Edit only **below** the END marker. |
 | `.gitleaks.toml` | Keep the file; you may only **append** allowlist paths under `[allowlist]`. |
 | `.github/workflows/sonarcloud.yml` | Keep as shipped; the `SonarCloud` job name is a required check, and it derives `sonar.projectKey` / `sonar.organization` from the repo (`<owner>_<name>` / `<owner>`), so no per-repo key is needed. |

@@ -22,7 +22,8 @@ set -euo pipefail
 # It also emits the root/baseline files (AC #3): AGENTS.md (consumer pointer),
 # CLAUDE.md (1-line pointer), .github/CODEOWNERS, .github/dependabot.yml (from the
 # chosen standards/dependabot/<stack>), sonar-project.properties, .gitignore,
-# LICENSE, SECURITY.md, README.md, BOOTSTRAP.md. No issue/PR templates and no
+# LICENSE, README.md, BOOTSTRAP.md (SECURITY.md is inherited org-wide from
+# combsmith/.github). No issue/PR templates and no
 # labeler config are introduced (AC #5). README.md's commercial-support section is
 # read from standards/commercial-support-standard.md at the resolved ref (#2233).
 #
@@ -170,7 +171,6 @@ readonly -a BASELINE_MANIFEST=(
   "sonar-project.properties|gen"
   ".gitignore|gen"
   "LICENSE|gen"
-  "SECURITY.md|gen"
   "README.md|gen"
   "BOOTSTRAP.md|gen"
 )
@@ -473,15 +473,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 EOF
       ;;
-    SECURITY.md) cat <<'EOF'
-# Security Policy
-
-To report a vulnerability, please follow the org-wide policy in
-[`combsmith/.github`](https://github.com/combsmith/.github/blob/main/SECURITY.md).
-
-Do not open public issues for security reports.
-EOF
-      ;;
     README.md)
       # The commercial-support section is read from the standard at the resolved
       # standards ref, never copied here, so the seed cannot strip or fork it (#2233).
@@ -510,7 +501,7 @@ verification checks, and the short list of org-admin steps a human finishes.
 | CI (`build-and-test`, `Secret scan (gitleaks)`, `coverage`) and SonarCloud | `ci.yml`, `sonarcloud.yml` | Green out of the box; replace the shell steps with your stack's |
 | Copilot cloud-agent setup | `copilot-setup-steps.yml` | Uncomment your stack block |
 | Dependabot | `.github/dependabot.yml` | `frontend` stack by default; swap for yours |
-| Baseline files | `CODEOWNERS`, `AGENTS.md`, `CLAUDE.md`, `SECURITY.md`, `LICENSE`, `.gitignore` (secrets baseline), `.gitleaks.toml`, `sonar-project.properties`, `copilot-instructions.md` | Docs need the project's name; the Sonar key is derived from the repo by `sonarcloud.yml` |
+| Baseline files | `CODEOWNERS`, `AGENTS.md`, `CLAUDE.md`, `LICENSE`, `.gitignore` (secrets baseline), `.gitleaks.toml`, `sonar-project.properties`, `copilot-instructions.md` | Docs need the project's name; the Sonar key is derived from the repo by `sonarcloud.yml` |
 | Repo settings, rulesets, labels, GHAS | not files | Applied by `bootstrap-new-repo.sh` in `combsmith/.github` (org admin) |
 | Initiatives board (`add-to-project`) | stub only | Red until an org admin both grants the repo the `INITIATIVES_APP_*` org secrets (selected visibility) and adds it to the `combsmith-planner` app installation |
 
@@ -596,7 +587,7 @@ by PR, and the compliance audit flags any hand edit as drift):
 |---|---|
 | `.github/workflows/add-to-project.yml`, `agent-shield.yml`, `auto-rebase.yml`, `dependabot-automerge.yml`, `dependabot-rebase.yml`, `dependency-audit.yml`, `dev-lead.yml`, `initiative-driver.yml`, `persona-mention.yml`, `pr-auto-review.yml`, `pr-review-mention.yml` | Thin caller stubs. Behaviour lives in the org reusables; the `uses:` pin is moved centrally. `agent-shield.yml` is additionally a security boundary agents must never modify. |
 | `.github/CODEOWNERS` | `* @combsmith/org-leads` must stay the first owner on every line. Add path lines only *after* it. |
-| `CLAUDE.md`, `SECURITY.md`, `LICENSE` | Org pointers and license. |
+| `CLAUDE.md`, `LICENSE` | Org pointer and license (`SECURITY.md` is inherited org-wide from `combsmith/.github`). |
 | `.gitignore` — the block between `>>> BEGIN combsmith secrets baseline` and `<<< END` | Hash-checked by the compliance audit. Edit only **below** the END marker. |
 | `.gitleaks.toml` | Keep the file; you may only **append** allowlist paths under `[allowlist]`. |
 | `.github/workflows/sonarcloud.yml` | Keep as shipped; the `SonarCloud` job name is a required check, and it derives `sonar.projectKey` / `sonar.organization` from the repo (`<owner>_<name>` / `<owner>`), so no per-repo key is needed. |

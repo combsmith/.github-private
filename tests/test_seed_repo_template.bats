@@ -219,14 +219,15 @@ EOF
 }
 
 # ── manifest: baseline set (AC #3) ────────────────────────────────────────────
-@test "list-baseline: includes every required root/baseline file" {
+@test "list-baseline: includes every required root/baseline file and omits SECURITY.md (inherited org-wide)" {
   run bash "$SEED" --list-baseline
   [ "$status" -eq 0 ]
   for f in AGENTS.md CLAUDE.md .github/CODEOWNERS .github/dependabot.yml \
            .gitleaks.toml sonar-project.properties .gitignore LICENSE \
-           SECURITY.md README.md BOOTSTRAP.md; do
+           README.md BOOTSTRAP.md; do
     [[ "$output" == *"$f"* ]] || { echo "missing baseline: $f" >&2; false; }
   done
+  [[ "$output" != *"SECURITY.md"* ]]
 }
 
 # ── repin: caller stubs → published major-scoped channel tags (AC #1, #2) ──────
@@ -909,8 +910,8 @@ GHEOF
 SEED_FIXTURES="$SCRIPT_DIR/tests/fixtures/seed-repo-template"
 # Git blob SHAs of those two repo-template files (guards the fixtures themselves
 # against an editor/hook adding a trailing newline).
-REPO_TEMPLATE_README_BLOB=a6b17a8c32f6181248e55a17f9254bb0480f0f3d
-REPO_TEMPLATE_BOOTSTRAP_BLOB=18f42406609dcb019362fc012c2ffc70b5c8de43
+REPO_TEMPLATE_README_BLOB=de0e2dfbed19a3391a0b2fcddf3a22ebad6e809e
+REPO_TEMPLATE_BOOTSTRAP_BLOB=758298548cb22893267585aea9ad4803beacf641
 REPO_TEMPLATE_AGENTS_BLOB=1c5e6cb3b131037b7a103ebf33c243fac9facd0c
 
 _fixture_commercial_standard() {

@@ -131,4 +131,4 @@ For commercial inquiries, email [support@combsmith.com](mailto:support@combsmith
 
 ## Contributing
 
-See the org-wide [Contributing Guide](https://github.com/combsmith/.github/blob/main/CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+See the org-wide [Contributing Guide](https://github.com/combsmith/.github/blob/main/CONTRIBUTING.md) and [Security Policy](https://github.com/combsmith/.github/blob/main/SECURITY.md).
