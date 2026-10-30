@@ -52,12 +52,29 @@ ingress `pr-review` job from `@pr-review/stable` to `@pr-review/v1-stable`
 (markets `62587ec`, 2026-10-10), in both `uses:` and `agent_ref`. §3 carries
 that pin. The row above still records the pre-collapse stub pin. See §5a.
 
+### 1a. Measured baseline (workflow runs)
+
+- **Window:** `2026-09-15T00:00:00Z..2026-09-22T00:00:00Z`, 7 days, bounded at
+  both ends. Each count is a per-workflow `total_count` from
+  `actions/workflows/<stub>.yml/runs?created=<window>`.
+
+| Stub | Workflow runs |
+| --- | --- |
+| `dev-lead.yml` | 584 |
+| `pr-review-mention.yml` | 330 |
+| `pr-auto-review.yml` | 208 |
+| `pr-review.yml` | 187 |
+| `ci-failure-analyst.yml` | 33 |
+| **Total** | **1342** |
+
+The post-collapse comparison against this baseline is in §7a.
+
 > **Gap (named, not silently carried):** the delivery brief cites a baseline doc
 > at `docs/initiatives/agent-ingress-collapse-baseline.md`. That file **does not
 > exist** on `main`. The authoritative baseline is the pair above (the canonical
-> reference for structure + the live pre-collapse stubs for behavior). If a
-> dedicated baseline doc is wanted, it should be filed separately; this package
-> does not fabricate one.
+> reference for structure + the live pre-collapse stubs for behavior), plus the
+> measured run counts in §1a. This package does not fabricate a separate
+> baseline doc.
 
 The collapse is **behavior-preserving**: each job in the ingress copies its
 source stub's pin, `permissions:`, `secrets:`, and event subscription verbatim,
@@ -645,6 +662,61 @@ in its source stub, so no `paths:` filter moves down a tier and no per-event
 runner cost is incurred. The billing profile is therefore strictly
 event-filtered, no-runner skips.
 
+### 7a. Measured (post-collapse)
+
+**Method:**
+
+- Post-collapse window: `2026-10-10T01:16:00Z..2026-10-14T01:16:00Z`, 4 days,
+  from the markets#513 merge.
+- `agent-ingress.yml` had 382 runs. Each of the five deleted stubs had 0.
+- A job counts as **runner-assigned** when `runner_name` is non-empty.
+  Runner-assigned minutes are per job, each rounded up to a whole minute. This
+  measures runner usage, not billing: `combsmith/markets` is a public
+  repository, and public-repository Actions jobs accrue no billable minutes.
+  Read the figures below as a proxy for runner load.
+- Job sample: 1340 of the 1342 baseline runs (§1a; 2 returned no jobs), and all
+  382 post-collapse runs.
+
+**Per-day figures:**
+
+| Role | Runner-assigned jobs/day, before → after | Runner-assigned min/day, before → after |
+| --- | --- | --- |
+| dev-lead | 44.4 → 41.8 | 60.3 → 49.8 |
+| pr-auto-review | 29.7 → 23.8 | 29.7 → 24.8 |
+| pr-review | 4.7 → 4.5 | 4.7 → 4.5 |
+| pr-review-mention | 0 → 0.25 | 0 → 0.25 |
+| ci-failure-analyst | 0 → 0 | 0 → 0 |
+| **Total** | **78.9 → 70.2 (−11%)** | **94.7 → 79.2 (−16%)** |
+
+**Other figures:**
+
+- Workflow runs/day: 191.7 → 95.5 (−50%).
+- Jobs evaluated/day, including skipped: 358.6 → 626.0 (+75%). This total
+  mixes runner-assigned jobs, skipped ingress caller jobs and jobs inside
+  invoked reusables, so it is not classified as kind (a). The check made was
+  narrower: **0 jobs concluded `skipped` with a runner assigned**, in either
+  window. That separates runner assignment from skipping; it does not prove why
+  each skipped job was skipped, and skipped ingress caller jobs were not counted
+  separately.
+- PRs opened: 5 in the baseline window (0.7/day) and 7 in the post-collapse
+  window (1.75/day). Post-collapse PR-opening traffic was not lighter. This
+  says nothing about total traffic: review, comment and check events are not
+  counted here.
+- Raw totals: baseline 552 runner-assigned jobs and 663 runner-assigned minutes;
+  post-collapse 281 runner-assigned jobs and 317 runner-assigned minutes.
+
+**Conclusion:** runner load is neutral to slightly lower for markets (no
+billing conclusion is drawn; the repository is public). The per-event `if:`
+filters skip union events before a runner is assigned. The pr-auto-review
+figures (old stub: runner-assigned on 208 of 208 runs; ingress job: runner-assigned on 95 of
+382 runs) are **not a matched comparison**: the 382 ingress runs include union
+events pr-auto-review never subscribed to, and the two windows do not overlap,
+so `workflow_run`/`check_suite` traffic may differ. They show the filter
+working, not a measured saving attributable to the collapse.
+
+Source: the #1729 finalization comment
+(https://github.com/combsmith/.github-private/issues/1729#issuecomment-6159791868).
+
 ---
 
 ## 8. Pre-merge gate + rollback for both half-landed states (AC3 / AC8)
@@ -720,10 +792,12 @@ apply.
 
 ---
 
-## 9. AC11 (prepared, activation deferred) — STUB_REGISTRY rows + canonical template
+## 9. AC11 (done: template published, activation applied) — STUB_REGISTRY rows + canonical template
 
-Two AC11 pieces are **cross-repo or post-collapse and cannot be completed from
-`.github-private` now**; they are prepared here ready-to-apply.
+Two AC11 pieces were **cross-repo or post-collapse and could not be completed
+from `.github-private` at first**; they were prepared here ready-to-apply. Both
+are now done: the canonical template is published (§9b) and the rows are applied
+(§9c, §11).
 
 ### 9a. Ready-to-apply `STUB_REGISTRY` rows (scripts/fleet_monitor.sh)
 
@@ -744,30 +818,39 @@ $'ci-failure-analyst\tCI-Failure-Analyst\t.github/workflows/agent-ingress.yml\t<
 
 > `<CANONICAL agent-ingress path>` and the three `<legacy … canonical>` cells
 > resolve to wherever the org publishes the canonical `agent-ingress.yml` template
-> (§9b) and each role's existing per-role canonical. They are left as markers
-> because publishing the canonical template is the cross-repo step below.
+> (§9b) and each role's existing per-role canonical. Only roles with a published
+> legacy canonical use one: `dev-lead` resolves to `standards/workflows/dev-lead.yml`,
+> while `pr-review` and `ci-failure-analyst` have none, so their
+> `legacy_canonical_path` cells are empty in the applied registry. The cells are
+> shown as markers because this package predates the publication; the rows as
+> applied are in `scripts/fleet_monitor.sh` (§9c).
 
-### 9b. Canonical `agent-ingress.yml` template — publish is cross-repo (DEFERRED)
+### 9b. Canonical `agent-ingress.yml` template — publish was cross-repo (DONE)
 
 The canonical, per-repo-parameterized `agent-ingress.yml` template that markets'
 copy must byte-match lives in the canonical stub repo
-(`CANONICAL_STUB_REPO`, default `combsmith/.github`). **Publishing it is a
-write to another repo and cannot be done from `.github-private`.** The §3 content
+(`CANONICAL_STUB_REPO`, default `combsmith/.github`). **Publishing it was a
+write to another repo and could not be done from `.github-private`; it has since
+been published (combsmith/.github#1316, `452ea69`, §11).** The §3 content
 is the pilot instance; the generalized template (repo-agnostic pins, the
 role-superset `on:` union, adopter notes) is authored in the canonical repo by
 its owner.
 
-### 9c. Why in-repo activation is premature
+### 9c. Why in-repo activation was premature (historical; now applied)
 
-- Adding the `STUB_REGISTRY` rows (§9a) before the canonical template exists
-  makes `fleet_monitor.sh` compare markets' ingress against a `canonical_path`
-  that 404s.
-- ALIGNED verification via the role-path needs a **post-collapse** markets
-  carrying `agent-ingress.yml`; today markets is pre-collapse, so every role
-  would fall back to the legacy per-role path.
+*Historical rationale; the rows are now applied (#2182) and markets is
+post-collapse (markets#513), so the conditions below are met.*
 
-Activation lands after the markets PR merges and the canonical template is
-published — this package hands both artifacts to that follow-up.
+- Before the canonical template was published, adding the `STUB_REGISTRY` rows
+  (§9a) would have made `fleet_monitor.sh` compare markets' ingress against a
+  `canonical_path` that 404s.
+- Before markets#513, ALIGNED verification via the role-path required a
+  **post-collapse** markets carrying `agent-ingress.yml`; markets was then
+  pre-collapse, so every role would have fallen back to the legacy per-role
+  path. markets is now post-collapse, so the role-path comparison applies.
+
+Activation was applied after the markets PR merged and the canonical template
+was published. The ALIGNED run is recorded in §11.
 
 The Bats ingress checks use trimmed reusable snapshots. Changes to checked
 inputs or concurrency declarations behind channel refs are not detected until
@@ -775,12 +858,12 @@ the snapshots are refreshed.
 
 ---
 
-## 10. Companion issue for `combsmith/markets` (prepared; filing is remaining)
+## 10. Companion issue for `combsmith/markets` (filed as markets#506)
 
 `.github-private` dev-lead cannot open the markets PR, and this package cannot
 file cross-repo either from here. The companion-issue body below is the committed
-artifact; **filing it in `combsmith/markets` is the remaining post-merge
-step** (AC7 evidence is the filed issue link + the markets PR it drives).
+artifact; it has been **filed in `combsmith/markets` as markets#506**, and
+the markets PR it drove is markets#513 (§11).
 
 ```markdown
 Title: [ADR-0007] Collapse per-role Class-1 stubs into agent-ingress.yml (pilot)
@@ -825,10 +908,11 @@ docs/initiatives/agent-ingress-collapse-markets.md
 
 | Item | Status | Reason |
 | --- | --- | --- |
-| markets PR (add ingress + delete 5 stubs) | **Not done — cannot be** | Cross-repo write; only markets' dev-lead can author it. Driven by §10. |
-| Companion issue filed in markets | **Prepared, not filed** | Cross-repo write from `.github-private` not available in this run. Body is committed in §10. |
-| Canonical `agent-ingress.yml` template published | **Deferred (§9b)** | Write to `combsmith/.github`; cross-repo. |
-| `STUB_REGISTRY` rows activated in fleet_monitor.sh | **Prepared, not applied (§9a)** | Would 404 against an unpublished canonical path and can't be ALIGNED-verified pre-collapse (§9c). |
+| markets PR (add ingress + delete 5 stubs) | **Done — markets#513** | Authored by markets' dev-lead, driven by §10. |
+| Companion issue filed in markets | **Filed — markets#506** | Body as committed in §10. |
+| Canonical `agent-ingress.yml` template published | **Published — combsmith/.github#1316 (`452ea69`)** | Outside `DEPLOYABLE_WORKFLOWS` (§9b). |
+| `STUB_REGISTRY` rows activated in fleet_monitor.sh | **Applied — #2182** | ALIGNED run observed: Fleet Monitor run 38193525415 (§9a/§9c). |
 | §4 job-level concurrency schema ruling | **Ratified — ADR-0010, accepted** | ADR-0010 admits bounded job-level `concurrency:`. §3 was re-rendered to the bounds (#2038), and §4b states the non-PR-event behavior change. |
 | pin corrections (§5a/§5b) | **§5a resolved by markets#521; §5b resolved by markets#523** | Behavior-preserving collapse must not change pins; separate follow-ups. |
-| Dedicated baseline doc at the brief's cited path | **Does not exist (§1)** | Not fabricated; real baseline is the reference file + live stubs. |
+| Dedicated baseline doc at the brief's cited path | **Resolved in §1 (#2327)** | The measured run-count baseline is recorded in §1a. The cited path is still not fabricated. |
+| AC7 `ci-failure-analyst` live execution | **Not observed — accepted** | GitHub Actions' own check runs deliver no `check_run` event (#2235), and no third-party check failed on markets in the window. Accepted by the maintainer when #1729 was finalized. The guard is verified by markets' bats test and by package §3/§3a. |
