@@ -788,11 +788,27 @@ jobs:
         with:
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
 
+      - name: Validate dev-lead scripts ref
+        id: agent_ref
+        env:
+          INPUT_AGENT_REF: ${{ inputs.agent_ref }}
+        run: |
+          ref="$INPUT_AGENT_REF"
+          if [ -z "$ref" ]; then
+            echo "::error::inputs.agent_ref must be provided as a pinned commit SHA."
+            exit 1
+          fi
+          if ! [[ "$ref" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::inputs.agent_ref must be a full 40-character commit SHA; branch and tag refs are not allowed."
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: combsmith/.github-private
-          ref: ${{ inputs.agent_ref }}
+          ref: ${{ steps.agent_ref.outputs.ref }}
           path: .dev-lead
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
           sparse-checkout: |
