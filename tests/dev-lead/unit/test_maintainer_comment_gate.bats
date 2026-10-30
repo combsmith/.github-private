@@ -966,3 +966,11 @@ _stale_nodes() {
   _run_check "$(jq -c '{reviews:[], comments:.}' <<< "$after")"
   [ "$status" -eq 0 ]
 }
+
+# #2247: a fix-reviews pass posts a start marker before the model runs, so the
+# sweep's pass cap counts a pass that dies early. It is automation, not a finding.
+@test "#2247: the fix-reviews start marker is a registered automation marker → 0" {
+  local json='{"comments":[{"author":{"login":"don-petry"},"authorAssociation":"OWNER","body":"<!-- dev-lead-fix-reviews-start pr=54 sha=ddd444eee555 intent=fix-reviews edit=2026-10-10T13:03:53Z read_at=2026-10-10T13:20:00Z -->","createdAt":"2026-10-10T13:20:01Z","isMinimized":false,"minimizedReason":""}]}'
+  _run_check "$json"
+  [ "$status" -eq 0 ]
+}

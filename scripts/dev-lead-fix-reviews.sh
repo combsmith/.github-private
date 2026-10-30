@@ -128,7 +128,7 @@ REVIEWS_MARKER_PREFIX="<!-- dev-lead-fix-reviews pr="
 # When this pass started, i.e. a lower bound on when it read the PR's comments.
 # Stamped on terminal markers as read_at= so the #2008 stale-edit dedup can tell a
 # pass that read an edited body from one that merely FINISHED after the edit.
-PASS_STARTED_AT="${PASS_STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+PASS_STARTED_AT="${PASS_STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)}"
 INTEGRITY_MARKER_PREFIX="<!-- dev-lead-conflict-integrity pr="
 NONCONVERGE_MARKER_PREFIX="<!-- dev-lead-review-nonconverge pr="
 # Consecutive not-applied passes against the same review before escalating to a
@@ -551,7 +551,7 @@ ${msg}"
       comment_part="${comment_part} version=${COMMENT_VERSION}"
     fi
   fi
-  if [[ "${PASS_STARTED_AT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+  if [[ "${PASS_STARTED_AT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]]; then
     read_part=" read_at=${PASS_STARTED_AT}"
   fi
   local marker="${REVIEWS_MARKER_PREFIX}${PR_NUMBER}${sha_part} intent=${intent} status=${status}${comment_part}${read_part} -->"
@@ -951,10 +951,17 @@ fetch_pr_context() {
 # model read a 12:18Z disposition as current for a comment edited at 13:03Z,
 # posted nothing, and the gate stayed blocked on every pass. A PR whose comments
 # cannot be read gets an explicit "could not be determined" note, never "none".
+#
+# Also sets STALE_LATEST_EDIT, the newest lastEditedAt among the stale comments
+# (empty when none is stale or the comments cannot be read), for
+# post_stale_pass_start (#2247).
 export_stale_dispositions() {
   local comments facts
+  STALE_LATEST_EDIT=""
   if comments=$(bcr_fetch_pr_comments "$REPO" "$PR_NUMBER" 2>/dev/null) \
      && facts=$(maintainer_gate_stale_disposition_facts "$comments" "${BOT_USER:-donpetry-bot}"); then
+    STALE_LATEST_EDIT=$(maintainer_gate_stale_dispositions "$comments" "${BOT_USER:-donpetry-bot}" \
+      | jq -r 'map(.lastEditedAt) | max // ""' 2>/dev/null) || STALE_LATEST_EDIT=""
     if [ -n "$facts" ]; then
       # Linux caps one environment string at 128 KiB (MAX_ARG_STRLEN); an oversized
       # value would stop envsubst and the agent subprocess from starting.
@@ -977,6 +984,32 @@ This is settled; do not re-derive it. For each comment listed, read its CURRENT 
     echo "::warning::could not compute stale dispositions for PR #${PR_NUMBER} — the prompt says so instead of listing them (#2166)"
   fi
   export STALE_DISPOSITIONS
+}
+
+# post_stale_pass_start: when this pass sees a stale disposition (STALE_LATEST_EDIT,
+# set by export_stale_dispositions), post a start marker before the model runs
+# (#2247). The dev-lead-retry.sh sweep caps the fix-reviews passes it dispatches
+# per edit by counting their markers (stale_disposition_needs_dispatch). A pass that
+# dies before its terminal marker (runner lost, timeout, cancel) would otherwise
+# leave nothing to count. read_at= matches the terminal marker's, so a pass that
+# posts both counts once. The `<!-- dev-lead` prefix is a registered automation
+# marker, so the comment gate does not count it as a finding. Best effort: a failed
+# post must not stop the pass.
+post_stale_pass_start() {
+  [[ "${STALE_LATEST_EDIT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]] || return 0
+  local sha_part="" read_part=""
+  [[ "${HEAD_SHA:-}" =~ ^[0-9a-f]+$ ]] && sha_part=" sha=${HEAD_SHA}"
+  if [[ "${PASS_STARTED_AT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]]; then
+    read_part=" read_at=${PASS_STARTED_AT}"
+  fi
+  local marker="<!-- dev-lead-fix-reviews-start pr=${PR_NUMBER}${sha_part} intent=fix-reviews edit=${STALE_LATEST_EDIT}${read_part} -->"
+  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+    echo "[dry-run] would post stale-disposition pass start marker: ${marker}"
+    return 0
+  fi
+  gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$marker" >/dev/null 2>&1 \
+    || echo "::warning::could not post the stale-disposition pass start marker on PR #${PR_NUMBER} — the sweep's pass cap will not count this pass if it dies before its terminal marker (#2247)"
+  return 0
 }
 
 # resolve_bot_outdated_threads: resolves all outdated review threads from bot reviewers.
@@ -4203,6 +4236,7 @@ case "$INTENT_TYPE" in
     export -n OPEN_THREADS_JSON  # an inherited export would carry the payload into every exec
     fetch_pr_context
     export_stale_dispositions
+    post_stale_pass_start
     rc=0
     build_and_run "fix-reviews" || rc=$?
     [ "$rc" -eq 2 ] && handle_rate_limit "fix-reviews"
