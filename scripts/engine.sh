@@ -1266,6 +1266,9 @@ _claude_log_hop() {
 #
 # Sets _CLAUDE_CHAIN_MODEL_USED to the model that produced the final output
 # (success or last attempt) so callers can log which model actually ran.
+# Every hop runs with --setting-sources user: the working directory is often a PR
+# checkout, and settings stored in a repository (.claude/settings*.json) do not
+# configure the engine. CLAUDE.md is still read, so repository guidance applies.
 _claude_chain_invoke() {
   local chain_csv="$1" prompt_file="$2" timeout_sec="$3"
   shift 3
@@ -1309,7 +1312,7 @@ _claude_chain_invoke() {
     rc=0
 
     if [ -n "$stdout_tmp" ] && [ -n "$stderr_tmp" ]; then
-      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
+      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --setting-sources user --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
         < "$prompt_file" > "$stdout_tmp" 2> "$stderr_tmp" || rc=$?
     else
       # mktemp failure (one or both) — clean up the partial tmp before degrading
@@ -1318,7 +1321,7 @@ _claude_chain_invoke() {
       [ -n "$stderr_tmp" ] && rm -f "$stderr_tmp"
       [ -n "$final_stdout" ] && rm -f "$final_stdout"
       [ -n "$final_stderr" ] && rm -f "$final_stderr"
-      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --model "$model" "${extra_args[@]}" \
+      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --setting-sources user --model "$model" "${extra_args[@]}" \
         < "$prompt_file" || rc=$?
       _CLAUDE_CHAIN_MODEL_USED="$model"
       export _CLAUDE_CHAIN_MODEL_USED
@@ -1951,12 +1954,12 @@ run_writer() {
       fi
       if [ -n "$_tmp" ]; then
         _claude_chain_invoke "$_writer_chain" "$prompt_file" "$ACTION_TIMEOUT_SEC" \
-          --permission-mode acceptEdits \
+          --permission-mode acceptEdits --strict-mcp-config \
           --allowed-tools "Bash,Read,Write,Edit,Grep,Glob,WebFetch" \
           2>&1 | tee "$_tmp" || rc=${PIPESTATUS[0]}
       else
         _claude_chain_invoke "$_writer_chain" "$prompt_file" "$ACTION_TIMEOUT_SEC" \
-          --permission-mode acceptEdits \
+          --permission-mode acceptEdits --strict-mcp-config \
           --allowed-tools "Bash,Read,Write,Edit,Grep,Glob,WebFetch" \
           || rc=$?
       fi
@@ -2110,6 +2113,27 @@ _mark_engine_exhausted() {
   echo "::warning::[engine-exhaustion] ${engine} marked exhausted for this run (${reason}) — it will not be re-invoked" >&2
 }
 
+# _engine_project_config_present <engine>
+# Prints the first path in the working directory that <engine> would load as project
+# configuration and returns 0; returns 1 when there is none. Claude is never listed:
+# _claude_chain_invoke tells it to ignore such files. The review bots' .gemini/
+# config.yaml and styleguide.md are not CLI configuration, so they do not count.
+_engine_project_config_present() {
+  local _path
+  local -a _paths=()
+  case "${1:-}" in
+    gemini)  _paths=(.gemini/settings.json .gemini/extensions .gemini/.env .env) ;;
+    copilot) _paths=(.github/hooks .github/mcp.json .mcp.json .vscode/mcp.json) ;;
+  esac
+  for _path in "${_paths[@]}"; do
+    if [ -e "$_path" ]; then
+      printf '%s\n' "$_path"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # run_writer_with_fallback <prompt_file> [intent_type]
 # Tries primary engine, falls back through claude → gemini → copilot on rate-limit.
 # intent_type is passed to model_for_intent() so each engine uses the appropriate
@@ -2172,6 +2196,14 @@ run_writer_with_fallback() {
   # distinct `unconfigured` so the caller escalates to a human instead of retrying.
   local any_unconfigured=0
   for engine in "${engines[@]}"; do
+    # Gemini and Copilot have no equivalent of Claude's --setting-sources, so one is
+    # not run as the writer in a checkout that carries its project configuration.
+    # Recorded as a config-gap: retrying the same checkout cannot change the answer.
+    if _engine_project_config="$(_engine_project_config_present "$engine")"; then
+      echo "::warning::Skipping $engine: this checkout carries $_engine_project_config, which the engine would load" >&2
+      any_unconfigured=1
+      continue
+    fi
     if [ "$engine" = "copilot" ] && [[ "${COPILOT_GITHUB_TOKEN:-}" == ghp_* ]]; then
       echo "::warning::Skipping copilot fallback: classic PAT in COPILOT_GITHUB_TOKEN is unsupported (configuration gap, not a rate limit)" >&2
       any_unconfigured=1

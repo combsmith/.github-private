@@ -143,6 +143,22 @@ is_fork_pr() {
   [ -n "$head_repo" ] && [ "$head_repo" != "$base_repo" ]
 }
 
+# pr_head_location <pr_number>
+# Prints where the PR's head lives: `same` (this repository), `cross` (another
+# repository) or `unknown`. An issue_comment payload carries no head repository,
+# so this asks the API. Only an explicit `false` counts as `same`; a failed lookup
+# is `unknown`, and callers treat that as not allowed.
+pr_head_location() {
+  local cross
+  cross=$(gh pr view "$1" --repo "${GITHUB_REPOSITORY:-}" --json isCrossRepository \
+    --jq '.isCrossRepository' 2>/dev/null) || cross=""
+  case "$cross" in
+    false) echo "same" ;;
+    true)  echo "cross" ;;
+    *)     echo "unknown" ;;
+  esac
+}
+
 # is_dev_lead_authored
 # Returns 0 (true) iff the PR in the event payload was authored by the dev-lead
 # identity: its head branch matches `dev-lead/issue-*` OR the PR/issue author
@@ -543,6 +559,13 @@ case "$EVENT_NAME" in
     head_sha=$(jq -r '.pull_request.head.sha // empty' "$EVENT_PATH" 2>/dev/null || true)
     author_assoc=$(jq -r '.comment.author_association // empty' "$EVENT_PATH" 2>/dev/null || true)
 
+    # Skip fork PRs, as the pull_request and pull_request_review arms do. This runs
+    # before the authorship gate, which accepts a `dev-lead/issue-*` branch name.
+    if is_fork_pr "$EVENT_PATH"; then
+      emit_skip "fork-pr"
+      exit 0
+    fi
+
     context=$(jq -nc \
       --argjson pr_number "${pr_number:-0}" \
       --arg head_sha "${head_sha:-}" \
@@ -604,10 +627,21 @@ case "$EVENT_NAME" in
                              else (.comment.updated_at // .comment.created_at // empty) end' \
       "$EVENT_PATH" 2>/dev/null || true)
 
-    # Rebase sentinel check (highest priority, before bot-skip)
-    if echo "$comment_body" | grep -qF "<!-- auto-rebase-conflict:"; then
-      context=$(printf '{"pr_number":%s}' "${pr_number:-0}")
-      emit_intent "rebase" "rebase-conflict-sentinel" "$context"
+    # Rebase sentinel check (highest priority, before bot-skip). The sentinel counts
+    # only from dev-lead's own identity (auto-rebase posts it as BOT_USER) or a
+    # trusted author association (maintainers post it by hand); from anyone else it
+    # is an ordinary comment and takes the routing below. The rebase also needs a
+    # head in this repository, which fails closed when it cannot be read.
+    if echo "$comment_body" | grep -qF "<!-- auto-rebase-conflict:" \
+      && { [ "$commenter" = "$BOT_USER" ] || is_human_trusted "$author_assoc"; }; then
+      case "$(pr_head_location "${pr_number:-0}")" in
+        same)
+          context=$(printf '{"pr_number":%s}' "${pr_number:-0}")
+          emit_intent "rebase" "rebase-conflict-sentinel" "$context"
+          ;;
+        cross) emit_skip "fork-pr" ;;
+        *)     emit_skip "pr-head-unverified" ;;
+      esac
       exit 0
     fi
 

@@ -24,7 +24,7 @@ setup() {
 #!/usr/bin/env bash
 case "$*" in
   "pr checkout"*) git checkout -q old ;;
-  "pr view"*)     echo "{\"state\": \"${PR_STATE_API:-OPEN}\", \"headRefName\": \"old\"}" ;;
+  "pr view"*)     echo "{\"state\": \"${PR_STATE_API:-OPEN}\", \"headRefName\": \"old\", \"isCrossRepository\": ${PR_CROSS_API:-false}}" ;;
   *)              echo "{}" ;;
 esac
 GHEOF
@@ -246,6 +246,43 @@ teardown() {
   [[ "$output" == *"skipping checkout"* ]]
   # The agent repo must NOT have been switched to another branch by gh pr checkout.
   [ "$(git -C "$AGENT_REPO" rev-parse --abbrev-ref HEAD)" = "main" ]
+}
+
+@test "checkout_pr_in_worktree: a head in another repository is not checked out" {
+  source "$LIB"
+  cd "$AGENT_REPO"
+  export PR_CROSS_API="true"
+
+  run checkout_pr_in_worktree 7 owner/repo
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"head in another repository"* ]]
+  [ "$(git -C "$AGENT_REPO" rev-parse --abbrev-ref HEAD)" = "main" ]
+  [ "$(git -C "$AGENT_REPO" worktree list --porcelain | grep -c '^worktree ')" -eq 1 ]
+}
+
+@test "checkout_pr_in_worktree: an unreadable head location fails closed" {
+  source "$LIB"
+  cd "$AGENT_REPO"
+  export PR_CROSS_API="null"
+
+  run checkout_pr_in_worktree 7 owner/repo
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"could not confirm"* ]]
+  [ "$(git -C "$AGENT_REPO" worktree list --porcelain | grep -c '^worktree ')" -eq 1 ]
+}
+
+@test "checkout_pr_in_worktree: a failed PR lookup fails closed" {
+  source "$LIB"
+  cd "$AGENT_REPO"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$STUB_BIN_DIR/gh"
+
+  run checkout_pr_in_worktree 7 owner/repo
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"could not confirm"* ]]
+  [ "$(git -C "$AGENT_REPO" worktree list --porcelain | grep -c '^worktree ')" -eq 1 ]
 }
 
 @test "checkout_pr_in_worktree: exits cleanly when PR is closed without merge (CLOSED state)" {
