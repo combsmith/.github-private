@@ -163,6 +163,7 @@ jobs:
     #                         CHANGES_REQUESTED reviews are also skipped because the PR
     #                         is now blocked; review-one-pr.sh would skip it anyway.
     if: >-
+      vars.AGENTS_PAUSED != 'true' &&
       (github.event_name != 'check_suite' ||
        (github.event.check_suite.conclusion == 'success' &&
         github.event.check_suite.pull_requests[0] != null))
