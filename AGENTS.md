@@ -949,7 +949,7 @@ gated (with the one upstream exception above), and a test keeps it that way.
 |---|---|---|---|
 | `dev-lead-reusable.yml` | Job condition, no notice | `dispatch,ci-relay,resume` | The original gate (#1525). No notice job: a contract test requires every job of this reusable to carry the condition, and a notice job would start a runner for every event in every consumer repository during a pause. |
 | `pr-review.yml` | Job condition, no notice | `review` | Reusable. A job condition, because the AGENTS_PAUSED branch of validate-engines.sh is not enough: with Claude as the primary engine, review-batch.sh carries on. No notice job: the canary promotion gate counts a green run as a health sample, so a paused run must end skipped. |
-| `persona-runner-reusable.yml` | Job condition | `run` | Runs every persona advisory (qa-lead, the architects and the rest). |
+| `persona-runner-reusable.yml` | Job condition | `run` | Runs every persona advisory (qa-lead, the architects and the rest). The gate job makes no model call and carries the same condition; the post job needs run, so it is skipped with it. |
 | `ci-failure-analyst-reusable.yml` | Job condition, no notice | `analyze` | Reusable. No notice job, for the same reason as pr-review.yml: the canary promotion gate samples its runs. |
 | `gh-aw-cross-org.yml` | Job condition | `dispatch` |  |
 | `issue-triage-runner.yml` | Job condition | `triage` | The apply job needs triage, so it is skipped with it. |
