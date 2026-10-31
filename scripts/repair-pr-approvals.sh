@@ -57,7 +57,16 @@ while IFS= read -r repo; do
       echo "    [DRY RUN] Would post approval review"
       approved=$((approved + 1))
     else
-      if gh pr review "$pr_url" --approve --body "$comment" 2>&1; then
+      # The marker names the commit that was reviewed. Approve that commit, and only
+      # while it is still the head.
+      head_sha=$(gh pr view "$pr_url" --json headRefOid --jq '.headRefOid' 2>/dev/null || true)
+      if [ -z "$head_sha" ] || [[ "$comment" != *"sha=$head_sha"* ]]; then
+        echo "    - approval marker is not for the current head — skipping"
+        skipped=$((skipped + 1))
+        continue
+      fi
+      if jq -n --arg sha "$head_sha" --arg body "$comment" '{event: "APPROVE", commit_id: $sha, body: $body}' |
+        gh api -X POST "repos/$repo/pulls/$pr_num/reviews" --input - >/dev/null 2>&1; then
         echo "    ✓ Posted approval review"
         approved=$((approved + 1))
 
@@ -65,7 +74,7 @@ while IFS= read -r repo; do
         automerge=$(gh pr view "$pr_url" --json autoMerge --jq '.autoMerge != null' 2>/dev/null || echo false)
         if [ "$automerge" = "false" ]; then
           echo "    → Enabling auto-merge..."
-          if gh pr merge "$pr_url" --auto --squash 2>&1; then
+          if gh pr merge "$pr_url" --auto --squash --match-head-commit "$head_sha" 2>&1; then
             echo "    ✓ Auto-merge enabled"
             automerge_enabled=$((automerge_enabled + 1))
           else
