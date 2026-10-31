@@ -1267,8 +1267,10 @@ _claude_log_hop() {
 # Sets _CLAUDE_CHAIN_MODEL_USED to the model that produced the final output
 # (success or last attempt) so callers can log which model actually ran.
 # Every hop runs with --setting-sources user: the working directory is often a PR
-# checkout, and settings stored in a repository (.claude/settings*.json) do not
-# configure the engine. CLAUDE.md is still read, so repository guidance applies.
+# checkout, and settings stored in a repository (.claude/settings*.json, .mcp.json)
+# do not configure the engine. That source also carries CLAUDE.md, so --add-dir plus
+# CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD keep the repository's guidance loaded.
+# Project skills and CLAUDE.md files in subdirectories are no longer auto-loaded.
 _claude_chain_invoke() {
   local chain_csv="$1" prompt_file="$2" timeout_sec="$3"
   shift 3
@@ -1312,7 +1314,8 @@ _claude_chain_invoke() {
     rc=0
 
     if [ -n "$stdout_tmp" ] && [ -n "$stderr_tmp" ]; then
-      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --setting-sources user --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
+      CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" \
+        claude --print --setting-sources user --add-dir "$PWD" --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
         < "$prompt_file" > "$stdout_tmp" 2> "$stderr_tmp" || rc=$?
     else
       # mktemp failure (one or both) — clean up the partial tmp before degrading
@@ -1321,7 +1324,8 @@ _claude_chain_invoke() {
       [ -n "$stderr_tmp" ] && rm -f "$stderr_tmp"
       [ -n "$final_stdout" ] && rm -f "$final_stdout"
       [ -n "$final_stderr" ] && rm -f "$final_stderr"
-      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --setting-sources user --model "$model" "${extra_args[@]}" \
+      CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" \
+        claude --print --setting-sources user --add-dir "$PWD" --model "$model" "${extra_args[@]}" \
         < "$prompt_file" || rc=$?
       _CLAUDE_CHAIN_MODEL_USED="$model"
       export _CLAUDE_CHAIN_MODEL_USED

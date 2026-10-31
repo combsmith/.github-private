@@ -83,13 +83,33 @@ _source_engine() {
   grep -q -- "--setting-sources user" "$ARGS_RECORD"
 }
 
+@test "claude: repository CLAUDE.md stays loaded alongside the limited setting sources" {
+  _source_engine "claude"
+  cat > "$STUB_BIN_DIR/claude" <<'STUB'
+#!/usr/bin/env bash
+echo "env=${CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD:-unset} cwd=$PWD args=$*" >> "$STUB_ENGINE_RECORD_ARGS"
+echo ok
+STUB
+  chmod +x "$STUB_BIN_DIR/claude"
+  local wd
+  wd="$(mktemp -d)"
+  wd="$(cd "$wd" && pwd)"
+  pushd "$wd" >/dev/null
+  run run_writer "$TEST_PROMPT"
+  popd >/dev/null
+  [ "$status" -eq 0 ]
+  grep -q -- "env=1 " "$ARGS_RECORD"
+  grep -q -- "--setting-sources user --add-dir $wd " "$ARGS_RECORD"
+  rm -rf "$wd"
+}
+
 @test "claude: the degraded no-capture path also limits setting sources to user" {
   _source_engine "claude"
   # mktemp failing is what selects the passthrough branch of _claude_chain_invoke.
   mktemp() { return 1; }
   _claude_chain_invoke "stub-model" "$TEST_PROMPT" 30 --allowed-tools Read >/dev/null
   unset -f mktemp
-  grep -q -- "--setting-sources user" "$ARGS_RECORD"
+  grep -q -- "--setting-sources user --add-dir $PWD " "$ARGS_RECORD"
 }
 
 @test "writer fallback: gemini does not run in a checkout carrying its project configuration" {

@@ -147,7 +147,7 @@ is_fork_pr() {
 # Prints where the PR's head lives: `same` (this repository), `cross` (another
 # repository) or `unknown`. An issue_comment payload carries no head repository,
 # so this asks the API. Only an explicit `false` counts as `same`; a failed lookup
-# is `unknown`, and callers treat that as not allowed.
+# is `unknown`, which is never allowed through.
 pr_head_location() {
   local cross
   cross=$(gh pr view "$1" --repo "${GITHUB_REPOSITORY:-}" --json isCrossRepository \
@@ -631,7 +631,9 @@ case "$EVENT_NAME" in
     # only from dev-lead's own identity (auto-rebase posts it as BOT_USER) or a
     # trusted author association (maintainers post it by hand); from anyone else it
     # is an ordinary comment and takes the routing below. The rebase also needs a
-    # head in this repository, which fails closed when it cannot be read.
+    # head in this repository. When that cannot be read the run fails rather than
+    # skips: auto-rebase does not repost for the same base, so a green skip would
+    # lose the rebase with nothing to show for it.
     if echo "$comment_body" | grep -qF "<!-- auto-rebase-conflict:" \
       && { [ "$commenter" = "$BOT_USER" ] || is_human_trusted "$author_assoc"; }; then
       case "$(pr_head_location "${pr_number:-0}")" in
@@ -640,7 +642,10 @@ case "$EVENT_NAME" in
           emit_intent "rebase" "rebase-conflict-sentinel" "$context"
           ;;
         cross) emit_skip "fork-pr" ;;
-        *)     emit_skip "pr-head-unverified" ;;
+        *)
+          echo "::error::could not confirm that PR #${pr_number:-0} has its head in ${GITHUB_REPOSITORY:-this repository} — not routing the rebase"
+          exit 1
+          ;;
       esac
       exit 0
     fi

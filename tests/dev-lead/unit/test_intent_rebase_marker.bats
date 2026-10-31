@@ -121,17 +121,17 @@ _event() {
   _event "human-maintainer" "MEMBER"
   export GH_STUB_FAIL=1
   run bash "$INTENT_SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(_get_env INTENT_TYPE)" = "skip" ]
-  [ "$(_get_env INTENT_REASON)" = "pr-head-unverified" ]
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"could not confirm"* ]]
+  [ "$(_get_env INTENT_TYPE)" = "" ]
 }
 
 @test "rebase marker: an empty head answer fails closed" {
   _event "human-maintainer" "MEMBER"
   export GH_STUB_CROSS=""
   run bash "$INTENT_SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(_get_env INTENT_REASON)" = "pr-head-unverified" ]
+  [ "$status" -eq 1 ]
+  [ "$(_get_env INTENT_TYPE)" = "" ]
 }
 
 @test "review comment on a cross-repository PR → skip fork-pr, even on a dev-lead branch name" {
