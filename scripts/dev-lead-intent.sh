@@ -146,17 +146,21 @@ is_fork_pr() {
 # pr_head_location <pr_number>
 # Prints where the PR's head lives: `same` (this repository), `cross` (another
 # repository) or `unknown`. An issue_comment payload carries no head repository,
-# so this asks the API. Only an explicit `false` counts as `same`; a failed lookup
-# is `unknown`, which is never allowed through.
+# so this asks the API, three times before giving up on a transient failure. Only an
+# explicit `false` counts as `same`; a failed lookup is `unknown`, which is never
+# allowed through.
 pr_head_location() {
-  local cross
-  cross=$(gh pr view "$1" --repo "${GITHUB_REPOSITORY:-}" --json isCrossRepository \
-    --jq '.isCrossRepository' 2>/dev/null) || cross=""
-  case "$cross" in
-    false) echo "same" ;;
-    true)  echo "cross" ;;
-    *)     echo "unknown" ;;
-  esac
+  local cross attempt
+  for attempt in 1 2 3; do
+    cross=$(gh pr view "$1" --repo "${GITHUB_REPOSITORY:-}" --json isCrossRepository \
+      --jq '.isCrossRepository' 2>/dev/null) || cross=""
+    case "$cross" in
+      false) echo "same"; return 0 ;;
+      true)  echo "cross"; return 0 ;;
+    esac
+    if [ "$attempt" -lt 3 ]; then sleep "$(( attempt * ${DEV_LEAD_LOOKUP_RETRY_SEC:-2} ))"; fi
+  done
+  echo "unknown"
 }
 
 # is_dev_lead_authored

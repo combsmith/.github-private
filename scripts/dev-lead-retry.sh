@@ -590,10 +590,11 @@ scan_pr_for_rate_limits() {
     return 0
   fi
 
-  # Fetch all comment bodies, paginating to ensure we don't miss markers on busy PRs
+  # Fetch our automation's comment bodies, paginating to ensure we don't miss
+  # markers on busy PRs
   local comments_json
   comments_json=$(gh api --paginate "repos/${repo}/issues/${pr_number}/comments?per_page=100" \
-    --jq '[.[].body]' 2>/dev/null | jq -s 'add // []' || echo "[]")
+    --jq "$(retry_marker_bodies_jq)" 2>/dev/null | jq -s 'add // []' || echo "[]")
 
   # Deduplication guard: if a concurrent resume path already claimed dispatch
   # for this SHA, skip to prevent duplicate repository_dispatch calls (#1407).
@@ -1010,6 +1011,14 @@ bcr_automation_logins() {
     out="${out:+${out},}${l}"
   done
   printf '%s' "$out"
+}
+
+# retry_marker_bodies_jq: the --jq filter for the bodies of comments our own
+# automation wrote. A retry marker is an instruction to re-run a pass, so a marker
+# in anyone else's comment is ignored, as are their dispatch guards and results.
+retry_marker_bodies_jq() {
+  printf '[.[] | select(("%s" | split(",")) as $a | .user.login as $l | $a | index($l)) | .body]' \
+    "$(bcr_automation_logins)"
 }
 
 # scan_pr_for_undispositioned_bot_comments <repo> <pr_number>
@@ -1509,7 +1518,7 @@ scan_issue_for_retry() {
 
   local comments_json
   comments_json=$(gh api --paginate "repos/${repo}/issues/${issue_number}/comments?per_page=100" \
-    --jq '[.[].body]' 2>/dev/null || echo "[]")
+    --jq "$(retry_marker_bodies_jq)" 2>/dev/null || echo "[]")
 
   # Newest dev-lead-issue marker for this issue (comments are chronological, so
   # the last matching one is the most recent attempt — earlier ones superseded).

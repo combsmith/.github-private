@@ -264,7 +264,7 @@ teardown() {
 @test "checkout_pr_in_worktree: an unreadable head location fails closed" {
   source "$LIB"
   cd "$AGENT_REPO"
-  export PR_CROSS_API="null"
+  export PR_CROSS_API="null" DEV_LEAD_LOOKUP_RETRY_SEC=0
 
   run checkout_pr_in_worktree 7 owner/repo
 
@@ -273,9 +273,32 @@ teardown() {
   [ "$(git -C "$AGENT_REPO" worktree list --porcelain | grep -c '^worktree ')" -eq 1 ]
 }
 
+@test "checkout_pr_in_worktree: a transient PR lookup failure is retried" {
+  source "$LIB"
+  cd "$AGENT_REPO"
+  export DEV_LEAD_LOOKUP_RETRY_SEC=0 GH_COUNT="$BATS_TEST_TMPDIR/gh-count"
+  cat > "$STUB_BIN_DIR/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  "pr checkout"*) git checkout -q old ;;
+  "pr view"*)
+    echo x >> "$GH_COUNT"
+    [ "$(wc -l < "$GH_COUNT")" -ge 3 ] || exit 1
+    echo '{"state":"OPEN","headRefName":"old","isCrossRepository":false}' ;;
+esac
+GHEOF
+
+  checkout_pr_in_worktree 7 owner/repo >/dev/null 2>&1
+
+  [ "$(git rev-parse --abbrev-ref HEAD)" = "old" ]
+  [ "$(wc -l < "$GH_COUNT")" -eq 3 ]
+  cleanup_pr_worktree
+}
+
 @test "checkout_pr_in_worktree: a failed PR lookup fails closed" {
   source "$LIB"
   cd "$AGENT_REPO"
+  export DEV_LEAD_LOOKUP_RETRY_SEC=0
   printf '#!/usr/bin/env bash\nexit 1\n' > "$STUB_BIN_DIR/gh"
 
   run checkout_pr_in_worktree 7 owner/repo

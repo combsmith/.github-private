@@ -122,7 +122,7 @@ _init() {
 # reset already passed (so today's logic would retry them).
 _rate_limited_issue() {
   jq -n --arg s "${1:-rate-limited}" '[478, 479] | map(
-    {body: "<!-- dev-lead-issue \(.) status=\($s) attempt=1 reason=rate-limited run=9 reset=2026-10-09T08:00:00Z -->"})' \
+    {user: {login: "don-petry"}, body: "<!-- dev-lead-issue \(.) status=\($s) attempt=1 reason=rate-limited run=9 reset=2026-10-09T08:00:00Z -->"})' \
     > "$MOCK_DIR/comments.json"
 }
 

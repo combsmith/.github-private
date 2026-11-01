@@ -16,6 +16,7 @@ setup() {
   export BOT_USER="don-petry"
   export TRUSTED_BOTS="coderabbitai[bot]"
   export TRIGGER_PHRASES="@dev-lead"
+  export DEV_LEAD_LOOKUP_RETRY_SEC=0
   export GH_LOG="$BATS_TEST_TMPDIR/gh.log"
   : > "$GH_LOG"
 
@@ -26,6 +27,7 @@ echo "$*" >> "$GH_LOG"
 case "$*" in
   "pr view 65 --repo combsmith/.github-private --json isCrossRepository --jq .isCrossRepository")
     [ "${GH_STUB_FAIL:-0}" = "1" ] && exit 1
+    if [ -n "${GH_STUB_FAIL_TIMES:-}" ] && [ "$(wc -l < "$GH_LOG")" -le "$GH_STUB_FAIL_TIMES" ]; then exit 1; fi
     echo "${GH_STUB_CROSS-false}" ;;
   *) exit 1 ;;
 esac
@@ -124,6 +126,23 @@ _event() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"could not confirm"* ]]
   [ "$(_get_env INTENT_TYPE)" = "" ]
+}
+
+@test "rebase marker: a transient head lookup failure is retried" {
+  _event "human-maintainer" "MEMBER"
+  export GH_STUB_FAIL_TIMES=2
+  run bash "$INTENT_SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(_get_env INTENT_TYPE)" = "rebase" ]
+  [ "$(wc -l < "$GH_LOG")" -eq 3 ]
+}
+
+@test "rebase marker: a persistent head lookup failure stops after three attempts" {
+  _event "human-maintainer" "MEMBER"
+  export GH_STUB_FAIL=1
+  run bash "$INTENT_SCRIPT"
+  [ "$status" -eq 1 ]
+  [ "$(wc -l < "$GH_LOG")" -eq 3 ]
 }
 
 @test "rebase marker: an empty head answer fails closed" {
