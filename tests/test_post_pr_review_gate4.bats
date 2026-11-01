@@ -1,0 +1,255 @@
+#!/usr/bin/env bats
+# Issue #1766: mechanical enforcement of decision gate 4 in scripts/post-pr-review.sh.
+#
+# A cascade verdict of `approve` must be IMPOSSIBLE while any review thread is
+# unresolved, or while the thread set cannot be enumerated (API failure /
+# pagination / permissions). In those cases post-pr-review.sh downgrades the
+# decision to escalate — it must never call `gh pr review --approve`. A clean,
+# fully-enumerated, zero-unresolved snapshot still approves.
+#
+# The gh stub is driven by $URT_GQL_MODE:
+#   clean       → complete snapshot, no unresolved threads (approval allowed)
+#   unresolved  → complete snapshot, one unresolved thread (block)
+#   paginated   → hasNextPage=true (unknown count → fail closed)
+#   apifail     → graphql call exits non-zero (fail closed)
+
+setup() {
+  REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+  export POST_SCRIPT="$REPO_ROOT/scripts/post-pr-review.sh"
+
+  export SHA="8203876e5b0718dd3d672fed4eec8394e5d3729d"
+  export PR_URL="https://github.com/combsmith/.github-private/pull/1742"
+
+  export TEST_DIR="$BATS_TEST_TMPDIR"
+  mkdir -p "$TEST_DIR/bin"
+  cd "$TEST_DIR"
+
+  export GQL_COUNT="$TEST_DIR/gql_count"
+  export APPROVE_LOG="$TEST_DIR/approve.log"
+  export COMMENT_OUT="$TEST_DIR/comment.txt"
+  export GH_LOG="$TEST_DIR/gh.log"
+  : > "$APPROVE_LOG"; : > "$COMMENT_OUT"; : > "$GH_LOG"
+
+  cat > "$TEST_DIR/bin/gh" <<'GHEOF'
+#!/bin/bash
+args="$*"
+printf '%s\n' "$*" >> "$GH_LOG"
+
+# GraphQL: the unresolved-review-thread enumeration.
+if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
+  # Changing-snapshot mode: the first enumeration (initial gate) is clean, every
+  # later one (pre-POST recheck) uses $URT_GQL_RECHECK_MODE.
+  if [ -n "${URT_GQL_RECHECK_MODE:-}" ] && [[ "$args" == *reviewThreads* ]]; then
+    n=$(cat "$GQL_COUNT" 2>/dev/null || echo 0)
+    n=$((n + 1))
+    echo "$n" > "$GQL_COUNT"
+    if [ "$n" -ge 2 ]; then URT_GQL_MODE="$URT_GQL_RECHECK_MODE"; else URT_GQL_MODE="clean"; fi
+  fi
+  case "$*" in
+    *reviewThreads*)
+      case "${URT_GQL_MODE:-clean}" in
+        clean)      printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+        unresolved) printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false}]}}}}' ;;
+        paginated)  printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":true},"nodes":[{"isResolved":true}]}}}}' ;;
+        malformed)  printf '%s' '{"data":{"resource":{"reviewThreads":{"nodes":[{"isResolved":true}]}}}}' ;;
+        apifail)    exit 1 ;;
+      esac
+      exit 0
+      ;;
+    *) printf '%s' '{}'; exit 0 ;;
+  esac
+fi
+
+# Approve review — record it so tests can assert it did/did not happen.
+if [ "$1" = "pr" ] && [ "$2" = "review" ]; then
+  printf 'APPROVE %s\n' "$*" >> "$APPROVE_LOG"
+  exit 0
+fi
+
+# Fix-request / escalation comment — capture the body.
+if [ "$1" = "pr" ] && [ "$2" = "comment" ]; then
+  prev=""
+  for a in "$@"; do
+    [ "$prev" = "--body" ] && printf '%s' "$a" > "$COMMENT_OUT"
+    prev="$a"
+  done
+  exit 0
+fi
+
+# pr view: merge state + metadata queries.
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  jqf=""; prev=""
+  for a in "$@"; do
+    [ "$prev" = "--jq" ] && jqf="$a"
+    prev="$a"
+  done
+  meta='{"mergeStateStatus":"CLEAN","body":"b","closingIssuesReferences":[],"labels":[]}'
+  # Escalation path confirms the hold label by reading it back; pretend it sticks.
+  if [ -n "${HOLD_LABEL_PRESENT:-}" ]; then
+    meta='{"mergeStateStatus":"CLEAN","body":"b","closingIssuesReferences":[],"labels":[{"name":"needs-human-review"}]}'
+  fi
+  if [ -n "$jqf" ]; then printf '%s' "$meta" | jq -r "$jqf"; else printf '%s' "$meta"; fi
+  exit 0
+fi
+
+# api --paginate for prior-item cleanup → empty arrays, except /reviews readback.
+if [ "$1" = "api" ]; then
+  if [[ "$args" == *"/reviews"* ]]; then
+    # verify_approval_landed reads back with `--paginate --slurp | jq 'add'`, so a
+    # slurp request must return an array-of-pages that `jq 'add'` flattens into the
+    # reviews array; non-slurp callers still get the flat array.
+    if [[ "$args" == *"--slurp"* ]]; then
+      printf '%s' '[[{"state":"APPROVED","user":{"login":"donpetry-bot"},"commit_id":"'"$SHA"'"}]]'
+    else
+      printf '%s' '[{"state":"APPROVED","user":{"login":"donpetry-bot"},"commit_id":"'"$SHA"'"}]'
+    fi
+  else
+    printf '%s' '[]'
+  fi
+  exit 0
+fi
+
+exit 0
+GHEOF
+  chmod +x "$TEST_DIR/bin/gh"
+  export PATH="$TEST_DIR/bin:$PATH"
+
+  export BOT_USER="donpetry-bot"   # matches the /reviews readback stub author
+  export PR_HEAD_SHA="$SHA"
+  export DRY_RUN="false"
+  # Enable the AI-delegation escalate path so a downgrade posts a fix-request
+  # comment we can inspect (vs. the human-escalation branch).
+  export AI_DELEGATION_ENABLED="true"
+  export REVIEW_CYCLE="0"
+  export MAX_REVIEW_CYCLES="3"
+}
+
+# No teardown needed: TEST_DIR is $BATS_TEST_TMPDIR, which BATS creates per-test
+# and removes automatically after each test.
+
+# write_verdict <decision> <risk>
+#   Write a verdict JSON file to TEST_DIR/verdict.json with the given decision
+#   and risk level, return the file path. The verdict includes the PR_HEAD_SHA
+#   marker and a sample approval message.
+write_verdict() {
+  # $1 = decision, $2 = risk
+  local f="$TEST_DIR/verdict.json"
+  jq -n --arg d "$1" --arg r "$2" --arg s "$SHA" \
+    '{decision:$d, risk:$r, summary:"s", findings:[], body:("<!-- pr-review-agent v1 sha=" + $s + " decision=approved risk=" + $r + " -->\n\n## Automated review — APPROVED ✓")}' > "$f"
+  echo "$f"
+}
+
+# ── AC1: unresolved thread ⇒ approve is downgraded to escalate ──────────────
+
+@test "AC1: approve verdict + unresolved thread → NOT approved, escalated (#1766)" {
+  export URT_GQL_MODE="unresolved"
+  local vf; vf=$(write_verdict approve LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 0 ]
+  # The approval must NOT have been posted.
+  [ ! -s "$APPROVE_LOG" ]
+  # A fix-request comment must have been posted naming gate 4.
+  grep -qi 'gate 4' "$COMMENT_OUT"
+  grep -qi 'unresolved review thread' "$COMMENT_OUT"
+}
+
+# ── AC2: cannot enumerate (pagination) ⇒ fail closed to escalate ────────────
+
+@test "AC2: approve verdict + paginated thread set → fail closed, NOT approved (#1766)" {
+  export URT_GQL_MODE="paginated"
+  local vf; vf=$(write_verdict approve LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 0 ]
+  [ ! -s "$APPROVE_LOG" ]
+  grep -qi 'could not be enumerated' "$COMMENT_OUT"
+}
+
+# ── AC2: cannot enumerate (API failure) ⇒ fail closed to escalate ───────────
+
+@test "AC2: approve verdict + graphql API failure → fail closed, NOT approved (#1766)" {
+  export URT_GQL_MODE="apifail"
+  local vf; vf=$(write_verdict approve LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 0 ]
+  [ ! -s "$APPROVE_LOG" ]
+  grep -qi 'could not be enumerated' "$COMMENT_OUT"
+}
+
+# ── AC2: malformed response (missing pageInfo) ⇒ fail closed to escalate ────
+
+@test "AC2: approve verdict + reviewThreads missing pageInfo → fail closed, NOT approved (#1766)" {
+  export URT_GQL_MODE="malformed"
+  local vf; vf=$(write_verdict approve LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 0 ]
+  [ ! -s "$APPROVE_LOG" ]
+  grep -qi 'could not be enumerated' "$COMMENT_OUT"
+}
+
+# ── Control: clean, fully-enumerated, zero unresolved ⇒ approve still posts ──
+
+@test "control: approve verdict + no unresolved threads → approved (gate 4 clear)" {
+  export URT_GQL_MODE="clean"
+  local vf; vf=$(write_verdict approve LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 0 ]
+  # Approval WAS posted.
+  grep -q 'APPROVE' "$APPROVE_LOG"
+  # No fix-request comment.
+  [ ! -s "$COMMENT_OUT" ]
+}
+
+# ── Pre-POST recheck: clean at the initial gate, blocked at the recheck ──────
+
+@test "recheck: clean initial snapshot then unresolved thread → NOT approved, recheck escalation posted (#1766)" {
+  export URT_GQL_RECHECK_MODE="unresolved"
+  export HOLD_LABEL_PRESENT=1
+  local vf; vf=$(write_verdict approve LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 101 ]
+  [ ! -s "$APPROVE_LOG" ]
+  [[ "$output" == *"gate4 (recheck)"* ]]
+  grep -qi 'unresolved review thread' "$COMMENT_OUT"
+  grep -qi 're-check immediately before approval' "$COMMENT_OUT"
+}
+
+@test "recheck: clean initial snapshot then incomplete (paginated) → NOT approved, fail-closed escalation posted (#1766)" {
+  export URT_GQL_RECHECK_MODE="paginated"
+  export HOLD_LABEL_PRESENT=1
+  local vf; vf=$(write_verdict approve LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 101 ]
+  [ ! -s "$APPROVE_LOG" ]
+  [[ "$output" == *"could not be re-enumerated"* ]]
+  grep -qi 'could not be re-enumerated' "$COMMENT_OUT"
+}
+
+# ── The gate only governs approvals: an escalate verdict is untouched ────────
+
+@test "escalate verdict is not affected by the gate (no thread enumeration needed)" {
+  export URT_GQL_MODE="clean"
+  local vf; vf=$(write_verdict escalate LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 0 ]
+  [ ! -s "$APPROVE_LOG" ]
+}
+
+# ── DRY_RUN reflects the downgrade in the printed decision ──────────────────
+
+@test "DRY_RUN: unresolved thread downgrades the printed decision to escalate" {
+  export URT_GQL_MODE="unresolved"
+  local vf; vf=$(write_verdict approve LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "true"
+  echo "$output" >&2
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Decision: escalate"* ]]
+  [ ! -s "$APPROVE_LOG" ]
+}

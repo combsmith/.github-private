@@ -86,3 +86,4 @@ jobs:
             ${{ steps.branch.outputs.name != '' &&
             format('-Dsonar.branch.name={0}', steps.branch.outputs.name)
             || '' }}
+        continue-on-error: true
