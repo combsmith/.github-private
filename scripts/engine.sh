@@ -822,8 +822,11 @@ is_transient_failure() {
 # GEMINI_LEDGER_FILE (gemini-quota.sh's override for the same file) and
 # _ENGINE_USAGE_OUT (this call's usage sidecar, which nested engine code would
 # overwrite). TOKEN_WORKFLOW stays: a label, it writes nothing without a path.
+# CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD makes the Claude CLI read CLAUDE.md
+# from --add-dir, see _claude_chain_invoke; the other CLIs ignore it.
 _engine_child() {
-  env -u TOKEN_LOG_FILE -u GEMINI_LEDGER_FILE -u _ENGINE_USAGE_OUT "$@"
+  env -u TOKEN_LOG_FILE -u GEMINI_LEDGER_FILE -u _ENGINE_USAGE_OUT \
+    CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 "$@"
 }
 
 # copilot_chat <prompt_file> [timeout_sec] [extra_flags...]
@@ -1314,8 +1317,7 @@ _claude_chain_invoke() {
     rc=0
 
     if [ -n "$stdout_tmp" ] && [ -n "$stderr_tmp" ]; then
-      CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" \
-        claude --print --setting-sources user --add-dir "$PWD" --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
+      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --setting-sources user --add-dir "$PWD" --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
         < "$prompt_file" > "$stdout_tmp" 2> "$stderr_tmp" || rc=$?
     else
       # mktemp failure (one or both) — clean up the partial tmp before degrading
@@ -1324,8 +1326,7 @@ _claude_chain_invoke() {
       [ -n "$stderr_tmp" ] && rm -f "$stderr_tmp"
       [ -n "$final_stdout" ] && rm -f "$final_stdout"
       [ -n "$final_stderr" ] && rm -f "$final_stderr"
-      CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" \
-        claude --print --setting-sources user --add-dir "$PWD" --model "$model" "${extra_args[@]}" \
+      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --setting-sources user --add-dir "$PWD" --model "$model" "${extra_args[@]}" \
         < "$prompt_file" || rc=$?
       _CLAUDE_CHAIN_MODEL_USED="$model"
       export _CLAUDE_CHAIN_MODEL_USED
