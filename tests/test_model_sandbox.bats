@@ -9,6 +9,8 @@ setup() {
   export TEST_DIR="$BATS_TEST_TMPDIR"
   mkdir -p "$TEST_DIR/bin" "$TEST_DIR/root/cwd" "$TEST_DIR/root/cli/bin"
   export MODEL_SANDBOX_ROOT="$TEST_DIR/root"
+  export MODEL_SANDBOX_GEMINI_SETTINGS="$TEST_DIR/etc/settings.json"
+  mkdir -p "$TEST_DIR/etc"; echo '{}' > "$MODEL_SANDBOX_GEMINI_SETTINGS"
   export SUDO_LOG="$TEST_DIR/sudo.log"; : > "$SUDO_LOG"
   export CLI_ENV="$TEST_DIR/cli_env"
   export CLI_ARGS="$TEST_DIR/cli_args"
@@ -36,6 +38,8 @@ case "${1:-}" in --preserve-env=*) keep="${1#--preserve-env=}"; shift ;; esac
 if [ -n "${PROBE_SUCCEEDS:-}" ] && [[ "$*" == *"$PROBE_SUCCEEDS"* ]]; then exit 0; fi
 case "$*" in
   *" test -w "*) exit 1 ;;
+  *" test -r "*) exit 1 ;;
+  *" test -x "*) exit 1 ;;
   *" cat /proc/"*) exit 1 ;;
   *" printenv "*) exit 1 ;;
 esac
@@ -108,6 +112,11 @@ verdict() { printf '%s' "$1" > "$TEST_DIR/v.json"; echo "$TEST_DIR/v.json"; }
   run grep -q 'checkout' "$CLI_ARGS"
   [ "$status" -eq 1 ]
   grep -q '^CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1$' "$CLI_ENV"
+}
+
+@test "Gemini is told to trust the sandbox working directory, or it refuses to start" {
+  _engine_child timeout --kill-after=5 60 gemini --prompt "" < "$TEST_DIR/prompt.md"
+  grep -q '^GEMINI_CLI_TRUST_WORKSPACE=true$' "$CLI_ENV"
 }
 
 @test "a sandboxed Gemini call gets only the current Gemini key" {
@@ -249,6 +258,51 @@ verdict() { printf '%s' "$1" > "$TEST_DIR/v.json"; echo "$TEST_DIR/v.json"; }
   export PROBE_SUCCEEDS="test -w $GITHUB_WORKSPACE/scripts/post-pr-review.sh"
   run model_sandbox_selftest
   [ "$status" -eq 1 ]
+}
+
+@test "self-test fails when the model user can read a runner command file" {
+  export GITHUB_ENV="$TEST_DIR/github_env"; : > "$GITHUB_ENV"
+  export PROBE_SUCCEEDS="test -r $GITHUB_ENV"
+  run model_sandbox_selftest
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"can read $GITHUB_ENV"* ]]
+}
+
+@test "self-test fails when the model user can read the gh config" {
+  export HOME="$TEST_DIR/runner-home"; mkdir -p "$HOME/.config/gh"; : > "$HOME/.config/gh/hosts.yml"
+  export PROBE_SUCCEEDS="test -r $HOME/.config/gh/hosts.yml"
+  run model_sandbox_selftest
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"hosts.yml"* ]]
+}
+
+@test "self-test fails when the model user can enter the runner's home" {
+  export HOME="$TEST_DIR/runner-home"; mkdir -p "$HOME"
+  export PROBE_SUCCEEDS="test -x $HOME"
+  run model_sandbox_selftest
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"can enter $HOME"* ]]
+}
+
+@test "self-test fails when Gemini's tool limits are missing" {
+  rm -f "$MODEL_SANDBOX_GEMINI_SETTINGS"
+  run model_sandbox_selftest
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"tool limits are missing"* ]]
+}
+
+@test "self-test fails when the model user can change Gemini's tool limits" {
+  export PROBE_SUCCEEDS="test -w $MODEL_SANDBOX_GEMINI_SETTINGS"
+  run model_sandbox_selftest
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"change Gemini's tool limits"* ]]
+}
+
+@test "self-test fails when the model user can replace Gemini's tool limits" {
+  export PROBE_SUCCEEDS="test -w $TEST_DIR/etc"
+  run model_sandbox_selftest
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"change Gemini's tool limits"* ]]
 }
 
 @test "self-test fails when a credential reaches the model user" {
@@ -470,4 +524,12 @@ STUB
   post_verdict "$vf"
   grep -q kept "$CHANNEL_LOG"
   [ ! -s "$SUDO_LOG" ]
+}
+
+# ── Tokens stay off command lines ────────────────────────────────────────────
+
+@test "no script in the review path puts a bearer token on a curl command line" {
+  run grep -nE -- '-H "Authorization: Bearer|--header "Authorization: Bearer' \
+    "$REPO_ROOT/scripts/engine.sh" "$REPO_ROOT/scripts/review-batch.sh"
+  [ "$status" -eq 1 ]
 }

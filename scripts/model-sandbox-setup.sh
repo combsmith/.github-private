@@ -26,11 +26,10 @@ sudo -n cp "$SCRIPT_DIR/../CLAUDE.md" "$SCRIPT_DIR/../AGENTS.md" "$MODEL_SANDBOX
 sudo -n chown -R root:root "$MODEL_SANDBOX_ROOT"
 sudo -n chmod -R a+rX,go-w "$MODEL_SANDBOX_ROOT"
 
-# Gemini has no equivalent of --tools. Its tool set comes from this file, which the
-# model user can read but not change.
-model_home="$(_model_sandbox_home)"
-sudo -n mkdir -p "$model_home/.gemini"
-sudo -n tee "$model_home/.gemini/settings.json" >/dev/null <<JSON
+# Gemini has no equivalent of --tools. Its tool set comes from system settings, which
+# outrank user settings and which the model user can read but not change.
+sudo -n mkdir -p "$(dirname "$MODEL_SANDBOX_GEMINI_SETTINGS")"
+sudo -n tee "$MODEL_SANDBOX_GEMINI_SETTINGS" >/dev/null <<JSON
 {
   "tools": {
     "core": ["read_file", "read_many_files", "list_directory", "glob", "search_file_content"],
@@ -39,8 +38,8 @@ sudo -n tee "$model_home/.gemini/settings.json" >/dev/null <<JSON
   "context": { "includeDirectories": ["$MODEL_SANDBOX_CONTEXT_DIR"] }
 }
 JSON
-sudo -n chown root:root "$model_home/.gemini/settings.json"
-sudo -n chown "$PR_REVIEW_MODEL_USER" "$model_home/.gemini"
+sudo -n chown root:root "$MODEL_SANDBOX_GEMINI_SETTINGS"
+sudo -n chmod 644 "$MODEL_SANDBOX_GEMINI_SETTINGS"
 
 mkdir -p "$MODEL_SANDBOX_CONTEXT_DIR"
 chmod 755 "$MODEL_SANDBOX_CONTEXT_DIR"

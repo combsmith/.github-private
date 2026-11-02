@@ -15,14 +15,13 @@
 # This is PLUMBING ONLY (Story 2): it does not change any tier prompt. Consumers
 # in Story 5 verify the persisted PR_HEAD_SHA stamp for freshness before use.
 
-# Superset of every field the deep/audit/single prompts read
-# (headRepository, headRepositoryOwner) and the rubber-duck prompt reads
-# (repository) via `gh pr view`. Persisting the union — with the FULL, non-simplified
+# Superset of every field the deep/audit/single and rubber-duck prompts read via
+# `gh pr view`. Persisting the union — with the FULL, non-simplified
 # `files` array — means no tier loses a field it uses today. This is intentionally
 # richer than review-one-pr.sh's triage `_meta_fields`, which simplifies `files`
 # and omits headRepository/repository/reviews/comments/commits, so the triage
 # metadata copy is insufficient for the agentic tiers and one full fetch is done here.
-PR_CONTEXT_METADATA_FIELDS="number,title,body,author,isDraft,baseRefName,headRefName,headRefOid,url,headRepository,headRepositoryOwner,repository,labels,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviewRequests,reviews,comments,commits,closingIssuesReferences,additions,deletions,changedFiles,files"
+PR_CONTEXT_METADATA_FIELDS="number,title,body,author,isDraft,baseRefName,headRefName,headRefOid,url,headRepository,headRepositoryOwner,labels,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviewRequests,reviews,comments,commits,closingIssuesReferences,additions,deletions,changedFiles,files"
 
 # prefetch_pr_context <pr_url> <pr_head_sha> <full_diff_file> [out_dir]
 #
@@ -81,6 +80,7 @@ prefetch_pr_context() {
       return 100
     fi
     # Non-rate-limit failure: degrade to a no-op so the run continues.
+    echo "::warning::PR context prefetch failed for $pr_url: $(head -c 300 <<< "$err_content" | tr '\n' ' ')" >&2
     return 0
   fi
 

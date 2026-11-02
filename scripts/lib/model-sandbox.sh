@@ -7,6 +7,9 @@
 # by scripts/model-sandbox-setup.sh). Unset, every function here is inert and
 # engine.sh behaves as before, so the dev-lead and eval paths are unaffected.
 
+# Gemini's system settings: they outrank user settings and the model user cannot
+# change them. scripts/model-sandbox-setup.sh writes the file.
+MODEL_SANDBOX_GEMINI_SETTINGS="${MODEL_SANDBOX_GEMINI_SETTINGS:-/etc/gemini-cli/settings.json}"
 # Installed by scripts/model-sandbox-setup.sh; readable by the model user.
 MODEL_SANDBOX_ROOT="${MODEL_SANDBOX_ROOT:-/opt/pr-review-model}"
 MODEL_SANDBOX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,9 +82,12 @@ model_sandbox_exec() {
   chmod -R a+rX "$MODEL_SANDBOX_CONTEXT_DIR" 2>/dev/null || true
   (
     cd "$MODEL_SANDBOX_ROOT/cwd" || exit 1
+    # The working directory is root-owned and holds no CLI configuration, so it is
+    # safe for Gemini to trust; without this it exits on an untrusted folder.
     exec sudo -n -u "$PR_REVIEW_MODEL_USER" --preserve-env="$keep" env \
       PATH="$(_model_sandbox_path)" HOME="$(_model_sandbox_home)" TMPDIR=/tmp \
-      DISABLE_AUTOUPDATER=1 CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 "${cmd[@]}"
+      DISABLE_AUTOUPDATER=1 CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 \
+      GEMINI_CLI_TRUST_WORKSPACE=true "${cmd[@]}"
   )
 }
 
@@ -161,6 +167,32 @@ model_sandbox_selftest() {
       failed=1
     fi
   done
+  for target in "${GITHUB_ENV:-}" "${GITHUB_PATH:-}" "${GITHUB_OUTPUT:-}" "${RUNNER_TEMP:-}" \
+                "$HOME" "$HOME/.config/gh/hosts.yml" "$HOME/.npmrc" \
+                "${GITHUB_WORKSPACE:+$GITHUB_WORKSPACE/.git/config}"; do
+    [ -n "$target" ] && [ -e "$target" ] || continue
+    # A file under an unreadable directory fails this too, which is what we want.
+    if [ -d "$target" ]; then
+      [ "$target" = "$HOME" ] || continue
+      if _model_sandbox_as test -x "$target"; then
+        echo "::error::model sandbox: the model user can enter $target"
+        failed=1
+      fi
+    elif _model_sandbox_as test -r "$target"; then
+      echo "::error::model sandbox: the model user can read $target"
+      failed=1
+    fi
+  done
+  if command -v gemini >/dev/null 2>&1; then
+    if [ ! -f "$MODEL_SANDBOX_GEMINI_SETTINGS" ]; then
+      echo "::error::model sandbox: Gemini's tool limits are missing ($MODEL_SANDBOX_GEMINI_SETTINGS)"
+      failed=1
+    elif _model_sandbox_as test -w "$MODEL_SANDBOX_GEMINI_SETTINGS" \
+      || _model_sandbox_as test -w "$(dirname "$MODEL_SANDBOX_GEMINI_SETTINGS")"; then
+      echo "::error::model sandbox: the model user can change Gemini's tool limits"
+      failed=1
+    fi
+  fi
   for name in $MODEL_SANDBOX_SECRET_VARS; do
     if _model_sandbox_as printenv "$name" >/dev/null 2>&1; then
       echo "::error::model sandbox: $name reached the model user"
