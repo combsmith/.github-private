@@ -192,6 +192,10 @@ jobs:
       # candidate queue (it can't approve its own PRs). Human reviewers are
       # routed via CODEOWNERS at escalation time, not pinned via env.
       BOT_USER: ${{ vars.BOT_USER || 'donpetry-bot' }}
+      # Review models run as this unprivileged user, set up by the "Set up the model
+      # sandbox" step. Dry runs use it too. See scripts/lib/model-sandbox.sh.
+      PR_REVIEW_MODEL_USER: pr-review-model
+      PR_REVIEW_REQUIRE_MODEL_SANDBOX: "true"
       TARGET_ORG: ${{ vars.TARGET_ORG || 'combsmith' }}
       AGENT_REPO: ${{ github.repository }}
       # Engine configuration — switch providers with Actions variables, no code
@@ -370,6 +374,7 @@ jobs:
           # scripts to the known-good channel; empty defaults to main (#506/#536).
           repository: combsmith/.github-private
           ref: ${{ inputs.agent_ref || 'main' }}
+          persist-credentials: false
 
       - name: Resolve persona identity
         # pr-review's acting account is DECLARED in personas/pr-review/persona.yml
@@ -560,6 +565,9 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Set up the model sandbox
+        run: bash scripts/model-sandbox-setup.sh
 
       - name: Enumerate candidate PRs
         run: |

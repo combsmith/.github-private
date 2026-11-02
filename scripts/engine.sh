@@ -52,6 +52,9 @@ _ENGINE_CHAIN_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-chain.sh"
 # shellcheck source=lib/engine-chain.sh
 [ -f "$_ENGINE_CHAIN_LIB" ] && source "$_ENGINE_CHAIN_LIB"
 unset _ENGINE_CHAIN_LIB
+
+# shellcheck source=lib/model-sandbox.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/model-sandbox.sh"
 if declare -F ai_engine_primary >/dev/null 2>&1; then
   _requested_engine="${REVIEW_ENGINE:-}"
   REVIEW_ENGINE="$(ai_engine_primary "$_requested_engine")"
@@ -822,9 +825,17 @@ is_transient_failure() {
 # GEMINI_LEDGER_FILE (gemini-quota.sh's override for the same file) and
 # _ENGINE_USAGE_OUT (this call's usage sidecar, which nested engine code would
 # overwrite). TOKEN_WORKFLOW stays: a label, it writes nothing without a path.
+#
+# In the review model sandbox the CLI starts as the unprivileged model user with a
+# reset environment instead (scripts/lib/model-sandbox.sh).
+#
 # CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD makes the Claude CLI read CLAUDE.md
 # from --add-dir, see _claude_chain_invoke; the other CLIs ignore it.
 _engine_child() {
+  if model_sandbox_enabled; then
+    model_sandbox_exec "$@"
+    return
+  fi
   env -u TOKEN_LOG_FILE -u GEMINI_LEDGER_FILE -u _ENGINE_USAGE_OUT \
     CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 "$@"
 }
@@ -1723,6 +1734,14 @@ run_triage() {
 # Per-tier timeout from DEEP_TIMEOUT_SEC (also applies to action/audit calls;
 # they're all the same agentic shape and similarly priced).
 run_agentic() {
+  if model_sandbox_enabled; then
+    model_sandbox_call _run_agentic_direct "$1" "$2" "${3:-deep}" "$MODEL_SANDBOX_TOOLS"
+    return
+  fi
+  _run_agentic_direct "$@"
+}
+
+_run_agentic_direct() {
   local prompt_file="$1"
   local model="$2"
   local tier="${3:-deep}"
@@ -1786,6 +1805,7 @@ run_agentic() {
         _claude_chain_invoke "$_agentic_chain" "$prompt_file" "$DEEP_TIMEOUT_SEC" \
           --permission-mode acceptEdits \
           --allowed-tools "$_MCP_ALLOWED_TOOLS" \
+          ${_ENGINE_TOOL_ARGS[@]+"${_ENGINE_TOOL_ARGS[@]}"} \
           ${_effort_args[@]+"${_effort_args[@]}"} \
           ${_MCP_FLAGS[@]+"${_MCP_FLAGS[@]}"} \
           | tee "$_tok_tmp" || rc=${PIPESTATUS[0]}
@@ -1793,6 +1813,7 @@ run_agentic() {
         _claude_chain_invoke "$_agentic_chain" "$prompt_file" "$DEEP_TIMEOUT_SEC" \
           --permission-mode acceptEdits \
           --allowed-tools "$_MCP_ALLOWED_TOOLS" \
+          ${_ENGINE_TOOL_ARGS[@]+"${_ENGINE_TOOL_ARGS[@]}"} \
           ${_effort_args[@]+"${_effort_args[@]}"} \
           ${_MCP_FLAGS[@]+"${_MCP_FLAGS[@]}"} \
           || rc=$?
@@ -2486,6 +2507,14 @@ duck_skip_note() {
 # reachable. Output to stdout. Strips non-selected engine credentials to
 # prevent cross-engine leakage.
 run_duck() {
+  if model_sandbox_enabled; then
+    model_sandbox_call _run_duck_direct "$1" "$2"
+    return
+  fi
+  _run_duck_direct "$@"
+}
+
+_run_duck_direct() {
   local prompt_file="$1"
   local model="$2"
   local _tok_tmp="" rc=0
@@ -2506,13 +2535,14 @@ run_duck() {
       unset GOOGLE_API_KEY GOOGLE_API_KEY_2 GOOGLE_API_KEY_3 GOOGLE_API_KEY_4 2>/dev/null || true
       unset GEMINI_API_KEY 2>/dev/null || true
       # Thread the opt-in MCP config (no-op when REVIEW_MCP_CONFIG is unset).
-      _mcp_review_flags "Bash,Read,Grep,Glob"
+      _mcp_review_flags "${_ENGINE_REVIEW_TOOLS:-Bash,Read,Grep,Glob}"
       # Route through the chain helper so real token usage (incl. cache) is captured
       # when logging is on; a single-model "chain" preserves prior behaviour.
       if [ -n "$_tok_tmp" ]; then
         _claude_chain_invoke "$model" "$prompt_file" "$DUCK_TIMEOUT_SEC" \
           --permission-mode acceptEdits \
           --allowed-tools "$_MCP_ALLOWED_TOOLS" \
+          ${_ENGINE_TOOL_ARGS[@]+"${_ENGINE_TOOL_ARGS[@]}"} \
           --max-turns 25 \
           ${_MCP_FLAGS[@]+"${_MCP_FLAGS[@]}"} \
           | tee "$_tok_tmp" || rc=${PIPESTATUS[0]}
@@ -2520,6 +2550,7 @@ run_duck() {
         _claude_chain_invoke "$model" "$prompt_file" "$DUCK_TIMEOUT_SEC" \
           --permission-mode acceptEdits \
           --allowed-tools "$_MCP_ALLOWED_TOOLS" \
+          ${_ENGINE_TOOL_ARGS[@]+"${_ENGINE_TOOL_ARGS[@]}"} \
           --max-turns 25 \
           ${_MCP_FLAGS[@]+"${_MCP_FLAGS[@]}"} \
           || rc=$?
