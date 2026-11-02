@@ -22,6 +22,7 @@ if [ -d "$HOME/.npm-global" ]; then
   sudo -n cp -a "$HOME/.npm-global/." "$MODEL_SANDBOX_ROOT/cli/"
 fi
 sudo -n cp -R "$SCRIPT_DIR/../prompts" "$MODEL_SANDBOX_ROOT/cwd/prompts"
+sudo -n cp "$SCRIPT_DIR/../CLAUDE.md" "$SCRIPT_DIR/../AGENTS.md" "$MODEL_SANDBOX_ROOT/cwd/"
 sudo -n chown -R root:root "$MODEL_SANDBOX_ROOT"
 sudo -n chmod -R a+rX,go-w "$MODEL_SANDBOX_ROOT"
 

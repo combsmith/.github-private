@@ -31,6 +31,16 @@ on:
         # Canonical name under the GH_PAT_<ACCOUNT> schema; supersedes GH_PAT_WORKFLOWS,
         # which is kept below as a transition fallback.
         required: false
+      GH_PAT_DON_PETRY_WRITER:
+        # The same account's narrower token, for the dispatch job, which runs the
+        # model: repository contents, pull requests and issues, without `workflows`
+        # or admin access. The push job, which runs no model, keeps GH_PAT_DON_PETRY.
+        # Falls back to GH_PAT_DON_PETRY until this secret exists.
+        required: false
+      GH_PAT_DON_PETRY_COPILOT:
+        # Copilot Requests token for the copilot engine, needed only when AI_ENGINES
+        # enables it. Unset, the engine reports a configuration gap and is skipped.
+        required: false
       GH_PAT_WORKFLOWS:
         # DEPRECATED alias of GH_PAT_DON_PETRY — kept during the rename migration so
         # callers that haven't set the new secret yet still authenticate. Remove once
@@ -193,7 +203,7 @@ jobs:
       DEV_LEAD_DRY_RUN: ${{ vars.DEV_LEAD_DRY_RUN || 'false' }}
       DEEP_TIMEOUT_SEC: ${{ vars.DEEP_TIMEOUT_SEC || '' }}
       ACTION_TIMEOUT_SEC: ${{ vars.ACTION_TIMEOUT_SEC || '' }}
-      GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+      GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY_WRITER || secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
       GEMINI_CLI_TRUST_WORKSPACE: "true"
       DEV_LEAD_SCRIPTS: .dev-lead/scripts
       DEV_LEAD_PROMPTS: .dev-lead/prompts/dev-lead
@@ -245,7 +255,7 @@ jobs:
       - name: Checkout caller repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+          token: ${{ secrets.GH_PAT_DON_PETRY_WRITER || secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
 
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -257,7 +267,7 @@ jobs:
           path: .dev-lead
           # Cross-repo callers: github.token cannot read a private org repo — ensure
           # GH_PAT_WORKFLOWS is set as an org or repo secret in the calling repo.
-          token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+          token: ${{ secrets.GH_PAT_DON_PETRY_WRITER || secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
           sparse-checkout: |
             scripts
             prompts/dev-lead
@@ -295,7 +305,7 @@ jobs:
           GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
           GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
           GOOGLE_API_KEY_4: ${{ secrets.GOOGLE_API_KEY_4 }}
-          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY_COPILOT }}
         run: bash .dev-lead/scripts/dev-lead-intent.sh
 
       - name: Log intent
@@ -397,13 +407,14 @@ jobs:
         if: env.INTENT_TYPE != 'skip' && env.INTENT_TYPE != 'enable-auto-merge'
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          GH_PAT_WORKFLOWS: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+          GH_PAT_WORKFLOWS: ${{ secrets.GH_PAT_DON_PETRY_WRITER || secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+          GH_PAT_DON_PETRY_WRITER: ${{ secrets.GH_PAT_DON_PETRY_WRITER }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
           GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
           GOOGLE_API_KEY_4: ${{ secrets.GOOGLE_API_KEY_4 }}
-          GH_PAT: ${{ secrets.GH_PAT_DON_PETRY }}
+          GH_PAT: ${{ secrets.GH_PAT_DON_PETRY_WRITER || secrets.GH_PAT_DON_PETRY }}
         run: bash .dev-lead/scripts/dev-lead-preflight.sh
 
       # ── Install engine CLIs ───────────────────────────────────────────────
@@ -496,7 +507,7 @@ jobs:
           GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
           GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
           GOOGLE_API_KEY_4: ${{ secrets.GOOGLE_API_KEY_4 }}
-          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY_COPILOT }}
           PROMPTS_DIR: .dev-lead/prompts/dev-lead
         run: |
           bash .dev-lead/scripts/dev-lead-fix-ci.sh || rc=$?
@@ -518,7 +529,7 @@ jobs:
           GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
           GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
           GOOGLE_API_KEY_4: ${{ secrets.GOOGLE_API_KEY_4 }}
-          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY_COPILOT }}
           PROMPTS_DIR: .dev-lead/prompts/dev-lead
         run: |
           bash .dev-lead/scripts/dev-lead-fix-reviews.sh || rc=$?
@@ -543,7 +554,7 @@ jobs:
           GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
           GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
           GOOGLE_API_KEY_4: ${{ secrets.GOOGLE_API_KEY_4 }}
-          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY_COPILOT }}
           PROMPTS_DIR: .dev-lead/prompts/dev-lead
         run: |
           bash .dev-lead/scripts/dev-lead-fix-reviews.sh || rc=$?
@@ -565,7 +576,7 @@ jobs:
           GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
           GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
           GOOGLE_API_KEY_4: ${{ secrets.GOOGLE_API_KEY_4 }}
-          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY_COPILOT }}
           PROMPTS_DIR: .dev-lead/prompts/dev-lead
         run: |
           bash .dev-lead/scripts/dev-lead-fix-reviews.sh || rc=$?
@@ -587,7 +598,7 @@ jobs:
           GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
           GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
           GOOGLE_API_KEY_4: ${{ secrets.GOOGLE_API_KEY_4 }}
-          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY_COPILOT }}
           PROMPTS_DIR: .dev-lead/prompts/dev-lead
         run: |
           bash .dev-lead/scripts/dev-lead-fix-reviews.sh || rc=$?
@@ -610,7 +621,7 @@ jobs:
           GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
           GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
           GOOGLE_API_KEY_4: ${{ secrets.GOOGLE_API_KEY_4 }}
-          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY_COPILOT }}
           PROMPTS_DIR: .dev-lead/prompts/dev-lead
         run: |
           bash .dev-lead/scripts/dev-lead-fix-issue.sh || rc=$?
@@ -630,7 +641,7 @@ jobs:
           GOOGLE_API_KEY_2: ${{ secrets.GOOGLE_API_KEY_2 }}
           GOOGLE_API_KEY_3: ${{ secrets.GOOGLE_API_KEY_3 }}
           GOOGLE_API_KEY_4: ${{ secrets.GOOGLE_API_KEY_4 }}
-          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.GH_PAT_DON_PETRY_COPILOT }}
           PROMPTS_DIR: .dev-lead/prompts/dev-lead
         run: |
           bash .dev-lead/scripts/dev-lead-fix-reviews.sh || rc=$?

@@ -55,9 +55,16 @@ _model_sandbox_as() {
 # the model user. stdin/stdout/stderr are the caller's. Only that engine's key
 # crosses, by name through sudo's environment, so no value lands on a command line.
 model_sandbox_exec() {
-  local arg cli="" keep=""
+  local arg cli="" keep="" prev=""
+  local -a cmd=()
   for arg in "$@"; do
-    case "$arg" in claude | gemini | gh) cli="$arg"; break ;; esac
+    if [ -z "$cli" ]; then
+      case "$arg" in claude | gemini | gh) cli="$arg" ;; esac
+    fi
+    # The caller's checkout stays out of reach; the sandbox directory stands in.
+    [ "$prev" = "--add-dir" ] && arg="$MODEL_SANDBOX_ROOT/cwd"
+    cmd+=("$arg")
+    prev="$arg"
   done
   case "$cli" in
     claude) keep="CLAUDE_CODE_OAUTH_TOKEN,ANTHROPIC_API_KEY" ;;
@@ -74,7 +81,7 @@ model_sandbox_exec() {
     cd "$MODEL_SANDBOX_ROOT/cwd" || exit 1
     exec sudo -n -u "$PR_REVIEW_MODEL_USER" --preserve-env="$keep" env \
       PATH="$(_model_sandbox_path)" HOME="$(_model_sandbox_home)" TMPDIR=/tmp \
-      DISABLE_AUTOUPDATER=1 "$@"
+      DISABLE_AUTOUPDATER=1 CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 "${cmd[@]}"
   )
 }
 

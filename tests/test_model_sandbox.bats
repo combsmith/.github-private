@@ -102,6 +102,14 @@ verdict() { printf '%s' "$1" > "$TEST_DIR/v.json"; echo "$TEST_DIR/v.json"; }
   grep -q -- '-u pr-review-model --preserve-env=' "$SUDO_LOG"
 }
 
+@test "--add-dir points at the sandbox directory, never the caller's checkout" {
+  _engine_child timeout --kill-after=5 60 claude --print --add-dir "$TEST_DIR/checkout" --model m < "$TEST_DIR/prompt.md"
+  grep -qF -- "--add-dir $MODEL_SANDBOX_ROOT/cwd --model m" "$CLI_ARGS"
+  run grep -q 'checkout' "$CLI_ARGS"
+  [ "$status" -eq 1 ]
+  grep -q '^CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1$' "$CLI_ENV"
+}
+
 @test "a sandboxed Gemini call gets only the current Gemini key" {
   _engine_child timeout --kill-after=5 60 gemini --prompt "" < "$TEST_DIR/prompt.md"
   grep -q '^GEMINI_API_KEY=' "$CLI_ENV"
@@ -121,6 +129,7 @@ verdict() { printf '%s' "$1" > "$TEST_DIR/v.json"; echo "$TEST_DIR/v.json"; }
   _engine_child claude --print < "$TEST_DIR/prompt.md"
   [ ! -s "$SUDO_LOG" ]
   grep -q '^GH_TOKEN=' "$CLI_ENV"
+  grep -q '^CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1$' "$CLI_ENV"
 }
 
 @test "a required sandbox that is not configured refuses to run" {
