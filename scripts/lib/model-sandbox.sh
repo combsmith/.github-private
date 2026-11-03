@@ -180,7 +180,6 @@ model_sandbox_selftest() {
     [ -n "$target" ] && [ -e "$target" ] || continue
     # A file under an unreadable directory fails this too, which is what we want.
     if [ -d "$target" ]; then
-      [ "$target" = "$HOME" ] || continue
       if _model_sandbox_as test -x "$target"; then
         echo "::error::model sandbox: the model user can enter $target"
         failed=1

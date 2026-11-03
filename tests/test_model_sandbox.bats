@@ -133,6 +133,25 @@ verdict() { printf '%s' "$1" > "$TEST_DIR/v.json"; echo "$TEST_DIR/v.json"; }
   grep -qx 'REVIEW_ENGINE=claude' "$GITHUB_ENV"
 }
 
+@test "setup leaves the engine lists alone when Gemini is explicitly allowed" {
+  export SETUP_LOG_ONLY=1 MODEL_SANDBOX_HOME="$TEST_DIR/home" HOME="$TEST_DIR" MODEL_SANDBOX_ALLOW_GEMINI=true
+  export GITHUB_ENV="$TEST_DIR/github_env"; : > "$GITHUB_ENV"
+  run bash "$REPO_ROOT/scripts/model-sandbox-setup.sh"
+  echo "$output" >&2
+  [ "$status" -eq 0 ]
+  [ ! -s "$GITHUB_ENV" ]
+}
+
+@test "without GITHUB_ENV setup still succeeds and Gemini is still refused at run time" {
+  export SETUP_LOG_ONLY=1 MODEL_SANDBOX_HOME="$TEST_DIR/home"
+  unset GITHUB_ENV
+  HOME="$TEST_DIR" run bash "$REPO_ROOT/scripts/model-sandbox-setup.sh"
+  [ "$status" -eq 0 ]
+  run _engine_child timeout --kill-after=5 60 gemini --prompt "" < "$TEST_DIR/prompt.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Gemini is not enabled"* ]]
+}
+
 @test "Gemini is told to trust the sandbox working directory, or it refuses to start" {
   export MODEL_SANDBOX_ALLOW_GEMINI=true
   _engine_child timeout --kill-after=5 60 gemini --prompt "" < "$TEST_DIR/prompt.md"
@@ -303,6 +322,14 @@ verdict() { printf '%s' "$1" > "$TEST_DIR/v.json"; echo "$TEST_DIR/v.json"; }
   run model_sandbox_selftest
   [ "$status" -eq 1 ]
   [[ "$output" == *"can enter $HOME"* ]]
+}
+
+@test "self-test fails when the model user can enter the runner's temp directory" {
+  export RUNNER_TEMP="$TEST_DIR/runner-temp"; mkdir -p "$RUNNER_TEMP"
+  export PROBE_SUCCEEDS="test -x $RUNNER_TEMP"
+  run model_sandbox_selftest
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"can enter $RUNNER_TEMP"* ]]
 }
 
 @test "self-test fails when Gemini's tool limits are missing" {
