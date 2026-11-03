@@ -75,14 +75,14 @@ prc_surface_is_mention_only() {
   for ev in "${events[@]}"; do
     ev="${ev#"${ev%%[![:space:]]*}"}"   # ltrim
     ev="${ev%"${ev##*[![:space:]]}"}"   # rtrim
-    [ -n "$ev" ] || continue
+    [[ -n "$ev" ]] || continue
     seen=1
     case " $PRC_ROUTER_EVENTS " in
       *" $ev "*) : ;;
       *) echo "new trigger surface not served by the shared mention router: $ev"; return 1 ;;
     esac
   done
-  [ "$seen" -eq 1 ] || { echo "empty trigger surface: nothing routes to this persona"; return 1; }
+  [[ "$seen" -eq 1 ]] || { echo "empty trigger surface: nothing routes to this persona"; return 1; }
   return 0
 }
 
@@ -93,12 +93,12 @@ prc_is_past_draft() {
   # "past draft" — it must have been registered to have ever shipped.
   local status="${1:-}" r i=0 draft_i=-1 status_i=-1
   for r in $PRC_RING_ORDER; do
-    [ "$r" = "draft" ] && draft_i=$i
-    [ "$r" = "$status" ] && status_i=$i
+    [[ "$r" = "draft" ]] && draft_i=$i
+    [[ "$r" = "$status" ]] && status_i=$i
     i=$((i + 1))
   done
-  [ "$status_i" -ge 0 ] || return 1
-  if [ "$status_i" -gt "$draft_i" ]; then
+  [[ "$status_i" -ge 0 ]] || return 1
+  if [[ "$status_i" -gt "$draft_i" ]]; then
     return 0
   fi
   return 1
@@ -126,7 +126,7 @@ prc_is_past_draft() {
 # label. That was already true; ADR-0006 removes the label that was never evidence.
 prc_promotion_verdict() {
   local status="${1:-}" registered="${2:-false}"
-  if [ "$registered" = "true" ]; then
+  if [[ "$registered" = "true" ]]; then
     echo "registered"
     return 2
   fi
@@ -149,7 +149,7 @@ prc_die() { echo "::error::persona reach check: $1"; exit 3; }
 # the registration gate.
 prc_manifest_status() {
   local f="${1:-}" line status
-  [ -f "$f" ] || prc_die "manifest not found: $f"
+  [[ -f "$f" ]] || prc_die "manifest not found: $f"
   line="$(grep -m1 '^status:' "$f" || true)"
   status="${line#status:}"
   status="${status%%#*}"                          # strip inline comment
@@ -165,7 +165,7 @@ prc_manifest_status() {
 # which the contract keeps in sync with the router's `on:` block.
 prc_deployed_events() {
   local f="${1:-}"
-  [ -f "$f" ] || prc_die "interaction contract not found: $f"
+  [[ -f "$f" ]] || prc_die "interaction contract not found: $f"
   awk '
     /^[[:space:]]*triggers:[[:space:]]*$/ {intrig=1; next}
     # Inline flow-style list: events: [issue_comment, discussion_comment]
@@ -191,12 +191,12 @@ prc_deployed_events() {
 # actually wired, not just declared in the contract).
 prc_router_serves_events() {
   local router="${1:-}" csv="${2:-}" ev
-  [ -f "$router" ] || prc_die "router workflow not found: $router"
+  [[ -f "$router" ]] || prc_die "router workflow not found: $router"
   local -a events
   IFS=',' read -r -a events <<< "$csv"
   for ev in "${events[@]}"; do
     ev="${ev#"${ev%%[![:space:]]*}"}"; ev="${ev%"${ev##*[![:space:]]}"}"
-    [ -n "$ev" ] || continue
+    [[ -n "$ev" ]] || continue
     grep -Eq "^[[:space:]]+${ev}:" "$router" || { echo "router does not subscribe event: $ev"; return 1; }
   done
   return 0
@@ -207,7 +207,7 @@ prc_router_serves_events() {
 # UNVERIFIED, hermetically treated as not-registered).
 prc_registry_has_agent() {
   local reg="${1:-}" role="${2:-}"
-  [ -n "$reg" ] && [ -f "$reg" ] || return 1
+  [[ -n "$reg" ]] && [[ -f "$reg" ]] || return 1
   command -v jq >/dev/null 2>&1 || prc_die "jq is required to read a registry"
   jq -e --arg a "$role" '.agents[$a] != null' "$reg" >/dev/null 2>&1
 }
@@ -218,17 +218,17 @@ main() {
   repo_root="$(cd "$script_dir/.." && pwd)"
 
   local role="" registry="" personas_dir="$repo_root/personas" router="$repo_root/.github/workflows/persona-mention.yml"
-  while [ "$#" -gt 0 ]; do
+  while [[ "$#" -gt 0 ]]; do
     case "$1" in
-      --registry)     [ "$#" -ge 2 ] || prc_die "--registry needs a file";      registry="$2"; shift 2 ;;
-      --personas-dir) [ "$#" -ge 2 ] || prc_die "--personas-dir needs a dir";   personas_dir="$2"; shift 2 ;;
-      --router)       [ "$#" -ge 2 ] || prc_die "--router needs a file";        router="$2"; shift 2 ;;
+      --registry)     [[ "$#" -ge 2 ]] || prc_die "--registry needs a file";      registry="$2"; shift 2 ;;
+      --personas-dir) [[ "$#" -ge 2 ]] || prc_die "--personas-dir needs a dir";   personas_dir="$2"; shift 2 ;;
+      --router)       [[ "$#" -ge 2 ]] || prc_die "--router needs a file";        router="$2"; shift 2 ;;
       -h|--help)      grep '^#' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; return 0 ;;
       -*) prc_die "unknown option: $1" ;;
-      *)  if [ -z "$role" ]; then role="$1"; else prc_die "unexpected argument: $1"; fi; shift ;;
+      *)  if [[ -z "$role" ]]; then role="$1"; else prc_die "unexpected argument: $1"; fi; shift ;;
     esac
   done
-  [ -n "$role" ] || prc_die "usage: persona_reach_check.sh <role> [--registry FILE]"
+  [[ -n "$role" ]] || prc_die "usage: persona_reach_check.sh <role> [--registry FILE]"
   command -v jq >/dev/null 2>&1 || prc_die "jq is required to run this check"
 
   local manifest="$personas_dir/$role/persona.yml"
@@ -236,7 +236,7 @@ main() {
 
   local status events registered="false" routes_via_router="false" surface_ok="true" surface_msg=""
   status="$(prc_manifest_status "$manifest")"
-  [ -n "$status" ] || prc_die "could not read status from $manifest"
+  [[ -n "$status" ]] || prc_die "could not read status from $manifest"
   case " $PRC_RING_ORDER " in
     *" $status "*) : ;;
     *) prc_die "unknown status '$status' in $manifest (must be one of: $PRC_RING_ORDER)" ;;
@@ -270,19 +270,19 @@ main() {
     --arg verdict "$verdict" \
     '{role:$role, status:$status, events:$events, surface_mention_only:$surface_mention_only, routes_via_router:$routes_via_router, registered:$registered, verdict:$verdict}'
 
-  if [ "$surface_ok" != "true" ]; then
+  if [[ "$surface_ok" != "true" ]]; then
     echo "::error::persona reach check: $role added a trigger surface beyond the shared mention router ($surface_msg)" >&2
     return 2
   fi
-  if [ "$prom_rc" -ne 0 ]; then
+  if [[ "$prom_rc" -ne 0 ]]; then
     echo "::error::persona reach check: $role has an agents.$role entry in canary-rings.json, but rides the SHARED persona runtime — no caller pins a per-persona channel tag, so the entry produces unconsumed tags and an unattributable gate. A registered shared-runtime persona is a defect, not a promotion (ADR-0006); remove the entry" >&2
     return 2
   fi
-  if [ "$verdict" = "promoted" ] && [ "$routes_via_router" != "true" ]; then
+  if [[ "$verdict" = "promoted" ]] && [[ "$routes_via_router" != "true" ]]; then
     echo "::error::persona reach check: $role is promoted, but the shared mention router does not serve its deployed events — the promotion did not reach a consumer (routes_via_router=false)" >&2
     return 2
   fi
-  if [ "$verdict" = "draft" ]; then
+  if [[ "$verdict" = "draft" ]]; then
     echo "::notice::persona reach check: $role is still draft — routing wiring present ($routes_via_router), NOT promoted (routes-to != promoted; do not trust the ring label)" >&2
   else
     echo "::notice::persona reach check: $role is promoted (unregistered by design, ADR-0006); the shared router serves its events and the surface stayed mention-only" >&2
@@ -291,6 +291,6 @@ main() {
 }
 
 # Only run main when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

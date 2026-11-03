@@ -155,9 +155,9 @@ _cn_ratio() {
 cn_render_noise_section() {
   local dir="${1:-}"
   local total=0 noact=0 prs=0 active_prs=0 affected_prs=0
-  if [ -n "$dir" ] && [ -d "$dir" ]; then
+  if [[ -n "$dir" ]] && [[ -d "$dir" ]]; then
     local files=("$dir"/*.jsonl)
-    if [ -e "${files[0]}" ]; then
+    if [[ -e "${files[0]}" ]]; then
       local counts
       # One jq pass: agent comment totals, distinct PR sets, and active-PR denominator.
       counts="$(jq -rs '

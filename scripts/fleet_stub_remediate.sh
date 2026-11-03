@@ -8,7 +8,7 @@ set -euo pipefail
 if ! declare -F patch_job_block > /dev/null 2>&1; then
   _fsr_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # shellcheck disable=SC1091
-  [ -f "${_fsr_dir}/fleet_stub_drift.sh" ] && source "${_fsr_dir}/fleet_stub_drift.sh"
+  [[ -f "${_fsr_dir}/fleet_stub_drift.sh" ]] && source "${_fsr_dir}/fleet_stub_drift.sh"
 fi
 # fleet_stub_remediate.sh — pure remediation-plan builder for the Actions Fleet
 # Monitor stub-drift remediation (#1149, epic #1148). Sourced (not executed) so
@@ -113,10 +113,10 @@ REMEDIATION_ALLOWLIST=()
 remediation_allowlisted() {
   local repo="${1:-}" stub_file="${2:-}" role="${3:-}" a
   for a in "${REMEDIATION_ALLOWLIST[@]}"; do
-    if [ "$a" = "$repo" ] || [ "$a" = "${repo}|${stub_file}" ]; then
+    if [[ "$a" = "$repo" ]] || [[ "$a" = "${repo}|${stub_file}" ]]; then
       return 0
     fi
-    if [ -n "$role" ] && [ "$a" = "${repo}|${stub_file}|${role}" ]; then
+    if [[ -n "$role" ]] && [[ "$a" = "${repo}|${stub_file}|${role}" ]]; then
       return 0
     fi
   done
@@ -135,7 +135,7 @@ resolve_canonical_path() {
   for entry in "${STUB_REGISTRY[@]}"; do
     # Fields 1-2 (name, label) are unused by the resolver — discard them.
     IFS=$'\t' read -r _ _ stub_path canonical_path reg_role _ _ <<< "$entry"
-    if [ "$stub_path" = "$stub_file" ] && [ "$reg_role" = "$want_role" ]; then
+    if [[ "$stub_path" = "$stub_file" ]] && [[ "$reg_role" = "$want_role" ]]; then
       printf '%s\n' "$canonical_path"
       return 0
     fi
@@ -151,7 +151,7 @@ resolve_canonical_path() {
 # (CANONICAL_STUB_REPO + canonical_path). An empty/absent file yields "[]".
 build_remediation_plan() {
   local json="${1:-}"
-  if [ -z "$json" ] || [ ! -s "$json" ]; then
+  if [[ -z "$json" ]] || [[ ! -s "$json" ]]; then
     echo "[]"
     return 0
   fi
@@ -167,7 +167,7 @@ build_remediation_plan() {
   local tmp repo stub stub_file role canonical_path
   tmp="$(mktemp)"
   while IFS=$'\t' read -r repo stub stub_file role; do
-    [ -n "$repo" ] || continue
+    [[ -n "$repo" ]] || continue
     remediation_allowlisted "$repo" "$stub_file" "$role" && continue
     if ! canonical_path="$(resolve_canonical_path "$stub_file" "$role")"; then
       # Unrecognized (stub_file, role): intentionally skipped (only registered
@@ -196,7 +196,7 @@ build_remediation_plan() {
   local out status
   out="$(jq -s '.' "$tmp")"; status=$?
   rm -f "$tmp"
-  [ "$status" -eq 0 ] || return "$status"
+  [[ "$status" -eq 0 ]] || return "$status"
   printf '%s\n' "$out"
 }
 
@@ -239,7 +239,7 @@ REMEDIATE_MAX_REPOS="${REMEDIATE_MAX_REPOS:-1}"
 # addition to logging the verdicts.
 REMEDIATE_SUMMARY_FILE="${REMEDIATE_SUMMARY_FILE:-}"
 
-_is_dry() { [ "$DRY_RUN" = "true" ]; }
+_is_dry() { [[ "$DRY_RUN" = "true" ]]; }
 
 # Pure-Bash list splitting (comma/space separated) — no `tr`/`grep`/subshells, so
 # the per-repo _in_scope/_in_pilot checks in run_remediation's loop spawn no
@@ -257,9 +257,9 @@ _in_scope() {
   local repo="$1" r any=0
   for r in ${REMEDIATE_REPOS//,/ }; do
     any=1
-    [ "$r" = "$repo" ] && return 0
+    [[ "$r" = "$repo" ]] && return 0
   done
-  [ "$any" -eq 0 ] && return 0   # empty scope = every repo in scope
+  [[ "$any" -eq 0 ]] && return 0   # empty scope = every repo in scope
   return 1
 }
 
@@ -275,7 +275,7 @@ _pilot_list() {
 _in_pilot() {
   local repo="$1" p
   for p in ${REMEDIATE_PILOT_REPO//,/ }; do
-    [ "$p" = "$repo" ] && return 0
+    [[ "$p" = "$repo" ]] && return 0
   done
   return 1
 }
@@ -294,11 +294,11 @@ _in_pilot() {
 _emit_verification_summary() {
   local tsv="$1" repo status
   echo "[remediate] Verification summary (drift-closed = pushed blob SHA == canon):"
-  if [ ! -s "$tsv" ]; then
+  if [[ ! -s "$tsv" ]]; then
     echo "  [verify] (no live remediations this run)"
   else
     while IFS=$'\t' read -r repo status; do
-      [ -n "$repo" ] || continue
+      [[ -n "$repo" ]] || continue
       case "$status" in
         verified) echo "  [verify] ${repo}: drift-closed=yes" ;;
         skipped)  echo "  [verify] ${repo}: drift-closed=skipped (remediation PR already open — not re-verified this run)" ;;
@@ -306,8 +306,8 @@ _emit_verification_summary() {
       esac
     done < "$tsv"
   fi
-  if [ -n "$REMEDIATE_SUMMARY_FILE" ]; then
-    if [ -s "$tsv" ]; then
+  if [[ -n "$REMEDIATE_SUMMARY_FILE" ]]; then
+    if [[ -s "$tsv" ]]; then
       jq -R -s 'split("\n") | map(select(length > 0) | split("\t"))
                 | map({repo: (.[0] // "" | tostring),
                        status: (.[1] // "" | tostring),
@@ -361,12 +361,12 @@ _repo_bytes() {
 _put_file() {
   local repo="$1" path="$2" content="$3" branch="$4" msg="$5" sha encoded
   local -a sha_arg=()
-  if [ "$#" -ge 6 ]; then
+  if [[ "$#" -ge 6 ]]; then
     sha="$6"
   else
     sha="$(_blob_sha "$repo" "$path" "$branch")"
   fi
-  [ -n "$sha" ] && [ "$sha" != "null" ] && sha_arg=(--field "sha=${sha}")
+  [[ -n "$sha" ]] && [[ "$sha" != "null" ]] && sha_arg=(--field "sha=${sha}")
   encoded="$(printf '%s' "$content" | base64 -w 0 2>/dev/null || printf '%s' "$content" | base64)"
   gh api "repos/${repo}/contents/${path}" --method PUT \
     --field "message=${msg}" --field "content=${encoded}" --field "branch=${branch}" \
@@ -389,13 +389,13 @@ _remediate_role_block() {
   local canon_bytes block_tmp canon_block_sha repo_bytes repo_read_sha patched patched_tmp written_block_sha rc
 
   canon_bytes="$(_canonical_bytes "$cr" "$cp")"
-  if [ -z "$canon_bytes" ]; then
+  if [[ -z "$canon_bytes" ]]; then
     echo "::error::could not fetch canonical agent-ingress ${cr}/${cp} for ${repo} — failing repo" >&2
     return 1
   fi
   block_tmp="$(mktemp)"
   printf '%s' "$canon_bytes" | extract_job_block "$role" > "$block_tmp"
-  if [ ! -s "$block_tmp" ]; then
+  if [[ ! -s "$block_tmp" ]]; then
     rm -f "$block_tmp"
     echo "::error::canonical ${cr}/${cp} has no '${role}' job block — cannot remediate ${repo}:${sf}#${role}" >&2
     return 1
@@ -410,7 +410,7 @@ _remediate_role_block() {
   # sibling-job content.
   repo_read_sha="$(_blob_sha "$repo" "$sf" "$branch")"
   repo_bytes="$(_repo_bytes "$repo" "$sf" "$branch")"
-  if [ -z "$repo_bytes" ]; then
+  if [[ -z "$repo_bytes" ]]; then
     rm -f "$block_tmp"
     echo "::error::could not read ${repo}:${sf} on ${branch} — cannot patch '${role}' block; failing repo" >&2
     return 1
@@ -419,11 +419,11 @@ _remediate_role_block() {
   patched_tmp="$(mktemp)"
   if printf '%s' "$repo_bytes" | patch_job_block "$role" "$block_tmp" > "$patched_tmp"; then rc=0; else rc=$?; fi
   rm -f "$block_tmp"
-  if [ "$rc" -eq 3 ]; then
+  if [[ "$rc" -eq 3 ]]; then
     rm -f "$patched_tmp"
     echo "::warning::${repo}:${sf} has no '${role}' job block — refusing to recreate a removed stub (never resurrect); skipping" >&2
     return 0
-  elif [ "$rc" -ne 0 ]; then
+  elif [[ "$rc" -ne 0 ]]; then
     rm -f "$patched_tmp"
     echo "::error::failed to patch '${role}' block in ${repo}:${sf}; failing repo" >&2
     return 1
@@ -439,7 +439,7 @@ _remediate_role_block() {
   # confirm its SHA equals canon. A whole-file compare would wrongly fail here,
   # because sibling jobs (correctly) differ from the single-role canonical block.
   written_block_sha="$(_repo_bytes "$repo" "$sf" "$branch" | job_block_sha "$role")"
-  if [ "$written_block_sha" != "$canon_block_sha" ]; then
+  if [[ "$written_block_sha" != "$canon_block_sha" ]]; then
     echo "::error::per-block verify failed on ${repo}:${sf}#${role} — wrote ${written_block_sha}, canonical ${canon_block_sha}; not opening a PR" >&2
     return 1
   fi
@@ -464,7 +464,7 @@ _remediate_repo() {
   if _is_dry; then
     local sf cr cp
     while IFS=$'\t' read -r sf cr cp _; do
-      [ -n "$sf" ] || continue
+      [[ -n "$sf" ]] || continue
       echo "[remediate] [dry-run] would fetch ${cr}/${cp} and write ${sf}"
     done <<< "$entries"
     echo "[remediate] [dry-run] would create branch ${branch} on ${repo}, PUT the above,"
@@ -478,7 +478,7 @@ _remediate_repo() {
   # seed-repo-template.sh's gh pr list --head check.
   local existing_pr
   existing_pr="$(gh pr list --repo "$repo" --head "$branch" --state open --json number --jq '(.[0]?.number // "" | tostring)' 2>/dev/null || true)"
-  if [ -n "$existing_pr" ]; then
+  if [[ -n "$existing_pr" ]]; then
     echo "[remediate] PR #${existing_pr} already open for branch ${branch} on ${repo} — skipping (idempotent)"
     # Distinct code (not 0): a pre-existing PR is NOT a fresh verified remediation.
     # The caller records this as `skipped`, not `verified`, so the verification
@@ -488,7 +488,7 @@ _remediate_repo() {
 
   default_branch="$(gh api "repos/${repo}" --jq '.default_branch' 2>/dev/null || echo main)"
   base_sha="$(gh api "repos/${repo}/git/ref/heads/${default_branch}" --jq '(.object?.sha // "" | tostring)' 2>/dev/null || true)"
-  if [ -z "$base_sha" ]; then
+  if [[ -z "$base_sha" ]]; then
     echo "::error::cannot read ${default_branch} head on ${repo}" >&2
     return 1
   fi
@@ -500,15 +500,15 @@ _remediate_repo() {
 
   local sf cr cp stub role content canon_sha written_sha bytes_tmp
   while IFS=$'\t' read -r sf cr cp stub role; do
-    [ -n "$sf" ] || continue
-    if [ -n "$role" ]; then
+    [[ -n "$sf" ]] || continue
+    if [[ -n "$role" ]]; then
       _remediate_role_block "$repo" "$sf" "$cr" "$cp" "$role" "$branch" || return 1
       continue
     fi
     # ── Whole-file overwrite (#822/#886) ─────────────────────────────────────
     bytes_tmp="$(mktemp)"
     _canonical_bytes "$cr" "$cp" > "$bytes_tmp" 2>/dev/null || true
-    if [ ! -s "$bytes_tmp" ]; then
+    if [[ ! -s "$bytes_tmp" ]]; then
       rm -f "$bytes_tmp"
       echo "::error::could not fetch canonical bytes ${cr}/${cp} for ${repo} — failing repo" >&2
       return 1
@@ -516,7 +516,7 @@ _remediate_repo() {
     IFS= read -r -d '' content < "$bytes_tmp" || true
     rm -f "$bytes_tmp"
     canon_sha="$(_canonical_sha "$cr" "$cp")"
-    if [ -z "$canon_sha" ]; then
+    if [[ -z "$canon_sha" ]]; then
       echo "::error::could not read canonical blob SHA ${cr}/${cp} for ${repo} — cannot verify byte-identity; failing repo" >&2
       return 1
     fi
@@ -524,7 +524,7 @@ _remediate_repo() {
     # Byte-identity verify (AC #5): the written blob SHA must equal the canonical
     # blob SHA. On mismatch, fail the repo BEFORE opening a misleading PR.
     written_sha="$(_blob_sha "$repo" "$sf" "$branch")"
-    if [ "$written_sha" != "$canon_sha" ]; then
+    if [[ "$written_sha" != "$canon_sha" ]]; then
       echo "::error::byte-identity mismatch on ${repo}:${sf} — wrote ${written_sha}, canonical ${canon_sha}; not opening a PR" >&2
       return 1
     fi
@@ -552,13 +552,13 @@ run_remediation() {
 
   # Pilot-first fail-closed gate (AC #4): live remediation requires an explicitly
   # named pilot repo. With none, refuse to write — stay fully dry-run and warn.
-  if ! _is_dry && [ -z "$(_pilot_list)" ]; then
+  if ! _is_dry && [[ -z "$(_pilot_list)" ]]; then
     echo "::warning::fleet_stub_remediate: DRY_RUN=false but no pilot repo (REMEDIATE_PILOT_REPO/--pilot) — refusing live writes; staying dry-run (pilot-scope gate: live remediation requires an explicitly named pilot repo)."
     DRY_RUN=true
   fi
 
   plan="$(build_remediation_plan "$json")" || return 1
-  if [ "$(printf '%s' "$plan" | jq 'length')" -eq 0 ]; then
+  if [[ "$(printf '%s' "$plan" | jq 'length')" -eq 0 ]]; then
     echo "[remediate] no remediable drift — nothing to do."
     return 0
   fi
@@ -576,7 +576,7 @@ run_remediation() {
   summary_tmp="$(mktemp)" || { echo "::error::fleet_stub_remediate: mktemp failed" >&2; return 1; }
 
   while IFS= read -r repo; do
-    [ -n "$repo" ] || continue
+    [[ -n "$repo" ]] || continue
     if ! _in_scope "$repo"; then
       echo "[remediate] ${repo} not in scope — skipping"
       continue
@@ -592,7 +592,7 @@ run_remediation() {
       fi
       # Per-run cap (AC #2): defer (and log) repos beyond the ceiling — no silent
       # truncation; deferred repos are picked up on a later run.
-      if [ "$remediated" -ge "$max" ]; then
+      if [ "$remediated" -ge "$max" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
         echo "[remediate] ${repo} deferred — per-run cap reached (REMEDIATE_MAX_REPOS=${max}); will be picked up on a later run"
         continue
       fi
@@ -610,7 +610,7 @@ run_remediation() {
         3) printf '%s\t%s\n' "$repo" "skipped"  >> "$summary_tmp" ;;
         *) printf '%s\t%s\n' "$repo" "failed"   >> "$summary_tmp"; failed=1 ;;
       esac
-    elif [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+    elif [[ "$rc" -ne 0 ]] && [[ "$rc" -ne 3 ]]; then
       failed=1
     fi
   done < <(printf '%s' "$plan" | jq -r '[.[].repo] | unique | .[]')
@@ -632,15 +632,15 @@ main() {
   done
 
   local json="fleet_stub_drift.json"
-  while [ $# -gt 0 ]; do
+  while [[ $# -gt 0 ]]; do
     case "$1" in
-      --repo)     [ $# -ge 2 ] || { echo "::error::--repo needs a value" >&2; return 2; }
+      --repo)     [[ $# -ge 2 ]] || { echo "::error::--repo needs a value" >&2; return 2; }
                   REMEDIATE_REPOS="${REMEDIATE_REPOS:+$REMEDIATE_REPOS }$2"; shift 2; continue ;;
       --repo=*)   REMEDIATE_REPOS="${REMEDIATE_REPOS:+$REMEDIATE_REPOS }${1#--repo=}"; shift; continue ;;
-      --pilot)    [ $# -ge 2 ] || { echo "::error::--pilot needs a value" >&2; return 2; }
+      --pilot)    [[ $# -ge 2 ]] || { echo "::error::--pilot needs a value" >&2; return 2; }
                   REMEDIATE_PILOT_REPO="${REMEDIATE_PILOT_REPO:+$REMEDIATE_PILOT_REPO }$2"; shift 2; continue ;;
       --pilot=*)  REMEDIATE_PILOT_REPO="${REMEDIATE_PILOT_REPO:+$REMEDIATE_PILOT_REPO }${1#--pilot=}"; shift; continue ;;
-      --max-repos)   [ $# -ge 2 ] || { echo "::error::--max-repos needs a value" >&2; return 2; }
+      --max-repos)   [[ $# -ge 2 ]] || { echo "::error::--max-repos needs a value" >&2; return 2; }
                   REMEDIATE_MAX_REPOS="$2"; shift 2; continue ;;
       --max-repos=*) REMEDIATE_MAX_REPOS="${1#--max-repos=}"; shift; continue ;;
       --dry-run)  DRY_RUN=true; shift; continue ;;
@@ -655,6 +655,6 @@ main() {
 
 # Source-guard: tests source this to exercise the pure helpers; a direct run
 # drives the network remediation from a local fleet_stub_drift.json.
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   main "$@"
 fi

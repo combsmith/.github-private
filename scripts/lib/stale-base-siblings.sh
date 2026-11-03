@@ -24,9 +24,9 @@ detect_stale_base_siblings() {
   local -A children=()
 
   while read -r sha parent _; do
-    [ -n "$sha" ] || continue
-    [ -n "$parent" ] || continue
-    if [ -z "${children[$parent]+x}" ]; then
+    [[ -n "$sha" ]] || continue
+    [[ -n "$parent" ]] || continue
+    if [[ -z "${children[$parent]+x}" ]]; then
       parents_seen+=("$parent")
       children[$parent]="$sha"
     else
@@ -41,17 +41,17 @@ detect_stale_base_siblings() {
     # More than one child => stale-base sibling group. Split the space-separated
     # SHAs into an array and check its length — no `grep` subshell per parent.
     read -ra kids_arr <<< "$kids"
-    if [ "${#kids_arr[@]}" -gt 1 ]; then
+    if [[ "${#kids_arr[@]}" -gt 1 ]]; then
       found=1
       echo "stale-base sibling group: parent ${p} has children: ${kids}"
     fi
   done
 
-  [ "$found" -eq 0 ] && return 0
+  [[ "$found" -eq 0 ]] && return 0
   return 1
 }
 
 # Allow direct invocation: `stale-base-siblings.sh < commits.txt`.
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   detect_stale_base_siblings
 fi

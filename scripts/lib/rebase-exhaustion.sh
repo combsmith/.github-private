@@ -52,7 +52,7 @@ rebase_count_failures() {
 #   the guard (never true).
 rebase_conflict_too_large() {
   local count="${1:-0}" max="${2:-0}"
-  if [ "$max" -gt 0 ] && [ "$count" -gt "$max" ]; then
+  if [ "$max" -gt 0 ] && [ "$count" -gt "$max" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     return 0
   fi
   return 1
@@ -63,7 +63,7 @@ rebase_conflict_too_large() {
 #   exhaustion threshold. A threshold of 0 disables exhaustion (never true).
 rebase_should_exhaust() {
   local fails="${1:-0}" threshold="${2:-0}"
-  if [ "$threshold" -gt 0 ] && [ "$fails" -ge "$threshold" ]; then
+  if [ "$threshold" -gt 0 ] && [ "$fails" -ge "$threshold" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     return 0
   fi
   return 1
@@ -88,11 +88,11 @@ rebase_should_exhaust() {
 #                     as "resolved".
 rebase_conflict_state() {
   local mergeable="${1:-}" state="${2:-}"
-  if [ "$mergeable" = "CONFLICTING" ] || [ "$state" = "DIRTY" ]; then
+  if [[ "$mergeable" = "CONFLICTING" ]] || [[ "$state" = "DIRTY" ]]; then
     printf 'conflicting'
     return 0
   fi
-  if [ "$mergeable" = "MERGEABLE" ]; then
+  if [[ "$mergeable" = "MERGEABLE" ]]; then
     printf 'resolved'
     return 0
   fi

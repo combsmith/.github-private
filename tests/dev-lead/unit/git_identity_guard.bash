@@ -36,7 +36,7 @@ _gig_snapshot() {
 # installer owns cleanup) or when the checkout is not a git repository.
 git_identity_guard_install() {
   local owner="${1:-file}"
-  [ -n "${GIT_IDENTITY_GUARD_DIR:-}" ] && [ -d "$GIT_IDENTITY_GUARD_DIR" ] && return 0
+  [[ -n "${GIT_IDENTITY_GUARD_DIR:-}" ]] && [[ -d "$GIT_IDENTITY_GUARD_DIR" ]] && return 0
 
   local root real_git common dir include
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
@@ -56,8 +56,8 @@ git_identity_guard_install() {
   # Suite-private global config that still honours the caller's own globals.
   : > "$dir/global.gitconfig"
   for include in "${GIT_CONFIG_GLOBAL:-}" "$HOME/.gitconfig" "${XDG_CONFIG_HOME:-$HOME/.config}/git/config"; do
-    [ -n "$include" ] || continue
-    [ -f "$include" ] || continue
+    [[ -n "$include" ]] || continue
+    [[ -f "$include" ]] || continue
     "$real_git" config --file "$dir/global.gitconfig" --add include.path "$include"
   done
   export GIT_CONFIG_GLOBAL="$dir/global.gitconfig"
@@ -145,13 +145,13 @@ SHIM
 # the checkout's user.name/user.email changed; the installing owner cleans up.
 git_identity_guard_verify() {
   local owner="${1:-file}" dir="${GIT_IDENTITY_GUARD_DIR:-}" rc=0 line key value
-  [ -n "$dir" ] && [ -f "$dir/snapshot" ] || return 0
+  [[ -n "$dir" ]] && [[ -f "$dir/snapshot" ]] || return 0
 
   if ! diff -u "$dir/snapshot" <(_gig_snapshot "$GIT_IDENTITY_GUARD_ROOT") >&2; then
     echo "git-identity guard: the dev-lead unit suite changed ${GIT_IDENTITY_GUARD_ROOT}'s git identity (#2236); restoring it" >&2
     while IFS= read -r line; do
       key="${line%%=*}" value="${line#*=}"
-      if [ "$value" = "unset" ]; then
+      if [[ "$value" = "unset" ]]; then
         "$GIT_IDENTITY_GUARD_REAL_GIT" -C "$GIT_IDENTITY_GUARD_ROOT" config --local --unset-all "$key" 2>/dev/null || true
       else
         "$GIT_IDENTITY_GUARD_REAL_GIT" -C "$GIT_IDENTITY_GUARD_ROOT" config --local "$key" "${value#set:}"
@@ -160,7 +160,7 @@ git_identity_guard_verify() {
     rc=1
   fi
 
-  if [ "$owner" = "${GIT_IDENTITY_GUARD_OWNER:-}" ]; then
+  if [[ "$owner" = "${GIT_IDENTITY_GUARD_OWNER:-}" ]]; then
     rm -rf "$dir"
   fi
   return "$rc"

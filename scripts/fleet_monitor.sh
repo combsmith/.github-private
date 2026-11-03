@@ -139,7 +139,7 @@ FLEET_PAUSE_RUNS_QUERY='query($ids:[ID!]!){nodes(ids:$ids){... on WorkflowRun{id
 fetch_paused_run_nodes() {
   local runs_json="$1" batch resp asked resolved
   while IFS= read -r batch; do
-    [ -n "$batch" ] || continue
+    [[ -n "$batch" ]] || continue
     asked=$(jq 'length' <<< "$batch")
     # gh exits non-zero on a GraphQL `errors` member but still prints the body,
     # which holds every node it could resolve. Keep the body either way.
@@ -147,7 +147,7 @@ fetch_paused_run_nodes() {
         '{query: $q, variables: {ids: $ids}}' \
       | gh api graphql --input - 2>/dev/null); then
       resolved=$(printf '%s' "$resp" | fleet_pause_resolved_runs)
-      if [ "$resolved" -lt "$asked" ]; then
+      if [ "$resolved" -lt "$asked" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
         echo "::warning::Jobs read answered for ${resolved} of ${asked} run(s) — a fleet-paused run among the rest stays counted as a success" >&2
       fi
     else
@@ -169,7 +169,7 @@ echo ""
 # 0. Token check — fall back to GH_PAT_FALLBACK if org is not reachable
 # ---------------------------------------------------------------------------
 if ! gh api "orgs/${ORG}" >/dev/null 2>&1; then
-  if [ -n "${GH_PAT_FALLBACK:-}" ]; then
+  if [[ -n "${GH_PAT_FALLBACK:-}" ]]; then
     echo "::warning::GH_TOKEN cannot access org ${ORG} — using GH_PAT_FALLBACK"
     export GH_TOKEN="$GH_PAT_FALLBACK"
     if ! gh api "orgs/${ORG}" >/dev/null 2>&1; then
@@ -199,7 +199,7 @@ echo "Discovering repos in ${ORG}..."
 repos_raw=$(gh api "orgs/${ORG}/repos?per_page=100&type=all" --paginate \
   --jq '.[] | select(.archived == false) | .full_name' 2>/dev/null || true)
 
-if [ -z "$repos_raw" ]; then
+if [[ -z "$repos_raw" ]]; then
   echo "::error::No repos returned — check token has read:org and repo access."
   exit 1
 fi
@@ -245,7 +245,7 @@ for repo in "${repos[@]}"; do
   workflows=$(echo "$workflows_raw" | jq -s 'add // []')
 
   wf_count=$(echo "$workflows" | jq 'length')
-  [ "$wf_count" -eq 0 ] && continue
+  [[ "$wf_count" -eq 0 ]] && continue
   total_workflows=$(( total_workflows + wf_count ))
 
   while IFS=$'\t' read -r wf_id wf_file; do
@@ -295,14 +295,14 @@ for repo in "${repos[@]}"; do
     # A paused run of a workflow WITHOUT a notice job (dev-lead, pr-review,
     # ci-failure-analyst, spec-drift) ends `skipped`, the same as a run an event
     # filter skipped; nothing tells the two apart, so it is left as it was.
-    if [ -n "$wf_content" ] && printf '%s' "$wf_content" \
+    if [[ -n "$wf_content" ]] && printf '%s' "$wf_content" \
         | fleet_pause_workflow_has_notice ${fleet_notice_workflows[@]+"${fleet_notice_workflows[@]}"}; then
       paused_nodes=$(fetch_paused_run_nodes "$runs_json" | jq -Rsc 'split("\n") | map(select(length > 0))')
-      if [ "$paused_nodes" != "[]" ]; then
+      if [[ "$paused_nodes" != "[]" ]]; then
         unpaused_json=$(printf '%s' "$runs_json" | fleet_pause_drop_runs "$paused_nodes")
         paused=$(( $(jq 'length' <<< "$runs_json") - $(jq 'length' <<< "$unpaused_json") ))
         runs_json="$unpaused_json"
-        if [ "$paused" -gt 0 ]; then
+        if [[ "$paused" -gt 0 ]]; then
           printf '%s\t%s\t%s\n' "$repo" "$wf_file" "$paused" >> "$paused_metrics_file"
         fi
       fi
@@ -319,7 +319,7 @@ for repo in "${repos[@]}"; do
     success=$(echo "$runs_json" | jq '[.[] | select(.conclusion == "success")] | length')
     cancelled=$(echo "$runs_json" | jq '[.[] | select(.conclusion == "cancelled")] | length')
 
-    if [ "$total" -gt 0 ]; then
+    if [[ "$total" -gt 0 ]]; then
       rate_int=$(( failed * 100 / total ))
       rate_display=$(awk -v f="$failed" -v t="$total" \
         'BEGIN { pct = f * 100 / t; printf (pct == int(pct)) ? "%d%%" : "%.1f%%", pct }')
@@ -354,7 +354,7 @@ for repo in "${repos[@]}"; do
       "$rate_display" "$p50" "$p95" "$label" "$rate_int" \
       >> "$metrics_file"
 
-    if [ "$failed" -gt 0 ]; then
+    if [[ "$failed" -gt 0 ]]; then
       any_failures=1
       {
         printf '\n### `%s` / `%s`\n\n' "$repo" "$wf_file"
@@ -376,7 +376,7 @@ for repo in "${repos[@]}"; do
     # Only workflows with a schedule trigger (expected > 0) get a row, so a cron
     # that silently never fired (actual 0, expected N) surfaces as STALLED even
     # though it produced no runs to otherwise flag.
-    if [ -n "$wf_content" ]; then
+    if [[ -n "$wf_content" ]]; then
       expected_ticks=$(printf '%s' "$wf_content" \
         | workflow_expected_ticks "$WINDOW_START_EPOCH" "$WINDOW_END_EPOCH")
     else
@@ -384,7 +384,7 @@ for repo in "${repos[@]}"; do
       echo "::warning::Cannot read workflow file ${repo}/${wf_file} for cron parse — schedule reliability skipped for this workflow"
     fi
     case "${expected_ticks:-0}" in ''|*[!0-9]*) expected_ticks=0 ;; esac
-    if [ "$expected_ticks" -gt 0 ]; then
+    if [ "$expected_ticks" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       # Count schedule-triggered runs from the raw set (incl. in-progress) so a
       # tick that fired but is still running is not miscounted as a miss.
       sched_actual=$(echo "$runs_raw" \
@@ -422,7 +422,7 @@ for entry in "${STUB_REGISTRY[@]}"; do
   IFS=$'\t' read -r stub_name stub_label stub_path canonical_path \
     role legacy_path legacy_canonical_path <<< "$entry"
 
-  if [ -z "$role" ]; then
+  if [[ -z "$role" ]]; then
     # ── Whole-file path (#822 planner, #886 driver) ──────────────────────────
     # role empty ⇒ stub_path is a standalone per-repo file compared byte-for-byte
     # against its canonical template. Unchanged from the pre-#1726 behavior.
@@ -430,7 +430,7 @@ for entry in "${STUB_REGISTRY[@]}"; do
       "repos/${CANONICAL_STUB_REPO}/contents/${canonical_path}" \
       --jq '.sha' 2>/dev/null || true)
 
-    if [ -z "$canonical_stub_sha" ]; then
+    if [[ -z "$canonical_stub_sha" ]]; then
       echo "::warning::Could not read canonical stub SHA (${CANONICAL_STUB_REPO}/${canonical_path}) — skipping ${stub_name} stub drift detection."
       continue
     fi
@@ -467,12 +467,12 @@ for entry in "${STUB_REGISTRY[@]}"; do
     *) echo "::error::Aborting: cannot read canonical agent-ingress (${CANONICAL_STUB_REPO}/${canonical_path}) — API failure must not be masked as absent (see error above)." >&2
        exit 1 ;;
   esac
-  if [ -z "$canonical_ingress" ]; then
+  if [[ -z "$canonical_ingress" ]]; then
     echo "::warning::Canonical agent-ingress is empty (${CANONICAL_STUB_REPO}/${canonical_path}) — skipping ${stub_name} (${role}) stub drift detection."
     continue
   fi
   canon_block_sha=$(printf '%s' "$canonical_ingress" | job_block_sha "$role")
-  if [ -z "$canon_block_sha" ]; then
+  if [[ -z "$canon_block_sha" ]]; then
     echo "::warning::Canonical agent-ingress has no '${role}' job block — skipping ${stub_name} (${role}) stub drift detection."
     continue
   fi
@@ -480,7 +480,7 @@ for entry in "${STUB_REGISTRY[@]}"; do
   # Legacy per-role canonical whole-file SHA (for mixed-fleet, pre-collapse repos).
   # Optional: absence only means legacy repos for this role cannot be classified.
   legacy_canon_sha=""
-  if [ -n "$legacy_canonical_path" ]; then
+  if [[ -n "$legacy_canonical_path" ]]; then
     legacy_canon_sha=$(gh api \
       "repos/${CANONICAL_STUB_REPO}/contents/${legacy_canonical_path}" \
       --jq '.sha' 2>/dev/null || true)
@@ -492,11 +492,11 @@ for entry in "${STUB_REGISTRY[@]}"; do
     repo_ingress="$(fetch_raw_content "$repo" "$stub_path")" && ingress_rc=0 || ingress_rc=$?
     # A hard failure (rc 1) must abort — treating it as "absent" would wrongly
     # trigger the legacy fallback for a repo that actually has an agent-ingress.yml.
-    if [ "$ingress_rc" -eq 1 ]; then
+    if [[ "$ingress_rc" -eq 1 ]]; then
       echo "::error::Aborting: cannot read ${repo}/${stub_path} — API failure must not be masked as a missing ingress (see error above)." >&2
       exit 1
     fi
-    if [ "$ingress_rc" -eq 0 ] && [ -n "$repo_ingress" ]; then
+    if [[ "$ingress_rc" -eq 0 ]] && [[ -n "$repo_ingress" ]]; then
       ingress_present="yes"
       repo_block_sha=$(printf '%s' "$repo_ingress" | job_block_sha "$role")
       legacy_repo_sha=""
@@ -506,7 +506,7 @@ for entry in "${STUB_REGISTRY[@]}"; do
       ingress_present="no"
       repo_block_sha=""
       legacy_repo_sha=""
-      if [ -n "$legacy_path" ]; then
+      if [[ -n "$legacy_path" ]]; then
         legacy_repo_sha=$(gh api "repos/${repo}/contents/${legacy_path}" \
           --jq '.sha' 2>/dev/null || true)
       fi
@@ -570,7 +570,7 @@ for repo in "${repos[@]}"; do
   comments_json=$(printf '%s' "$comments_raw" | jq -s '.' 2>/dev/null || echo '[]')
   IFS=$'\t' read -r dl_timeout dl_engine_error dl_total \
     < <(summarize_dev_lead_timeouts "$comments_json")
-  if [ "${dl_total:-0}" -gt 0 ]; then
+  if [ "${dl_total:-0}" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     # Total dev-lead runs = the `dev-lead.yml` row's `total` (field 4) for this
     # repo in metrics_file, matched by workflow-file basename. Empty when the
     # repo has no dev-lead.yml row; '?' when that row is an ERROR sentinel.
@@ -613,7 +613,7 @@ fleet_dl_runs=$(awk -F'\t' '
 persona_optout_file=$(mktemp)
 persona_optout_family=$(derive_persona_optout_labels "${SCRIPT_DIR}/../personas")
 persona_optout_total=$(printf '%s\n' "$persona_optout_family" | sed '/^$/d' | grep -c . || true)
-if [ "${persona_optout_total:-0}" -gt 0 ]; then
+if [[ "${persona_optout_total:-0}" -gt 0 ]]; then
   for repo in "${repos[@]}"; do
     if ! repo_labels=$(gh api "repos/${repo}/labels?per_page=100" --paginate \
       --jq '.[].name' 2>/dev/null); then
@@ -650,7 +650,7 @@ for repo in "${repos[@]}"; do
     echo "::warning::Cannot read workflows for ${repo} — ingress attribution skipped for this repo"
     continue
   fi
-  [ -n "$ingress_wf_id" ] || continue   # no agent-ingress.yml here — legacy repo
+  [[ -n "$ingress_wf_id" ]] || continue   # no agent-ingress.yml here — legacy repo
 
   # Completed run ids for the ingress workflow over the window (the jobs API keys
   # on run id, so unlike Section 2 we must keep the id, not just run_number).
@@ -662,12 +662,12 @@ for repo in "${repos[@]}"; do
     echo "::warning::Cannot read ingress runs for ${repo} — ingress attribution skipped for this repo"
     continue
   fi
-  [ -n "$ingress_run_ids" ] || continue
+  [[ -n "$ingress_run_ids" ]] || continue
 
   # Build the per-run jobs JSON the lib expects: [{run_id, jobs:[{name,conclusion}]}].
   per_run_tmp=$(mktemp)
   while IFS= read -r run_id; do
-    [ -n "$run_id" ] || continue
+    [[ -n "$run_id" ]] || continue
     if ! jobs_raw=$(gh api "repos/${repo}/actions/runs/${run_id}/jobs?per_page=100" --paginate \
       --jq '[.jobs[] | {name, conclusion}]' 2>/dev/null); then
       echo "::warning::Cannot read jobs for ${repo} run ${run_id} — ingress attribution may undercount"
@@ -716,10 +716,10 @@ report_header() {
 # stub_drift_section — appends a coverage/drift block per processed stub (#822
 # planner, #886 driver). One section per stub kind, headlined by its label.
 stub_drift_section() {
-  [ ${#stub_drift_files[@]} -eq 0 ] && return 0
+  [[ ${#stub_drift_files[@]} -eq 0 ]] && return 0
   local i
   for i in "${!stub_drift_files[@]}"; do
-    [ -s "${stub_drift_files[$i]}" ] || continue
+    [[ -s "${stub_drift_files[$i]}" ]] || continue
     printf '\n'
     generate_stub_drift_report "${stub_drift_files[$i]}" "${stub_drift_canon[$i]}" "${stub_drift_labels[$i]}"
   done
@@ -728,7 +728,7 @@ stub_drift_section() {
 # dev_lead_timeout_section — appends the Dev-Lead timeout ("wall") observability
 # block (#1019) when any repo had dev-lead status markers in the window.
 dev_lead_timeout_section() {
-  [ -s "$dev_lead_reason_file" ] || return 0
+  [[ -s "$dev_lead_reason_file" ]] || return 0
   printf '\n'
   generate_dev_lead_timeout_report "$dev_lead_reason_file" "${fleet_dl_runs:-0}"
 }
@@ -736,7 +736,7 @@ dev_lead_timeout_section() {
 # fleet_paused_section — appends the Fleet-paused runs block (#2266) when any
 # run in the window only reported a fleet pause.
 fleet_paused_section() {
-  [ -s "$paused_metrics_file" ] || return 0
+  [[ -s "$paused_metrics_file" ]] || return 0
   printf '\n'
   generate_fleet_paused_report "$paused_metrics_file"
 }
@@ -744,7 +744,7 @@ fleet_paused_section() {
 # schedule_reliability_section — appends the Schedule Reliability block (#725)
 # when any scheduled workflow was seen in the window.
 schedule_reliability_section() {
-  [ -s "$schedule_metrics_file" ] || return 0
+  [[ -s "$schedule_metrics_file" ]] || return 0
   printf '\n'
   generate_schedule_reliability_report "$schedule_metrics_file"
 }
@@ -752,7 +752,7 @@ schedule_reliability_section() {
 # persona_optout_section — appends the Persona opt-out label coverage block
 # (#1644) when any repo's labels were readable.
 persona_optout_section() {
-  [ -s "$persona_optout_file" ] || return 0
+  [[ -s "$persona_optout_file" ]] || return 0
   printf '\n'
   generate_persona_optout_report "$persona_optout_file" "${persona_optout_total:-0}"
 }
@@ -769,10 +769,10 @@ ingress_attribution_section() {
   # Both accumulators are JSONL: one {role,conclusion} OBJECT per line. They are
   # concatenated, not `jq -s add`-ed: adding objects merges them key by key, which
   # left ONE record (the last) for the whole fleet instead of one per run.
-  if [ -s "$legacy_attr_file" ] || [ -s "$ingress_attr_file" ]; then
+  if [[ -s "$legacy_attr_file" ]] || [[ -s "$ingress_attr_file" ]]; then
     cat "$legacy_attr_file" "$ingress_attr_file" > "$combined_attr_file"
   fi
-  [ -s "$combined_attr_file" ] || { rm -f "$combined_attr_file"; return 0; }
+  [[ -s "$combined_attr_file" ]] || { rm -f "$combined_attr_file"; return 0; }
   attr_tsv=$(mktemp)
   jq -s '.' "$combined_attr_file" | attribution_buckets > "$attr_tsv"
   printf '\n'
@@ -790,7 +790,7 @@ budget_poller_section() {
 # Step Summary — Tier 1 visualizations only (Mermaid not rendered there)
 # GitHub Step Summary has a 1 MB hard limit per job. At ~200 bytes per row
 # this supports ~5 000 workflows before truncation.
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   { report_header; generate_report "$metrics_file" "$failed_file" "false" "$issues_lookup_file"; fleet_paused_section; dev_lead_timeout_section; schedule_reliability_section; persona_optout_section; ingress_attribution_section; stub_drift_section; budget_poller_section; } \
     >> "$GITHUB_STEP_SUMMARY"
 fi
@@ -809,11 +809,11 @@ fi
 # Gate workflows (FLEET_GATE_WORKFLOWS in fleet_report.sh) are excluded here —
 # their failures are intentional policy enforcement, not breakage (#941).
 HIGH_FAILURE_FILE="fleet_high_failure.json"
-if [ -s "$metrics_file" ]; then
+if [[ -s "$metrics_file" ]]; then
   filter_high_failure "$metrics_file" > "$HIGH_FAILURE_FILE"
   hf_count=$(jq 'length' "$HIGH_FAILURE_FILE")
   echo "High-failure items (>10%): ${hf_count}"
-  [ -n "${GITHUB_ENV:-}" ] && echo "HIGH_FAILURE_COUNT=${hf_count}" >> "$GITHUB_ENV"
+  [[ -n "${GITHUB_ENV:-}" ]] && echo "HIGH_FAILURE_COUNT=${hf_count}" >> "$GITHUB_ENV"
 else
   echo "[]" > "$HIGH_FAILURE_FILE"
 fi
@@ -828,7 +828,7 @@ fi
 # out by stub_drift_alert_json and appear only in the report, marked legacy (#2289).
 # ---------------------------------------------------------------------------
 STUB_DRIFT_JSON="fleet_stub_drift.json"
-if [ ${#stub_drift_files[@]} -gt 0 ]; then
+if [[ ${#stub_drift_files[@]} -gt 0 ]]; then
   stub_alert_tmp=$(mktemp)
   for i in "${!stub_drift_files[@]}"; do
     stub_drift_alert_json "${stub_drift_files[$i]}" "${stub_drift_labels[$i]}" "${stub_drift_paths[$i]}" "${stub_drift_roles[$i]}" \
@@ -842,9 +842,9 @@ else
 fi
 stub_drift_count=$(jq 'length' "$STUB_DRIFT_JSON")
 echo "Drifted stubs (all kinds): ${stub_drift_count}"
-if [ -n "${GITHUB_ENV:-}" ]; then
+if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "STUB_DRIFT_COUNT=${stub_drift_count}" >> "$GITHUB_ENV"
-  [ "$stub_drift_count" -gt 0 ] && echo "HAS_STUB_DRIFT=true" >> "$GITHUB_ENV"
+  [ "$stub_drift_count" -gt 0 ] && echo "HAS_STUB_DRIFT=true" >> "$GITHUB_ENV"  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 fi
 
 # ---------------------------------------------------------------------------
@@ -863,19 +863,19 @@ echo "Persona opt-out INCOMPLETE repos: ${persona_optout_incomplete_count}"
 # alert on incomplete opt-out coverage — mirrors the HIGH_FAILURE_COUNT (3b) and
 # STUB_DRIFT_COUNT/HAS_STUB_DRIFT (3c) idiom. Without this the JSON artifact is
 # written but never consumed, so the drift is neither tracked nor alerted.
-if [ -n "${GITHUB_ENV:-}" ]; then
+if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "PERSONA_OPTOUT_INCOMPLETE_COUNT=${persona_optout_incomplete_count}" >> "$GITHUB_ENV"
-  [ "$persona_optout_incomplete_count" -gt 0 ] && echo "HAS_PERSONA_OPTOUT_DRIFT=true" >> "$GITHUB_ENV"
+  [ "$persona_optout_incomplete_count" -gt 0 ] && echo "HAS_PERSONA_OPTOUT_DRIFT=true" >> "$GITHUB_ENV"  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 fi
 
 rm -f "$metrics_file" "$failed_file" "$issues_lookup_file" "$dev_lead_reason_file" "$schedule_metrics_file" "$persona_optout_file" "$ingress_attr_file" "$legacy_attr_file" "$budget_poller_log_file" "$paused_metrics_file"
-[ ${#stub_drift_files[@]} -gt 0 ] && rm -f "${stub_drift_files[@]}"
+[[ ${#stub_drift_files[@]} -gt 0 ]] && rm -f "${stub_drift_files[@]}"
 
 # ---------------------------------------------------------------------------
 # 4. Export env flags
 # ---------------------------------------------------------------------------
-if [ "$any_failures" -eq 1 ]; then
-  [ -n "${GITHUB_ENV:-}" ] && echo "HAS_FAILURES=true" >> "$GITHUB_ENV"
+if [[ "$any_failures" -eq 1 ]]; then
+  [[ -n "${GITHUB_ENV:-}" ]] && echo "HAS_FAILURES=true" >> "$GITHUB_ENV"
 fi
 
 echo ""

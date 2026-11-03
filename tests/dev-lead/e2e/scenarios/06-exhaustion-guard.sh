@@ -41,7 +41,7 @@ main() {
   log "=== Scenario: ${SCENARIO_NAME} ==="
   log "Test: exhaustion guard posts PR-level block after MAX_FAIL_ATTEMPTS"
 
-  if [ ! -f "${FIX_CI_SCRIPT}" ]; then
+  if [[ ! -f "${FIX_CI_SCRIPT}" ]]; then
     err "dev-lead-fix-ci.sh not found at: ${FIX_CI_SCRIPT}"
     record_result "${SCENARIO_NAME}" "FAIL" "fix-ci script not found"
     exit 1
@@ -199,7 +199,7 @@ GH_STUB2
   fi
 
   # ── Result ─────────────────────────────────────────────────────────────────
-  if [ "${all_pass}" = "true" ]; then
+  if [[ "${all_pass}" = "true" ]]; then
     log "[PASS] ${SCENARIO_NAME}: exhaustion guard blocks repeated CI fix attempts"
     record_result "${SCENARIO_NAME}" "PASS" \
       "threshold-hit-exits-1 pre-exhausted-exits-0"

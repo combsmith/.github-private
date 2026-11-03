@@ -17,7 +17,7 @@ FAIL=0
 
 assert_eq() {
   local desc="$1" expected="$2" actual="$3"
-  if [ "$expected" = "$actual" ]; then
+  if [[ "$expected" = "$actual" ]]; then
     printf 'PASS: %s\n' "$desc"
     PASS=$((PASS + 1))
   else
@@ -273,4 +273,4 @@ rm -f "$SUMMARY_FILE"
 # ── Results ───────────────────────────────────────────────────────────────────
 echo ""
 printf '%d passed, %d failed\n' "$PASS" "$FAIL"
-[ "$FAIL" -eq 0 ] || exit 1
+[[ "$FAIL" -eq 0 ]] || exit 1

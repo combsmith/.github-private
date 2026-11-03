@@ -88,8 +88,8 @@ JQ_CLASSIFY='.[] |
 # all_entries accumulate across repos.
 process_repo_prs() {
   local raw="$1" line tag rest reason url
-  while IFS= read -r line || [ -n "$line" ]; do
-    [ -z "$line" ] && continue
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" ]] && continue
     tag="${line%%$'\t'*}"
     rest="${line#*$'\t'}"
     case "$tag" in
@@ -116,14 +116,14 @@ process_repo_prs() {
 # (issue #1744). gh paginates internally up to the requested limit.
 search_namespace() {
   local owner="$1" raw
-  while IFS= read -r repo || [ -n "$repo" ]; do
-    [ -z "$repo" ] && continue
+  while IFS= read -r repo || [[ -n "$repo" ]]; do
+    [[ -z "$repo" ]] && continue
     raw=$(gh pr list \
       --repo "$repo" \
       --state open \
       --limit 1000 \
       --json url,author,createdAt,isDraft 2>/dev/null || echo '[]')
-    [ -z "$raw" ] && raw='[]'
+    [[ -z "$raw" ]] && raw='[]'
     process_repo_prs "$raw"
   done < <(gh repo list "$owner" --limit 1000 --json nameWithOwner --jq '.[].nameWithOwner' 2>/dev/null || true)
 }
@@ -135,10 +135,10 @@ search_namespace "$BOT_USER"
 search_namespace "$TARGET_ORG"
 
 # Additional orgs from DELEGATION_ORGS (skip TARGET_ORG and BOT_USER — already covered above)
-if [ -n "$DELEGATION_ORGS" ]; then
+if [[ -n "$DELEGATION_ORGS" ]]; then
   IFS=',' read -ra _ORGS <<< "$DELEGATION_ORGS"
   for _org in "${_ORGS[@]}"; do
-    if [ "$_org" != "$TARGET_ORG" ] && [ "$_org" != "$BOT_USER" ]; then
+    if [[ "$_org" != "$TARGET_ORG" ]] && [[ "$_org" != "$BOT_USER" ]]; then
       search_namespace "$_org"
     fi
   done

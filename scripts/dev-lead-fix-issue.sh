@@ -60,7 +60,7 @@ check_existing_pr() {
   local existing
   existing=$(gh api "repos/${REPO}/pulls?state=open" \
     --jq "[.[] | select(.head.ref | startswith(\"dev-lead/issue-${ISSUE_NUMBER}\"))] | length" 2>/dev/null || echo "0")
-  [ "$existing" -gt 0 ]
+  [[ "$existing" -gt 0 ]]
 }
 
 # count_prior_attempts: highest attempt= recorded in any prior dev-lead-issue
@@ -88,7 +88,7 @@ html_escape() {
 # in a collapsible <details> block. The source file is already secret-scrubbed
 # by engine.sh:run_writer, so no further redaction is needed here.
 session_snippet() {
-  [ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" ] || return 0
+  [[ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" ]] || return 0
   printf '<details><summary>Last 40 lines of engine output (redacted)</summary>\n\n<pre>\n'
   tail -n 40 "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" | html_escape
   printf '\n</pre>\n</details>'
@@ -115,7 +115,7 @@ escalate_needs_human() {
   # Guard the required args before referencing them: under `set -u` a miscall
   # with too few args would otherwise crash with an unbound-variable error —
   # and on the escalation path a crash means the human is never notified.
-  if [ "$#" -lt 5 ]; then
+  if [[ "$#" -lt 5 ]]; then
     echo "::error::escalate_needs_human requires 5 args (reason attempt snippet error_line cause_markdown); got $#" >&2
     exit 1
   fi
@@ -153,14 +153,14 @@ retract_prior_completion_claims() {
   # applied by the test stubs), mirroring count_prior_attempts.
   comments=$(gh api --paginate "repos/${REPO}/issues/${ISSUE_NUMBER}/comments?per_page=100" 2>/dev/null \
     | jq -s -r '[ .[] | .[]? ] | .[] | {id: .id, body: (.body // "")} | @base64' 2>/dev/null) || return 0
-  [ -n "$comments" ] || return 0
+  [[ -n "$comments" ]] || return 0
 
   while IFS= read -r enc; do
-    [ -n "$enc" ] || continue
+    [[ -n "$enc" ]] || continue
     obj=$(printf '%s' "$enc" | base64 -d 2>/dev/null) || continue
     id=$(printf '%s' "$obj" | jq -r '.id' 2>/dev/null) || continue
     body=$(printf '%s' "$obj" | jq -r '.body' 2>/dev/null) || continue
-    [ -n "$id" ] && [ "$id" != "null" ] || continue
+    [[ -n "$id" ]] && [[ "$id" != "null" ]] || continue
     body_has_completion_claim "$body" || continue
     claim_is_retracted "$body" && continue
 
@@ -168,10 +168,10 @@ retract_prior_completion_claims() {
     # retraction would incorrectly strike a genuine completion record. Skip it.
     local pr_ref
     pr_ref=$(printf '%s' "$body" | grep -oE 'pr=[0-9]+' | grep -oE '[0-9]+' | head -1 2>/dev/null || true)
-    if [ -n "$pr_ref" ]; then
+    if [[ -n "$pr_ref" ]]; then
       local pr_state
       pr_state=$(gh pr view "$pr_ref" --repo "$REPO" --json state --jq '.state' 2>/dev/null || echo "")
-      [ "$pr_state" = "MERGED" ] && continue
+      [[ "$pr_state" = "MERGED" ]] && continue
     fi
 
     banner="${PC_CLAIM_RETRACTED_MARKER}
@@ -207,13 +207,13 @@ retract_prior_completion_claims() {
 # resolution stays gated on a complete pass.
 checkpoint_push_partial_work() {
   local br="${branch:-}"
-  [ -n "$br" ] || return 1
+  [[ -n "$br" ]] || return 1
 
   # Anything to preserve? Uncommitted changes OR commits the engine made past the
   # pre-engine SHA (it may have committed via Bash before the later phase timed out).
   local has_uncommitted=false has_commits=false
-  [ -n "$(git status --porcelain 2>/dev/null)" ] && has_uncommitted=true
-  if [ -n "${pre_engine_sha:-}" ] && [ "$(git rev-parse HEAD 2>/dev/null)" != "$pre_engine_sha" ]; then
+  [[ -n "$(git status --porcelain 2>/dev/null)" ]] && has_uncommitted=true
+  if [[ -n "${pre_engine_sha:-}" ]] && [[ "$(git rev-parse HEAD 2>/dev/null)" != "$pre_engine_sha" ]]; then
     has_commits=true
   fi
   if ! $has_uncommitted && ! $has_commits; then
@@ -254,14 +254,14 @@ handle_engine_failure() {
   # Cause class from the engine layer; default to engine-error if the sidecar is
   # absent (e.g. an older engine.sh). exit 2 always means rate-limited.
   local reason="engine-error"
-  if [ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason" ]; then
+  if [[ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason" ]]; then
     reason=$(tr -d '[:space:]' < "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason")
   fi
-  [ -n "$reason" ] || reason="engine-error"
-  [ "$engine_rc" -eq 2 ] && reason="rate-limited"
+  [[ -n "$reason" ]] || reason="engine-error"
+  [ "$engine_rc" -eq 2 ] && reason="rate-limited"  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 
   local reset=""
-  [ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" ] && reset=$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset")
+  [[ -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" ]] && reset=$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset")
 
   local attempt
   attempt=$(( $(count_prior_attempts) + 1 ))
@@ -271,7 +271,7 @@ handle_engine_failure() {
 
   # Deterministic infra failure (missing engine binary): retrying cannot help —
   # escalate to a human immediately, no retry marker.
-  if [ "$reason" = "missing-binary" ]; then
+  if [[ "$reason" = "missing-binary" ]]; then
     escalate_needs_human "$reason" "$attempt" "$snippet" \
       "Engine binary missing while implementing issue #${ISSUE_NUMBER} — escalating to human" \
       "A required engine binary was missing in the runner environment while implementing this issue. This is an **infrastructure/configuration** problem, not a transient error, so automatic retry is disabled.
@@ -288,7 +288,7 @@ Please check the runner/engine configuration, then re-apply the \`dev-lead\` lab
   # sets the secret — escalate immediately with NO retry marker so the retry cron
   # does not requeue an attempt that can never succeed. This is distinct from a
   # rate limit: the condition cannot change on its own.
-  if [ "$reason" = "unconfigured" ]; then
+  if [[ "$reason" = "unconfigured" ]]; then
     escalate_needs_human "$reason" "$attempt" "$snippet" \
       "Engine credential missing/placeholder while implementing issue #${ISSUE_NUMBER} — escalating to human" \
       "A required engine credential (e.g. the Copilot token \`COPILOT_GITHUB_TOKEN\`) was **missing, a placeholder, or an unsupported type** while implementing this issue. This is a deterministic **authentication/configuration** gap, not a transient rate limit, so automatic retry is disabled — retrying cannot succeed until the secret is set.
@@ -305,11 +305,11 @@ Set the missing engine credential (and confirm it is a supported token type), th
   # cron skips dev-lead:needs-human). The comment states the tier, elapsed
   # seconds, and budget, plus split/raise guidance. This branch precedes the
   # attempt-ceiling / retry logic below on purpose. (#1018)
-  if [ "$reason" = "timeout" ]; then
+  if [[ "$reason" = "timeout" ]]; then
     local tier="deep/action" budget="unknown" elapsed="unknown" raise_var="DEEP_TIMEOUT_SEC"
-    [ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-tier" ]    && tier=$(tr -d '[:space:]' < "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-tier")
-    [ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-budget" ]  && budget=$(tr -d '[:space:]' < "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-budget")
-    [ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-elapsed" ] && elapsed=$(tr -d '[:space:]' < "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-elapsed")
+    [[ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-tier" ]]    && tier=$(tr -d '[:space:]' < "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-tier")
+    [[ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-budget" ]]  && budget=$(tr -d '[:space:]' < "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-budget")
+    [[ -s "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-elapsed" ]] && elapsed=$(tr -d '[:space:]' < "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-elapsed")
     case "$tier" in
       action|writer) raise_var="ACTION_TIMEOUT_SEC" ;;
       deep)          raise_var="DEEP_TIMEOUT_SEC" ;;
@@ -323,12 +323,12 @@ Set the missing engine credential (and confirm it is a supported token type), th
     # "not recoverable from this run" note (#1003).
     local work_note="" checkpoint_branch=""
     checkpoint_branch=$(checkpoint_push_partial_work) || checkpoint_branch=""
-    if [ -n "$checkpoint_branch" ]; then
+    if [[ -n "$checkpoint_branch" ]]; then
       work_note="
 
 > **Partial work was checkpoint-pushed to \`${checkpoint_branch}\`.** The engine produced changes before the timeout; rather than lose them, they were committed with the \`${CHECKPOINT_COMMIT_PREFIX}\` marker and pushed to that branch. **This work is partial and unreviewed** — no pull request was opened and no review threads were resolved, so it must **not** be merged as-is. Use it as a salvage point: continue the branch by hand, or re-apply \`dev-lead\` after splitting the issue or raising the budget."
-    elif [ -n "$(git status --porcelain 2>/dev/null)" ] || \
-       { [ -n "${pre_engine_sha:-}" ] && [ "$(git rev-parse HEAD 2>/dev/null)" != "$pre_engine_sha" ]; }; then
+    elif [[ -n "$(git status --porcelain 2>/dev/null)" ]] || \
+       { [[ -n "${pre_engine_sha:-}" ]] && [[ "$(git rev-parse HEAD 2>/dev/null)" != "$pre_engine_sha" ]]; }; then
       work_note="
 
 > **Note: the engine had produced changes before the timeout,** but they could not be pushed from this run, so they are **not recoverable** (the runner is ephemeral). The redacted session snippet below shows what it attempted — treat it as context, not restorable output. Re-apply \`dev-lead\` after splitting the issue or raising the budget to regenerate the work."
@@ -349,9 +349,9 @@ This hit the max ${tier} budget. **Split this issue** into smaller, independentl
 
   # Retries exhausted: escalate to a human, no further retry marker. Preserve the
   # exit-2-on-rate-limit contract (engine_rc==2) via the helper's exit_code arg.
-  if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+  if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     local exhausted_exit=1
-    [ "$engine_rc" -eq 2 ] && exhausted_exit=2
+    [ "$engine_rc" -eq 2 ] && exhausted_exit=2  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     escalate_needs_human "$reason" "$attempt" "$snippet" \
       "Engine failed to implement issue #${ISSUE_NUMBER} (reason=${reason}); retries exhausted (attempt ${attempt}/${MAX_ATTEMPTS}) — escalating to human" \
       "Automatic retries are exhausted (**attempt ${attempt} of ${MAX_ATTEMPTS}**). The most recent failure was \`${reason}\`.
@@ -365,16 +365,16 @@ Please review the failures above. To retry anyway, remove the \`${NEEDS_HUMAN_LA
   # Retryable (rate-limited or engine-error, attempt < MAX): post the marker the
   # retry cron scans for, plus a human-readable comment with the cause.
   local status="failed"
-  [ "$reason" = "rate-limited" ] && status="rate-limited"
+  [[ "$reason" = "rate-limited" ]] && status="rate-limited"
   local reset_attr=""
-  [ -n "$reset" ] && reset_attr=" reset=${reset}"
+  [[ -n "$reset" ]] && reset_attr=" reset=${reset}"
   local marker="${ISSUE_MARKER_PREFIX}${ISSUE_NUMBER} status=${status} attempt=${attempt} reason=${reason} run=${GITHUB_RUN_ID:-}${reset_attr} -->"
 
   local cause_line reset_line=""
-  if [ "$reason" = "rate-limited" ]; then
+  if [[ "$reason" = "rate-limited" ]]; then
     echo "::warning::All engines rate-limited while implementing issue #${ISSUE_NUMBER} (attempt ${attempt}/${MAX_ATTEMPTS}) — will retry automatically"
     cause_line="All engines were **rate-limited**."
-    [ -n "$reset" ] && reset_line="
+    [[ -n "$reset" ]] && reset_line="
 - **Limit resets:** ${reset}"
   else
     echo "::error::Engine failed to implement issue #${ISSUE_NUMBER} (reason=${reason}, attempt ${attempt}/${MAX_ATTEMPTS}) — will retry automatically"
@@ -391,7 +391,7 @@ ${cause_line} This was **attempt ${attempt} of ${MAX_ATTEMPTS}**; dev-lead will 
 
 ${snippet}" 2>/dev/null || true
 
-  [ "$engine_rc" -eq 2 ] && exit 2
+  [ "$engine_rc" -eq 2 ] && exit 2  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   exit 1
 }
 
@@ -401,17 +401,17 @@ ${snippet}" 2>/dev/null || true
 # contents API. Returns non-zero on any failure or empty result so callers can
 # fail-open.
 _plg_fetch() {
-  [ "$#" -lt 2 ] && return 1
+  [[ "$#" -lt 2 ]] && return 1
   local path="$1" dest="$2"
-  if [ -n "${PLG_STANDARDS_DIR:-}" ]; then
+  if [[ -n "${PLG_STANDARDS_DIR:-}" ]]; then
     local src="${PLG_STANDARDS_DIR}/${path}"
-    [ -f "$src" ] || return 1
+    [[ -f "$src" ]] || return 1
     cp "$src" "$dest" 2>/dev/null || return 1
   else
     gh api "repos/${PLG_SOURCE_REPO}/contents/${path}?ref=${PLG_SOURCE_REF}" \
       --jq '.content' 2>/dev/null | base64 -d > "$dest" 2>/dev/null || return 1
   fi
-  [ -s "$dest" ]
+  [[ -s "$dest" ]]
 }
 
 # admission_gate_allows: returns 0 (allow) / 1 (defer). Fetches the shared guard
@@ -471,7 +471,7 @@ deferral_comment_exists() {
     --jq "[.[] | select((.body // \"\") | startswith(\"${PLG_DEFER_MARKER}\"))] | length" 2>/dev/null \
     | jq -s 'add // 0' 2>/dev/null || echo 0)
   [[ "$count" =~ ^[0-9]+$ ]] || count=0
-  [ "$count" -gt 0 ]
+  [ "$count" -gt 0 ]  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 }
 
 # post_deferral_comment: idempotently post a single deferral comment. No-op if a
@@ -537,7 +537,7 @@ post_completion_claim() {
     return 0
   fi
   pr_number=$(printf '%s' "$pr_url" | sed -nE 's#.*/pull/([0-9]+).*#\1#p')
-  [ -n "$pr_number" ] || pr_number="unknown"
+  [[ -n "$pr_number" ]] || pr_number="unknown"
   run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-$REPO}/actions/runs/${GITHUB_RUN_ID:-}"
   local net_change
   net_change=$(net_diff_summary "$base_ref")
@@ -555,7 +555,7 @@ Review happens on the PR. Acceptance criteria and test results are evidenced by 
 }
 
 main() {
-  if [ -z "$ISSUE_NUMBER" ]; then
+  if [[ -z "$ISSUE_NUMBER" ]]; then
     echo "::error::ISSUE_NUMBER is required"
     exit 1
   fi
@@ -591,13 +591,13 @@ main() {
     | sed 's/<!-- VARIABLES: //; s/ -->//' \
     | tr ',' '\n' \
     | awk '{gsub(/^ +| +$/, ""); if (length) printf "${%s}", $0}' || true)
-  if [ -n "$vars_spec" ]; then
+  if [[ -n "$vars_spec" ]]; then
     envsubst "$vars_spec" < "$template_path" > "$prompt_file"
   else
     envsubst < "$template_path" > "$prompt_file"
   fi
 
-  if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
+  if [[ "$DEV_LEAD_DRY_RUN" = "true" ]]; then
     echo "[dry-run] fix-issue: would implement issue #${ISSUE_NUMBER} using prompt: $prompt_file"
     rm -f "${prompt_file:-}"
     exit 0
@@ -628,7 +628,7 @@ main() {
 
   local engine_rc=0
   run_writer_with_fallback "$prompt_file" "fix-issue" || engine_rc=$?
-  if [ "$engine_rc" -ne 0 ]; then
+  if [[ "$engine_rc" -ne 0 ]]; then
     # Unified failure handler: classifies the cause, surfaces it on the issue
     # (marker + comment + run link + redacted snippet), and decides retry vs.
     # human escalation. Never returns — exits 2 (rate-limit) or 1 (otherwise).
@@ -638,8 +638,8 @@ main() {
   # git status --porcelain catches untracked files that git diff misses.
   # Compare HEAD to pre-engine SHA to detect commits the engine made via Bash.
   local has_uncommitted=false has_unpushed=false
-  [ -n "$(git status --porcelain)" ] && has_uncommitted=true
-  [ "$(git rev-parse HEAD)" != "$pre_engine_sha" ] && has_unpushed=true
+  [[ -n "$(git status --porcelain)" ]] && has_uncommitted=true
+  [[ "$(git rev-parse HEAD)" != "$pre_engine_sha" ]] && has_unpushed=true
 
   if ! $has_uncommitted && ! $has_unpushed; then
     echo "::notice::No changes made for issue #${ISSUE_NUMBER}"
@@ -651,11 +651,11 @@ main() {
   # LINT_SCRIPT was exported above (resolves to the correct path in both direct and reusable runs).
   local lint_rc=0
   local lint_output=""
-  if [ -f "$LINT_SCRIPT" ]; then
+  if [[ -f "$LINT_SCRIPT" ]]; then
     lint_output=$(bash "$LINT_SCRIPT" 2>&1) || lint_rc=$?
   fi
 
-  if [ "$lint_rc" -ne 0 ]; then
+  if [[ "$lint_rc" -ne 0 ]]; then
     echo "::error::Lint check failed — aborting commit to prevent CI failure. Re-apply the dev-lead label after fixing lint errors."
     echo "$lint_output"
     local _lint_body
@@ -731,7 +731,7 @@ ${lint_output}
   # Ensure the label exists first (idempotent; || true absorbs the "already exists"
   # error) so a repo missing it does not break; guard everything so PR creation
   # never fails on a labeling hiccup.
-  if [ -n "$pr_url" ]; then
+  if [[ -n "$pr_url" ]]; then
     gh label create "auto-rebase:ready" --repo "$REPO" \
       --description "Opts a non-draft PR into auto-rebase without an approval (auto-rebase ready_label)" \
       --color "0e8a16" >/dev/null 2>&1 || true

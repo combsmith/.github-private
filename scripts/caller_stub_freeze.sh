@@ -95,10 +95,10 @@ caller_freeze_covered() {
 #     are dropped; blanks/comments interior to a captured sub-block are kept.
 extract_forwarding_block() {
   local file="${1:-}" job="${2:-}"
-  [ -n "$file" ] && [ -f "$file" ] || return 0
+  [[ -n "$file" ]] && [[ -f "$file" ]] || return 0
 
   # No job name ⇒ empty extraction ⇒ MISSING (a hard failure for ring-0 roles).
-  [ -n "$job" ] || return 0
+  [[ -n "$job" ]] || return 0
 
   # 1) Buffer the NAMED job's uses:/with:/permissions: block FIRST. When the job
   #    name is supplied but absent from the file, this awk emits nothing — and we
@@ -141,7 +141,7 @@ extract_forwarding_block() {
 
   # An absent job ⇒ empty job block ⇒ emit nothing (MISSING); the shared `on:`
   # block is never emitted on its own.
-  [ -n "$job_block" ] || return 0
+  [[ -n "$job_block" ]] || return 0
 
   # 2) The shared top-level `on:` trigger block, then the buffered job block.
   awk '
@@ -160,7 +160,7 @@ extract_forwarding_block() {
 caller_freeze_current_sha() {
   local file="${1:-}" job="${2:-}" block
   block="$(extract_forwarding_block "$file" "$job")"
-  [ -n "$block" ] || return 0
+  [[ -n "$block" ]] || return 0
   extract_forwarding_block "$file" "$job" | git hash-object --stdin
 }
 
@@ -168,7 +168,7 @@ caller_freeze_current_sha() {
 # baseline .block file. Empty if the baseline is absent. Pure.
 caller_freeze_baseline_sha() {
   local file="${1:-}"
-  [ -n "$file" ] && [ -f "$file" ] || return 0
+  [[ -n "$file" ]] && [[ -f "$file" ]] || return 0
   git hash-object "$file"
 }
 
@@ -180,9 +180,9 @@ caller_freeze_baseline_sha() {
 # stdout. An absent/empty file is a clean pass.
 caller_freeze_annotate() {
   local f="${1:-}" file status current baseline job drifted=0
-  [ -n "$f" ] && [ -f "$f" ] || return 0
+  [[ -n "$f" ]] && [[ -f "$f" ]] || return 0
   while IFS=$'\t' read -r file status current baseline job; do
-    [ -n "$file" ] || continue
+    [[ -n "$file" ]] || continue
     case "$status" in
       DRIFTED)
         drifted=1
@@ -196,7 +196,7 @@ caller_freeze_annotate() {
         ;;
     esac
   done < "$f"
-  [ "$drifted" -eq 0 ]
+  [[ "$drifted" -eq 0 ]]
 }
 
 # caller_freeze_build_tsv — classify every covered stub against its committed
@@ -236,12 +236,12 @@ caller_freeze_update() {
     IFS='|' read -r path job baseline <<< "$row"
     stub_abs="${CALLER_FREEZE_ROOT}/${path}"
     base_abs="${CALLER_FREEZE_FIXTURE_DIR}/${baseline}"
-    if [ ! -f "$stub_abs" ]; then
+    if [[ ! -f "$stub_abs" ]]; then
       echo "::warning::caller stub ${path} not found — skipping baseline update." >&2
       continue
     fi
     block="$(extract_forwarding_block "$stub_abs" "$job")"
-    if [ -z "$block" ]; then
+    if [[ -z "$block" ]]; then
       echo "::warning::caller stub ${path} job '${job}' has no extractable forwarding block — skipping baseline update (refusing to freeze an empty block, which would classify ALIGNED for an absent job)." >&2
       continue
     fi
@@ -260,6 +260,6 @@ main() {
 }
 
 # Source-guard: tests source this to exercise the pure helpers; CI executes it.
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   main "$@"
 fi

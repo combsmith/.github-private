@@ -13,7 +13,7 @@ if command -v shellcheck >/dev/null 2>&1; then
   shopt -s globstar nullglob
   shell_files=(scripts/**/*.sh)
   shopt -u globstar nullglob
-  if [ "${#shell_files[@]}" -gt 0 ]; then
+  if [[ "${#shell_files[@]}" -gt 0 ]]; then
     echo "  [lint] shellcheck on ${#shell_files[@]} file(s)..."
     shellcheck --severity=warning -x "${shell_files[@]}" || fail=1
   else
@@ -30,7 +30,7 @@ fi
 shopt -s nullglob
 agent_files=(agents/*.md)
 shopt -u nullglob
-if [ "${#agent_files[@]}" -gt 0 ]; then
+if [[ "${#agent_files[@]}" -gt 0 ]]; then
   echo "  [lint] validating ${#agent_files[@]} agent profile(s)..."
 
   # Ensure PyYAML is available before validating profiles.
@@ -43,7 +43,7 @@ if [ "${#agent_files[@]}" -gt 0 ]; then
     pyyaml_ok=0
   fi
 
-  if [ "$pyyaml_ok" -eq 1 ]; then
+  if [[ "$pyyaml_ok" -eq 1 ]]; then
     profile_fail=0
     for f in "${agent_files[@]}"; do
       name_from_file=$(basename "$f" .md)
@@ -67,10 +67,10 @@ if [ "${#agent_files[@]}" -gt 0 ]; then
         | sed "s/^['\"]//;s/['\"]$//" \
         | head -1)
 
-      if [ -z "$name_from_front" ]; then
+      if [[ -z "$name_from_front" ]]; then
         echo "FAIL: $f — missing 'name' field in frontmatter"
         profile_fail=1
-      elif [ "$name_from_front" != "$name_from_file" ]; then
+      elif [[ "$name_from_front" != "$name_from_file" ]]; then
         echo "FAIL: $f — name '$name_from_front' does not match filename '$name_from_file'"
         profile_fail=1
       elif ! printf '%s\n' "$name_from_file" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'; then
@@ -85,9 +85,9 @@ if [ "${#agent_files[@]}" -gt 0 ]; then
         fi
       done
 
-      [ "$profile_fail" -eq 0 ] && echo "OK: $f"
+      [[ "$profile_fail" -eq 0 ]] && echo "OK: $f"
     done
-    [ "$profile_fail" -eq 0 ] || fail=1
+    [[ "$profile_fail" -eq 0 ]] || fail=1
   fi
 fi
 
@@ -96,13 +96,13 @@ fi
 # Standard: standards/codeowners-standard.md (codeowners-org-leads-not-first check)
 codeowners_file=""
 for candidate in ".github/CODEOWNERS" "CODEOWNERS" "docs/CODEOWNERS"; do
-  if [ -f "$candidate" ]; then
+  if [[ -f "$candidate" ]]; then
     codeowners_file="$candidate"
     break
   fi
 done
 
-if [ -n "$codeowners_file" ]; then
+if [[ -n "$codeowners_file" ]]; then
   echo "  [lint] validating $codeowners_file..."
   codeowners_fail=0
   while IFS= read -r line; do
@@ -112,16 +112,16 @@ if [ -n "$codeowners_file" ]; then
     clean_line="${line//\\ /}"
     read -r -a parts <<< "$clean_line"
     first_owner="${parts[1]:-}"
-    if [ "$first_owner" != "@combsmith/org-leads" ]; then
+    if [[ "$first_owner" != "@combsmith/org-leads" ]]; then
       echo "FAIL: $codeowners_file — @combsmith/org-leads must be the first owner on line: $line"
       codeowners_fail=1
     fi
   done < "$codeowners_file"
-  [ "$codeowners_fail" -eq 0 ] || fail=1
-  [ "$codeowners_fail" -eq 0 ] && echo "OK: $codeowners_file"
+  [[ "$codeowners_fail" -eq 0 ]] || fail=1
+  [[ "$codeowners_fail" -eq 0 ]] && echo "OK: $codeowners_file"
 fi
 
-if [ "$fail" -eq 0 ]; then
+if [[ "$fail" -eq 0 ]]; then
   echo "  [lint] all checks passed"
 fi
 exit "$fail"

@@ -24,7 +24,7 @@
 #   degrade to empty/[], never an error — a stray input must not break the caller.
 compute_pr_metadata_digest() {
   local snapshot_json="${1:-}"
-  [ -n "$snapshot_json" ] || snapshot_json='{}'
+  [[ -n "$snapshot_json" ]] || snapshot_json='{}'
   local canonical
   canonical=$(jq -cS -n --argjson s "$snapshot_json" '{
     body: ($s.body // ""),

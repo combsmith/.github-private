@@ -116,7 +116,7 @@ die() {
 command -v jq >/dev/null 2>&1 || die "jq is required but not installed"
 
 skill="${1:-}"
-[ -n "$skill" ] || die "usage: run-eval.sh <skill>"
+[[ -n "$skill" ]] || die "usage: run-eval.sh <skill>"
 
 # shellcheck source=../lib/persona-runner.sh
 source "$REPO_ROOT/scripts/lib/persona-runner.sh"
@@ -135,16 +135,16 @@ cases_file="$EVALS_DIR/$skill/holdout/cases.jsonl"
 # is absent (#1630, AC #4). EVAL_PROMPTS_DIR overrides the prompt root the same way
 # EVALS_DIR overrides the cases root, keeping offline tests network-free.
 # Held-out cases remain read-only regardless of the override.
-if [ -n "${SKILL_PROMPT_FILE:-}" ]; then
+if [[ -n "${SKILL_PROMPT_FILE:-}" ]]; then
   prompt_file_base="$SKILL_PROMPT_FILE"
 else
   prompt_file_base="$EVAL_PROMPTS_DIR/$skill.md"
-  if [ ! -f "$prompt_file_base" ] && [ -f "$EVAL_PROMPTS_DIR/$skill/advisory.md" ]; then
+  if [[ ! -f "$prompt_file_base" ]] && [[ -f "$EVAL_PROMPTS_DIR/$skill/advisory.md" ]]; then
     prompt_file_base="$EVAL_PROMPTS_DIR/$skill/advisory.md"
   fi
 fi
-[ -f "$cases_file" ] || die "no cases for skill '$skill' (expected $cases_file)"
-[ -f "$prompt_file_base" ] || die "no skill prompt for '$skill' (expected $EVAL_PROMPTS_DIR/$skill.md or $EVAL_PROMPTS_DIR/$skill/advisory.md)"
+[[ -f "$cases_file" ]] || die "no cases for skill '$skill' (expected $cases_file)"
+[[ -f "$prompt_file_base" ]] || die "no skill prompt for '$skill' (expected $EVAL_PROMPTS_DIR/$skill.md or $EVAL_PROMPTS_DIR/$skill/advisory.md)"
 
 # Resolve the per-skill scorer mode from an optional config. This is the only
 # place the mode is decided: the comparator core below dispatches on $SCORER_MODE,
@@ -160,7 +160,7 @@ PASS_THRESHOLD="0.7"
 # skills keep their cost profile. "persona" routes to run_persona (Opus + tools),
 # matching the live persona runtime so a promotion gate scores the shipped artifact.
 ENGINE_TIER="triage"
-if [ -f "$scorer_config" ]; then
+if [[ -f "$scorer_config" ]]; then
   SCORER_MODE="$(jq -r '.mode // "deterministic"' "$scorer_config")"
   ENGINE_TIER="$(jq -r '.engine // "triage"' "$scorer_config")"
 fi
@@ -172,9 +172,9 @@ case "$SCORER_MODE" in
   deterministic) ;;
   llm-judge)
     judge_rel="$(jq -r '.judge_prompt // ""' "$scorer_config")"
-    [ -n "$judge_rel" ] || die "scorer.json for '$skill' selects llm-judge but sets no judge_prompt"
+    [[ -n "$judge_rel" ]] || die "scorer.json for '$skill' selects llm-judge but sets no judge_prompt"
     JUDGE_PROMPT_FILE="$EVALS_DIR/$judge_rel"
-    [ -f "$JUDGE_PROMPT_FILE" ] || die "judge prompt not found for '$skill' (expected $JUDGE_PROMPT_FILE)"
+    [[ -f "$JUDGE_PROMPT_FILE" ]] || die "judge prompt not found for '$skill' (expected $JUDGE_PROMPT_FILE)"
     PASS_THRESHOLD="$(jq -r '.pass_threshold // 0.7' "$scorer_config")"
     ;;
   *) die "unknown scorer mode '$SCORER_MODE' for skill '$skill' (expected: deterministic, llm-judge)" ;;
@@ -230,7 +230,7 @@ extract_json() { grep -v $'^[[:space:]]*\x60\x60\x60' <<<"$1" || true; }
 # an all-infra run can be told apart from a quality regression, #920) so the
 # report shape matches the judge mode.
 score_deterministic() {
-  if [ "$#" -lt 3 ]; then
+  if [[ "$#" -lt 3 ]]; then
     die "score_deterministic requires expected, raw, and cid arguments"
   fi
   local expected="$1" raw="$2" cid="$3" eng_rc="${4:-0}"
@@ -250,7 +250,7 @@ score_deterministic() {
       end
     ' <<<"$cleaned" 2>/dev/null || true)"
 
-  if [ -z "$actual" ]; then
+  if [[ -z "$actual" ]]; then
     pass=false
     actual=null
     # Capture a short single-line excerpt of the unparseable output so a blind
@@ -258,13 +258,13 @@ score_deterministic() {
     # eval-health report instead of needing the (undownloadable) artifact.
     raw_excerpt="${raw//[$'\r\n']/ }"
     raw_excerpt="${raw_excerpt:0:160}"
-  elif [ "$(jq -r '.escalate' <<<"$actual")" = "$exp_esc" ] \
-       && [ "$(jq -r '.risk' <<<"$actual")" = "$exp_risk" ]; then
+  elif [[ "$(jq -r '.escalate' <<<"$actual")" = "$exp_esc" ]] \
+       && [[ "$(jq -r '.risk' <<<"$actual")" = "$exp_risk" ]]; then
     pass=true
   else
     pass=false
   fi
-  [ "$pass" = true ] && score=1 || score=0
+  [[ "$pass" = true ]] && score=1 || score=0
 
   # raw_excerpt is attached ONLY when the output failed to parse (actual=null), so
   # passing/mismatch cases keep the lean shape the report and tests expect.
@@ -283,7 +283,7 @@ score_deterministic() {
 # judge engine (default run_triage), and parses its numeric `score`. Judge output
 # that is not a JSON object with a numeric `score` scores 0 (an automatic failure).
 score_llm_judge() {
-  if [ "$#" -lt 3 ]; then
+  if [[ "$#" -lt 3 ]]; then
     die "score_llm_judge requires expected, candidate, and cid arguments"
   fi
   local expected="$1" candidate="$2" cid="$3" eng_rc="${4:-0}"
@@ -316,7 +316,7 @@ score_llm_judge() {
       end
     ' <<<"$cleaned_raw" 2>/dev/null || true)"
 
-  if [ "$judge_rc" -ne 0 ]; then
+  if [[ "$judge_rc" -ne 0 ]]; then
     # Judge INVOCATION failed — INFRA, not a quality miss. Fold the judge's nonzero
     # status into this case's engine_rc (when the skill engine itself answered) so
     # the aggregate classifies the set infra (exit 2), never a false regression or
@@ -325,8 +325,8 @@ score_llm_judge() {
     judge_obj=null
     score=0
     pass=false
-    [ "$eng_rc" -eq 0 ] && eng_rc="$judge_rc"
-  elif [ -z "$judge_obj" ]; then
+    [ "$eng_rc" -eq 0 ] && eng_rc="$judge_rc"  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+  elif [[ -z "$judge_obj" ]]; then
     judge_obj=null
     score=0
     pass=false
@@ -343,7 +343,7 @@ score_llm_judge() {
 }
 
 while IFS= read -r line; do
-  [ -n "${line//[[:space:]]/}" ] || continue   # tolerate blank separator lines
+  [[ -n "${line//[[:space:]]/}" ]] || continue   # tolerate blank separator lines
 
   cid="$(jq -r '.id' <<<"$line")"
   input="$(jq -r '.input' <<<"$line")"
@@ -369,7 +369,7 @@ while IFS= read -r line; do
   raw=""; eng_rc=0
   : >"$model_used_file"
   raw="$(ENGINE_MODEL_USED_FILE="$model_used_file" "$EVAL_ENGINE_CMD" "$work_prompt")" || eng_rc=$?
-  if [ -s "$model_used_file" ]; then
+  if [[ -s "$model_used_file" ]]; then
     head -n1 "$model_used_file" >>"$observed_models"
   fi
 
@@ -391,9 +391,9 @@ done <"$cases_file"
 ENGINE_MODEL_OBSERVED=""
 _obs_unique="$(sort -u "$observed_models" | sed '/^[[:space:]]*$/d')"
 _obs_count="$(printf '%s' "$_obs_unique" | grep -c . || true)"
-if [ "$_obs_count" -eq 1 ]; then
+if [[ "$_obs_count" -eq 1 ]]; then
   ENGINE_MODEL_OBSERVED="$_obs_unique"
-elif [ "$_obs_count" -gt 1 ]; then
+elif [[ "$_obs_count" -gt 1 ]]; then
   ENGINE_MODEL_OBSERVED="mixed:$(printf '%s' "$_obs_unique" | paste -sd, -)"
 fi
 
@@ -424,11 +424,11 @@ jq -s --arg skill "$skill" \
 # fires (#1952, codex/cubic P2). Only an ALL-infra failure set (no quality miss
 # anywhere) is un-scored -> 2; this matches the exit-code contract in the header.
 failed="$(jq -s 'map(select(.pass | not)) | length' "$results")"
-if [ "$failed" -eq 0 ]; then
+if [ "$failed" -eq 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   exit 0
 fi
 quality_failed="$(jq -s 'map(select((.pass | not) and ((.engine_rc // 0) == 0))) | length' "$results")"
-if [ "$quality_failed" -gt 0 ]; then
+if [ "$quality_failed" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   exit 1
 fi
 exit 2

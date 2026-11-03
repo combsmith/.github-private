@@ -95,7 +95,7 @@ compute_downstream_impact() {
   local empty='{"impacted_surfaces":[],"impacted_consumers":[],"unmatched":[]}'
 
   # Manifest must exist and be valid JSON, else degrade.
-  if [ -z "$manifest" ] || [ ! -f "$manifest" ] || ! jq empty "$manifest" 2>/dev/null; then
+  if [[ -z "$manifest" ]] || [[ ! -f "$manifest" ]] || ! jq empty "$manifest" 2>/dev/null; then
     printf '%s\n' "$empty"
     return 0
   fi
@@ -105,14 +105,14 @@ compute_downstream_impact() {
   local changed_json
   changed_json=$(printf '%s' "$changed_raw" \
     | jq -R -s 'split("\n") | map(select(length > 0)) | unique' 2>/dev/null) || changed_json='[]'
-  [ -n "$changed_json" ] || changed_json='[]'
+  [[ -n "$changed_json" ]] || changed_json='[]'
 
   local out
   out=$(jq -n \
     --argjson changed "$changed_json" \
     --slurpfile m "$manifest" \
     "$_DOWNSTREAM_IMPACT_JQ" 2>/dev/null) || out="$empty"
-  [ -n "$out" ] || out="$empty"
+  [[ -n "$out" ]] || out="$empty"
   printf '%s\n' "$out"
 }
 
@@ -120,7 +120,7 @@ compute_downstream_impact() {
 # GH_PAT in pr-review.yml; prefer it, falling back to whatever auth gh already
 # has (GH_TOKEN). No new secret is introduced (issue #751 dev note).
 _downstream_gh() {
-  if [ -n "${GH_PAT:-}" ]; then
+  if [[ -n "${GH_PAT:-}" ]]; then
     GH_TOKEN="$GH_PAT" gh "$@"
   else
     gh "$@"
@@ -140,23 +140,23 @@ _downstream_referencing_files() {
   local listing rc=0
   listing=$(_downstream_gh api "repos/$repo/contents/.github/workflows" \
     --jq '.[].path' 2>/dev/null) || rc=$?
-  if [ "$rc" -ne 0 ]; then
+  if [[ "$rc" -ne 0 ]]; then
     return 2
   fi
 
   local wf content_b64 content surface
   while IFS= read -r wf; do
-    [ -n "$wf" ] || continue
+    [[ -n "$wf" ]] || continue
     case "$wf" in *.yml|*.yaml) : ;; *) continue ;; esac
     content_b64=$(_downstream_gh api "repos/$repo/contents/$wf" \
       --jq '.content' 2>/dev/null) || continue
-    if [ -z "$content_b64" ] || [ "$content_b64" = "null" ]; then
+    if [[ -z "$content_b64" ]] || [[ "$content_b64" = "null" ]]; then
       continue
     fi
     content=$(printf '%s' "$content_b64" | tr -d '\r\n' | jq -Rr '@base64d' 2>/dev/null) || continue
-    [ -n "$content" ] || continue
+    [[ -n "$content" ]] || continue
     while IFS= read -r surface; do
-      [ -n "$surface" ] || continue
+      [[ -n "$surface" ]] || continue
       if [[ "$content" == *"$surface"* ]]; then
         printf '%s\n' "$wf"
         break
@@ -203,7 +203,7 @@ assemble_downstream_impact() {
   # No impacted surfaces -> literal "(none)", no fetches performed (AC#2).
   local surfaces
   surfaces=$(printf '%s' "$impact" | jq -r '.impacted_surfaces[]?' 2>/dev/null) || surfaces=''
-  if [ -z "$surfaces" ]; then
+  if [[ -z "$surfaces" ]]; then
     printf '%s' "(none)" > "$out_file"
     export DOWNSTREAM_IMPACT_FILE="$out_file"
     return 0
@@ -211,13 +211,13 @@ assemble_downstream_impact() {
 
   local total
   total=$(printf '%s' "$impact" | jq -r '.impacted_consumers | length' 2>/dev/null) || total=0
-  [ -n "$total" ] || total=0
+  [[ -n "$total" ]] || total=0
 
   local block
   block="Impacted shared surfaces:"$'\n'
   local s
   while IFS= read -r s; do
-    [ -n "$s" ] || continue
+    [[ -n "$s" ]] || continue
     block+="  - $s"$'\n'
   done <<< "$surfaces"
   block+=$'\n'"Impacted consumers ($total, fetching up to $max_repos):"$'\n'
@@ -230,7 +230,7 @@ assemble_downstream_impact() {
 
   local entry repo via_surfaces files rc via_inline
   while IFS= read -r entry; do
-    [ -n "$entry" ] || continue
+    [[ -n "$entry" ]] || continue
     repo=$(printf '%s' "$entry" | jq -r '.repo' 2>/dev/null) || continue
     via_surfaces=$(printf '%s' "$entry" | jq -r '.via[]?' 2>/dev/null)
     via_inline="${via_surfaces//$'\n'/,}"
@@ -238,21 +238,21 @@ assemble_downstream_impact() {
 
     rc=0
     files=$(_downstream_referencing_files "$repo" "$via_surfaces") || rc=$?
-    if [ "$rc" -ne 0 ]; then
+    if [[ "$rc" -ne 0 ]]; then
       block+="      unreadable"$'\n'
       echo "::warning::downstream-impact: $repo unreadable (private repo or missing token scope) — degrading to 'unreadable'" >&2
-    elif [ -z "$files" ]; then
+    elif [[ -z "$files" ]]; then
       block+="      (none)"$'\n'
     else
       local f
       while IFS= read -r f; do
-        [ -n "$f" ] || continue
+        [[ -n "$f" ]] || continue
         block+="      $f"$'\n'
       done <<< "$files"
     fi
   done <<< "$consumers"
 
-  if [ "$total" -gt "$max_repos" ]; then
+  if [ "$total" -gt "$max_repos" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     block+=$'\n'"($((total - max_repos)) more consumer(s) not fetched; repo cap=$max_repos)"$'\n'
   fi
 
@@ -283,13 +283,13 @@ assemble_downstream_impact() {
 #       with no consumer list, so triage sees "no downstream impact" and the
 #       verdict carries no downstream note.
 downstream_impact_triage_section() {
-  [ "${DOWNSTREAM_IMPACT_ENABLED:-false}" = "true" ] || return 0
+  [[ "${DOWNSTREAM_IMPACT_ENABLED:-false}" = "true" ]] || return 0
   local impact_file="${1:-${DOWNSTREAM_IMPACT_FILE:-}}"
   local block=''
-  if [ -n "$impact_file" ] && [ -f "$impact_file" ]; then
+  if [[ -n "$impact_file" ]] && [[ -f "$impact_file" ]]; then
     block=$(cat "$impact_file")
   fi
-  if [ -n "${block//[[:space:]]/}" ] && [ "$block" != "(none)" ]; then
+  if [[ -n "${block//[[:space:]]/}" ]] && [[ "$block" != "(none)" ]]; then
     printf '\nDOWNSTREAM_IMPACT (this change touches a reusable workflow / lib / prompt that downstream repos pin — annotate the impacted consumers below; this is informational, NOT an auto-escalation trigger):\n%s\n' "$block"
   else
     printf '\nDOWNSTREAM_IMPACT: (none)\n'

@@ -22,7 +22,7 @@ set -euo pipefail
 # Load the dated price table so ET multipliers derive from the same source as USD cost
 # (and can never drift apart). Best-effort: if the lib is absent, model_multiplier_for
 # falls back to a static table so this file stays self-contained.
-if [ -f "$(dirname "${BASH_SOURCE[0]}")/model-pricing.sh" ]; then
+if [[ -f "$(dirname "${BASH_SOURCE[0]}")/model-pricing.sh" ]]; then
   # shellcheck source=scripts/lib/model-pricing.sh
   source "$(dirname "${BASH_SOURCE[0]}")/model-pricing.sh"
 fi
@@ -60,7 +60,7 @@ calculate_et() {
 # Returns 0 if the file does not exist or is empty.
 estimate_tokens_from_file() {
   local file="${1:-}"
-  [ -f "$file" ] || { echo "0"; return 0; }
+  [[ -f "$file" ]] || { echo "0"; return 0; }
   local chars
   chars=$(wc -c < "$file" 2>/dev/null || echo "0")
   awk "BEGIN { printf \"%d\", int(($chars + 3) / 4) }"
@@ -83,7 +83,7 @@ estimate_tokens_from_file() {
 # string like "1b" for a second primary credential); when omitted the field is
 # absent, so other records are byte-for-byte unchanged.
 emit_token_record() {
-  [ -n "${TOKEN_LOG_FILE:-}" ] || return 0
+  [[ -n "${TOKEN_LOG_FILE:-}" ]] || return 0
 
   local workflow="$1" tier="$2" engine="$3" model="$4"
   local input="${5:-0}" cache="${6:-0}" output="${7:-0}" context="${8:-}"
@@ -97,7 +97,7 @@ emit_token_record() {
   # call and is still emitted. Counts are trusted integers (0-defaulted above).
   case "$model" in
     "" | "-")
-      if [ "$(( input + cache + output + cache_write ))" -eq 0 ]; then
+      if [[ "$(( input + cache + output + cache_write ))" -eq 0 ]]; then
         return 0
       fi
       ;;
@@ -160,7 +160,7 @@ emit_token_record() {
 # (story #843, pinned by tests/token_report.bats). Silently swallows I/O errors so
 # verification logging never aborts a review.
 emit_verification_record() {
-  [ -n "${TOKEN_LOG_FILE:-}" ] || return 0
+  [[ -n "${TOKEN_LOG_FILE:-}" ]] || return 0
 
   local workflow="${1:-}" tier="${2:-}" outcome="${3:-}"
   local sev_before="${4:-}" sev_after="${5:-}" idx="${6:-0}" context="${7:-}"
@@ -206,7 +206,7 @@ emit_verification_record() {
 #   skipped — "true" when LSP wiring was skipped (SLA exceeded or toolchain absent)
 # No-op when TOKEN_LOG_FILE is unset; swallows I/O errors so it never aborts a run.
 emit_lsp_coldstart_record() {
-  [ -n "${TOKEN_LOG_FILE:-}" ] || return 0
+  [[ -n "${TOKEN_LOG_FILE:-}" ]] || return 0
 
   # set -u-safe defaults (this lib runs under set -euo pipefail): a short call
   # degrades to a defaulted record rather than crashing on an unbound positional.
@@ -254,16 +254,16 @@ emit_lsp_coldstart_record() {
 # aggregate skip non-"token_usage" kinds, so this never pollutes cost reporting.
 # No-op when TOKEN_LOG_FILE is unset; swallows I/O errors so it never aborts a run.
 emit_rate_limit_sample_record() {
-  [ -n "${TOKEN_LOG_FILE:-}" ] || return 0
+  [[ -n "${TOKEN_LOG_FILE:-}" ]] || return 0
 
   local engine="${1:-}" shape="${2:-}" sample="${3:-}"
-  [ -n "$shape" ] && [ -n "$sample" ] || return 0
+  [[ -n "$shape" ]] && [[ -n "$sample" ]] || return 0
 
   local lock_file="${TOKEN_LOG_FILE}.lock"
   (
     flock -x 9 2>/dev/null || true
     # Check must happen inside lock to prevent TOCTOU race with concurrent writers.
-    if [ -f "$TOKEN_LOG_FILE" ] && grep -qE '"kind":"rate_limit_sample".*"shape":"'"${shape}"'"' "$TOKEN_LOG_FILE" 2>/dev/null; then
+    if [[ -f "$TOKEN_LOG_FILE" ]] && grep -qE '"kind":"rate_limit_sample".*"shape":"'"${shape}"'"' "$TOKEN_LOG_FILE" 2>/dev/null; then
       return 0
     fi
 
@@ -320,7 +320,7 @@ emit_rate_limit_sample_record() {
 # per-call mktemp file (unique by construction) and inherited by the pipeline
 # subshell. The $$ form is only a fallback for any non-concurrent direct caller.
 _engine_usage_sidecar() {
-  [ -n "${TOKEN_LOG_FILE:-}" ] || return 0
+  [[ -n "${TOKEN_LOG_FILE:-}" ]] || return 0
   if [[ -n "${_ENGINE_USAGE_OUT:-}" ]]; then
     printf '%s' "$_ENGINE_USAGE_OUT"
   else
@@ -339,7 +339,7 @@ reset_engine_usage() {
   LAST_CACHE_WRITE_TOKENS=0
   LAST_OUTPUT_TOKENS=0
   local f; f="$(_engine_usage_sidecar)"
-  [ -n "$f" ] && rm -f "$f" "${f}.key" 2>/dev/null || true
+  [[ -n "$f" ]] && rm -f "$f" "${f}.key" 2>/dev/null || true
 }
 
 # _usage_all_numeric <a> <b> <c> <d>
@@ -362,7 +362,7 @@ _usage_all_numeric() {
 parse_engine_usage() {
   local engine="$1" file="$2"
   reset_engine_usage
-  [ -f "$file" ] || return 1
+  [[ -f "$file" ]] || return 1
   command -v jq >/dev/null 2>&1 || return 1
 
   local i cr cw o
@@ -394,7 +394,7 @@ parse_engine_usage() {
 
   _usage_all_numeric "$i" "$cr" "$cw" "$o" || return 1
   # All-zero usually means the block was missing rather than a real empty call.
-  [ "$i" -eq 0 ] && [ "$cr" -eq 0 ] && [ "$cw" -eq 0 ] && [ "$o" -eq 0 ] && return 1
+  [ "$i" -eq 0 ] && [ "$cr" -eq 0 ] && [ "$cw" -eq 0 ] && [ "$o" -eq 0 ] && return 1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 
   # These globals are consumed by engine.sh (which sources this lib); shellcheck
   # can't see the cross-file read.
@@ -412,7 +412,7 @@ parse_engine_usage() {
   # Persist to the sidecar so a parent shell can read usage captured inside a
   # `cmd | tee` subshell.
   local f; f="$(_engine_usage_sidecar)"
-  [ -n "$f" ] && printf '%s\t%s\t%s\t%s\n' "$i" "$cr" "$cw" "$o" > "$f" 2>/dev/null || true
+  [[ -n "$f" ]] && printf '%s\t%s\t%s\t%s\n' "$i" "$cr" "$cw" "$o" > "$f" 2>/dev/null || true
   return 0
 }
 
@@ -421,7 +421,7 @@ parse_engine_usage() {
 # Prints nothing when the field is absent (caller decides how to fall back).
 extract_engine_text() {
   local engine="$1" file="$2"
-  [ -f "$file" ] || return 0
+  [[ -f "$file" ]] || return 0
   command -v jq >/dev/null 2>&1 || { cat "$file" 2>/dev/null; return 0; }
   case "$engine" in
     claude) jq -j '.result // empty' "$file" 2>/dev/null ;;

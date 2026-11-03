@@ -72,9 +72,9 @@ _mq_read_state_retry() {
       printf '%s' "$st"
       return 0
     fi
-    if [ "$i" -lt "$attempts" ]; then
+    if [ "$i" -lt "$attempts" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       echo "  merge-queue: live-state read failed (attempt $i of $attempts) — retrying" >&2
-      [ "$delay" -gt 0 ] && sleep "$delay"
+      [ "$delay" -gt 0 ] && sleep "$delay"  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     fi
   done
   return 1
@@ -90,8 +90,8 @@ _mq_post_notice() {
   local marker="${marker_prefix}${head} -->" found status_found=0
   found=$(gh api --paginate "repos/$owner/$name/issues/$number/comments" 2>/dev/null \
       | jq -s -r --arg m "$marker" 'flatten | map(select((.body // "") | contains($m))) | length' 2>/dev/null) || status_found=$?
-  if [ "$status_found" -eq 0 ] && [ -n "$found" ]; then
-    if [ "$found" -gt 0 ]; then
+  if [[ "$status_found" -eq 0 ]] && [[ -n "$found" ]]; then
+    if [[ "$found" -gt 0 ]]; then
       echo "  merge-queue: notice for ${head:0:8} already posted on $pr_url — not posting again"
       return 0
     fi
@@ -123,11 +123,11 @@ mq_dequeue_if_unapproved() {
 
   local st status_st=0
   st=$(_mq_read_state_retry "$owner" "$name" "$number") || status_st=$?
-  if [ "$status_st" -ne 0 ]; then
+  if [[ "$status_st" -ne 0 ]]; then
     echo "::warning::merge-queue: could not read the merge-queue and review state of $pr_url — cannot tell whether a queued PR lost its last approval; check the queue by hand (#2174)"
     # Surface it where a maintainer looks, not only in the run log (#2186). No PR
     # comment on this path: most PRs that reach it are not in the queue at all.
-    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
       {
         printf '### Merge queue: state unknown after an approval was withdrawn\n\n'
         printf 'The live merge-queue and review state of %s could not be read after every retry. ' "$pr_url"
@@ -144,15 +144,15 @@ mq_dequeue_if_unapproved() {
   queued=$(jq -r '.queued' <<<"$st")
   approved=$(jq -r '.approved' <<<"$st")
 
-  if [ "$pr_state" != "OPEN" ]; then
+  if [[ "$pr_state" != "OPEN" ]]; then
     echo "  merge-queue: $pr_url is $pr_state — nothing to dequeue"
     return 0
   fi
-  if [ "$queued" != "true" ]; then
+  if [[ "$queued" != "true" ]]; then
     echo "  merge-queue: $pr_url is not in the merge queue — nothing to do"
     return 0
   fi
-  if [ "$approved" = "true" ]; then
+  if [[ "$approved" = "true" ]]; then
     echo "  merge-queue: an approval stands for head ${head:0:8} — $pr_url stays queued"
     return 0
   fi
@@ -171,7 +171,7 @@ mq_dequeue_if_unapproved() {
   rm -f "$err_file"
 
   local body
-  if [ "$rc" -eq 0 ]; then
+  if [[ "$rc" -eq 0 ]]; then
     body=$(cat <<EOF
 ${MQ_DEQUEUE_MARKER_PREFIX}${head} -->
 ## Removed from the merge queue: approval withdrawn
@@ -189,11 +189,11 @@ EOF
   # dequeue is moot: a no-op, never an error.
   local st2 status2=0
   st2=$(_mq_read_state "$owner" "$name" "$number") || status2=$?
-  if [ "$status2" -eq 0 ]; then
+  if [[ "$status2" -eq 0 ]]; then
     local st2_state st2_queued
     st2_state=$(jq -r '.state' <<<"$st2")
     st2_queued=$(jq -r '.queued' <<<"$st2")
-    if [ "$st2_state" != "OPEN" ] || [ "$st2_queued" != "true" ]; then
+    if [[ "$st2_state" != "OPEN" ]] || [[ "$st2_queued" != "true" ]]; then
       echo "  merge-queue: $pr_url merged or left the queue before the dequeue call — nothing to do"
       return 0
     fi

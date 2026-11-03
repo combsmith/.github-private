@@ -52,9 +52,9 @@ gtr_merge_store() {
   [[ "$cutoff" =~ ^[0-9]+$ ]] || cutoff=0
   tmp="$(mktemp)" || return 1
   local inputs=()
-  [ -f "$store" ] && inputs+=("$store")
-  [ -n "$new" ] && [ -r "$new" ] && inputs+=("$new")
-  if [ "${#inputs[@]}" -eq 0 ]; then
+  [[ -f "$store" ]] && inputs+=("$store")
+  [[ -n "$new" ]] && [[ -r "$new" ]] && inputs+=("$new")
+  if [[ "${#inputs[@]}" -eq 0 ]]; then
     mv "$tmp" "$store"
     return 0
   fi
@@ -77,7 +77,7 @@ gtr_merge_store() {
         | select($e != null and $e >= $cutoff)' 2>/dev/null \
     | sort -u > "$tmp"
   local rc=("${PIPESTATUS[@]}")
-  if [ "${rc[1]}" -ne 0 ] || [ "${rc[2]}" -ne 0 ]; then
+  if [ "${rc[1]}" -ne 0 ] || [ "${rc[2]}" -ne 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     rm -f "$tmp"
     return 1
   fi
@@ -97,7 +97,7 @@ gtr_merge_store() {
 # gq_tier_decision answers `unknown` on it. Pure. Always prints one JSON object.
 gtr_collection_block() {
   local f="${1:-}" out=""
-  if [ -n "$f" ] && [ -r "$f" ] && [ -f "$f" ]; then
+  if [[ -n "$f" ]] && [[ -r "$f" ]] && [[ -f "$f" ]]; then
     out="$(jq -c '
       def n: if type == "number" and . >= 0 and . == floor then . else null end;
       if type != "object" then error("not an object") else . end
@@ -124,7 +124,7 @@ gtr_collection_block() {
           artifacts_ignored: (.artifacts_ignored | n),
           gemini_records_unlisted: $ul }' "$f" 2>/dev/null | head -1)" || out=""
   fi
-  if [ -z "$out" ]; then
+  if [[ -z "$out" ]]; then
     out='{"complete":false,"records":"unverified","reason":"no collection report","collected_at":null,"repo_listings_failed":null,"artifacts_failed":null,"run_lookups_failed":null,"record_files_malformed":null,"gemini_records_trusted":null,"gemini_records_ignored":null,"artifacts_ignored":null,"gemini_records_unlisted":null}'
   fi
   printf '%s\n' "$out"
@@ -186,9 +186,9 @@ gtr_render() {
   printf '|---:|---|---|---:|---:|---:|---:|---|\n'
   local k m st used rd rm rt until why
   while IFS=$'\t' read -r k m st used rd rm rt until why; do
-    [ -n "$k" ] || continue
+    [[ -n "$k" ]] || continue
     printf '| %s | `%s` | %s | %s | %s | %s | %s | %s |\n' "$k" "$m" \
-      "$st$( [ "$why" = "-" ] || printf ' (%s)' "$(_gtr_md "$why")")" "$used" "$rd" "$rm" "$rt" "$(_gtr_time "$until")"
+      "$st$( [[ "$why" = "-" ]] || printf ' (%s)' "$(_gtr_md "$why")")" "$used" "$rd" "$rm" "$rt" "$(_gtr_time "$until")"
   done < <(jq -r '[.tiers[].pairs[]] | unique_by([.key_index, .model]) | sort_by(.key_index, .model)[]
       | def c($v; $cap): if $v == null then (if $cap == "none" then "no cap" else "unknown" end) else ($v | tostring) end;
         [ .key_index, .model, .state, (.used.rpd | tostring),
@@ -214,7 +214,7 @@ gtr_render() {
       | [ .ts, (.key_index | tostring), ((.model // "-") | tostring | .[0:80]), ((.scope // "-") | tostring | .[0:20]),
           ((.sample // "") | tostring | .[0:300]) ] | @tsv' \
       "$store" 2>/dev/null | sort | awk -F'\t' '!seen[$5]++')"
-  if [ -z "$samples" ]; then
+  if [[ -z "$samples" ]]; then
     printf '_None recorded in the retained window._\n\n'
   else
     printf '| First seen | Key | Model | Treated as | Message |\n|---|---:|---|---|---|\n'
@@ -236,7 +236,7 @@ main() {
   hist="$dir/history-days.json"
   # A failed report must not leave the previous run's restored output to be uploaded.
   rm -f "$snap" "$hist"
-  [ -f "$store" ] || : > "$store"
+  [[ -f "$store" ]] || : > "$store"
   gtr_merge_store "$store" "${GEMINI_RECORDS_IN:-}"
   export GEMINI_LEDGER_FILE="$store"
   # Built beside the snapshot and moved into place whole, so a failure leaves no
@@ -255,6 +255,6 @@ main() {
   gtr_render "$snap" "$hist" "$store"
 }
 
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

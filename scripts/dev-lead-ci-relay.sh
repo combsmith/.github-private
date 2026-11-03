@@ -20,7 +20,7 @@ REPO_FULL_NAME="${REPO_FULL_NAME:-}"
 
 pr_count=$(echo "$CHECK_RUN_PRS" | jq 'length')
 
-if [ "$pr_count" -eq 0 ]; then
+if [[ "$pr_count" -eq 0 ]]; then
   # GitHub App check_runs (SonarCloud, external CodeQL gates, etc.) do not
   # populate check_run.pull_requests. Fall back to the commits-to-pulls API.
   echo "::notice::check_run.pull_requests is empty — trying commits-to-pulls API fallback for SHA ${CHECK_RUN_HEAD_SHA}"
@@ -30,13 +30,13 @@ if [ "$pr_count" -eq 0 ]; then
   # Filter to open PRs only — merged PRs can share the same commit SHA.
   open_pulls=$(echo "$pulls_json" | jq '[.[] | select(.state=="open")]')
   pr_count=$(echo "$open_pulls" | jq 'length')
-  if [ "$pr_count" -eq 0 ]; then
+  if [[ "$pr_count" -eq 0 ]]; then
     echo "::notice::No open PRs found for commit ${CHECK_RUN_HEAD_SHA} — skipping relay"
     echo "should_relay=false" >> "$GITHUB_OUTPUT"
     exit 0
   fi
   head_repo_full=$(echo "$open_pulls" | jq -r '.[0].head.repo.full_name // empty')
-  if [ -n "$head_repo_full" ] && [ "$head_repo_full" != "$REPO_FULL_NAME" ]; then
+  if [[ -n "$head_repo_full" ]] && [[ "$head_repo_full" != "$REPO_FULL_NAME" ]]; then
     echo "::notice::Commit ${CHECK_RUN_HEAD_SHA} belongs to fork (${head_repo_full}) — skipping relay"
     echo "should_relay=false" >> "$GITHUB_OUTPUT"
     exit 0
@@ -52,7 +52,7 @@ fi
 # so compare the API URL against the expected base URL for this repo.
 head_repo_url=$(echo "$CHECK_RUN_PRS" | jq -r '.[0].head.repo.url // empty')
 expected_url="https://api.github.com/repos/${REPO_FULL_NAME}"
-if [ -n "$head_repo_url" ] && [ "$head_repo_url" != "$expected_url" ]; then
+if [[ -n "$head_repo_url" ]] && [[ "$head_repo_url" != "$expected_url" ]]; then
   echo "::notice::check_run PR head repo URL ($head_repo_url) does not match expected ($expected_url) — fork, skipping relay"
   echo "should_relay=false" >> "$GITHUB_OUTPUT"
   exit 0

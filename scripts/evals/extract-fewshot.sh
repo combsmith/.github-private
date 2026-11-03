@@ -39,7 +39,7 @@ REPO="${GITHUB_REPOSITORY:-}"
 LIMIT=30
 OUT="$REPO_ROOT/evals/deep-review/dev/fewshot.jsonl"
 
-while [ "$#" -gt 0 ]; do
+while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --repo)  REPO="${2:-}"; shift 2 ;;
     --limit) LIMIT="${2:-}"; shift 2 ;;
@@ -53,7 +53,7 @@ done
 
 command -v jq >/dev/null 2>&1 || die "jq is required but not installed"
 command -v gh >/dev/null 2>&1 || die "gh is required but not installed"
-[ -n "$REPO" ] || die "no repository: pass --repo <owner/repo> or set GITHUB_REPOSITORY"
+[[ -n "$REPO" ]] || die "no repository: pass --repo <owner/repo> or set GITHUB_REPOSITORY"
 
 # Hard holdout guard (AC #2): never write few-shot data into a held-out path.
 if fewshot_source_is_holdout "$OUT"; then
@@ -66,7 +66,7 @@ raw="$(gh pr list --repo "$REPO" --state merged --limit "$LIMIT" \
   --json number,title,body,labels,reviews 2>/dev/null)" \
   || die "failed to list merged PRs for $REPO (auth/scope?)"
 
-[ -n "$raw" ] || die "empty PR listing for $REPO"
+[[ -n "$raw" ]] || die "empty PR listing for $REPO"
 
 # Derive one example per merged PR with a pure jq program:
 #   decision: escalate if any review requested changes OR a HIGH-risk label is
@@ -96,7 +96,7 @@ examples="$(printf '%s' "$raw" | jq -c '
     }
 ' 2>/dev/null)" || die "failed to derive examples from PR listing"
 
-[ -n "$examples" ] || die "no examples derived from $REPO (no merged PRs?)"
+[[ -n "$examples" ]] || die "no examples derived from $REPO (no merged PRs?)"
 
 # Second pass: de-identify every string field (A3) AND neutralise prompt-injection
 # vectors in the attacker-controllable merged-PR text (title/summary/body). This

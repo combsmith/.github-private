@@ -66,12 +66,12 @@ INFORMATIONAL_FIELDS=(repo attempt)
 
 die() { echo "check-retry-payload-fields: $*" >&2; exit 2; }
 warn() { echo "check-retry-payload-fields: warning: $*" >&2; }
-in_ci() { [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; }
+in_ci() { [[ "${CI:-}" = "true" ]] || [[ "${GITHUB_ACTIONS:-}" = "true" ]]; }
 
-[ -f "$ROOT/$STUB" ] || die "$STUB not found under $ROOT"
-[ -f "$ROOT/$SWEEP" ] || die "$SWEEP not found under $ROOT"
+[[ -f "$ROOT/$STUB" ]] || die "$STUB not found under $ROOT"
+[[ -f "$ROOT/$SWEEP" ]] || die "$SWEEP not found under $ROOT"
 pinned=$(sed -n 's/^[[:space:]]*agent_ref:[[:space:]]*["'\'']\{0,1\}\([^"'\''[:space:]#]*\).*/\1/p' "$ROOT/$STUB" | head -n1)
-[ -n "$pinned" ] || die "no agent_ref in $STUB"
+[[ -n "$pinned" ]] || die "no agent_ref in $STUB"
 [[ "$pinned" =~ ^dev-lead/(v[0-9]+)-(next|ring0|ring1|stable)$ ]] \
   || die "agent_ref '$pinned' in $STUB is not a dev-lead channel tag"
 major="${BASH_REMATCH[1]}"
@@ -179,7 +179,7 @@ fields_read_at() {
   # Walk the source graph (a lib may source another lib), each lib once.
   local -a queue=() seen=()
   mapfile -t queue < <(grep -oE '/lib/[A-Za-z0-9_.-]+\.sh' <<<"$parsed" | sort -u)
-  while [ "${#queue[@]}" -gt 0 ]; do
+  while [[ "${#queue[@]}" -gt 0 ]]; do
     lib="${queue[0]}"; queue=("${queue[@]:1}")
     case " ${seen[*]} " in *" $lib "*) continue ;; esac
     seen+=("$lib")
@@ -202,7 +202,7 @@ tags=()
 # --depth=1 only on a clone that is already shallow (a CI checkout): on a full
 # local clone it would make the repository shallow.
 depth=()
-[ "$(git -C "$ROOT" rev-parse --is-shallow-repository 2>/dev/null)" = true ] && depth=(--depth=1)
+[[ "$(git -C "$ROOT" rev-parse --is-shallow-repository 2>/dev/null)" = true ]] && depth=(--depth=1)
 for ch in "${CHANNELS[@]}"; do
   tag="dev-lead/${major}-${ch}"
   gone_upstream=false
@@ -211,7 +211,7 @@ for ch in "${CHANNELS[@]}"; do
     # not be reached / the fetch broke" — only the latter risks a stale tag.
     rc=0
     git -C "$ROOT" ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1 || rc=$?
-    if [ "$rc" -eq 2 ]; then
+    if [[ "$rc" -eq 2 ]]; then
       gone_upstream=true   # origin has no such tag: never trust a local copy
     else
       in_ci && die "could not fetch ${tag} from origin"
@@ -220,7 +220,7 @@ for ch in "${CHANNELS[@]}"; do
   fi
   if ! $gone_upstream && git -C "$ROOT" rev-parse --verify --quiet "refs/tags/${tag}^{commit}" >/dev/null; then
     tags+=("$tag")
-  elif [ "$tag" = "$pinned" ]; then
+  elif [[ "$tag" = "$pinned" ]]; then
     die "the pinned channel ${tag} does not resolve"
   else
     warn "${tag} does not exist; skipping it"
@@ -236,12 +236,12 @@ grep -q '^INDIRECT$' <<<"$sent" \
 if nopayload=$(grep '^NOPAYLOAD ' <<<"$sent"); then
   die "dispatcher(s) sent no client_payload for the probe call, so their fields cannot be certified: $(cut -d' ' -f2 <<<"$nopayload" | tr '\n' ' ')"
 fi
-[ -n "$sent" ] || die "no dispatcher in ${SWEEP} sent a client_payload; the check may need updating"
+[[ -n "$sent" ]] || die "no dispatcher in ${SWEEP} sent a client_payload; the check may need updating"
 
 missing=0
 for tag in "${tags[@]}"; do
   read_fields=$(fields_read_at "$tag")
-  [ -n "$read_fields" ] || die "${PARSER} at ${tag} reads no client_payload fields; the check may need updating"
+  [[ -n "$read_fields" ]] || die "${PARSER} at ${tag} reads no client_payload fields; the check may need updating"
   while read -r fn field; do
     case " ${INFORMATIONAL_FIELDS[*]} " in *" $field "*) continue ;; esac
     if ! grep -qxF "$field" <<<"$read_fields"; then
@@ -251,7 +251,7 @@ for tag in "${tags[@]}"; do
   done <<<"$sent"
 done
 
-if [ "$missing" -ne 0 ]; then
+if [[ "$missing" -ne 0 ]]; then
   echo "Land the parser change and promote it to every channel above before the sweep sends these fields (AGENTS.md \"Caller-stub input forwarding across channel pins\")."
   exit 1
 fi

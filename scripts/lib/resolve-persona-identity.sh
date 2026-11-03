@@ -28,7 +28,7 @@ case "$field" in
 esac
 
 manifest="${root%/}/${id}/persona.yml"
-if [ ! -f "$manifest" ]; then
+if [[ ! -f "$manifest" ]]; then
   echo "resolve-persona-identity: no manifest at $manifest" >&2
   exit 1
 fi

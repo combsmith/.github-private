@@ -46,7 +46,7 @@ CONTENT_REF="${1:?usage: post-skill-score.sh <candidate-path> <score-json> <dry-
 SCORE_JSON="${2:?usage: post-skill-score.sh <candidate-path> <score-json> <dry-run>}"
 DRY_RUN="${3:-false}"
 
-if [ ! -s "$SCORE_JSON" ]; then
+if [[ ! -s "$SCORE_JSON" ]]; then
   echo "ERROR: skill score JSON not found or empty at $SCORE_JSON" >&2
   exit 1
 fi
@@ -84,9 +84,9 @@ SUMMARY="$(jq -r '.summary // ""' "$SCORE_JSON")"
 # Deliver the machine-readable pass/score to the gate's consumption path. This is
 # a local artifact write (never an external mutation), so DRY_RUN does not gate it
 # — a gate evaluating in dry-run still needs the score to decide.
-if [ -n "${SKILL_SCORE_OUTPUT:-}" ]; then
+if [[ -n "${SKILL_SCORE_OUTPUT:-}" ]]; then
   mkdir -p "$(dirname "$SKILL_SCORE_OUTPUT")"
-  if [ "$SCORE_JSON" -ef "$SKILL_SCORE_OUTPUT" ]; then
+  if [[ "$SCORE_JSON" -ef "$SKILL_SCORE_OUTPUT" ]]; then
     echo "skill score already at $SKILL_SCORE_OUTPUT"
   else
     jq '.' "$SCORE_JSON" > "$SKILL_SCORE_OUTPUT"
@@ -99,14 +99,14 @@ echo "content_ref: $CONTENT_REF"
 echo "verdict: $VERDICT"
 echo "score: $SCORE"
 echo "findings: $FINDING_COUNT"
-[ -n "$SUMMARY" ] && echo "summary: $SUMMARY"
+[[ -n "$SUMMARY" ]] && echo "summary: $SUMMARY"
 
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
     echo "## Skill candidate review — verdict: ${VERDICT} (score: ${SCORE})"
     echo "- Reviewed: \`${CONTENT_REF}\`"
     echo "- Findings: ${FINDING_COUNT}"
-    [ -n "$SUMMARY" ] && echo "- ${SUMMARY}"
+    [[ -n "$SUMMARY" ]] && echo "- ${SUMMARY}"
   } >>"$GITHUB_STEP_SUMMARY"
 fi
 

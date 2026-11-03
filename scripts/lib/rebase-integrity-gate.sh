@@ -42,19 +42,19 @@ _rig_excerpt() {
 rig_duplicate_decl_gate() {
   local gate="${1:-}" work_root="${2:-}" out="" rc=0
   RIG_DETAIL=""
-  if [ ! -x "$gate" ]; then
+  if [[ ! -x "$gate" ]]; then
     echo "::notice::integrity gate: the duplicate-declaration check could not be evaluated — ${gate} is missing or not executable; skipped (#2184)"
     return 0
   fi
   out="$(DUPLICATE_DECL_PROMPTS_DIR="${work_root}/prompts" \
          DUPLICATE_DECL_PERSONAS_DIR="${work_root}/personas" \
          "$gate" "${work_root}/scripts" 2>&1)" || rc=$?
-  if [ "$rc" -eq 0 ]; then
+  if [[ "$rc" -eq 0 ]]; then
     return 0
   fi
 
   RIG_DETAIL="$(printf '%s\n' "$out" | _rig_excerpt)"
-  if [ "$rc" -eq 1 ]; then
+  if [[ "$rc" -eq 1 ]]; then
     echo "::warning::integrity gate: check-duplicate-decls.sh found duplicate declarations after rebase resolution — possible #1485 corruption (#1890 AC #7)"
   else
     echo "::warning::integrity gate: check-duplicate-decls.sh could not be evaluated after rebase resolution (exit ${rc}) — this is not a corruption finding (#2184)"

@@ -39,7 +39,7 @@ resume_main() {
 
   # A clearing event that carries no resolvable PR (e.g. a check_run on a commit
   # with no open non-fork PR) is a clean no-op — there is nothing to resume.
-  if [ -z "$repo" ] || [ -z "$pr" ]; then
+  if [[ -z "$repo" ]] || [[ -z "$pr" ]]; then
     echo "::notice::dev-lead-resume: no PR resolved from the clearing event — nothing to resume"
     return 0
   fi
@@ -51,6 +51,6 @@ resume_main() {
 }
 
 # Run main only when executed directly, not when sourced by unit tests.
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   resume_main "$@"
 fi

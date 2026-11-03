@@ -179,15 +179,15 @@ _diagnose_gh_is_write() {
     prev="$a"
   done
   method=$(printf '%s' "$method" | tr '[:lower:]' '[:upper:]')
-  if [ "${1:-}" = "graphql" ]; then
+  if [[ "${1:-}" = "graphql" ]]; then
     # GraphQL is always POST; it writes only through a mutation.
     [[ "$query" =~ ^[[:space:]]*mutation ]] && return 0
     return 1
   fi
-  [ -n "$method" ] && { [ "$method" != "GET" ]; return; }
+  [[ -n "$method" ]] && { [[ "$method" != "GET" ]]; return; }
   $has_params   # gh api defaults to POST when fields or an --input body are given
 }
-if [ "${PR_REVIEW_DIAGNOSE:-false}" = "true" ]; then
+if [[ "${PR_REVIEW_DIAGNOSE:-false}" = "true" ]]; then
   DRY_RUN=true FORCE_REVIEW=false FORCE_RE_REVIEW=false
   export DRY_RUN FORCE_REVIEW FORCE_RE_REVIEW
   # gh — diagnostic wrapper that enforces read-only mode when PR_REVIEW_DIAGNOSE is true.
@@ -221,7 +221,7 @@ emit_verdict() {
   # #1894: also record it in the step summary, so "why not approved?" is answered
   # where an operator looks, not only in the run log. Best-effort. (A run that
   # reaches the model cascade answers with the review it posts instead.)
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     local _sha="${PR_HEAD_SHA:-}"
     printf -- '- **%s** at `%s`: `%s` (%s). Changes when: %s\n' \
       "$PR_URL" "${_sha:0:8}" "$1" "$2" "$3" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
@@ -232,7 +232,7 @@ emit_verdict() {
 # then fail the run if a hold label failed (#2142).
 review_one_pr_cleanup() {
   local rc=$?
-  [ -z "${_fewshot_dir:-}" ] || rm -rf "$_fewshot_dir"
+  [[ -z "${_fewshot_dir:-}" ]] || rm -rf "$_fewshot_dir"
   hold_label_exit_guard "$rc"
 }
 
@@ -310,7 +310,7 @@ fi
 resolve_required_checks() {
   local _base_ref="$1"
   REQUIRED_CHECKS_JSON=$(ruleset_required_checks "$_OWNER_REPO" "$_base_ref" || true)
-  if [ -n "$REQUIRED_CHECKS_JSON" ] && [ "$REQUIRED_CHECKS_JSON" != "[]" ]; then
+  if [[ -n "$REQUIRED_CHECKS_JSON" ]] && [[ "$REQUIRED_CHECKS_JSON" != "[]" ]]; then
     echo "    required checks (branch ruleset for $_base_ref): $REQUIRED_CHECKS_JSON"
   else
     echo "    required checks ($_base_ref): none readable — failing closed (every failing check blocks)"
@@ -329,8 +329,8 @@ echo "    review decision: $REVIEW_DECISION"
 # Exit code 100 is the skip sentinel: the caller treats any 100 exit as a
 # no-op and does not count it against the MAX_PRS review budget.
 # Reasons that produce a skip: already-reviewed-at-head, ci-failing, ci-pending, changes-requested.
-if [ "$CI_STATUS" = "failing" ]; then
-  if [ "${FORCE_REVIEW:-false}" = "true" ]; then
+if [[ "$CI_STATUS" = "failing" ]]; then
+  if [[ "${FORCE_REVIEW:-false}" = "true" ]]; then
     # Break-glass (#619): a human @mention (FORCE_REVIEW=true) overrides the
     # ci-failing gate so a fix to the CI gate *itself* can be reviewed and
     # approved through ring-0 self-host — the one case the pinned-stable design
@@ -361,14 +361,14 @@ fi
 # merge on any genuinely-pending *required* check, so this can never merge a
 # not-yet-green PR (fail-safe, not fail-open). Own-agent and other first-party agent
 # checks are already excluded by compute_ci_status / ci_pending_age_exceeded.
-if [ "$CI_STATUS" = "pending" ]; then
+if [[ "$CI_STATUS" = "pending" ]]; then
   _CI_PENDING_MAX_AGE="${CI_PENDING_MAX_AGE_SEC:-1800}"
   case "$_CI_PENDING_MAX_AGE" in ''|*[!0-9]*) _CI_PENDING_MAX_AGE=1800 ;; esac
-  if [ "$(ci_pending_age_exceeded "$(jq '.statusCheckRollup' <<< "$PR_SNAPSHOT")" "$_CI_PENDING_MAX_AGE")" = "true" ]; then
+  if [[ "$(ci_pending_age_exceeded "$(jq '.statusCheckRollup' <<< "$PR_SNAPSHOT")" "$_CI_PENDING_MAX_AGE")" = "true" ]]; then
     echo "::warning::ci-pending: external check(s) have been pending longer than ${_CI_PENDING_MAX_AGE}s without completing — proceeding with the review on the completed checks (bounded deferral, #1427). The merge gate still blocks on any genuinely-pending required check at the ruleset."
     # Escalate once — post a visible, deduped note so a human sees the stuck check.
     _timeout_marker='<!-- pr-review-agent ci-pending-timeout -->'
-    if [ "${DRY_RUN:-false}" != "true" ] && \
+    if [[ "${DRY_RUN:-false}" != "true" ]] && \
        ! jq -e --arg m "$_timeout_marker" '(.comments // []) | any((.body // "") | contains($m))' <<< "$PR_SNAPSHOT" >/dev/null 2>&1; then
       _tmsg=$(printf '%s\n\nSome CI checks have been pending for over %ss without completing, so this review is proceeding on the checks that did complete. This does not merge the PR — the branch-protection rules still require every genuinely-pending required check before merge. No action is needed.\n\n_Posted by the %s PR-review cascade._' \
         "$_timeout_marker" "$_CI_PENDING_MAX_AGE" "${BOT_USER:-donpetry-bot}")
@@ -386,8 +386,8 @@ fi
 # For FORCE_REVIEW=true (mention-triggered), poll briefly so transient check
 # churn (caused by the mention burst itself) doesn't silently swallow the run
 # (issue #469). Defaults: 10 polls × 30 s = up to 5 minutes.
-if [ "$CI_STATUS" = "pending" ]; then
-  if [ "${FORCE_REVIEW:-false}" = "true" ]; then
+if [[ "$CI_STATUS" = "pending" ]]; then
+  if [[ "${FORCE_REVIEW:-false}" = "true" ]]; then
     _FORCE_POLL_MAX="${FORCE_REVIEW_POLL_ATTEMPTS:-10}"
     _FORCE_POLL_SEC="${FORCE_REVIEW_POLL_INTERVAL_SEC:-30}"
     # Validate that the env-var overrides are positive integers; fall back to
@@ -398,10 +398,10 @@ if [ "$CI_STATUS" = "pending" ]; then
     case "$_FORCE_POLL_SEC" in
       ''|*[!0-9]*) _FORCE_POLL_SEC=30 ;;
     esac
-    [ "$_FORCE_POLL_MAX" -gt 0 ] || _FORCE_POLL_MAX=10
-    [ "$_FORCE_POLL_SEC" -gt 0 ] || _FORCE_POLL_SEC=30
+    [ "$_FORCE_POLL_MAX" -gt 0 ] || _FORCE_POLL_MAX=10  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+    [ "$_FORCE_POLL_SEC" -gt 0 ] || _FORCE_POLL_SEC=30  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     _poll=1
-    while [ "$_poll" -le "$_FORCE_POLL_MAX" ] && [ "$CI_STATUS" = "pending" ]; do
+    while [ "$_poll" -le "$_FORCE_POLL_MAX" ] && [[ "$CI_STATUS" = "pending" ]]; do  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       echo "    force-review: CI pending, waiting ${_FORCE_POLL_SEC}s for checks to settle (attempt ${_poll}/${_FORCE_POLL_MAX})"
       sleep "$_FORCE_POLL_SEC"
       _gh_poll_err=$(mktemp 2>/dev/null || echo "/tmp/cascade/gh-poll-$$.err")
@@ -424,7 +424,7 @@ if [ "$CI_STATUS" = "pending" ]; then
       # CI is evaluated with the old base's ruleset. Only refetched when the base
       # actually changes, so an unchanged base costs no extra API read.
       _poll_base_ref=$(jq -r '.baseRefName // ""' <<< "$PR_SNAPSHOT")
-      if [ "$_poll_base_ref" != "$PR_BASE_REF" ]; then
+      if [[ "$_poll_base_ref" != "$PR_BASE_REF" ]]; then
         echo "    force-review: PR retargeted $PR_BASE_REF → $_poll_base_ref — refreshing required checks"
         PR_BASE_REF="$_poll_base_ref"
         resolve_required_checks "$PR_BASE_REF"
@@ -436,8 +436,8 @@ if [ "$CI_STATUS" = "pending" ]; then
     unset _poll_base_ref
     unset _poll _FORCE_POLL_MAX _FORCE_POLL_SEC _gh_poll_err _gh_poll_err_content
 
-    if [ "$CI_STATUS" = "failing" ]; then
-      if [ "${FORCE_REVIEW:-false}" = "true" ]; then
+    if [[ "$CI_STATUS" = "failing" ]]; then
+      if [[ "${FORCE_REVIEW:-false}" = "true" ]]; then
         echo "::warning::force-review: CI is failing but FORCE_REVIEW=true — bypassing the ci-failing gate (break-glass, #619). Required-check failures still block the merge at the ruleset."
       else
         echo "    skip: CI checks are failing (detected after polling) — will re-evaluate after fixes are pushed"
@@ -446,9 +446,9 @@ if [ "$CI_STATUS" = "pending" ]; then
       fi
     fi
 
-    if [ "$CI_STATUS" = "pending" ]; then
+    if [[ "$CI_STATUS" = "pending" ]]; then
       echo "    force-review: CI still pending after polling — posting visible comment"
-      if [ "${DRY_RUN:-false}" != "true" ]; then
+      if [[ "${DRY_RUN:-false}" != "true" ]]; then
         # AC #5 (#1427): the ack must NOT recommend a re-mention. A re-mention is
         # an issue_comment that fires dev-lead, whose own "dev-lead / dispatch"
         # check going IN_PROGRESS is exactly the condition that used to re-arm this
@@ -482,7 +482,7 @@ NON_REQUIRED_CI_FAILURES=$(
   ci_nonrequired_failures "$(jq '.statusCheckRollup' <<< "$PR_SNAPSHOT")" "$REQUIRED_CHECKS_JSON" \
     | paste -sd ',' - 2>/dev/null || true
 )
-if [ -n "$NON_REQUIRED_CI_FAILURES" ]; then
+if [[ -n "$NON_REQUIRED_CI_FAILURES" ]]; then
   echo "::notice::proceeding past non-required failing check(s) the branch ruleset does not require: ${NON_REQUIRED_CI_FAILURES} — the merge gate still blocks on any failing REQUIRED check (#1795)"
   export NON_REQUIRED_CI_FAILURES
 fi
@@ -521,8 +521,8 @@ PARTIAL_EVIDENCE_STATE_FILE=$(mktemp) || { echo "::error::failed to create tempo
   check_advisory_reviews "$PR_URL"
 ) || {
   gate_rc=$?
-  if [ $gate_rc -eq 1 ]; then
-    if [ "${FORCE_REVIEW:-false}" = "true" ]; then
+  if [[ $gate_rc -eq 1 ]]; then
+    if [[ "${FORCE_REVIEW:-false}" = "true" ]]; then
       # FORCE_REVIEW overrides the gate — mention/dispatch-triggered runs must proceed
       # even when advisory bots haven't submitted yet, so the force-review path works.
       echo "    force-review: advisory bots not all submitted, but FORCE_REVIEW=true — proceeding"
@@ -548,7 +548,7 @@ PARTIAL_EVIDENCE_STATE_FILE=$(mktemp) || { echo "::error::failed to create tempo
       emit_verdict skip waiting-for-advisory-bots "the advisory bots (Gemini/Copilot/SonarCloud/Codex) submit their reviews, whose pull_request_review event re-triggers this review"
       exit 100
     fi
-  elif [ $gate_rc -eq 2 ]; then
+  elif [[ $gate_rc -eq 2 ]]; then
     # API/parse error in the gate — fail this PR rather than approving without advisory check.
     # No bot event will re-trigger this run, so exit 1 (per-PR failure) allows the
     # scheduler to retry on a subsequent scheduled run instead of silently skipping.
@@ -575,7 +575,7 @@ PARTIAL_EVIDENCE_STATE_FILE=$(mktemp) || { echo "::error::failed to create tempo
 #     same comment that triggers a re-review would otherwise deadlock the gate).
 #   • rc=1 → skip (exit 100); a later disposition+minimize re-triggers pr-review.
 #   • rc=2 → fail the PR (exit 1) so a scheduled run retries, never approve blind.
-if [ "${FORCE_REVIEW:-false}" != "true" ]; then
+if [[ "${FORCE_REVIEW:-false}" != "true" ]]; then
   (
     # Subshell isolation so the gate's helpers/vars don't leak into the caller.
     # shellcheck source=lib/maintainer-comment-gate.sh
@@ -585,13 +585,13 @@ if [ "${FORCE_REVIEW:-false}" != "true" ]; then
     check_maintainer_comments "$_mc_snapshot" "${BOT_USER:-donpetry-bot}"
   ) || {
     mc_gate_rc=$?
-    if [ "$mc_gate_rc" -eq 1 ]; then
+    if [[ "$mc_gate_rc" -eq 1 ]]; then
       echo "    skip: a PR issue comment lacks a verified disposition — withholding approval (#1813)"
       # Dismiss any existing pr-review-agent APPROVED review so the PR remains blocked
       # until the maintainer comment is addressed (best-effort).
-      if [ "${DRY_RUN:-false}" != "true" ]; then
+      if [[ "${DRY_RUN:-false}" != "true" ]]; then
         _agent_approval=$(echo "$PR_SNAPSHOT" | jq -r --arg bot "${BOT_USER:-donpetry-bot}" --arg sha "$PR_HEAD_SHA" 'first((.reviews // [])[] | select(.author?.login == $bot and .state == "APPROVED" and .commit?.oid == $sha) | .id) // empty' 2>/dev/null || true)
-        if [ -n "$_agent_approval" ]; then
+        if [[ -n "$_agent_approval" ]]; then
           gh api graphql -f query='mutation($id:ID!,$msg:String!){dismissPullRequestReview(input:{pullRequestReviewId:$id,message:$msg}){clientMutationId}}' -f id="$_agent_approval" -f msg="Dismissing approval due to a PR issue comment lacking a verified disposition (#1813)" 2>/dev/null || echo "    warn: could not dismiss prior approval"
           # The queue checks reviews only at enqueue; drop a queued PR left with no approval (#2174).
           mq_dequeue_if_unapproved "$PR_URL" || true
@@ -608,7 +608,7 @@ if [ "${FORCE_REVIEW:-false}" != "true" ]; then
       # When it dispatched nothing, the same deduplicated scan for unreplied bot
       # review threads runs next (#2046). It shares the cron's claim marker, so
       # the two never both dispatch.
-      if [ "${DRY_RUN:-false}" != "true" ] && [ -n "$_OWNER_REPO" ] \
+      if [[ "${DRY_RUN:-false}" != "true" ]] && [[ -n "$_OWNER_REPO" ]] \
          && [[ "$PR_URL" =~ /pull/([0-9]+) ]]; then
         _bcr_pr="${BASH_REMATCH[1]}"
         _bcr_log=$( (
@@ -616,7 +616,7 @@ if [ "${FORCE_REVIEW:-false}" != "true" ]; then
           source "$SCRIPT_DIR/dev-lead-retry.sh"
           _bcr_n=$(scan_pr_for_undispositioned_bot_comments "$_OWNER_REPO" "$_bcr_pr")
           echo "$_bcr_n"
-          if [ "${_bcr_n:-0}" = "0" ]; then
+          if [[ "${_bcr_n:-0}" = "0" ]]; then
             scan_pr_for_unreplied_bot_threads "$_OWNER_REPO" "$_bcr_pr"
           fi
         ) 2>&1 ) || true
@@ -624,7 +624,7 @@ if [ "${FORCE_REVIEW:-false}" != "true" ]; then
       fi
       emit_verdict skip undispositioned-pr-comment "dev-lead posts a verified disposition reply and the harness minimizes the comment RESOLVED, or an @mention (FORCE_REVIEW) overrides the gate"
       exit 100
-    elif [ "$mc_gate_rc" -eq 2 ]; then
+    elif [[ "$mc_gate_rc" -eq 2 ]]; then
       echo "    error: maintainer-comment gate could not evaluate the PR snapshot — failing closed to avoid uninformed approval"
       emit_verdict error maintainer-comment-gate-error "the gate can parse the PR snapshot and each comment's disposition state; the next scheduled pr-review sweep retries this PR"
       exit 1
@@ -647,7 +647,7 @@ fi
 #   • FORCE_REVIEW bypasses (a human @mention IS the human-in-the-loop).
 #   • rc=1 → skip (exit 100); a later reply/push re-triggers pr-review.
 #   • rc=2 → fail the PR (exit 1) so a scheduled run retries, never approve blind.
-if [ "${FORCE_REVIEW:-false}" != "true" ]; then
+if [[ "${FORCE_REVIEW:-false}" != "true" ]]; then
   (
     # Subshell isolation so the gate's helpers/vars don't leak into the caller.
     # The issue-comment gate is sourced too for its head-commit committer.date
@@ -661,13 +661,13 @@ if [ "${FORCE_REVIEW:-false}" != "true" ]; then
     check_maintainer_review_threads "$_mrt_threads" "$_mrt_head_date" "${BOT_USER:-donpetry-bot}"
   ) || {
     mrt_gate_rc=$?
-    if [ "$mrt_gate_rc" -eq 1 ]; then
+    if [[ "$mrt_gate_rc" -eq 1 ]]; then
       echo "    skip: unaddressed maintainer review thread postdates last push — withholding approval (#1415)"
       # Dismiss any existing pr-review-agent APPROVED review at head so the PR
       # remains blocked until the maintainer thread is addressed (best-effort).
-      if [ "${DRY_RUN:-false}" != "true" ]; then
+      if [[ "${DRY_RUN:-false}" != "true" ]]; then
         _agent_approval=$(echo "$PR_SNAPSHOT" | jq -r --arg bot "${BOT_USER:-donpetry-bot}" --arg sha "$PR_HEAD_SHA" 'first((.reviews // [])[] | select(.author?.login == $bot and .state == "APPROVED" and .commit?.oid == $sha) | .id) // empty' 2>/dev/null || true)
-        if [ -n "$_agent_approval" ]; then
+        if [[ -n "$_agent_approval" ]]; then
           gh api graphql -f query='mutation($id:ID!,$msg:String!){dismissPullRequestReview(input:{pullRequestReviewId:$id,message:$msg}){clientMutationId}}' -f id="$_agent_approval" -f msg="Dismissing approval due to unaddressed maintainer review thread (#1415)" 2>/dev/null || echo "    warn: could not dismiss prior approval"
           # The queue checks reviews only at enqueue; drop a queued PR left with no approval (#2174).
           mq_dequeue_if_unapproved "$PR_URL" || true
@@ -675,7 +675,7 @@ if [ "${FORCE_REVIEW:-false}" != "true" ]; then
       fi
       emit_verdict skip unaddressed-maintainer-review-thread "the maintainer review thread is resolved and a new commit is pushed, or an @mention (FORCE_REVIEW) overrides the gate"
       exit 100
-    elif [ "$mrt_gate_rc" -eq 2 ]; then
+    elif [[ "$mrt_gate_rc" -eq 2 ]]; then
       echo "    error: maintainer-review-thread gate could not evaluate the review threads — failing closed to avoid uninformed approval"
       emit_verdict error maintainer-review-thread-gate-error "the gate can determine review-thread authorship and head push-time; the next scheduled pr-review sweep retries this PR"
       exit 1
@@ -692,12 +692,12 @@ fi
 #      On repos that don't dismiss stale reviews, reviewDecision can stay
 #      CHANGES_REQUESTED after the author pushes new commits; in that case the
 #      review is stale and the cascade should re-engage with the updated code.
-if [ "$REVIEW_DECISION" = "CHANGES_REQUESTED" ] && [ "${FORCE_REVIEW:-false}" != "true" ]; then
+if [[ "$REVIEW_DECISION" = "CHANGES_REQUESTED" ]] && [[ "${FORCE_REVIEW:-false}" != "true" ]]; then
   CHANGES_REQUESTED_AT_HEAD=$(echo "$PR_SNAPSHOT" | jq -r --arg sha "$PR_HEAD_SHA" '
     [.reviews[] | select(.state == "CHANGES_REQUESTED" and .commit.oid == $sha)]
     | if length > 0 then "true" else "false" end
   ')
-  if [ "$CHANGES_REQUESTED_AT_HEAD" = "true" ]; then
+  if [[ "$CHANGES_REQUESTED_AT_HEAD" = "true" ]]; then
     echo "    skip: changes requested at current head — awaiting author response before reviewing"
     emit_verdict skip changes-requested "the author pushes a new commit (making the CHANGES_REQUESTED review stale), or @mentions the bot for a re-review"
     exit 100
@@ -742,7 +742,7 @@ EXISTING_MARKER_SHA=$(
   printf '%s' "${matches%%$'\n'*}"
 )
 
-if [ -n "${EXISTING_MARKER_SHA:-}" ] && [ "$EXISTING_MARKER_SHA" = "$PR_HEAD_SHA" ]; then
+if [[ -n "${EXISTING_MARKER_SHA:-}" ]] && [[ "$EXISTING_MARKER_SHA" = "$PR_HEAD_SHA" ]]; then
   # Two flags bypass the same-SHA idempotency no-op, but they are NOT interchangeable
   # (issue #1590). FORCE_REVIEW is the human @mention break-glass: it bypasses EVERY
   # gate (ci-failing/ci-pending/advisory/maintainer/…). FORCE_RE_REVIEW is the narrow
@@ -784,15 +784,15 @@ if [ -n "${EXISTING_MARKER_SHA:-}" ] && [ "$EXISTING_MARKER_SHA" = "$PR_HEAD_SHA
   # timeline keeps the no-op (lib/self-dismissed-approval.sh fails closed).
   SELF_DISMISSED_REEVAL=false
   approved_at_head_re="<!-- pr-review-agent v1 sha=${PR_HEAD_SHA}[[:space:]]+decision=approved([^[:alnum:]_]|$)"
-  if [ "${FORCE_REVIEW:-false}" != "true" ] && [[ "$LATEST_MARKER_BODY" =~ $approved_at_head_re ]] \
+  if [[ "${FORCE_REVIEW:-false}" != "true" ]] && [[ "$LATEST_MARKER_BODY" =~ $approved_at_head_re ]] \
      && [[ "$PR_URL" =~ /pull/([0-9]+) ]] \
      && sda_check_pr "$_OWNER_REPO" "${BASH_REMATCH[1]}" "$PR_HEAD_SHA" "${BOT_USER:-donpetry-bot}"; then
     SELF_DISMISSED_REEVAL=true
   fi
-  if [ "${FORCE_REVIEW:-false}" = "true" ] \
-     || { [ "${FORCE_RE_REVIEW:-false}" = "true" ] && [ "$VERDICT_AT_HEAD" != "true" ]; }; then
+  if [[ "${FORCE_REVIEW:-false}" = "true" ]] \
+     || { [[ "${FORCE_RE_REVIEW:-false}" = "true" ]] && [[ "$VERDICT_AT_HEAD" != "true" ]]; }; then
     echo "    force-review: prior marker $PR_HEAD_SHA matches head, but FORCE_REVIEW/FORCE_RE_REVIEW=true — re-running cascade (idempotency bypass)"
-  elif [ "$SELF_DISMISSED_REEVAL" = "true" ]; then
+  elif [[ "$SELF_DISMISSED_REEVAL" = "true" ]]; then
     echo "    re-review: pr-review's approval at $PR_HEAD_SHA was dismissed by its own gate, and every gate now passes — re-evaluating at the same head (#1933)"
   else
     # Metadata-digest re-arm (#1551). A metadata-only fix-request stamps
@@ -803,9 +803,9 @@ if [ -n "${EXISTING_MARKER_SHA:-}" ] && [ "$EXISTING_MARKER_SHA" = "$PR_HEAD_SHA
     # fix-requests carry no `meta=`, so they keep the exact same-SHA no-op
     # behavior (AC3) and the churn breaker (cycle cap + budget) stays authoritative.
     MARKER_META_DIGEST=$(marker_meta_digest "$LATEST_MARKER_BODY")
-    if [ -n "${MARKER_META_DIGEST:-}" ]; then
+    if [[ -n "${MARKER_META_DIGEST:-}" ]]; then
       CURRENT_META_DIGEST=$(compute_pr_metadata_digest "$PR_SNAPSHOT")
-      if [ "$MARKER_META_DIGEST" != "$CURRENT_META_DIGEST" ]; then
+      if [[ "$MARKER_META_DIGEST" != "$CURRENT_META_DIGEST" ]]; then
         echo "    re-review: metadata changed since a metadata-only fix-request at $PR_HEAD_SHA (marker meta=$MARKER_META_DIGEST, current=$CURRENT_META_DIGEST) — re-reviewing without a new commit (#1551)"
         # Slice 1 of #1589 (OBSERVE-ONLY): the #1551 re-arm above is reachable at
         # the SAME head SHA, so two triggers can both read this stale marker, both
@@ -818,7 +818,7 @@ if [ -n "${EXISTING_MARKER_SHA:-}" ] && [ "$EXISTING_MARKER_SHA" = "$PR_HEAD_SHA
         # as before — behaviour is unchanged.
         CLAIM_RUN_TOKEN="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-$$-${RANDOM}"
         CLAIM_MARKER_BODY="$(claim_marker "$PR_HEAD_SHA" "$CURRENT_META_DIGEST" "$CLAIM_RUN_TOKEN" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
-        if [ "${DRY_RUN:-false}" != "true" ]; then
+        if [[ "${DRY_RUN:-false}" != "true" ]]; then
           gh pr comment "$PR_URL" --body "$CLAIM_MARKER_BODY" >/dev/null 2>&1 \
             || echo "    warn: could not post pr-review claim marker (#1589 slice 1)"
         fi
@@ -844,7 +844,7 @@ if [ -n "${EXISTING_MARKER_SHA:-}" ] && [ "$EXISTING_MARKER_SHA" = "$PR_HEAD_SHA
   fi
 fi
 
-if [ -n "${EXISTING_MARKER_SHA:-}" ]; then
+if [[ -n "${EXISTING_MARKER_SHA:-}" ]]; then
   echo "    re-review: prior marker was $EXISTING_MARKER_SHA, head is $PR_HEAD_SHA"
 fi
 
@@ -861,11 +861,11 @@ fi
 # falls through to the normal cascade below. Scoped to prior==approved: an
 # escalation or fix-request is not a standing verdict to re-issue, and forced
 # re-reviews (human @mention or the orphan-rescue sweep) always run the cascade.
-if [ -n "${EXISTING_MARKER_SHA:-}" ] \
-   && [ "$EXISTING_MARKER_SHA" != "$PR_HEAD_SHA" ] \
-   && [ "${FORCE_REVIEW:-false}" != "true" ] \
-   && [ "${FORCE_RE_REVIEW:-false}" != "true" ] \
-   && [ "$(cf_prior_decision "$LATEST_MARKER_BODY")" = "approved" ]; then
+if [[ -n "${EXISTING_MARKER_SHA:-}" ]] \
+   && [[ "$EXISTING_MARKER_SHA" != "$PR_HEAD_SHA" ]] \
+   && [[ "${FORCE_REVIEW:-false}" != "true" ]] \
+   && [[ "${FORCE_RE_REVIEW:-false}" != "true" ]] \
+   && [[ "$(cf_prior_decision "$LATEST_MARKER_BODY")" = "approved" ]]; then
   CF_RESULT=$(evaluate_carry_forward "$_OWNER_REPO" "$PR_BASE_REF" "$EXISTING_MARKER_SHA" "$PR_HEAD_SHA")
   # Race guard (#1870 review): evaluate_carry_forward made several network round-trips
   # against $PR_HEAD_SHA. A content commit landing during that window advances the head,
@@ -873,10 +873,10 @@ if [ -n "${EXISTING_MARKER_SHA:-}" ] \
   # the live head and only carry when it still equals the SHA we evaluated; if it moved
   # (or can't be re-confirmed), decline and let the next trigger re-evaluate the new head.
   CF_HEAD_NOW=""
-  [ "$CF_RESULT" = "carry" ] && CF_HEAD_NOW=$(gh pr view "$PR_URL" --json headRefOid --jq '.headRefOid' 2>/dev/null || echo "")
-  if [ "$CF_RESULT" = "carry" ] && [ "$CF_HEAD_NOW" != "$PR_HEAD_SHA" ]; then
+  [[ "$CF_RESULT" = "carry" ]] && CF_HEAD_NOW=$(gh pr view "$PR_URL" --json headRefOid --jq '.headRefOid' 2>/dev/null || echo "")
+  if [[ "$CF_RESULT" = "carry" ]] && [[ "$CF_HEAD_NOW" != "$PR_HEAD_SHA" ]]; then
     echo "    carry-forward: declined (head is now '${CF_HEAD_NOW:-unknown}', evaluated '$PR_HEAD_SHA' — a commit landed mid-evaluation or the head could not be re-confirmed; running the full review cascade so no approval is stamped for unreviewed content) (#1870)"
-  elif [ "$CF_RESULT" = "carry" ]; then
+  elif [[ "$CF_RESULT" = "carry" ]]; then
     echo "    carry-forward: every commit since $EXISTING_MARKER_SHA is a conflict-free base merge with a byte-identical diff-vs-merge-base — re-issuing the prior approval at $PR_HEAD_SHA without running any model tier (#1865)"
     CF_RISK=$(cf_prior_risk "$LATEST_MARKER_BODY")
     mkdir -p /tmp/cascade
@@ -902,7 +902,7 @@ _Carried forward automatically by the PR-review cascade (issue #1865)._"
   fi
   # Reached only when evaluate_carry_forward itself returned full:<reason> (the race
   # guard above prints its own decline line and also falls through to the cascade).
-  if [ "$CF_RESULT" != "carry" ]; then
+  if [[ "$CF_RESULT" != "carry" ]]; then
     echo "    carry-forward: declined ($CF_RESULT) — running the full review cascade (#1865)"
   fi
 fi
@@ -943,14 +943,14 @@ echo "    review cycle: $REVIEW_CYCLE (max: $MAX_CYCLES)"
 # instead of immediately re-escalating.
 if has_escalation_marker "$PR_ITEMS"; then
   HAS_HUMAN_LABEL=$(echo "$PR_SNAPSHOT" | jq -r '[.labels // [] | .[].name] | any(. == "needs-human-review")')
-  if [ "${FORCE_REVIEW:-false}" = "true" ]; then
+  if [[ "${FORCE_REVIEW:-false}" = "true" ]]; then
     echo "    force-review: escalation marker present, but FORCE_REVIEW=true — re-engaging cascade"
     # Do NOT pre-emptively strip the label here (#1754 AC3). The final decision
     # owns it: an approval or fix-request clears the hold in post-pr-review.sh,
     # while a re-escalation leaves it in place idempotently. Removing it here and
     # having the re-escalation re-add it was the unlabel-then-relabel churn (four
     # toggles in a day on an unchanged PR).
-  elif [ "$HAS_HUMAN_LABEL" = "true" ]; then
+  elif [[ "$HAS_HUMAN_LABEL" = "true" ]]; then
     echo "    noop: human-escalation active (needs-human-review label present) — remove the label or mention the bot to re-engage"
     emit_verdict noop human-escalated "a human removes the needs-human-review label, or @mentions the bot to re-engage the cascade"
     exit 100
@@ -965,9 +965,9 @@ fi
 # with the needs-human-review label) and no-ops without spamming.
 # FORCE_REVIEW bypasses the cap: a mention-triggered run must deliver the
 # review it acknowledged, never silently no-op.
-if [ "${FORCE_REVIEW:-false}" != "true" ] && [ "$REVIEW_CYCLE" -ge "$MAX_CYCLES" ]; then
+if [[ "${FORCE_REVIEW:-false}" != "true" ]] && [ "$REVIEW_CYCLE" -ge "$MAX_CYCLES" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   echo "    cap: review cycle $REVIEW_CYCLE >= max $MAX_CYCLES — escalating to human"
-  if [ "${DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DRY_RUN:-false}" = "true" ]]; then
     echo "    DRY_RUN: would post escalation comment, add label, request reviewer"
   else
     ESCALATION_BODY="/tmp/cascade/escalation-comment.txt"
@@ -991,7 +991,7 @@ ESCALATION_END
   emit_verdict escalate max-cycles-reached "a human removes the needs-human-review label to grant a fresh cycle budget (an @mention will not reset the cap)"
   # Exit 101 is the human-escalation sentinel (#1754 AC1): a delivered escalation
   # is counted as `escalated`, not a no-op. A DRY_RUN posted nothing, so it stays 100.
-  if [ "${DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DRY_RUN:-false}" = "true" ]]; then
     exit 100
   fi
   exit 101
@@ -1003,7 +1003,7 @@ fi
 # mention ack that defeated every other guard must not be able to re-arm it. Only
 # a human interaction resets the budget. On exhaustion enforce_pr_budget escalates
 # once (deduped comment + needs-human-review + auto-merge off) and we stop.
-if [ "${DRY_RUN:-false}" != "true" ]; then
+if [[ "${DRY_RUN:-false}" != "true" ]]; then
   PR_BUDGET_NUMBER=$(echo "$PR_URL" | sed -E 's|.*/pull/([0-9]+).*|\1|')
   PR_BUDGET_REPO=$(echo "$PR_URL" | sed -E 's|https://github.com/([^/]+/[^/]+)/pull/.*|\1|')
   # enforce_pr_budget reports (PR_AUTOMATION_NEWLY_ESCALATED) whether THIS run
@@ -1012,19 +1012,19 @@ if [ "${DRY_RUN:-false}" != "true" ]; then
   if enforce_pr_budget "$PR_BUDGET_NUMBER" "$PR_BUDGET_REPO"; then
     echo "    cap: per-PR automation budget exhausted — halting automated review (escalated to human)"
     emit_verdict escalate automation-budget-exhausted "a human interaction (comment or approval) resets the per-PR automation budget"
-    if [ "${PR_AUTOMATION_NEWLY_ESCALATED:-false}" != "true" ]; then
+    if [[ "${PR_AUTOMATION_NEWLY_ESCALATED:-false}" != "true" ]]; then
       exit 100
     fi
     exit 101
   fi
-elif [ "${PR_REVIEW_DIAGNOSE:-false}" = "true" ]; then
+elif [[ "${PR_REVIEW_DIAGNOSE:-false}" = "true" ]]; then
   # Read-only: report an exhausted budget without escalating (enforce_pr_budget writes).
   # An unreadable event list is not "budget remaining": report it, never gates-clear.
   _diag_rc=0
   _diag_events=$(gather_pr_automation_events \
       "$(echo "$PR_URL" | sed -E 's|.*/pull/([0-9]+).*|\1|')" \
       "$(echo "$PR_URL" | sed -E 's|https://github.com/([^/]+/[^/]+)/pull/.*|\1|')") || _diag_rc=$?
-  if [ "$_diag_rc" -ne 0 ]; then
+  if [[ "$_diag_rc" -ne 0 ]]; then
     emit_verdict error automation-budget-unreadable "the PR's commits, comments and reviews become readable (a GitHub API error); re-run the diagnostic"
     exit 100
   fi
@@ -1036,7 +1036,7 @@ fi
 
 # Diagnose mode stops here: every gate has passed, so a review run would now start
 # the model cascade, whose own verdict (approve / fix-request / escalate) decides.
-if [ "${PR_REVIEW_DIAGNOSE:-false}" = "true" ]; then
+if [[ "${PR_REVIEW_DIAGNOSE:-false}" = "true" ]]; then
   echo "    diagnose: every gate passes — a review run would start the model cascade now"
   emit_verdict proceed gates-clear "nothing gates this PR; the next pr-review run reviews it and its verdict decides (a review event, a push, or the pr-review sweep starts that run)"
   exit 0
@@ -1048,10 +1048,10 @@ PR_ORG=$(echo "$PR_URL" | sed -E 's|https://github.com/([^/]+)/.*|\1|')
 export PR_ORG
 AI_DELEGATION_ENABLED=false
 DELEGATION_ORGS="${DELEGATION_ORGS:-${CLAUDE_ORGS:-}}"
-if [ -n "${DELEGATION_ORGS:-}" ]; then
+if [[ -n "${DELEGATION_ORGS:-}" ]]; then
   IFS=',' read -ra ORG_LIST <<< "$DELEGATION_ORGS"
   for org in "${ORG_LIST[@]}"; do
-    if [ "$(echo "$org" | tr -d ' ')" = "$PR_ORG" ]; then
+    if [[ "$(echo "$org" | tr -d ' ')" = "$PR_ORG" ]]; then
       AI_DELEGATION_ENABLED=true
       break
     fi
@@ -1066,7 +1066,7 @@ PRIOR_REVIEW_BODY=""
 PRIOR_REVIEW_SHA=""
 PRIOR_REVIEW_FILE="/tmp/cascade/prior-review-body.txt"
 mkdir -p /tmp/cascade
-if [ -n "${EXISTING_MARKER_SHA:-}" ]; then
+if [[ -n "${EXISTING_MARKER_SHA:-}" ]]; then
   PRIOR_REVIEW_SHA="$EXISTING_MARKER_SHA"
   PRIOR_REVIEW_BODY=$(
     gh pr view "$PR_URL" --json reviews,comments \
@@ -1075,12 +1075,12 @@ if [ -n "${EXISTING_MARKER_SHA:-}" ]; then
   )
   # Validate that the matched body actually contains our marker to reduce
   # prompt-injection surface area.
-  if [ -n "$PRIOR_REVIEW_BODY" ] && ! [[ "$PRIOR_REVIEW_BODY" =~ pr-review-agent\ v1\ sha=[a-f0-9]+\ --\> ]]; then
+  if [[ -n "$PRIOR_REVIEW_BODY" ]] && ! [[ "$PRIOR_REVIEW_BODY" =~ pr-review-agent\ v1\ sha=[a-f0-9]+\ --\> ]]; then
     echo "    prior review body missing valid marker, discarding"
     PRIOR_REVIEW_BODY=""
   fi
   echo "    prior review: SHA=$PRIOR_REVIEW_SHA body=${#PRIOR_REVIEW_BODY}chars"
-  if [ -n "$PRIOR_REVIEW_BODY" ]; then
+  if [[ -n "$PRIOR_REVIEW_BODY" ]]; then
     echo "$PRIOR_REVIEW_BODY" > "$PRIOR_REVIEW_FILE"
   fi
 fi
@@ -1127,14 +1127,14 @@ PR_METADATA=$(gh pr view "$PR_URL" --json "$_meta_fields,files" --jq '
     exit 100
   fi
   echo "::error::gh pr view failed during metadata prefetch for $PR_URL"
-  [ -n "$_gh_meta_err_content" ] && echo "    $_gh_meta_err_content"
+  [[ -n "$_gh_meta_err_content" ]] && echo "    $_gh_meta_err_content"
   rm -f "$_gh_meta_err" "$_gh_diff_err" "$_gh_diff_tmp"
   exit 1
 }
 
 # For Copilot, we keep context moderate (8k-16k) to avoid session costs.
 # For Claude/Gemini, we can afford more context (up to 32k+).
-if [ "${REVIEW_ENGINE:-claude}" = "copilot" ]; then
+if [[ "${REVIEW_ENGINE:-claude}" = "copilot" ]]; then
   _diff_limit=1000
 else
   _diff_limit=3000
@@ -1182,7 +1182,7 @@ else
     unset _changed_files _owner_repo_fallback _pr_num_fallback _fallback_err
   else
     echo "::error::gh pr diff failed during prefetch for $PR_URL"
-    [ -n "$_gh_diff_err_content" ] && echo "    $_gh_diff_err_content"
+    [[ -n "$_gh_diff_err_content" ]] && echo "    $_gh_diff_err_content"
     rm -f "$_gh_meta_err" "$_gh_diff_err" "$_gh_diff_tmp"
     exit 1
   fi
@@ -1196,10 +1196,10 @@ fi
 # rate-limit on the one extra metadata fetch degrades to the existing skip path
 # (exit 100) rather than crashing; the >300-file 406 case is already handled above
 # and the reused diff is the REST assembly.
-if [ "${PREFETCH_CONTEXT_ENABLED:-false}" = "true" ]; then
+if [[ "${PREFETCH_CONTEXT_ENABLED:-false}" = "true" ]]; then
   _prefetch_rc=0
   prefetch_pr_context "$PR_URL" "$PR_HEAD_SHA" "${_prefetch_full_diff_file:-}" "/tmp/cascade" || _prefetch_rc=$?
-  if [ "$_prefetch_rc" = "100" ]; then
+  if [[ "$_prefetch_rc" = "100" ]]; then
     rm -f "$_gh_meta_err" "$_gh_diff_err" "$_gh_diff_tmp" "${_fallback_tmp:-}"
     echo "    gh API rate limited during context prefetch — skipping PR (will retry next run)"
     emit_verdict skip gh-rate-limited "the GitHub API rate limit resets and the next scheduled pr-review sweep retries this PR"
@@ -1208,7 +1208,7 @@ if [ "${PREFETCH_CONTEXT_ENABLED:-false}" = "true" ]; then
   unset _prefetch_rc
 fi
 if model_sandbox_enabled; then
-  if [ ! -s "${PR_CONTEXT_METADATA_FILE:-}" ] || [ ! -s "${PR_CONTEXT_DIFF_FILE:-}" ]; then
+  if [[ ! -s "${PR_CONTEXT_METADATA_FILE:-}" ]] || [[ ! -s "${PR_CONTEXT_DIFF_FILE:-}" ]]; then
     echo "::error::no pre-fed context for $PR_URL — a sandboxed model cannot review without it"
     exit 1
   fi
@@ -1297,7 +1297,7 @@ unset _owner_repo _pr_num _triage_bots ADVISORY_REVIEW_BODIES ADVISORY_PR_COMMEN
 # tiers (mirroring ADVISORY_BOT_FEEDBACK_FILE). The block is inlined into the
 # triage prompt below (triage has NO tools). Best-effort: assemble_downstream_impact
 # always exits 0, so a fetch failure degrades to "(none)" rather than failing the run.
-if [ "${DOWNSTREAM_IMPACT_ENABLED:-false}" = "true" ]; then
+if [[ "${DOWNSTREAM_IMPACT_ENABLED:-false}" = "true" ]]; then
   _di_changed=$(printf '%s' "$PR_METADATA" | jq -r '.files[]?.path // empty' 2>/dev/null || true)
   assemble_downstream_impact "$_di_changed" "$SCRIPT_DIR/lib/consumer-manifest.json" "/tmp/cascade/downstream-impact.txt" || true
   unset _di_changed
@@ -1310,7 +1310,7 @@ fi
 # into the triage prompt below (triage has NO tools). When SAFETY_CHECKS_ENABLED
 # is explicitly "false" nothing is computed and the triage prompt stays
 # byte-identical to pre-feature behavior (rollback + holdout-eval stability).
-if [ "${SAFETY_CHECKS_ENABLED:-true}" = "true" ]; then
+if [[ "${SAFETY_CHECKS_ENABLED:-true}" = "true" ]]; then
   assemble_safety_checks "$PR_METADATA" "$PR_DIFF" "/tmp/cascade/safety-checks.txt" || true
 fi
 
@@ -1323,12 +1323,12 @@ TRIAGE_PROMPT_FILE="/tmp/cascade/triage-prompt.md"
   printf 'PR_HEAD_SHA: %s\n' "$PR_HEAD_SHA"
   printf 'DRY_RUN: %s\n' "${DRY_RUN:-false}"
   printf 'REVIEW_MODE: triage\n'
-  if [ -n "$PRIOR_REVIEW_BODY" ]; then
+  if [[ -n "$PRIOR_REVIEW_BODY" ]]; then
     printf '\nPRIOR_REVIEW_BODY:\n%s\n' "$PRIOR_REVIEW_BODY"
   else
     printf 'PRIOR_REVIEW_BODY: (empty — first review)\n'
   fi
-  if [ -n "${ADVISORY_BOT_FEEDBACK//[[:space:]]/}" ]; then
+  if [[ -n "${ADVISORY_BOT_FEEDBACK//[[:space:]]/}" ]]; then
     printf '\nADVISORY_BOT_FEEDBACK (latest advisory bot reviews and inline comments — weigh these findings):\n%s\n' "$ADVISORY_BOT_FEEDBACK"
   else
     printf '\nADVISORY_BOT_FEEDBACK: (none)\n'
@@ -1337,7 +1337,7 @@ TRIAGE_PROMPT_FILE="/tmp/cascade/triage-prompt.md"
   # review body records "reviewed despite a red advisory check" rather than hiding
   # it. These do NOT gate merge (the ruleset does not require them); do not escalate
   # or withhold approval solely because one is red — just name it.
-  if [ -n "${NON_REQUIRED_CI_FAILURES:-}" ]; then
+  if [[ -n "${NON_REQUIRED_CI_FAILURES:-}" ]]; then
     printf '\nNON_REQUIRED_CI_FAILURES (advisory checks that are RED but NOT required by the branch ruleset — name these in your review body; they do NOT block merge and are not a reason to withhold approval or escalate):\n%s\n' "$NON_REQUIRED_CI_FAILURES"
   fi
   # Inline the DOWNSTREAM_IMPACT block (no-op when the Story 5 flag is off, so
@@ -1383,7 +1383,7 @@ if is_rate_limited "$TRIAGE_STDERR"; then
 fi
 
 # If triage failed at the process level, check stdout for rate limits (common for claude --print).
-if [ "$TRIAGE_RC" -ne 0 ]; then
+if [[ "$TRIAGE_RC" -ne 0 ]]; then
   if is_rate_limited "$TRIAGE_RESULT"; then
     echo "    [tier1] usage/rate limit detected on stdout — exiting with code 2 for engine fallback"
     echo "    limit message: $TRIAGE_RESULT"
@@ -1399,8 +1399,8 @@ if [ "$TRIAGE_RC" -ne 0 ]; then
   fi
 
   echo "::warning::triage exited with code $TRIAGE_RC"
-  [ -n "$TRIAGE_RESULT" ] && echo "    triage stdout: $TRIAGE_RESULT"
-  [ -n "$TRIAGE_STDERR" ] && echo "    triage stderr: $TRIAGE_STDERR"
+  [[ -n "$TRIAGE_RESULT" ]] && echo "    triage stdout: $TRIAGE_RESULT"
+  [[ -n "$TRIAGE_STDERR" ]] && echo "    triage stderr: $TRIAGE_STDERR"
   echo "::error::cascade failed at tier 1 (triage process exit $TRIAGE_RC) for $PR_URL"
   exit 1
 fi
@@ -1421,7 +1421,7 @@ if ! echo "$TRIAGE_RESULT_CLEAN" | jq empty 2>/dev/null; then
 
   echo "::warning::triage returned non-JSON output"
   echo "    triage stdout: $TRIAGE_RESULT"
-  [ -n "$TRIAGE_STDERR" ] && echo "    triage stderr: $TRIAGE_STDERR"
+  [[ -n "$TRIAGE_STDERR" ]] && echo "    triage stderr: $TRIAGE_STDERR"
   echo "::error::cascade failed at tier 1 (triage non-JSON) for $PR_URL"
   exit 1
 fi
@@ -1442,10 +1442,10 @@ echo "    [tier1] escalate=$TRIAGE_ESCALATE risk=$TRIAGE_RISK signals=[$TRIAGE_S
 # invalidated and we take the skip sentinel (exit 100) so the scheduler re-runs
 # at the new SHA — never reviewing stale code. The idempotency marker prevents a
 # duplicate review on the retry.
-if [ "${PREFETCH_CONTEXT_ENABLED:-false}" = "true" ]; then
+if [[ "${PREFETCH_CONTEXT_ENABLED:-false}" = "true" ]]; then
   _freshness_rc=0
   assert_prefetch_context_fresh "$PR_URL" "/tmp/cascade" || _freshness_rc=$?
-  if [ "$_freshness_rc" = "100" ]; then
+  if [[ "$_freshness_rc" = "100" ]]; then
     echo "    HEAD moved since context prefetch — discarding stale pre-fed context and skipping (will retry at new SHA)"
     emit_verdict skip head-moved-stale-context "the next run observes a head SHA that stays stable through the prefetch window (no concurrent push mid-run)"
     exit 100
@@ -1454,7 +1454,7 @@ if [ "${PREFETCH_CONTEXT_ENABLED:-false}" = "true" ]; then
 fi
 
 # If triage says no concerns → use single-review prompt for quick confirmation
-if [ "$TRIAGE_ESCALATE" = "false" ]; then
+if [[ "$TRIAGE_ESCALATE" = "false" ]]; then
   echo "    [approve] triage cleared — running single confirmation ($ENGINE_SINGLE_MODEL)"
   export REVIEW_MODE="triage-approved"
   VERDICT_JSON="/tmp/cascade/single-review-verdict.json"
@@ -1465,7 +1465,7 @@ if [ "$TRIAGE_ESCALATE" = "false" ]; then
 
   single_attempt=1
   single_ok=false
-  while [ "$single_attempt" -le "$SINGLE_REVIEW_MAX_RETRIES" ]; do
+  while [ "$single_attempt" -le "$SINGLE_REVIEW_MAX_RETRIES" ]; do  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     rm -f "$VERDICT_JSON" "$VERDICT_JSON.raw"
     OUTPUT_FILE="$VERDICT_JSON"
     export OUTPUT_FILE
@@ -1479,22 +1479,22 @@ if [ "$TRIAGE_ESCALATE" = "false" ]; then
     # reviewed PR content that happens to mention rate-limit keywords.
     SINGLE_STDOUT=$(cat "$VERDICT_JSON.raw" 2>/dev/null || true)
     SINGLE_STDERR=$(cat "$SINGLE_LOG" 2>/dev/null || true)
-    if [ "$single_rc" -ne 0 ]; then
+    if [[ "$single_rc" -ne 0 ]]; then
       # CLI invocation errors are per-PR failures (exit 1), not engine fallbacks (exit 2).
       if is_cli_error "$SINGLE_STDOUT" || is_cli_error "$SINGLE_STDERR"; then
         echo "    [error] CLI format error — treating as per-PR failure (not a rate limit)"
-        [ -n "$SINGLE_STDERR" ] && echo "    error stderr: $SINGLE_STDERR"
+        [[ -n "$SINGLE_STDERR" ]] && echo "    error stderr: $SINGLE_STDERR"
         exit 1
       fi
       # Rate-limit / overload — exit code 2 lets review-batch.sh trigger engine fallback.
       if is_rate_limited "$SINGLE_STDOUT" || is_rate_limited "$SINGLE_STDERR"; then
         echo "    [approve] rate limit detected — exiting with code 2 for engine fallback"
-        [ -n "$SINGLE_STDERR" ] && echo "    limit stderr: $SINGLE_STDERR"
+        [[ -n "$SINGLE_STDERR" ]] && echo "    limit stderr: $SINGLE_STDERR"
         exit 2
       fi
     fi
 
-    if [ "$single_rc" -eq 0 ] && extract_verdict_json "$VERDICT_JSON.raw" "$VERDICT_JSON"; then
+    if [[ "$single_rc" -eq 0 ]] && extract_verdict_json "$VERDICT_JSON.raw" "$VERDICT_JSON"; then
       EXTRACTED_DECISION=$(jq -r '.decision // ""' "$VERDICT_JSON" 2>/dev/null || true)
       case "$EXTRACTED_DECISION" in
         approve|escalate|skip)
@@ -1509,21 +1509,21 @@ if [ "$TRIAGE_ESCALATE" = "false" ]; then
       echo "    [approve] single-review attempt $single_attempt/$SINGLE_REVIEW_MAX_RETRIES produced no valid JSON (exit $single_rc)"
     fi
     head -20 "$VERDICT_JSON.raw" 2>/dev/null || true
-    [ -n "$SINGLE_STDERR" ] && echo "    stderr: $SINGLE_STDERR"
-    if [ "$single_attempt" -lt "$SINGLE_REVIEW_MAX_RETRIES" ]; then
+    [[ -n "$SINGLE_STDERR" ]] && echo "    stderr: $SINGLE_STDERR"
+    if [ "$single_attempt" -lt "$SINGLE_REVIEW_MAX_RETRIES" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       echo "    [approve] retrying in ${SINGLE_REVIEW_RETRY_DELAY_SEC}s"
       sleep "$SINGLE_REVIEW_RETRY_DELAY_SEC"
     fi
     single_attempt=$((single_attempt + 1))
   done
 
-  if [ "$single_ok" = "false" ]; then
+  if [[ "$single_ok" = "false" ]]; then
     echo "::warning::single-review failed after $SINGLE_REVIEW_MAX_RETRIES attempts — flagging for manual review"
     for i in $(seq 1 "$SINGLE_REVIEW_MAX_RETRIES"); do
       log="/tmp/cascade/single-review-attempt-${i}.log"
-      [ -s "$log" ] && { echo "    attempt $i stderr:"; cat "$log"; }
+      [[ -s "$log" ]] && { echo "    attempt $i stderr:"; cat "$log"; }
     done
-    if [ "${DRY_RUN:-false}" = "false" ]; then
+    if [[ "${DRY_RUN:-false}" = "false" ]]; then
       gh pr edit "$PR_URL" --add-label needs-human-review 2>/dev/null || true
     fi
     exit 1
@@ -1552,10 +1552,10 @@ export TRIAGE_TYPE
 DEEP_TIER_PROMPT=$(resolve_deep_specialist "$TRIAGE_TYPE" "$RUBRIC_DEEP_PROMPT")
 
 # Export safety checks and downstream impact files if they exist
-if [ -f "/tmp/cascade/safety-checks.txt" ]; then
+if [[ -f "/tmp/cascade/safety-checks.txt" ]]; then
   export SAFETY_CHECKS_FILE="/tmp/cascade/safety-checks.txt"
 fi
-if [ -f "/tmp/cascade/downstream-impact.txt" ]; then
+if [[ -f "/tmp/cascade/downstream-impact.txt" ]]; then
   export DOWNSTREAM_IMPACT_FILE="/tmp/cascade/downstream-impact.txt"
 fi
 
@@ -1565,8 +1565,8 @@ fi
 # SYMBOL_CONTEXT_FILE is never set and the deep/duck prompts + cost are
 # byte-identical to pre-feature behavior (holdout-eval stability + rollback).
 # Best-effort — assemble_symbol_context always exits 0, degrading to a warning.
-if [ "${SYMBOL_CONTEXT_ENABLED:-false}" = "true" ]; then
-  if [ -z "${GITHUB_REPOSITORY:-}" ]; then
+if [[ "${SYMBOL_CONTEXT_ENABLED:-false}" = "true" ]]; then
+  if [[ -z "${GITHUB_REPOSITORY:-}" ]]; then
     echo "::warning::[symbol-context] GITHUB_REPOSITORY is unset — skipping symbol context to avoid an unscoped cross-repository search" >&2
   else
     assemble_symbol_context "$_sc_diff" "$GITHUB_REPOSITORY" "/tmp/cascade/symbol-context.txt" || true
@@ -1590,7 +1590,7 @@ unset _sc_diff
 # race assemble_fewshot to redirect or replace the prompt-visible few-shot file
 # (CWE-377). The directory is removed on any script exit by the review_one_pr_cleanup
 # EXIT trap (after the deep-review consumer that reads FEWSHOT_FILE has finished).
-if [ "${FEWSHOT_ENABLED:-false}" = "true" ]; then
+if [[ "${FEWSHOT_ENABLED:-false}" = "true" ]]; then
   _fewshot_dir="$(mktemp -d "${TMPDIR:-/tmp}/fewshot.XXXXXX")"
   assemble_fewshot "${FEWSHOT_SOURCE_FILE:-$SCRIPT_DIR/../evals/deep-review/dev/fewshot.jsonl}" "$_fewshot_dir/fewshot.txt"
 fi
@@ -1603,7 +1603,7 @@ fi
 DUCK_CANDIDATES=""
 if declare -F duck_engine_candidates >/dev/null 2>&1; then
   DUCK_CANDIDATES="$(duck_engine_candidates)"
-elif [ -n "${DUCK_ENGINE:-}" ]; then
+elif [[ -n "${DUCK_ENGINE:-}" ]]; then
   DUCK_CANDIDATES="$DUCK_ENGINE ${DUCK_MODEL:-}"
 fi
 # A Gemini duck also needs the pre-flight probe to have passed (unset counts as
@@ -1612,14 +1612,14 @@ fi
 # posted review body says so (duck_skip_note, #1960). Empty when the duck ran.
 DUCK_SKIP_REASON=""
 _duck_gemini_skipped=false
-if [ "${GEMINI_AVAILABLE:-false}" != "true" ] && grep -q '^gemini ' <<< "$DUCK_CANDIDATES"; then
+if [[ "${GEMINI_AVAILABLE:-false}" != "true" ]] && grep -q '^gemini ' <<< "$DUCK_CANDIDATES"; then
   echo "::notice::Skipping the Gemini duck — GEMINI_AVAILABLE=false per pre-flight probe"
   DUCK_CANDIDATES="$(grep -v '^gemini ' <<< "$DUCK_CANDIDATES" || true)"
   _duck_gemini_skipped=true
 fi
 DUCK_ENGINE="none"
 DUCK_MODEL=""
-if [ -n "$DUCK_CANDIDATES" ]; then
+if [[ -n "$DUCK_CANDIDATES" ]]; then
   read -r DUCK_ENGINE DUCK_MODEL <<< "${DUCK_CANDIDATES%%$'\n'*}"
 fi
 DUCK_FALLBACKS="$(sed -n '2,$p' <<< "$DUCK_CANDIDATES" | awk '{printf "%s%s (%s)", (NR>1?", ":""), $1, $2}')"
@@ -1639,9 +1639,9 @@ DEEP_PID=$!
 DUCK_OUTPUT="/tmp/cascade/rubber-duck.json"
 DUCK_PID=""
 rm -f "$DUCK_OUTPUT" "${DUCK_OUTPUT}.engine" "${DUCK_OUTPUT}.skip"
-if [ "${DUCK_ENGINE:-none}" = "none" ]; then
+if [[ "${DUCK_ENGINE:-none}" = "none" ]]; then
   echo "::notice::Skipping rubber-duck reviewer — no enabled, available engine for it (AI_DUCK_ENGINE / AI_ENGINES, pre-flight probe)"
-  if [ "$_duck_gemini_skipped" = true ]; then
+  if [[ "$_duck_gemini_skipped" = true ]]; then
     DUCK_SKIP_REASON="no enabled, available engine for it (Gemini unavailable per the pre-flight probe)"
   else
     DUCK_SKIP_REASON="no enabled, available engine for it (AI_DUCK_ENGINE / AI_ENGINES)"
@@ -1670,12 +1670,12 @@ wait $DEEP_PID || DEEP_RC=$?
 
 # Validate primary deep review (required).
 OUTPUT_FILE="/tmp/cascade/deep.json"
-if [ ! -s "$OUTPUT_FILE" ] || ! jq empty "$OUTPUT_FILE" 2>/dev/null; then
+if [[ ! -s "$OUTPUT_FILE" ]] || ! jq empty "$OUTPUT_FILE" 2>/dev/null; then
   # Check both stdout and stderr for a rate-limit or CLI-error message.
   DEEP_STDOUT_CONTENT=$(cat /tmp/cascade/deep-stdout.txt 2>/dev/null || true)
   DEEP_STDERR_CONTENT=$(cat /tmp/cascade/deep.log 2>/dev/null || true)
-  [ -n "$DUCK_PID" ] && kill $DUCK_PID 2>/dev/null || true
-  [ -n "$DUCK_PID" ] && wait $DUCK_PID 2>/dev/null || true
+  [[ -n "$DUCK_PID" ]] && kill $DUCK_PID 2>/dev/null || true
+  [[ -n "$DUCK_PID" ]] && wait $DUCK_PID 2>/dev/null || true
   # CLI invocation errors are per-PR failures (exit 1), not engine fallbacks (exit 2).
   if is_cli_error "$DEEP_STDOUT_CONTENT" || is_cli_error "$DEEP_STDERR_CONTENT"; then
     echo "    [error] CLI format error — treating as per-PR failure (not a rate limit)"
@@ -1687,7 +1687,7 @@ if [ ! -s "$OUTPUT_FILE" ] || ! jq empty "$OUTPUT_FILE" 2>/dev/null; then
     echo "${DEEP_STDOUT_CONTENT:-}${DEEP_STDERR_CONTENT:+ (stderr: $DEEP_STDERR_CONTENT)}"
     exit 2
   fi
-  [ "$DEEP_RC" -ne 0 ] && echo "::warning::deep review process exited $DEEP_RC"
+  [[ "$DEEP_RC" -ne 0 ]] && echo "::warning::deep review process exited $DEEP_RC"
   echo "::warning::deep review did not produce valid JSON at $OUTPUT_FILE"
   cat /tmp/cascade/deep-stdout.txt 2>/dev/null || true
   cat /tmp/cascade/deep.log 2>/dev/null || true
@@ -1696,7 +1696,7 @@ if [ ! -s "$OUTPUT_FILE" ] || ! jq empty "$OUTPUT_FILE" 2>/dev/null; then
 fi
 # JSON is valid — if the process still exited non-zero log it but proceed:
 # the agent may have written the verdict before a non-fatal wrapper error.
-[ "$DEEP_RC" -ne 0 ] && echo "::warning::deep review process exited $DEEP_RC but produced valid JSON — proceeding"
+[[ "$DEEP_RC" -ne 0 ]] && echo "::warning::deep review process exited $DEEP_RC but produced valid JSON — proceeding"
 
 # --- Agentic iterative validation (issue #1092) ---
 # The deep tier attempted to reproduce its logic/correctness findings with the
@@ -1708,10 +1708,10 @@ fi
 apply_finding_verification "$OUTPUT_FILE" "${TOKEN_WORKFLOW:-pr-review}" "deep" "$PR_URL"
 
 # Wait for duck to finish (deep succeeded)
-[ -n "$DUCK_PID" ] && wait $DUCK_PID || true
+[[ -n "$DUCK_PID" ]] && wait $DUCK_PID || true
 # The engine that wrote the verdict (a fallback when the first had none), so
 # synthesis and the summary name the duck that actually ran.
-if [ -s "${DUCK_OUTPUT}.engine" ]; then
+if [[ -s "${DUCK_OUTPUT}.engine" ]]; then
   read -r DUCK_ENGINE DUCK_MODEL < "${DUCK_OUTPUT}.engine"
 fi
 
@@ -1724,10 +1724,10 @@ DUCK_VALID=false
 _duck_ok=false
 if declare -F duck_verdict_valid >/dev/null 2>&1; then
   duck_verdict_valid "$DUCK_OUTPUT" && _duck_ok=true
-elif [ -s "$DUCK_OUTPUT" ] && jq empty "$DUCK_OUTPUT" 2>/dev/null; then
+elif [[ -s "$DUCK_OUTPUT" ]] && jq empty "$DUCK_OUTPUT" 2>/dev/null; then
   _duck_ok=true
 fi
-if [ "$_duck_ok" = true ]; then
+if [[ "$_duck_ok" = true ]]; then
   DUCK_DECISION=$(jq -r '.decision' "$DUCK_OUTPUT")
   DUCK_RISK=$(jq -r '.risk' "$DUCK_OUTPUT")
   DUCK_VALID=true
@@ -1735,17 +1735,17 @@ if [ "$_duck_ok" = true ]; then
 else
   echo "    [tier2] rubber duck did not produce a valid verdict — continuing with deep review only"
   cat /tmp/cascade/duck.log 2>/dev/null || true
-  if [ -z "$DUCK_SKIP_REASON" ]; then
+  if [[ -z "$DUCK_SKIP_REASON" ]]; then
     DUCK_SKIP_REASON="$(head -n 1 "${DUCK_OUTPUT}.skip" 2>/dev/null || true)"
     DUCK_SKIP_REASON="${DUCK_SKIP_REASON:-the rubber duck ($DUCK_ENGINE) did not produce a valid verdict}"
-    if [ "$_duck_gemini_skipped" = true ]; then
+    if [[ "$_duck_gemini_skipped" = true ]]; then
       DUCK_SKIP_REASON="$DUCK_SKIP_REASON; Gemini skipped per the pre-flight probe"
     fi
   fi
 fi
 
 # --- Tier 2b: Synthesize deep + duck verdicts ---
-if [ "$DUCK_VALID" = "true" ]; then
+if [[ "$DUCK_VALID" = "true" ]]; then
   echo "    [tier2b] synthesizing deep + duck verdicts ($ENGINE_ACTION_MODEL)"
   DEEP_RESULT="/tmp/cascade/deep.json"
   DUCK_RESULT="$DUCK_OUTPUT"
@@ -1754,7 +1754,7 @@ if [ "$DUCK_VALID" = "true" ]; then
   run_agentic prompts/synthesize-duck.md "$ENGINE_ACTION_MODEL" "action" \
     > /tmp/cascade/synth-stdout.txt 2>/tmp/cascade/synth.log || true
 
-  if [ -s "$OUTPUT_FILE" ] && jq empty "$OUTPUT_FILE" 2>/dev/null; then
+  if [[ -s "$OUTPUT_FILE" ]] && jq empty "$OUTPUT_FILE" 2>/dev/null; then
     COMBINED_DECISION=$(jq -r '.decision' "$OUTPUT_FILE")
     COMBINED_RISK=$(jq -r '.risk' "$OUTPUT_FILE")
     COMBINED_AGREEMENT=$(jq -r '.agreement' "$OUTPUT_FILE")
@@ -1774,7 +1774,7 @@ if [ "$DUCK_VALID" = "true" ]; then
       exit 2
     fi
     echo "    [tier2b] synthesis failed — falling back to deep review only"
-    [ -n "$SYNTH_STDERR" ] && echo "    stderr: $SYNTH_STDERR"
+    [[ -n "$SYNTH_STDERR" ]] && echo "    stderr: $SYNTH_STDERR"
     OUTPUT_FILE="/tmp/cascade/deep.json"
     DUCK_VALID=false
     DUCK_SKIP_REASON="${DUCK_SKIP_REASON:-the rubber duck verdict was discarded because synthesis failed}"
@@ -1786,11 +1786,11 @@ else
 fi
 
 # If tier 2 resolves without needing security audit → go straight to action
-if [ "$COMBINED_ESCALATE" != "true" ]; then
+if [[ "$COMBINED_ESCALATE" != "true" ]]; then
   echo "    [action] tier 2 resolved — posting review"
   FINAL_RESULT="$OUTPUT_FILE"
   export FINAL_RESULT
-  if [ "$DUCK_VALID" = "true" ]; then
+  if [[ "$DUCK_VALID" = "true" ]]; then
     export FINAL_TIER="deep+duck"
   else
     export FINAL_TIER="deep"
@@ -1844,7 +1844,7 @@ export OUTPUT_FILE
 run_agentic prompts/security-audit.md "$ENGINE_AUDIT_MODEL" "audit" \
   > /tmp/cascade/audit-stdout.txt 2>/tmp/cascade/audit.log || true
 
-if [ ! -s "$OUTPUT_FILE" ] || ! jq empty "$OUTPUT_FILE" 2>/dev/null; then
+if [[ ! -s "$OUTPUT_FILE" ]] || ! jq empty "$OUTPUT_FILE" 2>/dev/null; then
   AUDIT_STDOUT=$(cat /tmp/cascade/audit-stdout.txt 2>/dev/null || true)
   AUDIT_STDERR=$(cat /tmp/cascade/audit.log 2>/dev/null || true)
   if is_cli_error "$AUDIT_STDOUT" || is_cli_error "$AUDIT_STDERR"; then
@@ -1858,7 +1858,7 @@ if [ ! -s "$OUTPUT_FILE" ] || ! jq empty "$OUTPUT_FILE" 2>/dev/null; then
     exit 2
   fi
   echo "::warning::security audit did not produce valid JSON at $OUTPUT_FILE"
-  [ -s "/tmp/cascade/audit.log" ] && { echo "    stderr:"; cat /tmp/cascade/audit.log; }
+  [[ -s "/tmp/cascade/audit.log" ]] && { echo "    stderr:"; cat /tmp/cascade/audit.log; }
   echo "::error::cascade failed at tier 3 for $PR_URL"
   exit 1
 fi
