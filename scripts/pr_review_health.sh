@@ -227,6 +227,7 @@ read -r dur_n dur_min dur_p50 dur_p95 dur_max < <(echo "$runs_json" | jq -r '
 # 3. Helpers
 # ---------------------------------------------------------------------------
 fmt_dur() {
+  # Format seconds as a human-readable duration (e.g., "5m30s" or "45s").
   local s=$1
   if [ "$s" -ge 60 ]; then
     printf '%dm%ds' $((s / 60)) $((s % 60))
@@ -242,6 +243,7 @@ fmt_dur() {
 # Narrower than engine.sh's _rate_limit_pattern on purpose: this script does not
 # source engine.sh, and anything not matched here still fails the step.
 llm_quota_refused() {
+  # Detect if a failed Claude call was refused due to quota or rate-limiting.
   local f files=()
   for f in "$@"; do
     [ -s "$f" ] && files+=("$f")
@@ -252,6 +254,7 @@ llm_quota_refused() {
 }
 
 conclusion_icon() {
+  # Return an emoji icon representing the workflow conclusion status.
   case "$1" in
     success)   echo "✅" ;;
     failure)   echo "❌" ;;
