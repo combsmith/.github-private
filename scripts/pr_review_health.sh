@@ -235,6 +235,22 @@ fmt_dur() {
   fi
 }
 
+# llm_quota_refused <file>... — 0 when a FAILED Claude call's captured output
+# reads as a quota / usage-limit refusal (#2446), e.g. "You've hit your weekly
+# limit · resets 4pm (UTC)" or an HTTP 429. Only consulted after a non-zero exit,
+# so a successful analysis that merely discusses rate limits is never matched.
+# Narrower than engine.sh's _rate_limit_pattern on purpose: this script does not
+# source engine.sh, and anything not matched here still fails the step.
+llm_quota_refused() {
+  local f files=()
+  for f in "$@"; do
+    [ -s "$f" ] && files+=("$f")
+  done
+  [ "${#files[@]}" -gt 0 ] || return 1
+  grep -qiE "hit your ([a-z]+ )?limit|usage limit|rate[ -]?limit|too many requests|quota (exceeded|exhausted|reached)|out of (credits|tokens)|overloaded_error|([^0-9]|^)(429|529)([^0-9]|$)" \
+    "${files[@]}"
+}
+
 conclusion_icon() {
   case "$1" in
     success)   echo "✅" ;;
@@ -346,10 +362,13 @@ if [ "${total_sweep_ticks:-0}" -gt 0 ] && [ "$sweep_ticks" -lt "$total_sweep_tic
 fi
 
 echo "Invoking Claude for log analysis..."
-# Claude writes errors to stdout (not stderr), so they'd silently land in
-# $REPORT_FILE with the stdout redirect below.  Wrap in `if !` so a non-zero
-# exit surfaces the file contents to the Actions log before aborting.
-if ! claude --print --model "$(ai_model_for_family sonnet)" --no-session-persistence >> "$REPORT_FILE" <<PROMPT
+# Claude writes errors to stdout (not stderr), so the output is captured to temp
+# files and only appended to $REPORT_FILE on success — an error line must never
+# be published as if it were analysis.
+llm_out=$(mktemp)
+llm_err=$(mktemp)
+if claude --print --model "$(ai_model_for_family sonnet)" --no-session-persistence \
+  > "$llm_out" 2> "$llm_err" <<PROMPT
 You are analyzing GitHub Actions workflow run logs for the PR Review Agent.
 
 ## Context
@@ -420,12 +439,25 @@ Single line: \`Health: X/10 — <one-sentence verdict>\`
 Output ONLY the markdown report — no preamble or commentary outside the report sections.
 PROMPT
 then
+  cat "$llm_err" >&2
+  cat "$llm_out" >> "$REPORT_FILE"
+elif llm_quota_refused "$llm_out" "$llm_err"; then
+  # Quota / usage-limit refusal (#2446): the provider declined the call, the
+  # health check itself is fine. Keep the deterministic sections, say why the
+  # analysis is missing, and exit 0 so this step does not fail the job and skip
+  # the runaway / stall / merge-ready scans that follow (they make no model call).
+  echo "::warning::Claude log analysis skipped — the call was refused for quota / usage limit. Deterministic report sections are still published. CLI output: $(cat "$llm_out" "$llm_err" | head -c 300 | tr '\n' ' ')"
+  {
+    printf '## Log analysis skipped\n\n'
+    printf '_The Claude log-analysis call was refused for quota / usage limit, so this report carries only the deterministic sections above. The model analysis returns on the next run with budget._\n'
+  } >> "$REPORT_FILE"
+else
   echo "::error::Claude invocation failed. CLI output follows:"
-  cat "$REPORT_FILE" >&2
-  rm -f "$logs_file"
+  cat "$llm_out" "$llm_err" >&2
+  rm -f "$logs_file" "$llm_out" "$llm_err"
   exit 1
 fi
-rm -f "$logs_file"
+rm -f "$logs_file" "$llm_out" "$llm_err"
 
 [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "$REPORT_FILE" ] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
 
