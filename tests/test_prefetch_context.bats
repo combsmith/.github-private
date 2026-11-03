@@ -43,8 +43,7 @@ setup() {
   } > "$FULL_DIFF_FILE"
 
   # Metadata JSON the `gh pr view` stub returns — a superset of every field the
-  # deep/audit/single (headRepository/headRepositoryOwner) and rubber-duck
-  # (repository) prompts read.
+  # deep/audit/single and rubber-duck prompts read.
   export STUB_META_JSON='{"number":42,"title":"T","headRefOid":"abc123def456","headRepository":{"name":"example"},"headRepositoryOwner":{"login":"combsmith"},"repository":{"name":"example"},"files":[{"path":"a.sh","status":"modified","additions":3,"deletions":1,"patch":"@@"}],"reviews":[],"comments":[],"commits":[]}'
 }
 
@@ -57,6 +56,11 @@ _install_gh_stub() {
   cat > "$STUB_DIR/gh" <<'STUB'
 #!/usr/bin/env bash
 echo "$*" >> "$GH_CALL_LOG"
+# The real CLI refuses a field it does not know.
+if [ "$1" = "pr" ] && [ "$2" = "view" ] && [[ ",$*," =~ [\ ,]repository[,\ ] ]]; then
+  echo 'Unknown JSON field: "repository"' >&2
+  exit 1
+fi
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   printf '%s' "$STUB_META_JSON"
   exit 0
@@ -71,6 +75,11 @@ _install_gh_rate_limited_stub() {
   cat > "$STUB_DIR/gh" <<'STUB'
 #!/usr/bin/env bash
 echo "$*" >> "$GH_CALL_LOG"
+# The real CLI refuses a field it does not know.
+if [ "$1" = "pr" ] && [ "$2" = "view" ] && [[ ",$*," =~ [\ ,]repository[,\ ] ]]; then
+  echo 'Unknown JSON field: "repository"' >&2
+  exit 1
+fi
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   echo "API rate limit exceeded for user" >&2
   exit 1
@@ -154,9 +163,8 @@ STUB
   [ "$status" -eq 0 ]
   [ "$output" = "$SHA" ]
 
-  # Superset: both headRepository (deep/audit/single) and repository (rubber-duck)
-  # must be present so no tier loses a field it reads today.
-  run jq -e '.headRepository and .headRepositoryOwner and .repository' "$OUT_DIR/pr-context-metadata.json"
+  # Superset: the head repository fields must be present so no tier loses them.
+  run jq -e '.headRepository and .headRepositoryOwner' "$OUT_DIR/pr-context-metadata.json"
   [ "$status" -eq 0 ]
 
   # Full (non-simplified) files entries retain fields beyond triage's projection.
@@ -192,4 +200,53 @@ STUB
   # No partial context files left behind on the skip path.
   [ ! -f "$OUT_DIR/pr-context-metadata.json" ]
   [ ! -f "$OUT_DIR/pr-context-diff.txt" ]
+}
+
+# ── The field lists against the real CLI ─────────────────────────────────────
+# A stub accepts anything. The real `gh pr view` fails the whole call on one unknown
+# field, which silently turned the prefetch into a no-op.
+
+_real_gh_pr_fields() {
+  # Bypass any stub on PATH: this test needs the installed CLI.
+  local gh_bin
+  gh_bin=$(type -aP gh | grep -v "^$STUB_DIR/" | head -n1)
+  [ -n "$gh_bin" ] || return 1
+  "$gh_bin" pr view --help | sed -n '/^JSON FIELDS/,/^$/p' | tail -n +2 | tr -d ' ' | tr ',' '\n' | grep -v '^$'
+}
+
+_assert_all_known() { # <label> <comma-separated fields> <known fields file>
+  local f
+  for f in $(tr ',' ' ' <<< "$2"); do
+    grep -qxF "$f" "$3" || { echo "$1 asks gh pr view for unknown field '$f'" >&2; return 1; }
+  done
+}
+
+@test "every field the prefetch requests is one real gh pr view accepts" {
+  _real_gh_pr_fields > "$STUB_DIR/known" || skip "gh is not installed"
+  [ -s "$STUB_DIR/known" ]
+  _assert_all_known prefetch "$PR_CONTEXT_METADATA_FIELDS" "$STUB_DIR/known"
+}
+
+@test "every gh pr view --json list in the review prompts is one real gh accepts" {
+  _real_gh_pr_fields > "$STUB_DIR/known" || skip "gh is not installed"
+  [ -s "$STUB_DIR/known" ]
+  local root="${BATS_TEST_DIRNAME}/.." file fields
+  for file in "$root"/prompts/*.md; do
+    while IFS= read -r fields; do
+      _assert_all_known "$(basename "$file")" "$fields" "$STUB_DIR/known"
+    done < <(sed -nE 's/.*gh pr view "\$PR_URL" --json ([a-zA-Z,]+).*/\1/p' "$file")
+  done
+}
+
+@test "a failed metadata fetch says why" {
+  cat > "$STUB_DIR/gh" <<'STUB'
+#!/usr/bin/env bash
+echo 'Unknown JSON field: "nope"' >&2
+exit 1
+STUB
+  chmod +x "$STUB_DIR/gh"
+  export PREFETCH_CONTEXT_ENABLED=true
+  run prefetch_pr_context "$PR_URL" "$SHA" "$FULL_DIFF_FILE" "$OUT_DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'Unknown JSON field'* ]]
 }

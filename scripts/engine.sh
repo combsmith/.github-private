@@ -583,8 +583,9 @@ check_provider_headroom() {
       fi
       # Probe GitHub Models API rate-limit headers via a lightweight HEAD.
       local _resp _remaining _limit
-      _resp=$(curl -sI --max-time 5 https://models.github.ai/inference/chat/completions \
-        -H "Authorization: Bearer ${_tok}" \
+      # The token goes on stdin, so it never appears on a command line.
+      _resp=$(printf 'header = "Authorization: Bearer %s"\n' "$_tok" |
+        curl -sI --max-time 5 --config - https://models.github.ai/inference/chat/completions \
         -H "X-GitHub-Api-Version: 2022-11-28" 2>/dev/null || true)
       _remaining=$(printf '%s' "$_resp" | grep -i 'x-ratelimit-remaining-requests:' \
         | cut -d: -f2 | tr -d '[:space:]' || true)
