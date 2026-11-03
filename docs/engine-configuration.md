@@ -201,5 +201,7 @@ orchestrator pre-fetched. The orchestrator validates the verdict and adds the re
 marker before anything is posted. `scripts/model-sandbox-setup.sh` runs a self-test
 first, and a failed self-test fails the job.
 
-The Copilot engine cannot run here, because it authenticates with a user PAT. Leave it
-out of `AI_ENGINES` and `AI_DUCK_ENGINE` for repositories that run PR review.
+Only Claude runs here for now, and the setup step overrides `AI_ENGINES`,
+`AI_DUCK_ENGINE` and `REVIEW_ENGINE` to say so. Copilot authenticates with a user PAT,
+which cannot be withheld from it. Gemini stays off until its tool limits are shown to
+hold on a live run, with a control; `MODEL_SANDBOX_ALLOW_GEMINI=true` turns it back on.

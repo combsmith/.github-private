@@ -44,5 +44,16 @@ sudo -n chmod 644 "$MODEL_SANDBOX_GEMINI_SETTINGS"
 mkdir -p "$MODEL_SANDBOX_CONTEXT_DIR"
 chmod 755 "$MODEL_SANDBOX_CONTEXT_DIR"
 
+# Only Claude runs in the sandbox for now: Copilot authenticates with a user PAT, and
+# Gemini's tool limits are not yet shown to hold on a live run. An engine left out of
+# these lists is never selected, so nothing tries it and fails.
+if [ "${MODEL_SANDBOX_ALLOW_GEMINI:-false}" != "true" ] && [ -n "${GITHUB_ENV:-}" ]; then
+  {
+    echo "AI_ENGINES=claude"
+    echo "AI_DUCK_ENGINE=claude"
+    echo "REVIEW_ENGINE=claude"
+  } >> "$GITHUB_ENV"
+fi
+
 model_sandbox_selftest
 echo "model sandbox ready for '$PR_REVIEW_MODEL_USER'"

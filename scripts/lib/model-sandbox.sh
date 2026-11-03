@@ -71,7 +71,14 @@ model_sandbox_exec() {
   done
   case "$cli" in
     claude) keep="CLAUDE_CODE_OAUTH_TOKEN,ANTHROPIC_API_KEY" ;;
-    gemini) keep="GEMINI_API_KEY,GOOGLE_API_KEY" ;;
+    gemini)
+      # Off until its tool limits are shown to hold on a live run, with a control.
+      if [ "${MODEL_SANDBOX_ALLOW_GEMINI:-false}" != "true" ]; then
+        echo "::error::Gemini is not enabled in the review model sandbox" >&2
+        return 1
+      fi
+      keep="GEMINI_API_KEY,GOOGLE_API_KEY"
+      ;;
     *)
       # Copilot authenticates with a user PAT, which cannot be withheld from it.
       echo "::error::engine '${cli:-unknown}' cannot run in the review model sandbox" >&2

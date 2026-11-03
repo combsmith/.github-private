@@ -114,12 +114,33 @@ verdict() { printf '%s' "$1" > "$TEST_DIR/v.json"; echo "$TEST_DIR/v.json"; }
   grep -q '^CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1$' "$CLI_ENV"
 }
 
+@test "Gemini is refused in the sandbox unless explicitly allowed" {
+  run _engine_child timeout --kill-after=5 60 gemini --prompt "" < "$TEST_DIR/prompt.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Gemini is not enabled"* ]]
+  [ ! -s "$SUDO_LOG" ]
+}
+
+@test "setup restricts the engine lists to Claude" {
+  export SETUP_LOG_ONLY=1 MODEL_SANDBOX_HOME="$TEST_DIR/home" HOME="$TEST_DIR"
+  export GITHUB_ENV="$TEST_DIR/github_env"; : > "$GITHUB_ENV"
+  export AI_ENGINES=claude,gemini AI_DUCK_ENGINE=gemini,claude
+  run bash "$REPO_ROOT/scripts/model-sandbox-setup.sh"
+  echo "$output" >&2
+  [ "$status" -eq 0 ]
+  grep -qx 'AI_ENGINES=claude' "$GITHUB_ENV"
+  grep -qx 'AI_DUCK_ENGINE=claude' "$GITHUB_ENV"
+  grep -qx 'REVIEW_ENGINE=claude' "$GITHUB_ENV"
+}
+
 @test "Gemini is told to trust the sandbox working directory, or it refuses to start" {
+  export MODEL_SANDBOX_ALLOW_GEMINI=true
   _engine_child timeout --kill-after=5 60 gemini --prompt "" < "$TEST_DIR/prompt.md"
   grep -q '^GEMINI_CLI_TRUST_WORKSPACE=true$' "$CLI_ENV"
 }
 
 @test "a sandboxed Gemini call gets only the current Gemini key" {
+  export MODEL_SANDBOX_ALLOW_GEMINI=true
   _engine_child timeout --kill-after=5 60 gemini --prompt "" < "$TEST_DIR/prompt.md"
   grep -q '^GEMINI_API_KEY=' "$CLI_ENV"
   run grep -E 'GH_TOKEN|COPILOT_GITHUB_TOKEN|CLAUDE_CODE_OAUTH_TOKEN|GOOGLE_API_KEY_2' "$CLI_ENV"
