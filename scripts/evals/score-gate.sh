@@ -59,7 +59,7 @@ SG_DEFAULT_THRESHOLD="0.7"
 # promotion bar honest.
 sg_in_unit_range() {
   local v="${1:-}"
-  [ -n "$v" ] || return 1
+  [[ -n "$v" ]] || return 1
   jq -n --argjson x "$v" -e '($x|type)=="number" and $x >= 0 and $x <= 1' >/dev/null 2>&1
 }
 
@@ -70,14 +70,14 @@ sg_in_unit_range() {
 # the caller rejects a bar that would bypass or nullify the gate.
 sg_resolve_threshold() {
   local cli="${1:-}" cfg="${2:-}" val
-  if [ -n "$cli" ]; then
+  if [[ -n "$cli" ]]; then
     sg_in_unit_range "$cli" || return 2
     printf '%s\n' "$cli"
     return 0
   fi
-  if [ -n "$cfg" ] && [ -f "$cfg" ]; then
+  if [[ -n "$cfg" ]] && [[ -f "$cfg" ]]; then
     val="$(jq -r 'if (.gate_threshold | type) == "number" and .gate_threshold >= 0 and .gate_threshold <= 1 then .gate_threshold else empty end' "$cfg" 2>/dev/null || true)"
-    if [ -n "$val" ]; then
+    if [[ -n "$val" ]]; then
       printf '%s\n' "$val"
       return 0
     fi
@@ -130,25 +130,25 @@ main() {
   command -v jq >/dev/null 2>&1 || die "jq is required but not installed"
 
   local role="" cli_threshold="" report_file="" evals_dir="${EVALS_DIR:-$repo_root/evals}"
-  while [ "$#" -gt 0 ]; do
+  while [[ "$#" -gt 0 ]]; do
     case "$1" in
       # NOTE: use an explicit arity check + die (exit 2), NOT ${2:?...}. The
       # :? expansion aborts with status 1, which collides with the documented
       # "gate failed" exit and misreports a usage error; and when the flag is
       # the final argument, `shift 2` itself fails under `set -e`.
-      --threshold) [ "$#" -ge 2 ] || die "--threshold needs a value"
+      --threshold) [[ "$#" -ge 2 ]] || die "--threshold needs a value"
                    cli_threshold="$2"; shift 2 ;;
-      --report)    [ "$#" -ge 2 ] || die "--report needs a file"
+      --report)    [[ "$#" -ge 2 ]] || die "--report needs a file"
                    report_file="$2"; shift 2 ;;
-      --evals-dir) [ "$#" -ge 2 ] || die "--evals-dir needs a directory"
+      --evals-dir) [[ "$#" -ge 2 ]] || die "--evals-dir needs a directory"
                    evals_dir="$2"; shift 2 ;;
       -h|--help)   grep '^#' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; return 0 ;;
       --) shift; break ;;
       -*) die "unknown option: $1" ;;
-      *) if [ -z "$role" ]; then role="$1"; else die "unexpected argument: $1"; fi; shift ;;
+      *) if [[ -z "$role" ]]; then role="$1"; else die "unexpected argument: $1"; fi; shift ;;
     esac
   done
-  [ -n "$role" ] || die "usage: score-gate.sh <role> [--threshold N] [--report FILE]"
+  [[ -n "$role" ]] || die "usage: score-gate.sh <role> [--threshold N] [--report FILE]"
 
   local scorer_config="$evals_dir/$role/scorer.json"
   local threshold
@@ -160,8 +160,8 @@ main() {
   # score < 1) and 2 on a hard/infra error — the former still yields a scoreable
   # report, the latter does not, so only a rc>=2 is fatal here.
   local report rc=0
-  if [ -n "$report_file" ]; then
-    [ -f "$report_file" ] || die "report file not found: $report_file"
+  if [[ -n "$report_file" ]]; then
+    [[ -f "$report_file" ]] || die "report file not found: $report_file"
     report="$(cat "$report_file")"
     # A supplied report must actually be THIS role's held-out result. run-eval.sh
     # tags every report with the scored `skill`; if that tag is present it must
@@ -170,13 +170,13 @@ main() {
     # cases. A tag-less report is rejected too — we cannot confirm what it scored.
     local report_skill
     report_skill="$(jq -r 'if type=="object" and (.skill|type=="string") then .skill else "" end' <<<"$report" 2>/dev/null || true)"
-    [ -n "$report_skill" ] || die "report has no skill tag — cannot confirm it scored role '$role'"
-    [ "$report_skill" = "$role" ] || die "report is for skill '$report_skill', not requested role '$role' — refusing to gate on a mismatched report"
+    [[ -n "$report_skill" ]] || die "report has no skill tag — cannot confirm it scored role '$role'"
+    [[ "$report_skill" = "$role" ]] || die "report is for skill '$report_skill', not requested role '$role' — refusing to gate on a mismatched report"
   else
     local scorer="$script_dir/run-eval.sh"
-    [ -f "$scorer" ] || die "scorer not found (expected $scorer)"
+    [[ -f "$scorer" ]] || die "scorer not found (expected $scorer)"
     report="$(EVALS_DIR="$evals_dir" bash "$scorer" "$role")" || rc=$?
-    [ "$rc" -le 1 ] || die "scorer hard-failed for role '$role' (rc=$rc) — held-out set was not scored"
+    [[ "$rc" -le 1 ]] || die "scorer hard-failed for role '$role' (rc=$rc) — held-out set was not scored"
   fi
 
   local score
@@ -202,7 +202,7 @@ main() {
     --argjson failed "$failed" \
     '{role:$role, score:$score, threshold:$threshold, verdict:$verdict, passed:$passed, failed:$failed, total:$total}'
 
-  if [ "$gate_rc" -eq 0 ]; then
+  if [[ "$gate_rc" -eq 0 ]]; then
     echo "::notice::score gate: PASS — role '$role' scored $score >= threshold $threshold" >&2
     return 0
   fi
@@ -211,6 +211,6 @@ main() {
 }
 
 # Only run main when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

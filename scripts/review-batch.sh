@@ -34,9 +34,9 @@ ENGINE_UNAVAILABLE_MARKER='<!-- pr-review-agent engine-unavailable v1 -->'
 
 post_engine_unavailable_notice() {
   local pr_url="$1" engine="${2:-unknown}"
-  [ -z "$pr_url" ] && return 0
+  [[ -z "$pr_url" ]] && return 0
 
-  if [ "${DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DRY_RUN:-false}" = "true" ]]; then
     echo "    DRY_RUN: would post engine-unavailable notice on $pr_url"
     return 0
   fi
@@ -47,7 +47,7 @@ post_engine_unavailable_notice() {
   existing=$(jq -r --arg m "$ENGINE_UNAVAILABLE_MARKER" \
         '[(.comments // [])[] | select(.body != null) | select(.body | contains($m))] | length' \
         <<< "$snapshot" 2>/dev/null) || existing=0
-  if [ "${existing:-0}" -gt 0 ] 2>/dev/null; then
+  if [ "${existing:-0}" -gt 0 ] 2>/dev/null; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "::notice::Engine-unavailable notice already present on $pr_url — not re-posting"
     return 0
   fi
@@ -103,7 +103,7 @@ validate_engines
 # Short-circuit before any engine switching or smoke tests when there is
 # nothing to review — avoids spurious failures if COPILOT_GITHUB_TOKEN is
 # absent or invalid on a scheduled run with zero candidate PRs.
-if [ ! -s "$PRS_FILE" ]; then
+if [[ ! -s "$PRS_FILE" ]]; then
   echo "::notice::No candidate PRs to review."
   # Emit a summary line even for an empty queue so "0 reviews posted" can never
   # be confused with a run that found candidates and no-op'd every one of them
@@ -117,7 +117,7 @@ fi
 _requested_engine="${REVIEW_ENGINE:-}"
 REVIEW_ENGINE="$(ai_engine_primary "$_requested_engine")"
 export REVIEW_ENGINE
-if [ -n "$_requested_engine" ] && [ "$_requested_engine" != "$REVIEW_ENGINE" ]; then
+if [[ -n "$_requested_engine" ]] && [[ "$_requested_engine" != "$REVIEW_ENGINE" ]]; then
   echo "::warning::REVIEW_ENGINE=$_requested_engine is not enabled in AI_ENGINES ($(ai_engine_chain)) — using $REVIEW_ENGINE"
 fi
 unset _requested_engine
@@ -128,10 +128,10 @@ unset _requested_engine
 # no PR invocation pays the per-call retry delay for a known-bad engine.
 if ! ai_engine_available "$REVIEW_ENGINE"; then
   _start_engine="$(ai_engine_first_available)"
-  if [ -n "$_start_engine" ]; then
+  if [[ -n "$_start_engine" ]]; then
     echo "::warning::Primary $(ai_engine_label "$REVIEW_ENGINE") engine unavailable per pre-flight probe — switching to $(ai_engine_label "$_start_engine") for this batch"
     export REVIEW_ENGINE="$_start_engine"
-  elif [ "$REVIEW_ENGINE" != "claude" ]; then
+  elif [[ "$REVIEW_ENGINE" != "claude" ]]; then
     echo "::error::Primary $(ai_engine_label "$REVIEW_ENGINE") engine unavailable and no other engine in AI_ENGINES ($(ai_engine_chain)) is available (e.g. Copilot fallback also unavailable: gh copilot not installed, classic PAT, or COPILOT_GITHUB_TOKEN not set) — aborting batch"
     exit 1
   else
@@ -163,17 +163,17 @@ _copilot_smoke_test() {
       model="$(ai_models_copilot_model "$tier")"
       case " $models " in *" $model "*) ;; *) models="${models:+$models }$model" ;; esac
     done
-    if [ "$only" = duck ]; then
+    if [[ "$only" = duck ]]; then
       model="$(ai_models_copilot_model duck)"
       case " $models " in *" $model "*) return 0 ;; esac
       models="$model"
     fi
-  elif [ "$only" = duck ]; then
+  elif [[ "$only" = duck ]]; then
     return 0
   fi
-  if [ -z "$models" ]; then
+  if [[ -z "$models" ]]; then
     models="${COPILOT_API_MODEL:-}"
-    if [ -z "$models" ]; then
+    if [[ -z "$models" ]]; then
       # shellcheck source=engine.sh
       source "$SCRIPT_DIR/engine.sh" > /dev/null || {
         echo "::$level::Copilot pre-flight: failed to source engine.sh — check REVIEW_ENGINE and file path" >&2
@@ -182,7 +182,7 @@ _copilot_smoke_test() {
       models="${COPILOT_API_MODEL:-openai/o4-mini}"
     fi
   fi
-  if [ -z "${COPILOT_GITHUB_TOKEN:-}" ]; then
+  if [[ -z "${COPILOT_GITHUB_TOKEN:-}" ]]; then
     echo "::$level::Copilot pre-flight: COPILOT_GITHUB_TOKEN not set for copilot engine"
     return 1
   fi
@@ -216,7 +216,7 @@ sys.stdout.write(json.dumps({
     ) || rc=$?
     rm -f "$payload"
 
-    if [ "$rc" -ne 0 ]; then
+    if [[ "$rc" -ne 0 ]]; then
       echo "::$level::Copilot pre-flight failed: curl exited $rc — check COPILOT_GITHUB_TOKEN and network connectivity"
       return 1
     fi
@@ -224,7 +224,7 @@ sys.stdout.write(json.dumps({
     http=$(printf '%s' "$raw" | tail -n 1)
     body=$(printf '%s' "$raw" | head -n -1)
 
-    if [ "$http" -ge 400 ]; then
+    if [ "$http" -ge 400 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       echo "::$level::Copilot pre-flight failed: GitHub Models API returned HTTP $http for model '${model}'"
       echo "  Response: $body"
       echo "  Check COPILOT_GITHUB_TOKEN permissions and that model '${model}' is available."
@@ -242,10 +242,10 @@ print(d.get('choices', [{}])[0].get('message', {}).get('content', '(empty)'))
   return 0
 }
 
-if [ "${REVIEW_ENGINE:-claude}" = "copilot" ]; then
+if [[ "${REVIEW_ENGINE:-claude}" = "copilot" ]]; then
   echo "==> Copilot engine pre-flight: testing GitHub Models API"
   _copilot_smoke_test error || exit 1
-elif ai_engine_available copilot && [ -n "${COPILOT_GITHUB_TOKEN:-}" ]; then
+elif ai_engine_available copilot && [[ -n "${COPILOT_GITHUB_TOKEN:-}" ]]; then
   # Copilot is an enabled fallback: probe it now, so a bad model skips Copilot
   # in the chain instead of failing a PR after the earlier engines are spent.
   echo "==> Copilot fallback pre-flight: testing GitHub Models API"
@@ -258,7 +258,7 @@ fi
 # own. The duck is advisory, so a failure is a warning only: it neither aborts
 # the batch nor takes Copilot out of the chain, but it names the bad model
 # before every PR's second opinion silently fails on it.
-if ai_engine_available copilot && [ -n "${COPILOT_GITHUB_TOKEN:-}" ]; then
+if ai_engine_available copilot && [[ -n "${COPILOT_GITHUB_TOKEN:-}" ]]; then
   _copilot_smoke_test warning duck || \
     echo "::warning::Copilot rubber-duck model unavailable — fix AI_MODELS_COPILOT duck=; reviews continue without a Copilot second opinion"
 fi
@@ -283,10 +283,10 @@ total_candidates=$(grep -c . "$PRS_FILE" || true)
 _chain_has_later_engine() {
   local e seen=0
   for e in $(ai_engine_chain); do
-    if [ "$seen" -eq 1 ]; then
+    if [[ "$seen" -eq 1 ]]; then
       return 0
     fi
-    [ "$e" = "${1:-}" ] && seen=1
+    [[ "$e" = "${1:-}" ]] && seen=1
   done
   return 1
 }
@@ -317,24 +317,24 @@ _BATCH_LICENSE_DENIED_RE="(access denied by policy settings|not supported by cop
 # 127 on a fallback (binary missing), or a Copilot policy denial in the output.
 _runtime_unavailable() {
   local rc="$1"
-  [ "$rc" -eq 55 ] && return 0
-  [ "${2:-}" = fallback ] && [ "$rc" -eq 127 ] && return 0
-  [ "$REVIEW_ENGINE" = copilot ] && [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ] && [ "$rc" -ne 100 ] \
-    && grep -qiE "$_BATCH_LICENSE_DENIED_RE" "$REVIEW_OUT" 2>/dev/null
+  [ "$rc" -eq 55 ] && return 0  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+  [[ "${2:-}" = fallback ]] && [ "$rc" -eq 127 ] && return 0  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+  [[ "$REVIEW_ENGINE" = copilot ]] && [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ] && [ "$rc" -ne 100 ] &&  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+    grep -qiE "$_BATCH_LICENSE_DENIED_RE" "$REVIEW_OUT" 2>/dev/null
 }
 
 REVIEW_OUT=$(mktemp) || { echo "::error::Failed to create temporary file for review capture" >&2; exit 1; }
 trap 'rm -f "$REVIEW_OUT"' EXIT
 
 while IFS= read -r pr_url; do
-  [ -z "$pr_url" ] && continue
+  [[ -z "$pr_url" ]] && continue
   processed=$((processed + 1))
 
-  if [ "$processed" -gt "$CANDIDATE_LIMIT" ]; then
+  if [ "$processed" -gt "$CANDIDATE_LIMIT" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "::notice::Hit CANDIDATE_LIMIT=$CANDIDATE_LIMIT, stopping batch"
     break
   fi
-  if [ "$actual" -ge "$MAX_PRS" ]; then
+  if [ "$actual" -ge "$MAX_PRS" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "::notice::Reached MAX_PRS=$MAX_PRS actual reviews, stopping batch"
     break
   fi
@@ -346,10 +346,10 @@ while IFS= read -r pr_url; do
   # left, stop the session instead of re-invoking an exhausted engine per PR.
   if ! ai_engine_available "$REVIEW_ENGINE"; then
     _start_engine="$(ai_engine_first_available)"
-    if [ -n "$_start_engine" ]; then
+    if [[ -n "$_start_engine" ]]; then
       echo "::notice::$(ai_engine_label "$REVIEW_ENGINE") unavailable or rate-limited earlier in this batch — reviewing on $(ai_engine_label "$_start_engine")"
       export REVIEW_ENGINE="$_start_engine"
-    elif [ -n "$AI_ENGINES_RATE_LIMITED" ]; then
+    elif [[ -n "$AI_ENGINES_RATE_LIMITED" ]]; then
       echo "::error::Every engine in AI_ENGINES ($(ai_engine_chain)) is rate-limited or unavailable in this batch — stopping; the next scheduled run retries"
       processed=$((processed - 1))
       session_aborted=1
@@ -366,9 +366,9 @@ while IFS= read -r pr_url; do
   # Treat known engine-unavailable setup/runtime errors as fallback-eligible
   if _runtime_unavailable "$rc"; then
     echo "::warning::Engine ${REVIEW_ENGINE:-claude} unavailable at runtime (exit $rc) — treating as fallback-eligible"
-    [ "$rc" -ne 55 ] && _mark_unavailable "$REVIEW_ENGINE"
+    [[ "$rc" -ne 55 ]] && _mark_unavailable "$REVIEW_ENGINE"
     rc=2
-  elif [ "$rc" -eq 2 ]; then
+  elif [[ "$rc" -eq 2 ]]; then
     _mark_rate_limited "$REVIEW_ENGINE"
   fi
 
@@ -377,9 +377,9 @@ while IFS= read -r pr_url; do
   # from the current engine, skipping engines that are disabled or that the
   # pre-flight probe marked unavailable. The switch sticks for the remaining PRs.
   _fallback_unavailable=0
-  while [ "$rc" -eq 2 ]; do
+  while [[ "$rc" -eq 2 ]]; do
     _next_engine="$(ai_engine_next_available "$REVIEW_ENGINE")"
-    [ -z "$_next_engine" ] && break
+    [[ -z "$_next_engine" ]] && break
     echo "::warning::$(ai_engine_label "$REVIEW_ENGINE") rate limit hit — switching to $(ai_engine_label "$_next_engine") engine for remaining PRs"
     export REVIEW_ENGINE="$_next_engine"
     engine_fallbacks=$((engine_fallbacks + 1))
@@ -396,7 +396,7 @@ while IFS= read -r pr_url; do
       echo "::warning::$(ai_engine_label "$REVIEW_ENGINE") engine unavailable at runtime (exit $rc) — trying the next engine in AI_ENGINES"
       _mark_unavailable "$REVIEW_ENGINE"
       rc=2
-    elif [ "$rc" -eq 2 ]; then
+    elif [[ "$rc" -eq 2 ]]; then
       _mark_rate_limited "$REVIEW_ENGINE"
     fi
   done
@@ -407,7 +407,7 @@ while IFS= read -r pr_url; do
   # was unavailable at runtime rather than rate-limited: skip this PR with one
   # notice and keep the batch going. Only a genuinely rate-limited, exhausted
   # chain falls through to the session-abort branch below.
-  if [ "$rc" -eq 2 ] && { _chain_has_later_engine "$REVIEW_ENGINE" || [ "$_fallback_unavailable" -eq 1 ]; }; then
+  if [[ "$rc" -eq 2 ]] && { _chain_has_later_engine "$REVIEW_ENGINE" || [[ "$_fallback_unavailable" -eq 1 ]]; }; then
     echo "::warning::No later engine in AI_ENGINES ($(ai_engine_chain)) is available after $(ai_engine_label "$REVIEW_ENGINE") — skipping $pr_url and continuing batch"
     post_engine_unavailable_notice "$pr_url" "$REVIEW_ENGINE"
     failed=$((failed + 1))
@@ -437,7 +437,7 @@ while IFS= read -r pr_url; do
       # the MAX_PRS budget of full reviews, but it is NOT a no-op — it re-issued
       # the prior approval at the new head SHA. Count it in its own bucket so the
       # summary reports carried-forward reviews distinctly from real no-ops (AC #6).
-      if [ "$reason" = "carried-forward" ]; then
+      if [[ "$reason" = "carried-forward" ]]; then
         carried_forward=$((carried_forward + 1))
         echo "::notice::Carried forward — re-issued the prior approval for a conflict-free base merge (no model tier run)"
         echo "::endgroup::"
@@ -486,7 +486,7 @@ while IFS= read -r pr_url; do
   esac
 
   echo "::endgroup::"
-  [ "$session_aborted" -eq 1 ] && break
+  [[ "$session_aborted" -eq 1 ]] && break
 done < "$PRS_FILE"
 
 remaining=$((total_candidates - processed))
@@ -495,17 +495,17 @@ summary="Summary: $actual reviews posted, $escalated escalated to human, $skippe
 # counters, even when zero, so a run's full-vs-carried split is machine-parseable.
 # reviews_full is the count of full (model-tier) reviews posted (= $actual).
 summary="$summary [reviews_full=$actual reviews_carried_forward=$carried_forward]"
-[ "$carried_forward" -gt 0 ] && summary="$summary, $carried_forward carried forward (conflict-free base merges, no tier run)"
-[ "$engine_fallbacks" -gt 0 ] && summary="$summary, $engine_fallbacks engine fallback(s) to $fallback_engines"
-[ "$deferred" -gt 0 ] && summary="$summary ($deferred deferred pending CI/checks — owed a review once green)"
+[[ "$carried_forward" -gt 0 ]] && summary="$summary, $carried_forward carried forward (conflict-free base merges, no tier run)"
+[[ "$engine_fallbacks" -gt 0 ]] && summary="$summary, $engine_fallbacks engine fallback(s) to $fallback_engines"
+[[ "$deferred" -gt 0 ]] && summary="$summary ($deferred deferred pending CI/checks — owed a review once green)"
 summary="$summary (processed $processed/$total_candidates candidates)"
 
-if [ "$session_aborted" -eq 1 ]; then
+if [[ "$session_aborted" -eq 1 ]]; then
   echo "::error::Session aborted early after failure on $abort_pr ($abort_reason). Skipped $remaining remaining candidate(s); will retry on next scheduled run."
   echo "$summary [SESSION ABORTED EARLY]"
   exit 1
 fi
 
 echo "$summary"
-[ "$failed" -gt 0 ] && exit 1
+[[ "$failed" -gt 0 ]] && exit 1
 exit 0

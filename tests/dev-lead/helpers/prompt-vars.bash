@@ -10,7 +10,7 @@ assert_prompt_vars_covered() {
   declared_vars=$(grep -oP '(?<=<!-- VARIABLES: )[^>]+(?= -->)' "$template" | tr ',' '\n' | tr -d ' ' | sort -u)
 
   while IFS= read -r var; do
-    [ -z "$var" ] && continue
+    [[ -z "$var" ]] && continue
     if ! echo "$declared_vars" | grep -qx "$var"; then
       echo "Variable \${$var} used in $template but not declared in <!-- VARIABLES: --> comment"
       return 1

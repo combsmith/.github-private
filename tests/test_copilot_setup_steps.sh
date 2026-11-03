@@ -43,7 +43,7 @@ YAML_VALID=0
 # ---------------------------------------------------------------------------
 # Test 1: File exists
 # ---------------------------------------------------------------------------
-if [ -f "$WORKFLOW" ]; then
+if [[ -f "$WORKFLOW" ]]; then
   ok "copilot-setup-steps.yml exists"
 else
   fail "copilot-setup-steps.yml exists" "file not found at $WORKFLOW"
@@ -52,7 +52,7 @@ fi
 # ---------------------------------------------------------------------------
 # Test 1.5: YAML is valid
 # ---------------------------------------------------------------------------
-if [ -f "$WORKFLOW" ]; then
+if [[ -f "$WORKFLOW" ]]; then
   if python3 - "$WORKFLOW" << 'PY' 2>/dev/null
 import sys, yaml
 with open(sys.argv[1]) as f:
@@ -70,7 +70,7 @@ fi
 # Test 2: Job named `copilot-setup-steps` is present
 # GitHub requires this exact name to activate the workflow for Copilot agent.
 # ---------------------------------------------------------------------------
-if [ "$YAML_VALID" -eq 1 ]; then
+if [[ "$YAML_VALID" -eq 1 ]]; then
   if python3 - "$WORKFLOW" << 'PY'
 import sys, yaml
 with open(sys.argv[1]) as f:
@@ -91,7 +91,7 @@ fi
 # ---------------------------------------------------------------------------
 # Test 3: No other job names (GitHub only uses the copilot-setup-steps job)
 # ---------------------------------------------------------------------------
-if [ "$YAML_VALID" -eq 1 ]; then
+if [[ "$YAML_VALID" -eq 1 ]]; then
   JOB_COUNT=$(python3 - "$WORKFLOW" << 'PY'
 import sys, yaml
 with open(sys.argv[1]) as f:
@@ -109,7 +109,7 @@ fi
 # ---------------------------------------------------------------------------
 # Test 4: timeout-minutes does not exceed 59 (GitHub hard limit)
 # ---------------------------------------------------------------------------
-if [ "$YAML_VALID" -eq 1 ]; then
+if [[ "$YAML_VALID" -eq 1 ]]; then
   TIMEOUT=$(python3 - "$WORKFLOW" << 'PY'
 import sys, yaml
 with open(sys.argv[1]) as f:
@@ -119,7 +119,7 @@ job = jobs.get("copilot-setup-steps") or {}
 print(job.get("timeout-minutes", 0))
 PY
 )
-  if [[ "$TIMEOUT" =~ ^[0-9]+$ ]] && [ "$TIMEOUT" -le 59 ] && [ "$TIMEOUT" -gt 0 ]; then
+  if [[ "$TIMEOUT" =~ ^[0-9]+$ ]] && [ "$TIMEOUT" -le 59 ] && [ "$TIMEOUT" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     ok "timeout-minutes ($TIMEOUT) is within GitHub's 59-minute limit"
   else
     fail "timeout-minutes within limit" \
@@ -130,7 +130,7 @@ fi
 # ---------------------------------------------------------------------------
 # Test 5: Top-level permissions are reset to {} (least-privilege policy)
 # ---------------------------------------------------------------------------
-if [ "$YAML_VALID" -eq 1 ]; then
+if [[ "$YAML_VALID" -eq 1 ]]; then
   PERMS=$(python3 - "$WORKFLOW" << 'PY'
 import sys, yaml
 with open(sys.argv[1]) as f:
@@ -143,7 +143,7 @@ else:
     print(repr(perms))
 PY
 )
-  if [ "$PERMS" = "empty" ]; then
+  if [[ "$PERMS" = "empty" ]]; then
     ok "top-level permissions reset to {}"
   else
     fail "top-level permissions reset to {}" \
@@ -156,7 +156,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
-if [ "$FAIL" -gt 0 ]; then
+if [[ "$FAIL" -gt 0 ]]; then
   printf '%b' "$ERRORS"
   exit 1
 fi

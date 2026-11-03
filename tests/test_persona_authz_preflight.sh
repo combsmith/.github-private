@@ -30,39 +30,39 @@ setup() {
 
 @test "write capability is 'yes' when push is true" {
   run authz_write_capability false false true
-  [ "$status" -eq 0 ]
-  [ "$output" = "yes" ]
+  [[ "$status" -eq 0 ]]
+  [[ "$output" = "yes" ]]
 }
 
 @test "write capability is 'yes' when maintain is true (push false)" {
   run authz_write_capability false true false
-  [ "$output" = "yes" ]
+  [[ "$output" = "yes" ]]
 }
 
 @test "write capability is 'yes' when admin is true" {
   run authz_write_capability true false false
-  [ "$output" = "yes" ]
+  [[ "$output" = "yes" ]]
 }
 
 @test "write capability is 'yes' when triage is true (triage grants comment access)" {
   run authz_write_capability false false false true
-  [ "$output" = "yes" ]
+  [[ "$output" = "yes" ]]
 }
 
 @test "write capability is 'no' when the surface is present but every write bit is false" {
   run authz_write_capability false false false false
-  [ "$output" = "no" ]
+  [[ "$output" = "no" ]]
 }
 
 @test "write capability is 'unknown' when the permissions object was absent (all empty)" {
   run authz_write_capability "" "" ""
-  [ "$output" = "unknown" ]
+  [[ "$output" = "unknown" ]]
 }
 
 @test "a single present-but-false bit still classifies as 'no' (read-only collaborator)" {
   # pull:true only would arrive here as admin/maintain/push all 'false'
   run authz_write_capability false false false
-  [ "$output" = "no" ]
+  [[ "$output" = "no" ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -71,28 +71,28 @@ setup() {
 
 @test "positive: probe readable AND can write -> AUTHORIZED" {
   run authz_preflight_decision yes yes
-  [ "$output" = "AUTHORIZED" ]
+  [[ "$output" = "AUTHORIZED" ]]
 }
 
 @test "definite-negative: probe readable AND cannot write -> UNAUTHORIZED" {
   run authz_preflight_decision yes no
-  [ "$output" = "UNAUTHORIZED" ]
+  [[ "$output" = "UNAUTHORIZED" ]]
 }
 
 @test "indeterminate: probe NOT readable (5xx/rate-limit/401) -> INDETERMINATE even if capability is 'no'" {
   # A read failure must never be read as a definite negative — AC #4.
   run authz_preflight_decision no no
-  [ "$output" = "INDETERMINATE" ]
+  [[ "$output" = "INDETERMINATE" ]]
 }
 
 @test "indeterminate: probe readable but permissions object absent (capability unknown) -> INDETERMINATE" {
   run authz_preflight_decision yes unknown
-  [ "$output" = "INDETERMINATE" ]
+  [[ "$output" = "INDETERMINATE" ]]
 }
 
 @test "indeterminate: an empty/garbage probe status is never a definite negative" {
   run authz_preflight_decision "" no
-  [ "$output" = "INDETERMINATE" ]
+  [[ "$output" = "INDETERMINATE" ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -101,17 +101,17 @@ setup() {
 
 @test "should_fail is true ONLY for UNAUTHORIZED" {
   run authz_preflight_should_fail UNAUTHORIZED
-  [ "$status" -eq 0 ]
+  [[ "$status" -eq 0 ]]
 }
 
 @test "should_fail is false for AUTHORIZED" {
   run authz_preflight_should_fail AUTHORIZED
-  [ "$status" -eq 1 ]
+  [[ "$status" -eq 1 ]]
 }
 
 @test "should_fail is false for INDETERMINATE (fail open)" {
   run authz_preflight_should_fail INDETERMINATE
-  [ "$status" -eq 1 ]
+  [[ "$status" -eq 1 ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -120,7 +120,7 @@ setup() {
 
 @test "UNAUTHORIZED diagnostic names the account, the credential secret, and the missing capability" {
   run authz_preflight_diagnostic UNAUTHORIZED don-petry GH_PAT_DON_PETRY combsmith/.github-private
-  [ "$status" -eq 0 ]
+  [[ "$status" -eq 0 ]]
   [[ "$output" == *"don-petry"* ]]
   [[ "$output" == *"GH_PAT_DON_PETRY"* ]]
   [[ "$output" == *"combsmith/.github-private"* ]]
@@ -185,7 +185,7 @@ wrapper_setup() {
   _stub_gh 0 '{}'   # should not even be consulted
   export GH_TOKEN=""
   run WRAPPER
-  [ "$status" -eq 0 ]
+  [[ "$status" -eq 0 ]]
   [[ "$output" == *"deferring to the existing missing-secret handling"* ]]
 }
 
@@ -194,7 +194,7 @@ wrapper_setup() {
   _stub_gh 0 '{"permissions":{"admin":false,"maintain":false,"push":true}}'
   export GH_TOKEN="tok"
   run WRAPPER
-  [ "$status" -eq 0 ]
+  [[ "$status" -eq 0 ]]
   [[ "$output" == *"can write"* ]]
 }
 
@@ -204,7 +204,7 @@ wrapper_setup() {
   export GH_TOKEN="tok"
   export SOURCE_REPO="combsmith/.github-private"
   run WRAPPER
-  [ "$status" -eq 1 ]
+  [[ "$status" -eq 1 ]]
   [[ "$output" == *"::error::"* ]]
   [[ "$output" == *"don-petry"* ]]
   [[ "$output" == *"GH_PAT_DON_PETRY"* ]]
@@ -216,7 +216,7 @@ wrapper_setup() {
   _stub_gh 1 'HTTP 503: server error'
   export GH_TOKEN="tok"
   run WRAPPER
-  [ "$status" -eq 0 ]
+  [[ "$status" -eq 0 ]]
   [[ "$output" == *"::warning::"* ]]
   [[ "$output" != *"::error::"* ]]
 }
@@ -226,7 +226,7 @@ wrapper_setup() {
   _stub_gh 0 '{"name":"repo","private":true}'
   export GH_TOKEN="tok"
   run WRAPPER
-  [ "$status" -eq 0 ]
+  [[ "$status" -eq 0 ]]
   [[ "$output" == *"::warning::"* ]]
   [[ "$output" != *"::error::"* ]]
 }

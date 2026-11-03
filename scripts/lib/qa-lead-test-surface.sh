@@ -73,7 +73,7 @@ qa_lead_test_surface() {
   local has_test=0 has_source=0
 
   while IFS= read -r path; do
-    [ -z "$path" ] && continue
+    [[ -z "$path" ]] && continue
     kind="$(qa_lead_classify_path "$path")"
     case "$kind" in
       TEST)   has_test=1 ;;
@@ -81,7 +81,7 @@ qa_lead_test_surface() {
     esac
   done <<< "$changed_paths"
 
-  if [ "$has_test" -eq 1 ] || [ "$has_source" -eq 1 ]; then
+  if [[ "$has_test" -eq 1 ]] || [[ "$has_source" -eq 1 ]]; then
     return 0
   fi
   return 1
@@ -116,7 +116,7 @@ qa_lead_paths_have_control_char() {
 #   partial data (#1697 review). Boundary: 3000/3000 is complete, 3000/3001 is not.
 qa_lead_file_list_complete() {
   local received="${1:-0}" declared="${2:-0}"
-  if [ "$received" -ge "$declared" ]; then
+  if [ "$received" -ge "$declared" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     return 0
   fi
   return 1

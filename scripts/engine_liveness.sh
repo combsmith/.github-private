@@ -52,12 +52,12 @@ source "${SCRIPT_DIR}/lib/engine_liveness_detect.sh"
 
 MANIFEST_FILE="${MANIFEST_FILE:-${SCRIPT_DIR}/lib/consumer-manifest.json}"
 MAX_RUNS=$(_el_int "${ENGINE_LIVENESS_MAX_RUNS:-3}")
-[ "$MAX_RUNS" -ge 1 ] || MAX_RUNS=3
+[ "$MAX_RUNS" -ge 1 ] || MAX_RUNS=3  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 LOOKBACK_DAYS=$(_el_int "${ENGINE_LIVENESS_LOOKBACK_DAYS:-$ENGINE_LIVENESS_DEFAULT_LOOKBACK_DAYS}")
-[ "$LOOKBACK_DAYS" -ge 1 ] || LOOKBACK_DAYS=$ENGINE_LIVENESS_DEFAULT_LOOKBACK_DAYS
+[ "$LOOKBACK_DAYS" -ge 1 ] || LOOKBACK_DAYS=$ENGINE_LIVENESS_DEFAULT_LOOKBACK_DAYS  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 NOW_EPOCH=$(date -u +%s)
 PAT_WARN_DAYS=$(_el_int "${ENGINE_PAT_EXPIRY_WARN_DAYS:-14}")
-[ "$PAT_WARN_DAYS" -ge 1 ] || PAT_WARN_DAYS=14
+[ "$PAT_WARN_DAYS" -ge 1 ] || PAT_WARN_DAYS=14  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 PAT_REQUIRED_SCOPES="${ENGINE_PAT_REQUIRED_SCOPES:-repo workflow}"
 REPORT_FILE="${REPORT_FILE:-engine_liveness_report.md}"
 ALERT_BODY_FILE="${ALERT_BODY_FILE:-engine_liveness_alert.md}"
@@ -77,14 +77,14 @@ STUBS="${STUBS//,/ }"
 # ---------------------------------------------------------------------------
 # 0. Deliberate-pause gate — never alert on a maintainer pause (#1587 scope 3).
 # ---------------------------------------------------------------------------
-if [ "${AGENTS_PAUSED:-false}" = "true" ]; then
+if [[ "${AGENTS_PAUSED:-false}" = "true" ]]; then
   echo "::notice::engine-liveness: agent fleet deliberately paused (AGENTS_PAUSED=true) — liveness not evaluated, no alert (#1525/#1587)"
   {
     printf '# Engine-Token Liveness — %s\n\n' "$TODAY"
     printf '**Fleet paused** (`AGENTS_PAUSED=true`) — preflight liveness not evaluated and no alert raised (#1525/#1587).\n'
   } > "$REPORT_FILE"
-  [ -n "${GITHUB_STEP_SUMMARY:-}" ] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
-  if [ -n "${GITHUB_ENV:-}" ]; then
+  [[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+  if [[ -n "${GITHUB_ENV:-}" ]]; then
     {
       echo "ENGINE_LIVENESS_PAUSED=true"
       echo "ENGINE_LIVENESS_ESCALATION=NONE"
@@ -98,11 +98,11 @@ fi
 # 1. Enumerate the repos that host a dev-lead or pr-review caller stub.
 # ---------------------------------------------------------------------------
 enumerate_repos() {
-  if [ -n "${ENGINE_LIVENESS_REPOS:-}" ]; then
+  if [[ -n "${ENGINE_LIVENESS_REPOS:-}" ]]; then
     printf '%s\n' "${ENGINE_LIVENESS_REPOS//,/ }" | tr ' ' '\n' | sed '/^$/d'
     return 0
   fi
-  if [ ! -f "$MANIFEST_FILE" ]; then
+  if [[ ! -f "$MANIFEST_FILE" ]]; then
     echo "::warning::engine-liveness: manifest ${MANIFEST_FILE} not found and ENGINE_LIVENESS_REPOS unset — nothing to monitor" >&2
     return 0
   fi
@@ -122,7 +122,7 @@ run_failed_at_preflight() {
   steps=$(gh api --paginate "repos/${repo}/actions/runs/${run_id}/jobs" \
     --jq '.jobs[].steps[]? | [(.name // ""), (.conclusion // "")] | @tsv' 2>/dev/null) \
     || { echo "unknown"; return 0; }
-  [ -n "$steps" ] || { echo "no"; return 0; }
+  [[ -n "$steps" ]] || { echo "no"; return 0; }
   local name concl
   while IFS=$'\t' read -r name concl; do
     if step_is_preflight_failure "$name" "$concl"; then
@@ -166,7 +166,7 @@ gather_runs_tsv() {
   rm -f "$errfile"
   # Workflow exists (200) but has no completed runs: present-yet-unverified. Report
   # STALE so it is counted/inspected rather than skipped as if absent (#1601).
-  [ -n "$lines" ] || { echo "STALE"; return 0; }
+  [[ -n "$lines" ]] || { echo "STALE"; return 0; }
 
   # The workflow-runs API orders by created_at desc, which is NOT guaranteed to be
   # run_started_at desc for delayed/queued runs. The detector treats row order as
@@ -179,19 +179,19 @@ gather_runs_tsv() {
   : > "$out"
   local rid iso verdict failed
   while IFS=$'\t' read -r rid iso; do
-    [ -n "$rid" ] || continue
+    [[ -n "$rid" ]] || continue
     verdict=$(run_failed_at_preflight "$repo" "$rid")
-    if [ "$verdict" = "unknown" ]; then
+    if [[ "$verdict" = "unknown" ]]; then
       # The jobs API could not be read for this run — the streak would inspect
       # nothing reliable, so surface it as a blind spot rather than silently
       # reporting a trustworthy count (#1587).
       echo "ERROR"
       return 0
     fi
-    failed="no"; [ "$verdict" = "yes" ] && failed="yes"
+    failed="no"; [[ "$verdict" = "yes" ]] && failed="yes"
     printf '%s\t%s\n' "$iso" "$failed" >> "$out"
   done <<< "$lines"
-  [ -s "$out" ] || { echo "SKIP"; return 0; }
+  [[ -s "$out" ]] || { echo "SKIP"; return 0; }
   echo "OK"
 }
 
@@ -221,21 +221,21 @@ echo ""
 # BELOW FAIL — it is unverified, not failing (#1600).
 _worse() { # <current> <candidate> -> the more-severe of the two
   local -A rank=( [OK]=0 [STALE]=1 [FAIL]=2 [OUTAGE]=3 )
-  if [ "${rank[$2]:-0}" -gt "${rank[$1]:-0}" ]; then echo "$2"; else echo "$1"; fi
+  if [ "${rank[$2]:-0}" -gt "${rank[$1]:-0}" ]; then echo "$2"; else echo "$1"; fi  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 }
 
 for repo in "${REPOS[@]}"; do
-  [ -n "$repo" ] || continue
+  [[ -n "$repo" ]] || continue
   repo_worst="OK"
   for stub in $STUBS; do
     gather=$(gather_runs_tsv "$repo" "$stub" "$runs_tsv")
-    [ "$gather" = "SKIP" ] && continue
-    if [ "$gather" = "ERROR" ]; then
+    [[ "$gather" = "SKIP" ]] && continue
+    if [[ "$gather" = "ERROR" ]]; then
       api_errors=$(( api_errors + 1 ))
       echo "  ${repo} / ${stub}: ERROR (API query failed — stub not inspected)"
       continue
     fi
-    if [ "$gather" = "STALE" ]; then
+    if [[ "$gather" = "STALE" ]]; then
       # Workflow present but no completed runs — inspected yet unverified (#1601).
       inspected_stubs=$(( inspected_stubs + 1 ))
       printf '%s\t%s\t%s\t%s\t%s\n' "$repo" "$stub" "STALE" "0" "" >> "$rows_file"
@@ -265,7 +265,7 @@ if run_should_fail "$sustained_repos"; then should_fail="true"; fi
 echo ""
 echo "Inspected ${inspected_stubs} stub(s); API errors: ${api_errors}; sustained-outage repos: ${sustained_repos}; failing repos: ${failing_repos}; stale repos: ${stale_repos}."
 echo "Escalation: ${escalation}; Monitoring: ${monitoring}; Should-fail: ${should_fail}"
-if [ "$monitoring" = "DEGRADED" ]; then
+if [[ "$monitoring" = "DEGRADED" ]]; then
   # 0 stubs inspected AND >=1 non-404 API error: the monitor learned nothing, so
   # the NONE escalation above is not a trustworthy all-clear (#1587).
   echo "::error::engine-liveness: monitoring DEGRADED — 0 stubs inspected and ${api_errors} non-404 API error(s) (auth/rate-limit/5xx). A '${escalation}' escalation is NOT a reliable all-clear; investigate GH_TOKEN scope/validity and GitHub API availability."
@@ -290,7 +290,7 @@ if resp=$(gh api -i user 2>/dev/null); then
   # classification INPUT, not a fatal error.
   pat_scopes_seen=$(printf '%s\n' "$resp" | grep -im 1 '^x-oauth-scopes:' | cut -d: -f2- | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || true)
   pat_expiry_raw=$(printf '%s\n' "$resp" | grep -im 1 '^github-authentication-token-expiration:' | cut -d: -f2- | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || true)
-  if [ -z "$pat_scopes_seen" ]; then
+  if [[ -z "$pat_scopes_seen" ]]; then
     # No x-oauth-scopes header: a fine-grained PAT or App token, whose access is
     # not expressible as classic oauth scopes. That is UNKNOWN (unclassifiable),
     # NOT a MISSING classic-scope failure — reporting a fine-grained token as
@@ -299,7 +299,7 @@ if resp=$(gh api -i user 2>/dev/null); then
     pat_missing=""
   else
     pat_missing=$(pat_missing_scopes "$pat_scopes_seen" "$PAT_REQUIRED_SCOPES")
-    if [ -z "$pat_missing" ]; then
+    if [[ -z "$pat_missing" ]]; then
       pat_scope_state="OK"
     else
       pat_scope_state="MISSING"
@@ -318,7 +318,7 @@ echo "  GH_PAT_DON_PETRY expiry: '${pat_expiry_raw:-<none>}' -> ${pat_expiry}"
 {
   printf '# Engine-Token Liveness — %s\n\n' "$TODAY"
   printf '**Escalation:** `%s` — %s\n\n' "$escalation" "$(escalation_headline "$escalation")"
-  if [ "$monitoring" = "DEGRADED" ]; then
+  if [[ "$monitoring" = "DEGRADED" ]]; then
     printf '> **⚠️ Monitoring DEGRADED** — %s non-404 API error(s) and **0 stubs inspected**. The escalation above is **not** a reliable all-clear: an outage or auth failure can look like `NONE`. Investigate `GH_TOKEN` scope/validity and GitHub API availability (#1587).\n\n' "$api_errors"
   fi
   printf '**Repos monitored:** %s | **Stubs inspected:** %s | **API errors:** %s | **Sustained-outage repos:** %s | **Failing repos:** %s | **Stale repos:** %s\n\n' \
@@ -332,7 +332,7 @@ echo "  GH_PAT_DON_PETRY expiry: '${pat_expiry_raw:-<none>}' -> ${pat_expiry}"
   printf '| Expiry | `%s` | %s |\n' "${pat_expiry_raw:-<none>}" "$pat_expiry"
 } > "$REPORT_FILE"
 
-[ -n "${GITHUB_STEP_SUMMARY:-}" ] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+[[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
 
 # Fleet-alert body (only meaningful when escalation == FLEET; the workflow gates
 # the actual issue create/update on ENGINE_LIVENESS_ESCALATION).
@@ -347,7 +347,7 @@ echo "  GH_PAT_DON_PETRY expiry: '${pat_expiry_raw:-<none>}' -> ${pat_expiry}"
   render_liveness_table "$rows_file"
 } > "$ALERT_BODY_FILE"
 
-if [ -n "${GITHUB_ENV:-}" ]; then
+if [[ -n "${GITHUB_ENV:-}" ]]; then
   {
     echo "ENGINE_LIVENESS_PAUSED=false"
     echo "ENGINE_LIVENESS_ESCALATION=${escalation}"

@@ -93,7 +93,7 @@ vci_with_keys_for_job() {
   mapfile -t lines < "$file"
   local n=${#lines[@]}
   local idx=$((uses_lineno - 1))
-  [ "$idx" -ge 0 ] && [ "$idx" -lt "$n" ] || return 0
+  [[ "$idx" -ge 0 ]] && [[ "$idx" -lt "$n" ]] || return 0
 
   local uses_line="${lines[idx]}" ws job_indent
   ws="${uses_line%%[![:space:]]*}"
@@ -102,18 +102,18 @@ vci_with_keys_for_job() {
   local i line lws ind body with_indent=-1 child_indent=-1
   for (( i = idx + 1; i < n; i++ )); do
     line="${lines[i]}"
-    [ -n "${line//[[:space:]]/}" ] || continue    # skip blank
+    [[ -n "${line//[[:space:]]/}" ]] || continue    # skip blank
     lws="${line%%[![:space:]]*}"
     ind=${#lws}
     body="${line#"$lws"}"
     case "$body" in '#'*) continue ;; esac         # skip full-line comment
 
-    if [ "$with_indent" -lt 0 ]; then
+    if [[ "$with_indent" -lt 0 ]]; then
       # Still looking for `with:` within this job's body.
-      if [ "$ind" -lt "$job_indent" ]; then
+      if [[ "$ind" -lt "$job_indent" ]]; then
         return 0                                    # left the job without a with:
       fi
-      if [ "$ind" -eq "$job_indent" ]; then
+      if [[ "$ind" -eq "$job_indent" ]]; then
         case "$body" in
           with:*) with_indent=$ind ;;
         esac
@@ -122,13 +122,13 @@ vci_with_keys_for_job() {
     fi
 
     # Collecting children of `with:`.
-    if [ "$ind" -le "$with_indent" ]; then
+    if [[ "$ind" -le "$with_indent" ]]; then
       return 0                                      # end of the with: block
     fi
-    if [ "$child_indent" -lt 0 ]; then
+    if [[ "$child_indent" -lt 0 ]]; then
       child_indent=$ind
     fi
-    if [ "$ind" -eq "$child_indent" ]; then
+    if [[ "$ind" -eq "$child_indent" ]]; then
       printf '%s\n' "${body%%:*}"                   # a direct key: `name: value`
     fi
   done
@@ -146,7 +146,7 @@ vci_declared_inputs() {
   local wc_indent=-1 wc_idx=-1
   for (( i = 0; i < n; i++ )); do
     line="${lines[i]}"
-    [ -n "${line//[[:space:]]/}" ] || continue
+    [[ -n "${line//[[:space:]]/}" ]] || continue
     lws="${line%%[![:space:]]*}"
     ind=${#lws}
     body="${line#"$lws"}"
@@ -154,39 +154,39 @@ vci_declared_inputs() {
       workflow_call:*) wc_idx=$i; wc_indent=$ind; break ;;
     esac
   done
-  [ "$wc_idx" -ge 0 ] || return 0
+  [[ "$wc_idx" -ge 0 ]] || return 0
 
   # Locate `inputs:` nested under workflow_call.
   local in_indent=-1 in_idx=-1
   for (( i = wc_idx + 1; i < n; i++ )); do
     line="${lines[i]}"
-    [ -n "${line//[[:space:]]/}" ] || continue
+    [[ -n "${line//[[:space:]]/}" ]] || continue
     lws="${line%%[![:space:]]*}"
     ind=${#lws}
     body="${line#"$lws"}"
     case "$body" in '#'*) continue ;; esac
-    [ "$ind" -gt "$wc_indent" ] || break            # left workflow_call
+    [[ "$ind" -gt "$wc_indent" ]] || break            # left workflow_call
     case "$body" in
       inputs:*) in_idx=$i; in_indent=$ind; break ;;
     esac
   done
-  [ "$in_idx" -ge 0 ] || return 0
+  [[ "$in_idx" -ge 0 ]] || return 0
 
   # Iterate input-name entries and read each one's `required:` flag.
   local name_indent=-1 cur_name="" cur_required="false" rv
   for (( i = in_idx + 1; i < n; i++ )); do
     line="${lines[i]}"
-    [ -n "${line//[[:space:]]/}" ] || continue
+    [[ -n "${line//[[:space:]]/}" ]] || continue
     lws="${line%%[![:space:]]*}"
     ind=${#lws}
     body="${line#"$lws"}"
     case "$body" in '#'*) continue ;; esac
-    [ "$ind" -gt "$in_indent" ] || break            # end of inputs block
-    if [ "$name_indent" -lt 0 ]; then
+    [[ "$ind" -gt "$in_indent" ]] || break            # end of inputs block
+    if [[ "$name_indent" -lt 0 ]]; then
       name_indent=$ind
     fi
-    if [ "$ind" -eq "$name_indent" ]; then
-      [ -n "$cur_name" ] && printf '%s\t%s\n' "$cur_name" "$cur_required"
+    if [[ "$ind" -eq "$name_indent" ]]; then
+      [[ -n "$cur_name" ]] && printf '%s\t%s\n' "$cur_name" "$cur_required"
       cur_name="${body%%:*}"
       cur_required="false"
     else
@@ -202,7 +202,7 @@ vci_declared_inputs() {
       esac
     fi
   done
-  [ -n "$cur_name" ] && printf '%s\t%s\n' "$cur_name" "$cur_required"
+  [[ -n "$cur_name" ]] && printf '%s\t%s\n' "$cur_name" "$cur_required"
   return 0
 }
 
@@ -216,7 +216,7 @@ vci_validate() {
 
   # (a) every forwarded key must be a declared input.
   while IFS= read -r k; do
-    [ -n "$k" ] || continue
+    [[ -n "$k" ]] || continue
     if ! printf '%s\n' "$dnames" | grep -qxF -- "$k"; then
       echo "::error::forwarded input '$k' is not a declared workflow_call input at the pinned ref"
       rc=1
@@ -225,8 +225,8 @@ vci_validate() {
 
   # (b) every required input must be forwarded.
   while IFS=$'\t' read -r name req; do
-    [ -n "$name" ] || continue
-    if [ "$req" = "true" ] && ! printf '%s\n' "$keys" | grep -qxF -- "$name"; then
+    [[ -n "$name" ]] || continue
+    if [[ "$req" = "true" ]] && ! printf '%s\n' "$keys" | grep -qxF -- "$name"; then
       echo "::error::required input '$name' is declared at the pinned ref but not forwarded by the caller"
       rc=1
     fi
@@ -264,11 +264,11 @@ vci_job_for_uses() {
   uses_indent=${#lws}
   for (( i = uses_lineno - 2; i >= 0; i-- )); do
     line="${lines[i]}"
-    [ -n "${line//[[:space:]]/}" ] || continue
+    [[ -n "${line//[[:space:]]/}" ]] || continue
     lws="${line%%[![:space:]]*}"
     body="${line#"$lws"}"
     case "$body" in '#'*) continue ;; esac
-    if [ "${#lws}" -lt "$uses_indent" ]; then
+    if [[ "${#lws}" -lt "$uses_indent" ]]; then
       # Strip trailing comment, then try to extract job key (with or without quotes)
       body="${body%%#*}"
       body="${body%"${body##*[![:space:]]}"}"
@@ -298,17 +298,17 @@ vci_check_concurrency_collision() {
   local reusable_groups group_stems
   reusable_groups="$(vci_reusable_groups "$reusable" || true)"
   rstems="$(while IFS= read -r rgroup; do
-              [ -n "$rgroup" ] && viif_group_stems "$rgroup"
+              [[ -n "$rgroup" ]] && viif_group_stems "$rgroup"
             done <<< "$reusable_groups" | LC_ALL=C sort -u)"
   group_stems="$(viif_group_stems "$group")"
   while IFS= read -r stem; do
-    [ -n "$stem" ] || continue
+    [[ -n "$stem" ]] || continue
     if printf '%s\n' "$rstems" | grep -qxF -- "$stem"; then
       echo "::error::ingress job '$job' concurrency group '${stem}…' collides with a group its pinned reusable declares (${label}) — nested caller/reusable groups block or cancel each other (ADR-0010)"
       rc=1
     fi
   done <<< "$group_stems"
-  [ "$rc" -eq 0 ] && echo "OK: $label — ingress job '$job' concurrency group does not collide with the reusable's"
+  [[ "$rc" -eq 0 ]] && echo "OK: $label — ingress job '$job' concurrency group does not collide with the reusable's"
   return "$rc"
 }
 
@@ -321,17 +321,17 @@ vci_resolve_reusable() {
   local repo_slug="$1" wf_path="$2" ref="$3" out="$4"
   local self="${VCI_SELF_REPO:-combsmith/.github-private}"
 
-  if [ -n "${VCI_RESOLVE_DIR:-}" ]; then
+  if [[ -n "${VCI_RESOLVE_DIR:-}" ]]; then
     local base
     base="$(basename "$wf_path")"
-    if [ -f "$VCI_RESOLVE_DIR/$base" ]; then
+    if [[ -f "$VCI_RESOLVE_DIR/$base" ]]; then
       cp "$VCI_RESOLVE_DIR/$base" "$out"
       return 0
     fi
     return 1
   fi
 
-  if [ "$repo_slug" = "$self" ]; then
+  if [[ "$repo_slug" = "$self" ]]; then
     # Same-repo channel tag: fetch the ref, then read the file at that ref.
     if git fetch --quiet --depth=1 origin -- "$ref" 2>/dev/null \
        && git show "FETCH_HEAD:$wf_path" > "$out" 2>/dev/null; then
@@ -341,7 +341,7 @@ vci_resolve_reusable() {
   fi
 
   # Cross-repo reusable (hosted in another repo). Opt-in only — see header.
-  if [ "${VCI_RESOLVE_CROSS_REPO:-0}" = "1" ]; then
+  if [[ "${VCI_RESOLVE_CROSS_REPO:-0}" = "1" ]]; then
     if git fetch --quiet --depth=1 "https://github.com/${repo_slug}" -- "$ref" 2>/dev/null \
        && git show "FETCH_HEAD:$wf_path" > "$out" 2>/dev/null; then
       return 0
@@ -366,29 +366,29 @@ vci_scan_repo() {
     n=${#lines[@]}
     for (( i = 0; i < n; i++ )); do
       parsed="$(vci_parse_uses "${lines[i]}")"
-      [ -n "$parsed" ] || continue
+      [[ -n "$parsed" ]] || continue
       IFS=$'\t' read -r repo_slug wf_path ref <<< "$parsed"
       uses_lineno=$((i + 1))
 
       keys="$(vci_with_keys_for_job "$wf" "$uses_lineno")"
       job="" group=""
-      if [ "$(basename "$wf")" = "agent-ingress.yml" ]; then
+      if [[ "$(basename "$wf")" = "agent-ingress.yml" ]]; then
         if ! command -v yq >/dev/null 2>&1; then
           echo "::error::caller-inputs: yq is required to validate agent-ingress.yml concurrency groups but was not found on PATH"
           return 1
         fi
         job="$(vci_job_for_uses "$wf" "$uses_lineno")"
-        [ -n "$job" ] && IFS=$'\x1f' read -r group _ < <(viif_job_concurrency "$wf" "$job")
+        [[ -n "$job" ]] && IFS=$'\x1f' read -r group _ < <(viif_job_concurrency "$wf" "$job")
       fi
-      [ -n "$keys" ] || [ -n "$group" ] || continue  # nothing forwarded, no ingress group — nothing to check
+      [[ -n "$keys" ]] || [[ -n "$group" ]] || continue  # nothing forwarded, no ingress group — nothing to check
 
       label="$(basename "$wf") → ${repo_slug}/${wf_path}@${ref}"
       if vci_resolve_reusable "$repo_slug" "$wf_path" "$ref" "$tmp"; then
         checked=$((checked + 1))
-        if [ -n "$keys" ] && ! vci_check_pair "$wf" "$uses_lineno" "$tmp" "$label"; then
+        if [[ -n "$keys" ]] && ! vci_check_pair "$wf" "$uses_lineno" "$tmp" "$label"; then
           rc=1
         fi
-        if [ -n "$group" ] && ! vci_check_concurrency_collision "$job" "$group" "$tmp" "$label"; then
+        if [[ -n "$group" ]] && ! vci_check_concurrency_collision "$job" "$group" "$tmp" "$label"; then
           rc=1
         fi
       else
@@ -396,7 +396,7 @@ vci_scan_repo() {
         warned=$((warned + 1))
         # Fail closed only for a same-repo ref, which must be resolvable; cross-repo
         # reusables stay soft-pass (see header) since they are never fetched by default.
-        if [ -n "$group" ] && [ "$repo_slug" = "${VCI_SELF_REPO:-combsmith/.github-private}" ]; then
+        if [[ -n "$group" ]] && [[ "$repo_slug" = "${VCI_SELF_REPO:-combsmith/.github-private}" ]]; then
           echo "::error::caller-inputs: ingress job '${job}' declares a concurrency group but ${repo_slug}/${wf_path}@${ref} could not be resolved — the ADR-0010 collision rule cannot be checked"
           rc=1
         fi
@@ -410,7 +410,7 @@ vci_scan_repo() {
 
 main() {
   local root="${VCI_ROOT:-}"
-  if [ -z "$root" ]; then
+  if [[ -z "$root" ]]; then
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   fi
 
@@ -426,16 +426,16 @@ main() {
 }
 
 # Run only when executed directly, so tests can source the helpers.
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   set -euo pipefail
-  if [ "${1:-}" = "--pair" ]; then
+  if [[ "${1:-}" = "--pair" ]]; then
     caller="${2:?--pair requires <caller_file>}"
     reusable="${3:?--pair requires <reusable_file>}"
     lineno="${4:-}"
-    if [ -z "$lineno" ]; then
+    if [[ -z "$lineno" ]]; then
       mapfile -t _lines < "$caller"
       for (( _i = 0; _i < ${#_lines[@]}; _i++ )); do
-        if [ -n "$(vci_parse_uses "${_lines[_i]}")" ]; then
+        if [[ -n "$(vci_parse_uses "${_lines[_i]}")" ]]; then
           lineno=$((_i + 1))
           break
         fi

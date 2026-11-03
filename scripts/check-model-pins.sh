@@ -42,19 +42,19 @@ is_allowed() {
 
 found=0
 for d in "${SCAN_DIRS[@]}"; do
-  [ -d "$ROOT/$d" ] || continue
+  [[ -d "$ROOT/$d" ]] || continue
   # Capture matches. grep exits 0 (match), 1 (no match — expected/clean) or >1
   # (a real scan error: missing grep, unreadable tree). Never mask >1 with
   # `|| true` — that would report a false clean and let hard pins pass; fail loud.
   hits=""
   hits="$(grep -rnIE "$PATTERN" "$ROOT/$d" 2>/dev/null)" && rc=0 || rc=$?
-  if [ "$rc" -gt 1 ]; then
+  if [[ "$rc" -gt 1 ]]; then
     echo "::error::check-model-pins: scan of '$d' failed (grep exit $rc) — cannot certify clean." >&2
     exit 2
   fi
-  [ -n "$hits" ] || continue
-  while IFS= read -r hit || [ -n "$hit" ]; do
-    [ -n "$hit" ] || continue
+  [[ -n "$hits" ]] || continue
+  while IFS= read -r hit || [[ -n "$hit" ]]; do
+    [[ -n "$hit" ]] || continue
     file="${hit%%:*}"
     rel="${file#"$ROOT"/}"
     is_allowed "$rel" && continue
@@ -65,7 +65,7 @@ for d in "${SCAN_DIRS[@]}"; do
   done <<< "$hits"
 done
 
-if [ "$found" -ne 0 ]; then
+if [[ "$found" -ne 0 ]]; then
   echo "::error::check-model-pins: hard-pinned Claude model id(s) found above — name a family (opus|sonnet|haiku) via ai_model_for_family, or mark the line 'model-pin-ok: <reason>' if a concrete id is required."
   exit 1
 fi

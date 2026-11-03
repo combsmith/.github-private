@@ -21,8 +21,8 @@ PR_NUMBER=""
 
 cleanup() {
   log "Cleanup: ${SCENARIO_NAME}"
-  [ -n "$PR_NUMBER" ] && cleanup_pr "${PR_NUMBER}" || true
-  [ -n "$BRANCH" ] && cleanup_branch "${BRANCH}" || true
+  [[ -n "$PR_NUMBER" ]] && cleanup_pr "${PR_NUMBER}" || true
+  [[ -n "$BRANCH" ]] && cleanup_branch "${BRANCH}" || true
 }
 
 trap cleanup EXIT
@@ -32,7 +32,7 @@ main() {
   log "Test: human @dev-lead comment on PR → intent=human"
 
   # ── Check for required token ───────────────────────────────────────────────
-  if [ -z "${GH_TOKEN:-}" ]; then
+  if [[ -z "${GH_TOKEN:-}" ]]; then
     err "GH_TOKEN not set — skipping live scenario ${SCENARIO_NAME}"
     record_result "${SCENARIO_NAME}" "SKIP" "GH_TOKEN not set"
     exit 0
@@ -92,7 +92,7 @@ main() {
   # in a way that suggests the intent was wrong.
   if ! assert_conclusion "${conclusion}" "success" "${SCENARIO_NAME}: workflow completes successfully"; then
     # Also accept "neutral" (if DEV_LEAD_DRY_RUN blocks real actions) for now
-    if [ "${conclusion}" = "neutral" ]; then
+    if [[ "${conclusion}" = "neutral" ]]; then
       echo "[PASS] ${SCENARIO_NAME}: workflow conclusion=neutral (dry-run mode)"
     else
       all_pass=false
@@ -112,7 +112,7 @@ main() {
   # We still pass the scenario if the workflow ran and produced a dispatch.
 
   # ── Result ─────────────────────────────────────────────────────────────────
-  if [ "${all_pass}" = "true" ]; then
+  if [[ "${all_pass}" = "true" ]]; then
     log "[PASS] ${SCENARIO_NAME}: human @mention triggered workflow as expected"
     record_result "${SCENARIO_NAME}" "PASS" "conclusion=${conclusion}"
     exit 0

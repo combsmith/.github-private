@@ -26,7 +26,7 @@ readonly -a PP_REQUIRED_SA_SETTINGS=(
 pp_apply_security_and_analysis() {
   : "${REPO:?pp_apply_security_and_analysis: REPO must be set}"
 
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would patch security_and_analysis on ${REPO}: ${PP_REQUIRED_SA_SETTINGS[*]}"
     return 0
   fi

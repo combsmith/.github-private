@@ -173,7 +173,7 @@ sc_large_pr() {
   local churn=$((add + del))
 
   local is_large=0
-  if [ "$files" -ge "$max_files" ] || [ "$churn" -ge "$max_lines" ]; then
+  if [ "$files" -ge "$max_files" ] || [ "$churn" -ge "$max_lines" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     is_large=1
   fi
 
@@ -182,10 +182,10 @@ sc_large_pr() {
     has_plan=1
   fi
 
-  if [ "$is_large" -eq 1 ] && [ "$has_plan" -eq 0 ]; then
+  if [[ "$is_large" -eq 1 ]] && [[ "$has_plan" -eq 0 ]]; then
     printf 'true|%s changed files, %s changed lines, no implementation-plan section in description\n' "$files" "$churn"
   else
-    printf 'false|%s changed files, %s changed lines, plan_section=%s\n' "$files" "$churn" "$([ "$has_plan" -eq 1 ] && echo present || echo absent)"
+    printf 'false|%s changed files, %s changed lines, plan_section=%s\n' "$files" "$churn" "$([[ "$has_plan" -eq 1 ]] && echo present || echo absent)"
   fi
 }
 
@@ -416,20 +416,20 @@ sc_trusted_stub_sync() {
   fp_reusable=$(sc_firstparty_reusable "$diff" || true)
   secret_fwd=$(sc_secret_forwarding "$diff" || true)
   local sir_flag="false" tpr_flag="false" fpr_flag="false" sfw_flag="false"
-  [ -n "$secret_in_run" ] && sir_flag="true"
-  [ -n "$tp_reusable" ] && tpr_flag="true"
-  [ -n "$fp_reusable" ] && fpr_flag="true"
-  [ -n "$secret_fwd" ] && sfw_flag="true"
+  [[ -n "$secret_in_run" ]] && sir_flag="true"
+  [[ -n "$tp_reusable" ]] && tpr_flag="true"
+  [[ -n "$fp_reusable" ]] && fpr_flag="true"
+  [[ -n "$secret_fwd" ]] && sfw_flag="true"
 
   # Workflow-only change: every changed path is a .github/workflows/*.yml file.
   # Empty/absent file list (e.g. metadata without .files) => not workflow-only.
   local paths wf_only="false"
   paths=$(jq -r '.files[]?.path // empty' <<< "$meta" 2>/dev/null || true)
-  if [ -n "$paths" ]; then
+  if [[ -n "$paths" ]]; then
     wf_only="true"
     local p
     while IFS= read -r p; do
-      [ -n "$p" ] || continue
+      [[ -n "$p" ]] || continue
       if ! [[ "$p" =~ ^\.github/workflows/.*\.(yml|yaml)$ ]]; then
         wf_only="false"; break
       fi
@@ -449,7 +449,7 @@ sc_trusted_stub_sync() {
   fi
   # For the trusted carve-out, require is_bot; title_sync is corroborating evidence only.
   local sync="false"
-  if [ "$is_bot" = "true" ] || [ "$title_sync" = "true" ]; then
+  if [[ "$is_bot" = "true" ]] || [[ "$title_sync" = "true" ]]; then
     sync="true"
   fi
 
@@ -460,9 +460,9 @@ sc_trusted_stub_sync() {
   # are what prove this is a first-party secret-forwarding stub, not just any
   # workflow-only bot edit.
   local trusted="false"
-  if [ "$wf_only" = "true" ] && [ "$is_bot" = "true" ] \
-     && [ "$fpr_flag" = "true" ] && [ "$sfw_flag" = "true" ] \
-     && [ "$sir_flag" = "false" ] && [ "$tpr_flag" = "false" ]; then
+  if [[ "$wf_only" = "true" ]] && [[ "$is_bot" = "true" ]] \
+     && [[ "$fpr_flag" = "true" ]] && [[ "$sfw_flag" = "true" ]] \
+     && [[ "$sir_flag" = "false" ]] && [[ "$tpr_flag" = "false" ]]; then
     trusted="true"
   fi
 
@@ -499,32 +499,32 @@ compute_safety_checks() {
   grep -q '^TRUSTED_STUB_SYNC: true' <<< "$stub" && trusted_stub="true"
 
   local ci_flag="false" pi_flag="false"
-  [ -n "$ci" ] && ci_flag="true"
-  [ -n "$pi" ] && pi_flag="true"
+  [[ -n "$ci" ]] && ci_flag="true"
+  [[ -n "$pi" ]] && pi_flag="true"
 
   local large_bool="${large%%|*}"
   local large_reason="${large#*|}"
-  [ -n "$large_bool" ] || large_bool="false"
+  [[ -n "$large_bool" ]] || large_bool="false"
   local desc_count="${desc%%|*}"
   local desc_csv="${desc#*|}"
   [[ "$desc_count" =~ ^[0-9]+$ ]] || desc_count=0
 
   local dep_count=0
-  [ -n "$dep" ] && dep_count=$(grep -c . <<< "$dep" || true)
+  [[ -n "$dep" ]] && dep_count=$(grep -c . <<< "$dep" || true)
   [[ "$dep_count" =~ ^[0-9]+$ ]] || dep_count=0
 
   # Assemble the human/LLM-readable findings list.
   local findings=""
   local l
-  if [ -n "$ci" ]; then
+  if [[ -n "$ci" ]]; then
     while IFS= read -r l; do
-      [ -n "$l" ] || continue
+      [[ -n "$l" ]] || continue
       findings+="  - [blocking] ci-weakening: ${l#*$'\t'} (${l%%$'\t'*})"$'\n'
     done <<< "$ci"
   fi
-  if [ -n "$pi" ]; then
+  if [[ -n "$pi" ]]; then
     while IFS= read -r l; do
-      [ -n "$l" ] || continue
+      [[ -n "$l" ]] || continue
       findings+="  - [blocking] prompt-injection: ${l#*$'\t'} (${l%%$'\t'*})"$'\n'
     done <<< "$pi"
   fi
@@ -532,23 +532,23 @@ compute_safety_checks() {
   # expected for the class (bot-authored, terse body, many stubs) and are demoted
   # to informational so they don't, by themselves, drive a "needs human" verdict.
   local proc_sev="escalate"
-  [ "$trusted_stub" = "true" ] && proc_sev="info"
-  if [ "$large_bool" = "true" ]; then
+  [[ "$trusted_stub" = "true" ]] && proc_sev="info"
+  if [[ "$large_bool" = "true" ]]; then
     findings+="  - [$proc_sev] large-pr: $large_reason"$'\n'
   fi
-  if [ "$desc_count" -ge 3 ]; then
+  if [ "$desc_count" -ge 3 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     findings+="  - [$proc_sev] description-quality: $desc_count of 5 required sections missing ($desc_csv)"$'\n'
   fi
-  if [ "$trusted_stub" = "true" ]; then
+  if [[ "$trusted_stub" = "true" ]]; then
     findings+="  - [info] trusted-stub-sync: first-party caller-stub / standards-sync change (workflow-only, secret-forwarding to a combsmith reusable, no third-party reusable); process gates above are informational for this class"$'\n'
   fi
-  if [ -n "$dep" ]; then
+  if [[ -n "$dep" ]]; then
     while IFS= read -r l; do
-      [ -n "$l" ] || continue
+      [[ -n "$l" ]] || continue
       findings+="  - [warn] dependency-risk: ${l#*$'\t'} (${l%%$'\t'*})"$'\n'
     done <<< "$dep"
   fi
-  [ -n "$findings" ] || findings="  (none)"$'\n'
+  [[ -n "$findings" ]] || findings="  (none)"$'\n'
 
   printf 'CI_WEAKENING_DETECTED: %s\n' "$ci_flag"
   printf 'PROMPT_INJECTION_DETECTED: %s\n' "$pi_flag"
@@ -582,10 +582,10 @@ assemble_safety_checks() {
 #   which case it emits NOTHING so the triage prompt is byte-identical to
 #   pre-feature behavior (rollback + holdout-eval stability).
 safety_checks_triage_section() {
-  [ "${SAFETY_CHECKS_ENABLED:-true}" = "true" ] || return 0
+  [[ "${SAFETY_CHECKS_ENABLED:-true}" = "true" ]] || return 0
   local sc_file="${1:-${SAFETY_CHECKS_FILE:-}}"
   local block=""
-  if [ -n "$sc_file" ] && [ -f "$sc_file" ]; then
+  if [[ -n "$sc_file" ]] && [[ -f "$sc_file" ]]; then
     block=$(cat "$sc_file")
   fi
   # shellcheck disable=SC2016  # backticked tokens are literal prompt text, not shell expansions

@@ -22,7 +22,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 PLAN_PATH="${PLAN_PATH:?PLAN_PATH required (path to the reviewed plan.json)}"
-[ -f "$PLAN_PATH" ] && [ -s "$PLAN_PATH" ] || { echo "::error::reviewed plan '$PLAN_PATH' missing, empty, or not a regular file" >&2; exit 1; }
+[[ -f "$PLAN_PATH" ]] && [[ -s "$PLAN_PATH" ]] || { echo "::error::reviewed plan '$PLAN_PATH' missing, empty, or not a regular file" >&2; exit 1; }
 
 # Guard: reviewed plans must have an explicit source_discussion. A reviewed
 # artifact is applied out-of-band, potentially in a different session context;
@@ -30,12 +30,12 @@ PLAN_PATH="${PLAN_PATH:?PLAN_PATH required (path to the reviewed plan.json)}"
 # current dispatch context. Also reject artifacts that target a different
 # discussion than the one the maintainer declared.
 plan_src="$(jq -r '.source_discussion // empty' "$PLAN_PATH")"
-if [ -z "$plan_src" ]; then
+if [[ -z "$plan_src" ]]; then
   echo "::error::plan.json must have a source_discussion field for reviewed-plan applies — the artifact must be self-contained about its origin." >&2
   exit 1
 fi
-if [ -n "${DISCUSSION_NUMBER:-}" ]; then
-  if [ "$plan_src" != "$DISCUSSION_NUMBER" ]; then
+if [[ -n "${DISCUSSION_NUMBER:-}" ]]; then
+  if [[ "$plan_src" != "$DISCUSSION_NUMBER" ]]; then
     echo "::error::plan.json source_discussion (${plan_src}) does not match this run's DISCUSSION_NUMBER (${DISCUSSION_NUMBER}) — supply the correct dry-run run ID for discussion #${DISCUSSION_NUMBER}." >&2
     exit 1
   fi

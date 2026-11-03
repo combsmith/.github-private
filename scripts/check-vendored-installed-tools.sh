@@ -31,7 +31,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TREE="${1:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
-if [ ! -d "$TREE" ]; then
+if [[ ! -d "$TREE" ]]; then
   echo "::error::check-vendored-installed-tools: tree does not exist: ${TREE}" >&2
   exit 2
 fi
@@ -69,7 +69,7 @@ list_tree_files() {
   # merely nested inside a parent repo — otherwise `git ls-files` would run
   # against the parent and return nothing for an untracked tree (e.g. a BATS
   # temp dir created under the repo during local dev), silently passing.
-  if [ -e "$TREE/.git" ]; then
+  if [[ -e "$TREE/.git" ]]; then
     git -C "$TREE" ls-files
   else
     ( cd "$TREE" && find . -type f | sed 's|^\./||' )
@@ -82,7 +82,7 @@ list_tree_files() {
 # `apt-get install -y \` then `bats` on the next line — is still detected;
 # plain per-line grep would miss it.
 workflow_install_files() {
-  [ -d "$WF_DIR" ] || return 0
+  [[ -d "$WF_DIR" ]] || return 0
   local f
   find "$WF_DIR" -type f 2>/dev/null | while IFS= read -r f; do
     if awk '{ while (sub(/\\$/, "")) { if ((getline nxt) > 0) $0 = $0 nxt; else break } print }' "$f" \
@@ -100,14 +100,14 @@ for leaf in "${TOOL_LEAVES[@]}"; do
   regex="$(tool_install_regex "$leaf")" || continue
 
   install_files="$(workflow_install_files "$regex")"
-  [ -n "$install_files" ] || continue
+  [[ -n "$install_files" ]] || continue
 
   # Vendored directories of this leaf under a dependency-manager directory.
   vendored="$(printf '%s\n' "$tree_files" \
     | grep -E "(^|/)(${DEP_DIRS})/${leaf}(/|$)" \
     | sed -E "s#^(.*(${DEP_DIRS})/${leaf}).*#\\1#" \
     | LC_ALL=C sort -u || true)"
-  [ -n "$vendored" ] || continue
+  [[ -n "$vendored" ]] || continue
 
   fail=1
   report="${report}Tool '${leaf}' is installed by CI:
@@ -117,7 +117,7 @@ $(printf '%s\n' "$vendored" | sed 's|^|    |')
 "
 done
 
-if [ "$fail" -ne 0 ]; then
+if [[ "$fail" -ne 0 ]]; then
   echo "::error::Vendored copy of a CI-installed tool detected (#1541 / #1449)."
   printf '%s\n' "$report"
   echo "CI already installs this tool via a package manager, so the committed"

@@ -139,7 +139,7 @@ compute_pr_automation_cycles() {
 #   failure here can only leave the count where it was (fail closed).
 pr_budget_flag_mechanical() {
   local events_json="${1:-[]}" pr_author="${2:-}" logins_json out
-  if [ "$pr_author" != "$_PR_BUDGET_DEPENDABOT_AUTHOR" ] || [ -z "${PR_BUDGET_MECHANICAL_LOGINS}" ]; then
+  if [[ "$pr_author" != "$_PR_BUDGET_DEPENDABOT_AUTHOR" ]] || [[ -z "${PR_BUDGET_MECHANICAL_LOGINS}" ]]; then
     printf '%s\n' "$events_json"
     return 0
   fi
@@ -209,7 +209,7 @@ pr_hold_gate_label() {
   local labels_json="${1:-[]}" names
   names=$(jq -r 'if type == "array" then .[] | strings else empty end' \
     <<<"$labels_json" 2>/dev/null) || return 1
-  [ -n "$names" ] || return 1
+  [[ -n "$names" ]] || return 1
   hold_gate_first_match "$names"
 }
 
@@ -247,7 +247,7 @@ pr_hold_kind() {
   # the `status=rate-limited` field of the real marker closes that spoof path
   # while staying a literal substring match (canonical producer:
   # advisory-review-gate.sh's maybe_post_rate_limited_marker).
-  if [ -n "$head_sha" ] \
+  if [[ -n "$head_sha" ]] \
       && _pr_items_have_marker "$items_json" "${PR_RATE_LIMITED_MARKER_PREFIX}${head_sha} status=rate-limited "; then
     echo "rate-limit-only"
     return 0
@@ -261,7 +261,7 @@ pr_hold_kind() {
 #   non-array input degrades to "no match" (exit 1).
 _pr_items_have_marker() {
   local items_json="${1:-[]}" needle="${2:-}"
-  [ -n "$needle" ] || return 1
+  [[ -n "$needle" ]] || return 1
   if jq -e --arg needle "$needle" '
     if type == "array" then any(.[]; (.body? // "" | tostring) | contains($needle)) else false end
   ' <<<"$items_json" >/dev/null 2>&1; then
@@ -289,18 +289,18 @@ _pr_items_have_marker() {
 #   A labels_json that is not a JSON array (a failed fetch or parse) suppresses.
 pr_resume_suppressed() {
   local pr="$1" repo="$2" labels_json="${3:-}" events_json="${4:-}"
-  [ -n "$pr" ] && [ -n "$repo" ] || return 1
+  [[ -n "$pr" ]] && [[ -n "$repo" ]] || return 1
 
-  if [ -z "$labels_json" ]; then
+  if [[ -z "$labels_json" ]]; then
     local labels_call=("repos/${repo}/pulls/${pr}" --jq '[.labels[]?.name]') labels_rc=0
     labels_json=$(gh_api_read "${labels_call[@]}" 2>/dev/null) || labels_rc=$?
-    if [ "$labels_rc" -eq "$GH_QUOTA_EXHAUSTED_RC" ]; then
+    if [ "$labels_rc" -eq "$GH_QUOTA_EXHAUSTED_RC" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       # Quota refused: the labels are unknown, so suppress (fail closed) and say
       # why. 2>/dev/null dropped the wrapper's copy of the line; print it here.
       gh_quota_error "${labels_call[@]}"
       return 0
     fi
-    [ "$labels_rc" -eq 0 ] || labels_json=''
+    [[ "$labels_rc" -eq 0 ]] || labels_json=''
   fi
   # An unreadable label set may be hiding a hold, so it suppresses (fail closed,
   # #2089 review); `[]` is reserved for a label set that was read and is empty.
@@ -318,12 +318,12 @@ pr_resume_suppressed() {
   # skipped at intent time — clutter plus spent retry attempts.
   local hold hold_rc=0
   hold=$(pr_hold_gate_label "$labels_json") || hold_rc=$?
-  if [ "$hold_rc" -eq 0 ]; then
+  if [[ "$hold_rc" -eq 0 ]]; then
     echo "  [suppress] PR #${pr} in ${repo} carries ${hold} — human hold; not resuming (#2089)" >&2
     return 0
   fi
 
-  if [ -z "$events_json" ]; then
+  if [[ -z "$events_json" ]]; then
     if ! events_json=$(gather_pr_automation_events "$pr" "$repo"); then
       echo "  [suppress] PR #${pr} in ${repo} — budget events unavailable (API error); suppressing fail-closed" >&2
       return 0
@@ -343,7 +343,7 @@ pr_budget_exhausted() {
   local events_json="${1:-[]}"
   local n
   n=$(compute_pr_automation_cycles "$events_json")
-  if [ "${n:-0}" -ge "${MAX_PR_AUTOMATION_CYCLES:-50}" ]; then
+  if [ "${n:-0}" -ge "${MAX_PR_AUTOMATION_CYCLES:-50}" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     return 0
   fi
   return 1
@@ -385,7 +385,7 @@ gather_pr_automation_events() {
   else
     api_error=1; reviews='[]'
   fi
-  if [ "$api_error" -ne 0 ]; then
+  if [[ "$api_error" -ne 0 ]]; then
     echo "  [warn] budget event collection incomplete for PR ${pr} in ${repo} — API unavailable" >&2
     return 1
   fi
@@ -411,10 +411,10 @@ _pr_budget_log_flags() {
     [ ([.[] | select(.mechanical == true)] | length),
       ([.[] | select(.agent_marked == true and ((.login | is_bot($bots)) | not))] | length) ]
     | @tsv' <<<"$events_json" 2>/dev/null) || true
-  if [ "${n_mech:-0}" -gt 0 ] 2>/dev/null; then
+  if [ "${n_mech:-0}" -gt 0 ] 2>/dev/null; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "  [budget] PR #${pr} in ${repo}: ${n_mech} Dependabot-pipeline event(s) left out of the automation budget (#2224)" >&2
   fi
-  if [ "${n_marked:-0}" -gt 0 ] 2>/dev/null; then
+  if [ "${n_marked:-0}" -gt 0 ] 2>/dev/null; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "  [budget] PR #${pr} in ${repo}: ${n_marked} marker-carrying agent event(s) under a human login counted as automated (#2224)" >&2
   fi
   return 0
@@ -438,7 +438,7 @@ pr_automation_already_escalated() {
 #   the PR resets the budget (see compute_pr_automation_cycles).
 pr_automation_escalate() {
   local pr="$1" repo="$2"
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ] || [ "${DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]] || [[ "${DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would escalate PR #${pr}: post budget-exhaustion comment, add needs-human-review, disable auto-merge"
     return 0
   fi
@@ -477,7 +477,7 @@ This PR has reached **${MAX_PR_AUTOMATION_CYCLES}** automated actions (agent com
 #   escalating once, or 1 (budget remains — proceed).
 enforce_pr_budget() {
   local pr="$1" repo="$2"
-  [ -n "$pr" ] && [ -n "$repo" ] || return 1
+  [[ -n "$pr" ]] && [[ -n "$repo" ]] || return 1
   local events
   # Set by pr_automation_escalate only when THIS call created the escalation
   # comment (not on dedupe, dry-run, or a failed post); callers read it to tell a

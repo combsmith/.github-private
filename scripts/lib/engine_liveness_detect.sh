@@ -67,7 +67,7 @@ is_preflight_step() {
 #   outage), and a passing preflight is never a failure.
 step_is_preflight_failure() {
   is_preflight_step "${1:-}" || return 1
-  [ "${2:-}" = "failure" ]
+  [[ "${2:-}" = "failure" ]]
 }
 
 # repo_liveness_state <consecutive_preflight_failures> [newest_run_recent]
@@ -84,11 +84,11 @@ repo_liveness_state() {
   local n newest
   n=$(_el_int "${1:-0}")
   newest="${2:-yes}"
-  if [ "$newest" != "yes" ]; then
+  if [[ "$newest" != "yes" ]]; then
     echo "STALE"
-  elif [ "$n" -ge "$ENGINE_SUSTAINED_RUNS" ]; then
+  elif [ "$n" -ge "$ENGINE_SUSTAINED_RUNS" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "OUTAGE"
-  elif [ "$n" -ge 1 ]; then
+  elif [ "$n" -ge 1 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "FAIL"
   else
     echo "OK"
@@ -106,11 +106,11 @@ within_lookback() {
   run=$(_el_int "${1:-}")
   now=$(_el_int "${2:-}")
   days=$(_el_int "${3:-$ENGINE_LIVENESS_DEFAULT_LOOKBACK_DAYS}")
-  [ "$days" -ge 1 ] || days=$ENGINE_LIVENESS_DEFAULT_LOOKBACK_DAYS
-  [ "$run" -gt 0 ] || return 1
-  [ "$now" -gt 0 ] || return 1
+  [ "$days" -ge 1 ] || days=$ENGINE_LIVENESS_DEFAULT_LOOKBACK_DAYS  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+  [ "$run" -gt 0 ] || return 1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+  [ "$now" -gt 0 ] || return 1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   cutoff=$(( now - days * 86400 ))
-  [ "$run" -ge "$cutoff" ]
+  [ "$run" -ge "$cutoff" ]  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 }
 
 # newest_run_recent <runs_tsv_file> <now_epoch> <lookback_days>
@@ -119,7 +119,7 @@ within_lookback() {
 #   are "<run_iso> <TAB> <yes|no>", most-recent first.
 newest_run_recent() {
   local f="${1:-}" now="${2:-}" days="${3:-}" iso epoch
-  if [ -z "$f" ] || [ ! -s "$f" ]; then
+  if [[ -z "$f" ]] || [[ ! -s "$f" ]]; then
     echo "no"
     return 0
   fi
@@ -140,12 +140,12 @@ newest_run_recent() {
 #   "<run_iso> <TAB> <yes|no>", most-recent first.
 within_window_streak() {
   local f="${1:-}" now="${2:-}" days="${3:-}" streak=0 iso failed epoch
-  { [ -n "$f" ] && [ -s "$f" ]; } || { echo 0; return 0; }
+  { [[ -n "$f" ]] && [[ -s "$f" ]]; } || { echo 0; return 0; }
   while IFS=$'\t' read -r iso failed; do
-    [ -n "$iso" ] || continue
+    [[ -n "$iso" ]] || continue
     epoch=$(_el_to_epoch "$iso")
     within_lookback "$(_el_int "$epoch")" "$now" "$days" || break
-    [ "$failed" = "yes" ] || break
+    [[ "$failed" = "yes" ]] || break
     streak=$(( streak + 1 ))
   done < "$f"
   echo "$streak"
@@ -164,7 +164,7 @@ repo_liveness_from_runs() {
   local f="${1:-}" now days streak recent
   now=$(_el_int "${2:-}")
   days=$(_el_int "${3:-$ENGINE_LIVENESS_DEFAULT_LOOKBACK_DAYS}")
-  [ "$days" -ge 1 ] || days=$ENGINE_LIVENESS_DEFAULT_LOOKBACK_DAYS
+  [ "$days" -ge 1 ] || days=$ENGINE_LIVENESS_DEFAULT_LOOKBACK_DAYS  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   recent=$(newest_run_recent "$f" "$now" "$days")
   streak=$(within_window_streak "$f" "$now" "$days")
   repo_liveness_state "$streak" "$recent"
@@ -178,7 +178,7 @@ repo_liveness_from_runs() {
 #   "a real outage goes red" behaviour without letting resolved history stay red.
 run_should_fail() {
   local sustained; sustained=$(_el_int "${1:-0}")
-  [ "$sustained" -ge 1 ]
+  [ "$sustained" -ge 1 ]  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 }
 
 # fleet_escalation <sustained_repo_count> <any_failure_repo_count>
@@ -192,9 +192,9 @@ fleet_escalation() {
   local sustained any
   sustained=$(_el_int "${1:-0}")
   any=$(_el_int "${2:-0}")
-  if [ "$sustained" -ge 2 ]; then
+  if [ "$sustained" -ge 2 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "FLEET"
-  elif [ "$any" -ge 1 ]; then
+  elif [ "$any" -ge 1 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "ISOLATED"
   else
     echo "NONE"
@@ -215,7 +215,7 @@ monitoring_status() {
   local inspected api_errors
   inspected=$(_el_int "${1:-0}")
   api_errors=$(_el_int "${2:-0}")
-  if [ "$inspected" -eq 0 ] && [ "$api_errors" -ge 1 ]; then
+  if [ "$inspected" -eq 0 ] && [ "$api_errors" -ge 1 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "DEGRADED"
   else
     echo "OK"
@@ -248,7 +248,7 @@ escalation_headline() {
 #   Portable across GNU/BSD date implementations (#1600).
 _el_to_epoch() {
   local v="${1:-}" normalized
-  [ -n "$v" ] || { echo ""; return 0; }
+  [[ -n "$v" ]] || { echo ""; return 0; }
   # Normalize ISO 8601 to a space-separated form for the BSD fallback below.
   #
   # This MUST be anchored, not a blanket substitution: `${v//T/ }` also rewrites
@@ -283,21 +283,21 @@ pat_expiry_state() {
   local value warn_days now exp
   value="${1:-}"
   warn_days=$(_el_int "${2:-14}")
-  [ "$warn_days" -eq 0 ] && warn_days=14
+  [ "$warn_days" -eq 0 ] && warn_days=14  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   now="${3:-$(date -u +%s)}"
 
-  if [ -z "$value" ]; then
+  if [[ -z "$value" ]]; then
     echo "NO_EXPIRY"
     return 0
   fi
   exp=$(_el_to_epoch "$value")
-  if [ -z "$exp" ]; then
+  if [[ -z "$exp" ]]; then
     echo "UNKNOWN"
     return 0
   fi
-  if [ "$exp" -le "$now" ]; then
+  if [ "$exp" -le "$now" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "EXPIRED"
-  elif [ "$exp" -le $(( now + warn_days * 86400 )) ]; then
+  elif [ "$exp" -le $(( now + warn_days * 86400 )) ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "EXPIRING"
   else
     echo "OK"
@@ -332,7 +332,7 @@ pat_missing_scopes() {
 pat_scopes_ok() {
   local missing
   missing=$(pat_missing_scopes "$@")
-  [ -z "$missing" ]
+  [[ -z "$missing" ]]
 }
 
 # render_liveness_table <rows_tsv_file>
@@ -344,7 +344,7 @@ pat_scopes_ok() {
 #   line and no table, so a clean run still emits a signal.
 render_liveness_table() {
   local f="${1:-}"
-  if [ -z "$f" ] || [ ! -s "$f" ]; then
+  if [[ -z "$f" ]] || [[ ! -s "$f" ]]; then
     printf 'No engine-token preflight failure detected across the monitored caller stubs.\n'
     return 0
   fi
@@ -352,7 +352,7 @@ render_liveness_table() {
   printf '|---|---|---|---|---|\n'
   local repo stub state consec last_run
   while IFS=$'\t' read -r repo stub state consec last_run; do
-    [ -n "$repo" ] || continue
+    [[ -n "$repo" ]] || continue
     printf '| %s | `%s` | %s | %s | %s |\n' "$repo" "$stub" "$state" "$consec" "${last_run:-—}"
   done < "$f"
 }

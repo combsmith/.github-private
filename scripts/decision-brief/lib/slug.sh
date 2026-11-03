@@ -37,7 +37,7 @@ db_slug_from_title() {
   # Everything that is not a-z0-9 becomes a hyphen (bytes of emoji/punctuation
   # included), then squeeze and trim.
   s="$(printf '%s' "$s" | LC_ALL=C sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
-  if [ "${#s}" -gt 48 ]; then
+  if [[ "${#s}" -gt 48 ]]; then
     s="${s:0:48}"
     s="${s%-*}"
   fi
@@ -48,8 +48,8 @@ db_slug_from_title() {
 # ([a-z0-9] with single hyphens, no leading/trailing hyphen) and ≤ 48 chars.
 db_slug_is_valid() {
   local s="${1:-}"
-  [ -n "$s" ] || return 1
-  [ "${#s}" -le 48 ] || return 1
+  [[ -n "$s" ]] || return 1
+  [[ "${#s}" -le 48 ]] || return 1
   case "$s" in
     _template | _TEMPLATE) return 1 ;;
   esac

@@ -31,20 +31,20 @@ remediate_dry_run() {
 
   # Live is only ever considered on an explicit workflow_dispatch remediate=live.
   # Every other trigger (schedule, workflow_call) stays dry-run unconditionally.
-  if [ "$event" != "workflow_dispatch" ] || [ "$mode" != "live" ]; then
+  if [[ "$event" != "workflow_dispatch" ]] || [[ "$mode" != "live" ]]; then
     echo "true"
     return 0
   fi
 
   # Cross-repo write credential required to open remediation PRs on target repos.
-  if [ "$token_present" != "true" ]; then
+  if [[ "$token_present" != "true" ]]; then
     echo "::warning::Fleet remediation requested live but the cross-repo write credential (GH_PAT_WORKFLOWS) is absent — degrading to dry-run." >&2
     echo "true"
     return 0
   fi
 
   # Phase-3 pilot scope required: live remediation is bounded to a named pilot.
-  if [ "$pilot_present" != "true" ]; then
+  if [[ "$pilot_present" != "true" ]]; then
     echo "::warning::Fleet remediation requested live but no pilot repo is configured (FLEET_REMEDIATE_PILOT_REPO) — degrading to dry-run." >&2
     echo "true"
     return 0
@@ -56,7 +56,7 @@ remediate_dry_run() {
 
 # Source-guard: tests source this to exercise the pure gate; a direct run prints
 # the DRY_RUN decision so the workflow step can capture it from stdout.
-if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]}" = "$0" ]]; then
   set -euo pipefail
   remediate_dry_run "$@"
 fi

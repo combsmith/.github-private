@@ -34,7 +34,7 @@ log()  { echo "[release-notes] $*" >&2; }
 notice() { echo "::notice::release-notes: $*"; }
 warn() { echo "::warning::release-notes: $*"; }
 
-if [ -z "$REPO" ] || [ -z "$HEAD_SHA" ]; then
+if [[ -z "$REPO" ]] || [[ -z "$HEAD_SHA" ]]; then
   echo "::error::GITHUB_REPOSITORY and GITHUB_SHA must be set"
   exit 1
 fi
@@ -60,7 +60,7 @@ check_existing_pr() {
 # ── Find merged PRs in the push range ────────────────────────────────────────
 
 find_merged_prs() {
-  if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+  if [[ -z "$BEFORE_SHA" ]] || [[ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]]; then
     log "No before SHA — using single-commit range"
     BEFORE_SHA="${HEAD_SHA}^"
   fi
@@ -71,7 +71,7 @@ find_merged_prs() {
   local commits
   commits=$(git log --pretty=format:"%H" "${BEFORE_SHA}..${HEAD_SHA}" 2>/dev/null || echo "")
 
-  if [ -z "$commits" ]; then
+  if [[ -z "$commits" ]]; then
     log "No commits found in range ${BEFORE_SHA}..${HEAD_SHA}"
     echo "[]"
     return
@@ -80,16 +80,16 @@ find_merged_prs() {
   # For each commit, find associated merged PRs via GitHub API search
   local pr_numbers=()
   while IFS= read -r sha; do
-    [ -z "$sha" ] && continue
+    [[ -z "$sha" ]] && continue
     local associated
     associated=$(gh api "repos/$REPO/commits/$sha/pulls" \
       --jq '.[].number' 2>/dev/null || echo "")
     while IFS= read -r n; do
-      [ -n "$n" ] && pr_numbers+=("$n")
+      [[ -n "$n" ]] && pr_numbers+=("$n")
     done < <(echo "$associated")
   done < <(echo "$commits")
 
-  if [ "${#pr_numbers[@]}" -eq 0 ]; then
+  if [[ "${#pr_numbers[@]}" -eq 0 ]]; then
     echo "[]"
     return
   fi
@@ -101,17 +101,17 @@ find_merged_prs() {
   # Fetch PR metadata and filter for merged PRs
   local pr_data_list=()
   while IFS= read -r pr_num; do
-    [ -z "$pr_num" ] && continue
+    [[ -z "$pr_num" ]] && continue
     local pr_data
     # Omit body to keep payload small and avoid ARG_MAX issues with envsubst
     pr_data=$(gh api "repos/$REPO/pulls/$pr_num" \
       --jq 'select(.merged_at != null) | {number: .number, title: .title, labels: [.labels[].name], merged_at: .merged_at, html_url: .html_url}' \
       2>/dev/null || echo "")
-    [ -n "$pr_data" ] && pr_data_list+=("$pr_data")
+    [[ -n "$pr_data" ]] && pr_data_list+=("$pr_data")
   done < <(echo "$unique_prs")
 
   local prs_json="[]"
-  if [ ${#pr_data_list[@]} -gt 0 ]; then
+  if [[ ${#pr_data_list[@]} -gt 0 ]]; then
     prs_json=$(printf '%s\n' "${pr_data_list[@]}" | jq -s '.')
   fi
 
@@ -139,7 +139,7 @@ generate_changelog_block() {
   local pr_list_json="$1"
 
   local prompt_template="$PROMPTS_DIR/aw/release-notes.md"
-  if [ ! -f "$prompt_template" ]; then
+  if [[ ! -f "$prompt_template" ]]; then
     warn "Prompt template not found at $prompt_template — using fallback"
     echo "$pr_list_json" | jq -r '.[] | "- \(.title) (#\(.number))"'
     return
@@ -185,7 +185,7 @@ generate_changelog_block() {
 # ── Ensure CHANGELOG exists with header ──────────────────────────────────────
 
 ensure_changelog() {
-  if [ ! -f "$CHANGELOG_FILE" ]; then
+  if [[ ! -f "$CHANGELOG_FILE" ]]; then
     log "Creating $CHANGELOG_FILE with Keep-a-Changelog header"
     cat > "$CHANGELOG_FILE" <<'EOF'
 # Changelog
@@ -261,11 +261,11 @@ EOF
 
 write_summary() {
   local all_prs_json="$1" filtered_prs_json="$2" block="$3"
-  [ -z "${GITHUB_STEP_SUMMARY:-}" ] && return
+  [[ -z "${GITHUB_STEP_SUMMARY:-}" ]] && return
   {
     echo "## Release Notes Generator — Push \`${SHORT_SHA}\`"
     echo ""
-    if [ "$DRY_RUN" = "true" ]; then
+    if [[ "$DRY_RUN" = "true" ]]; then
       echo "> **DRY-RUN mode** — no branch or PR was created"
       echo ""
     fi
@@ -291,7 +291,7 @@ log "Starting release-notes generator (repo=$REPO, sha=$SHORT_SHA, dry_run=$DRY_
 
 # Idempotency: skip if CHANGELOG PR already exists for this SHA
 existing_pr=$(check_existing_pr)
-if [ -n "$existing_pr" ]; then
+if [[ -n "$existing_pr" ]]; then
   notice "CHANGELOG PR already exists for SHA $HEAD_SHA — skipping ($existing_pr)"
   exit 0
 fi
@@ -301,7 +301,7 @@ all_prs_json=$(find_merged_prs)
 filtered_prs_json=$(filter_prs "$all_prs_json")
 
 pr_count=$(echo "$filtered_prs_json" | jq 'length')
-if [ "$pr_count" -eq 0 ]; then
+if [[ "$pr_count" -eq 0 ]]; then
   notice "No feat/fix PRs found in push $SHORT_SHA — skipping changelog"
   exit 0
 fi
@@ -311,7 +311,7 @@ log "Found $pr_count PR(s) for changelog"
 # Generate content
 changelog_block=$(generate_changelog_block "$filtered_prs_json")
 
-if [ "$changelog_block" = "SKIP" ] || [ -z "$changelog_block" ]; then
+if [[ "$changelog_block" = "SKIP" ]] || [[ -z "$changelog_block" ]]; then
   notice "Claude returned SKIP — no user-facing changes in push $SHORT_SHA"
   exit 0
 fi
@@ -319,7 +319,7 @@ fi
 # Write summary in all cases
 write_summary "$all_prs_json" "$filtered_prs_json" "$changelog_block"
 
-if [ "$DRY_RUN" = "true" ]; then
+if [[ "$DRY_RUN" = "true" ]]; then
   log "DRY-RUN: would open PR 'chore: update CHANGELOG for $SHORT_SHA'"
   exit 0
 fi

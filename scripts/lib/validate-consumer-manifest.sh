@@ -30,10 +30,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST="${CONSUMER_MANIFEST:-$SCRIPT_DIR/consumer-manifest.json}"
 REPO_ROOT="${MANIFEST_REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 
-while [ "$#" -gt 0 ]; do
+while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --manifest)
-      if [ "$#" -lt 2 ]; then
+      if [[ "$#" -lt 2 ]]; then
         echo "validate-consumer-manifest: --manifest requires a value" >&2
         exit 2
       fi
@@ -41,7 +41,7 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --repo-root)
-      if [ "$#" -lt 2 ]; then
+      if [[ "$#" -lt 2 ]]; then
         echo "validate-consumer-manifest: --repo-root requires a value" >&2
         exit 2
       fi
@@ -60,7 +60,7 @@ done
 errors=0
 err() { echo "validate-consumer-manifest: $*" >&2; errors=$((errors + 1)); }
 
-[ -f "$MANIFEST" ] || { err "manifest not found: $MANIFEST"; exit 1; }
+[[ -f "$MANIFEST" ]] || { err "manifest not found: $MANIFEST"; exit 1; }
 
 # 1. Valid JSON. jq empty parses without emitting output; any syntax error here
 #    means the whole manifest is unusable, so fail fast.
@@ -87,7 +87,7 @@ schema_ok=$(jq -r '
   )
 ' "$MANIFEST" 2>/dev/null || echo "false")
 
-if [ "$schema_ok" != "true" ]; then
+if [[ "$schema_ok" != "true" ]]; then
   err "manifest violates the required schema (providers/consumers/surface_sources shape)"
   exit 1
 fi
@@ -102,17 +102,17 @@ lib_root=$(realpath -m "$REPO_ROOT/scripts/lib")
 prompts_root=$(realpath -m "$REPO_ROOT/prompts")
 
 while IFS= read -r key; do
-  [ -n "$key" ] || continue
+  [[ -n "$key" ]] || continue
   case "$key" in
     .github/workflows/*) : ;;
     *) err "surface_sources key is not under .github/workflows/: $key"; continue ;;
   esac
   resolved=$(realpath -m "$REPO_ROOT/$key")
-  if [ "${resolved#"${wf_root}/"}" = "$resolved" ]; then
+  if [[ "${resolved#"${wf_root}/"}" = "$resolved" ]]; then
     err "surface_sources key contains path traversal: $key"
     continue
   fi
-  if [ ! -f "$resolved" ]; then
+  if [[ ! -f "$resolved" ]]; then
     err "surface_sources key is not an existing reusable-workflow path: $key"
     continue
   fi
@@ -122,7 +122,7 @@ while IFS= read -r key; do
 done < <(jq -r '.surface_sources | keys[]' "$MANIFEST")
 
 while IFS= read -r value; do
-  [ -n "$value" ] || continue
+  [[ -n "$value" ]] || continue
   case "$value" in
     scripts/lib/*.sh|scripts/lib/*.tsv|prompts/*) : ;;
     *)
@@ -130,16 +130,16 @@ while IFS= read -r value; do
       continue ;;
   esac
   resolved=$(realpath -m "$REPO_ROOT/$value")
-  if [ "${resolved#"${lib_root}/"}" = "$resolved" ] && [ "${resolved#"${prompts_root}/"}" = "$resolved" ]; then
+  if [[ "${resolved#"${lib_root}/"}" = "$resolved" ]] && [[ "${resolved#"${prompts_root}/"}" = "$resolved" ]]; then
     err "surface_sources value contains path traversal: $value"
     continue
   fi
-  if [ ! -f "$resolved" ]; then
+  if [[ ! -f "$resolved" ]]; then
     err "surface_sources value points at a non-existent local surface: $value"
   fi
 done < <(jq -r '.surface_sources | to_entries[] | .value[]' "$MANIFEST")
 
-if [ "$errors" -ne 0 ]; then
+if [[ "$errors" -ne 0 ]]; then
   echo "validate-consumer-manifest: FAILED with $errors error(s)" >&2
   exit 1
 fi

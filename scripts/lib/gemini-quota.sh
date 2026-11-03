@@ -33,7 +33,7 @@
 # cooldown (gq_escalated_cooldown).
 
 _GQ_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -z "${GEMINI_QUOTA_CAPS:-}" ]; then
+if [[ -z "${GEMINI_QUOTA_CAPS:-}" ]]; then
   GEMINI_QUOTA_CAPS="$_GQ_LIB_DIR/gemini-quota-caps.tsv"
 fi
 
@@ -57,7 +57,7 @@ gq_ledger_file() {
 
 # gq_setting <name> — value of a `setting` row in the caps file (empty when absent).
 gq_setting() {
-  [ -f "$GEMINI_QUOTA_CAPS" ] || return 0
+  [[ -f "$GEMINI_QUOTA_CAPS" ]] || return 0
   awk -F'\t' -v n="$1" '$1 == "setting" && $2 == n { print $3; exit }' "$GEMINI_QUOTA_CAPS"
 }
 
@@ -68,7 +68,7 @@ gq_key_index() {
     # A GOOGLE_API_KEY holding a different credential than GEMINI_API_KEY is its own
     # key: it gets its own index so cooldowns and ledger usage are not merged.
     GOOGLE_API_KEY)
-      if [ -n "${GEMINI_API_KEY:-}" ] && [ "${GOOGLE_API_KEY:-}" != "$GEMINI_API_KEY" ]; then
+      if [[ -n "${GEMINI_API_KEY:-}" ]] && [[ "${GOOGLE_API_KEY:-}" != "$GEMINI_API_KEY" ]]; then
         printf '1b'
       else
         printf '1'
@@ -81,7 +81,7 @@ gq_key_index() {
 # gq_caps_row_for <key_index> <model> — "glob\ttier\trpm\ttpm\trpd" of the most
 # specific caps row whose glob matches <model> (most literal characters), or nothing.
 gq_caps_row_for() {
-  [ -f "$GEMINI_QUOTA_CAPS" ] || return 0
+  [[ -f "$GEMINI_QUOTA_CAPS" ]] || return 0
   awk -F'\t' -v idx="$1" -v model="$2" '
     function glob2re(g,   re) {
       re = g
@@ -103,13 +103,13 @@ gq_caps_row_for() {
 gq_caps_for() {
   local row
   row="$(gq_caps_row_for "$1" "$2")"
-  [ -z "$row" ] || printf '%s\n' "${row#*$'\t'}"
+  [[ -z "$row" ]] || printf '%s\n' "${row#*$'\t'}"
 }
 
 # gq_cap_key_indexes — the key indexes that have caps rows, in file order (the tier
 # view's default key set: the fleet monitor holds no key, so it meters by index).
 gq_cap_key_indexes() {
-  [ -f "$GEMINI_QUOTA_CAPS" ] || return 0
+  [[ -f "$GEMINI_QUOTA_CAPS" ]] || return 0
   awk -F'\t' '/^[[:space:]]*#/ || NF < 6 || $1 == "setting" { next }
     !seen[$1]++ { print $1 }' "$GEMINI_QUOTA_CAPS"
 }
@@ -118,7 +118,7 @@ gq_cap_key_indexes() {
 # when the setting is missing/invalid is one requests-per-minute window.
 gq_default_cooldown_sec() {
   local v; v="$(gq_setting default_cooldown_sec)"
-  if [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -gt 0 ]; then
+  if [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf '%s' "$v"
   else
     printf '%s' "$_GQ_MINUTE"
@@ -136,10 +136,10 @@ gq_day_window() {
   now="$(gq_now)"
   t="$(gq_setting daily_reset_time)"
   tz="$(gq_setting daily_reset_tz)"
-  if [[ "$t" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] && [ -n "$tz" ] && [ "$tz" != "unknown" ]; then
+  if [[ "$t" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] && [[ -n "$tz" ]] && [[ "$tz" != "unknown" ]]; then
     if d="$(TZ="$tz" date -d "@$now" +%Y-%m-%d 2>/dev/null)" \
        && r="$(TZ="$tz" date -d "$d $t" +%s 2>/dev/null)" && [[ "$r" =~ ^[0-9]+$ ]]; then
-      if [ "$r" -gt "$now" ]; then
+      if [ "$r" -gt "$now" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
         # Previous local calendar day (not now-86400: DST days are 23/25h).
         n="$r"
         d="$(TZ="$tz" date -d "$d -1 day" +%Y-%m-%d 2>/dev/null)" \
@@ -149,7 +149,7 @@ gq_day_window() {
         n="$(TZ="$tz" date -d "$(TZ="$tz" date -d "$d +1 day" +%Y-%m-%d 2>/dev/null) $t" +%s 2>/dev/null)" \
           && [[ "$n" =~ ^[0-9]+$ ]] || n=""
       fi
-      if [ -n "$r" ] && [ -n "$n" ]; then
+      if [[ -n "$r" ]] && [[ -n "$n" ]]; then
         printf '%s\t%s\t0\n' "$r" "$n"
         return 0
       fi
@@ -169,14 +169,14 @@ gq_day_start() {
 gq_next_reset() {
   local s e r
   IFS=$'\t' read -r s e r <<< "$(gq_day_window)"
-  if [ "$r" = "0" ]; then printf '%s' "$e"; else printf '%s' $(( $(gq_now) + _GQ_DAY )); fi
+  if [[ "$r" = "0" ]]; then printf '%s' "$e"; else printf '%s' $(( $(gq_now) + _GQ_DAY )); fi
 }
 
 # _gq_day_label <epoch> — the reset-timezone calendar date of <epoch> (UTC when the
 # reset is not configured).
 _gq_day_label() {
   local tz; tz="$(gq_setting daily_reset_tz)"
-  { [ -n "$tz" ] && [ "$tz" != "unknown" ] && TZ="$tz" date -d "@$1" +%Y-%m-%d 2>/dev/null; } \
+  { [[ -n "$tz" ]] && [[ "$tz" != "unknown" ]] && TZ="$tz" date -d "@$1" +%Y-%m-%d 2>/dev/null; } \
     || date -u -d "@$1" +%Y-%m-%d
 }
 
@@ -187,7 +187,7 @@ gq_day_bounds() {
   local n="${1:-7}" s e r t tz d d0 k st en prev
   [[ "$n" =~ ^[0-9]+$ ]] || n=7
   IFS=$'\t' read -r s e r <<< "$(gq_day_window)"
-  if [ "$r" != "0" ]; then
+  if [[ "$r" != "0" ]]; then
     e="$(gq_now)"
     for (( k = 0; k <= n; k++ )); do
       printf 'rolling-%s\t%s\t%s\n' "$k" $(( e - (k + 1) * _GQ_DAY )) $(( e - k * _GQ_DAY ))
@@ -218,12 +218,12 @@ gq_day_bounds() {
 gq_ledger_rows() {
   local idx="$1" since="$2" f out
   f="$(gq_ledger_file)"
-  if [ -z "$f" ]; then
+  if [[ -z "$f" ]]; then
     printf 'no ledger configured — TOKEN_LOG_FILE unset'
     return 1
   fi
-  [ -e "$f" ] || return 0
-  if [ ! -r "$f" ] || [ -d "$f" ]; then
+  [[ -e "$f" ]] || return 0
+  if [[ ! -r "$f" ]] || [[ -d "$f" ]]; then
     printf 'ledger file is not readable'
     return 1
   fi
@@ -257,7 +257,7 @@ gq_ledger_rows() {
     printf 'ledger has %s malformed line(s)' "${out#BAD$'\t'}"
     return 1
   fi
-  [ -z "$out" ] || printf '%s\n' "$out"
+  [[ -z "$out" ]] || printf '%s\n' "$out"
 }
 
 # gq_key_pct <key_index> [model]
@@ -276,7 +276,7 @@ gq_key_pct() {
   now="$(gq_now)"
   day="$(gq_day_start)"
   since=$(( now - _GQ_MINUTE ))
-  [ "$day" -lt "$since" ] && since="$day"
+  [ "$day" -lt "$since" ] && since="$day"  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   if ! rows="$(gq_ledger_rows "$idx" "$since")"; then
     printf 'unknown\tledger: %s' "$rows"
     return 0
@@ -323,7 +323,7 @@ gq_key_pct() {
       else print best + 0
     }
   ' - "$GEMINI_QUOTA_CAPS" 2>/dev/null)"
-  if [ -z "$result" ] || [ "$result" = "unknown" ]; then
+  if [[ -z "$result" ]] || [[ "$result" = "unknown" ]]; then
     printf 'unknown\tlimits'
     return 0
   fi
@@ -350,11 +350,11 @@ gq_engine_headroom() {
       esac
       continue
     fi
-    if [ -z "$best" ] || [ "$pct" -lt "$best" ]; then best="$pct"; fi
+    if [[ -z "$best" ]] || [ "$pct" -lt "$best" ]; then best="$pct"; fi  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   done
-  if [ -n "$best" ] && [ "$best" -lt "$threshold" ]; then
+  if [[ -n "$best" ]] && [ "$best" -lt "$threshold" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf 'ok|%s\n' "$best"
-  elif [ -z "$unknown_keys" ] && [ -z "$ledger_why" ] && [ -n "$best" ]; then
+  elif [[ -z "$unknown_keys" ]] && [[ -z "$ledger_why" ]] && [[ -n "$best" ]]; then
     printf 'over|%s\n' "$best"
   else
     printf 'unknown|%s|%s\n' "$unknown_keys" "$ledger_why"
@@ -367,7 +367,7 @@ gq_engine_headroom() {
 gq_record_cooldown() {
   local idx="$1" model="$2" secs="$3" reason="${4:-}" f now
   f="$(gq_ledger_file)"
-  [ -n "$f" ] || return 0
+  [[ -n "$f" ]] || return 0
   [[ "$secs" =~ ^[0-9]+$ ]] || secs="$(gq_default_cooldown_sec)"
   now="$(gq_now)"
   jq -cn --arg ts "$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)" \
@@ -385,7 +385,7 @@ gq_record_cooldown() {
 gq_cooldown_until() {
   local idx="$1" model="$2" f now
   f="$(gq_ledger_file)"
-  [ -n "$f" ] && [ -r "$f" ] && [ -f "$f" ] || return 0
+  [[ -n "$f" ]] && [[ -r "$f" ]] && [[ -f "$f" ]] || return 0
   now="$(gq_now)"
   jq -R -r --arg k "$idx" --arg m "$model" --argjson now "$now" '
       try fromjson catch empty
@@ -400,11 +400,11 @@ gq_cooldown_until() {
 # nothing when no hint is present.
 gq_retry_hint_sec() {
   local files=() f hint
-  for f in "$@"; do [ -n "$f" ] && [ -f "$f" ] && files+=("$f"); done
-  [ "${#files[@]}" -gt 0 ] || return 0
+  for f in "$@"; do [[ -n "$f" ]] && [[ -f "$f" ]] && files+=("$f"); done
+  [[ "${#files[@]}" -gt 0 ]] || return 0
   hint="$(grep -ohiE 'retryDelay"?[[:space:]]*:[[:space:]]*"?[0-9]+(\.[0-9]+)?s|retry[ -](in|after):?[[:space:]]*[0-9]+(\.[0-9]+)?' \
     "${files[@]}" 2>/dev/null | head -1 | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)" || true
-  [ -n "$hint" ] || return 0
+  [[ -n "$hint" ]] || return 0
   awk -v h="$hint" 'BEGIN { s = int(h); if (h > s) s++; print s }'
 }
 
@@ -427,7 +427,7 @@ gq_rotation_plan() {
   for name in "$@"; do
     idx="$(gq_key_index "$name")" || continue
     until="$(gq_cooldown_until "$idx" "$model")"
-    if [ -n "$until" ] && [ "$until" -gt "$now" ]; then
+    if [[ -n "$until" ]] && [ "$until" -gt "$now" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       printf 'cool\t%s\t%s\t%s\n' "$name" "$idx" "$until"
       continue
     fi
@@ -458,7 +458,7 @@ gq_rotation_plan() {
     if [[ "$_dep" == *", ${name}, "* ]]; then
       # Billing-depleted keys stay last resort whatever their measured headroom (#1777).
       last="${last}use"$'\t'"${name}"$'\t'"${idx}"$'\n'
-    elif [[ "$pct" =~ ^[0-9]+$ ]] && [ "$pct" -lt "$threshold" ]; then
+    elif [[ "$pct" =~ ^[0-9]+$ ]] && [ "$pct" -lt "$threshold" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       first="${first}use"$'\t'"${name}"$'\t'"${idx}"$'\n'
     else
       mid="${mid}use"$'\t'"${name}"$'\t'"${idx}"$'\n'
@@ -497,8 +497,8 @@ gq_remaining() {
   now="$(gq_now)"
   IFS=$'\t' read -r ds de rolling <<< "$(gq_day_window)"
   row="$(gq_caps_row_for "$idx" "$model")"
-  [ -z "$row" ] || IFS=$'\t' read -r glob tier rpm tpm rpd <<< "$row"
-  since=$(( now - _GQ_MINUTE )); [ "$ds" -lt "$since" ] && since="$ds"
+  [[ -z "$row" ]] || IFS=$'\t' read -r glob tier rpm tpm rpd <<< "$row"
+  since=$(( now - _GQ_MINUTE )); [ "$ds" -lt "$since" ] && since="$ds"  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   if rows="$(gq_ledger_rows "$idx" "$since")"; then
     read -r r1 t1 rd oldest <<< "$(printf '#ledger\n%s\n' "$rows" | awk -F'\t' \
         -v glob="${glob:-$model}" -v minute_start=$(( now - _GQ_MINUTE )) -v day="$ds" '
@@ -519,34 +519,34 @@ gq_remaining() {
   else
     state="unknown"; reason="ledger: $rows"
   fi
-  if [ -z "$row" ]; then
+  if [[ -z "$row" ]]; then
     state="unknown"; reason="no caps row for this key and model"
   else
     for c in "$rpm" "$tpm" "$rpd"; do
-      if [[ "$c" =~ ^[0-9]+$ ]] && [ $(( 10#$c )) -eq 0 ]; then
+      if [[ "$c" =~ ^[0-9]+$ ]] && [[ $(( 10#$c )) -eq 0 ]]; then
         state="unavailable"; reason="cap 0"
       fi
     done
-    if [ "$state" != "unavailable" ]; then
+    if [[ "$state" != "unavailable" ]]; then
       for c in "$rpm" "$tpm" "$rpd"; do
-        if [ "$c" != "none" ] && ! [[ "$c" =~ ^[0-9]+$ ]]; then
+        if [[ "$c" != "none" ]] && ! [[ "$c" =~ ^[0-9]+$ ]]; then
           state="unknown"; reason="limits not filled"
         fi
       done
     fi
   fi
-  if [ -z "$state" ]; then
-    if [[ "$rpd" =~ ^[0-9]+$ ]] && [ "$rd" -ge $(( 10#$rpd )) ]; then
+  if [[ -z "$state" ]]; then
+    if [[ "$rpd" =~ ^[0-9]+$ ]] && [ "$rd" -ge $(( 10#$rpd )) ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       state="exhausted"; reason="daily cap reached"
-      [ "$rolling" = "0" ] && until="$de"
+      [[ "$rolling" = "0" ]] && until="$de"
     else
       cd="$(gq_cooldown_until "$idx" "$model")"
-      if [ -n "$cd" ]; then
+      if [[ -n "$cd" ]]; then
         state="cooling"; reason="cooldown after a rejection"; until="$cd"
-      elif { [[ "$rpm" =~ ^[0-9]+$ ]] && [ "$r1" -ge $(( 10#$rpm )) ]; } \
-           || { [[ "$tpm" =~ ^[0-9]+$ ]] && [ "$t1" -ge $(( 10#$tpm )) ]; }; then
+      elif { [[ "$rpm" =~ ^[0-9]+$ ]] && [ "$r1" -ge $(( 10#$rpm )) ]; } ||  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+           { [[ "$tpm" =~ ^[0-9]+$ ]] && [ "$t1" -ge $(( 10#$tpm )) ]; }; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
         state="cooling"; reason="per-minute cap reached"
-        [ "$oldest" != "-" ] && until=$(( oldest + _GQ_MINUTE ))
+        [[ "$oldest" != "-" ]] && until=$(( oldest + _GQ_MINUTE ))
       else
         state="available"
       fi
@@ -557,7 +557,7 @@ gq_remaining() {
     --argjson rpm "$(_gq_num_or_null "$rpm")" --argjson tpm "$(_gq_num_or_null "$tpm")" \
     --argjson rpd "$(_gq_num_or_null "$rpd")" \
     --argjson ur "$r1" --argjson ut "$t1" --argjson ud "$rd" --argjson until "$until" \
-    --argjson ds "$ds" --argjson de "$( [ "$rolling" = "0" ] && printf '%s' "$de" || printf 'null')" '
+    --argjson ds "$ds" --argjson de "$( [[ "$rolling" = "0" ]] && printf '%s' "$de" || printf 'null')" '
     def left($cap; $used): if $cap == null then null elif $cap > $used then $cap - $used else 0 end;
     { key_index: $k, model: $m, state: $state, reason: $reason,
       remaining: (if $state == "unknown" then { rpd: null, rpm: null, tpm: null }
@@ -577,7 +577,7 @@ gq_remaining() {
 gq_record_attempt() {
   local idx="$1" model="$2" f now
   f="$(gq_ledger_file)"
-  [ -n "$f" ] || return 0
+  [[ -n "$f" ]] || return 0
   now="$(gq_now)"
   jq -cn --arg ts "$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)" \
     --arg workflow "${TOKEN_WORKFLOW:-unknown}" --arg run_id "${GITHUB_RUN_ID:-}" \
@@ -594,9 +594,9 @@ _gq_redact_line() {
   local s="$1" n v
   for n in GEMINI_API_KEY GOOGLE_API_KEY $(compgen -v GOOGLE_API_KEY_ 2>/dev/null); do
     v="${!n:-}"
-    [ "${#v}" -ge 4 ] && s="${s//"$v"/[REDACTED-KEY]}"
+    [[ "${#v}" -ge 4 ]] && s="${s//"$v"/[REDACTED-KEY]}"
   done
-  if ! declare -F redact_secrets >/dev/null 2>&1 && [ -f "$_GQ_LIB_DIR/redact.sh" ]; then
+  if ! declare -F redact_secrets >/dev/null 2>&1 && [[ -f "$_GQ_LIB_DIR/redact.sh" ]]; then
     # shellcheck source=scripts/lib/redact.sh
     source "$_GQ_LIB_DIR/redact.sh"
   fi
@@ -615,8 +615,8 @@ _gq_redact_line() {
 # to the escalation (gq_escalated_cooldown) and the ledger-derived daily-cap rule.
 gq_rejection_scope() {
   local files=() f
-  for f in "$@"; do [ -n "$f" ] && [ -f "$f" ] && files+=("$f"); done
-  if [ "${#files[@]}" -gt 0 ] && grep -qiE 'quota_exceeded|daily quota' "${files[@]}" 2>/dev/null; then
+  for f in "$@"; do [[ -n "$f" ]] && [[ -f "$f" ]] && files+=("$f"); done
+  if [[ "${#files[@]}" -gt 0 ]] && grep -qiE 'quota_exceeded|daily quota' "${files[@]}" 2>/dev/null; then
     printf 'daily'
   else
     printf 'minute'
@@ -628,8 +628,8 @@ gq_rejection_scope() {
 # excluding payment (402) or request-size errors (413). Returns 1 if the error is something else.
 gq_is_quota_rejection() {
   local files=() f
-  for f in "$@"; do [ -n "$f" ] && [ -f "$f" ] && files+=("$f"); done
-  [ "${#files[@]}" -gt 0 ] || return 1
+  for f in "$@"; do [[ -n "$f" ]] && [[ -f "$f" ]] && files+=("$f"); done
+  [[ "${#files[@]}" -gt 0 ]] || return 1
   grep -qiE '([^0-9]|^)429([^0-9]|$)|resource.?exhausted|quota_exceeded|too many requests|rate.?limit|quotaexceeded|resets [0-9]+(am|pm)' "${files[@]}" 2>/dev/null
 }
 
@@ -642,15 +642,15 @@ gq_record_rejection_sample() {
   local idx="$1" model="$2" scope="$3"; shift 3
   local f files=() line norm now
   f="$(gq_ledger_file)"
-  [ -n "$f" ] || return 0
-  for line in "$@"; do [ -n "$line" ] && [ -f "$line" ] && files+=("$line"); done
-  [ "${#files[@]}" -gt 0 ] || return 0
+  [[ -n "$f" ]] || return 0
+  for line in "$@"; do [[ -n "$line" ]] && [[ -f "$line" ]] && files+=("$line"); done
+  [[ "${#files[@]}" -gt 0 ]] || return 0
   line="$(grep -hiE '429|resource.?exhausted|quota|rate.?limit|too many requests' "${files[@]}" 2>/dev/null \
     | head -1)" || true
-  [ -n "$line" ] || return 0
+  [[ -n "$line" ]] || return 0
   line="$(_gq_redact_line "$line")"
   norm="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]' | sed -E 's/[0-9]+(\.[0-9]+)?/#/g; s/[[:space:]]+/ /g')"
-  if [ -f "$f" ] && jq -R -e --arg n "$norm" 'try fromjson catch empty
+  if [[ -f "$f" ]] && jq -R -e --arg n "$norm" 'try fromjson catch empty
        | select(type == "object" and .kind == "gemini_rejection_sample" and .norm == $n)' \
        "$f" >/dev/null 2>&1; then
     return 0
@@ -678,21 +678,21 @@ gq_escalated_cooldown() {
   local now next cap ds de rolling streak=0 secs i f rem used crpd
   now="$(gq_now)"
   next="$(gq_next_reset)"
-  cap=$(( next - now )); [ "$cap" -ge 1 ] || cap=1
-  [[ "$base" =~ ^[0-9]+$ ]] && [ "$base" -gt 0 ] || base="$(gq_default_cooldown_sec)"
-  if [ "$scope" = "daily" ]; then
+  cap=$(( next - now )); [[ "$cap" -ge 1 ]] || cap=1
+  [[ "$base" =~ ^[0-9]+$ ]] && [ "$base" -gt 0 ] || base="$(gq_default_cooldown_sec)"  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+  if [[ "$scope" = "daily" ]]; then
     printf '%s\t%s\n' "$cap" "daily quota wording → next reset"
     return 0
   fi
   rem="$(gq_remaining "$idx" "$model")"
   IFS=$'\t' read -r used crpd <<< "$(jq -r '[.used.rpd, .caps.rpd] | @tsv' <<< "$rem" 2>/dev/null)"
-  if [[ "$crpd" =~ ^[0-9]+$ ]] && [[ "$used" =~ ^[0-9]+$ ]] && [ "$used" -ge $(( 10#$crpd )) ]; then
+  if [[ "$crpd" =~ ^[0-9]+$ ]] && [[ "$used" =~ ^[0-9]+$ ]] && [ "$used" -ge $(( 10#$crpd )) ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf '%s\t%s\n' "$cap" "daily cap reached in the ledger → next reset"
     return 0
   fi
   IFS=$'\t' read -r ds de rolling <<< "$(gq_day_window)"
   f="$(gq_ledger_file)"
-  if [ -n "$f" ] && [ -f "$f" ] && [ -r "$f" ]; then
+  if [[ -n "$f" ]] && [[ -f "$f" ]] && [[ -r "$f" ]]; then
     streak="$(jq -R -s -r --arg k "$idx" --arg m "$model" --argjson ds "$ds" '
         [ split("\n")[] | select(test("\\S")) | (try fromjson catch empty)
           | select(type == "object" and .engine == "gemini" and .model == $m
@@ -706,8 +706,8 @@ gq_escalated_cooldown() {
   fi
   secs="$base"
   for (( i = 0; i < streak && secs < cap; i++ )); do secs=$(( secs * 2 )); done
-  [ "$secs" -le "$cap" ] || secs="$cap"
-  if [ "$streak" -gt 0 ]; then
+  [ "$secs" -le "$cap" ] || secs="$cap"  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+  if [ "$streak" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf '%s\t%s\n' "$secs" "$src, doubled ×$streak (consecutive rejections)"
   else
     printf '%s\t%s\n' "$secs" "$src"
@@ -721,7 +721,7 @@ gq_escalated_cooldown() {
 _gq_ensure_models() {
   declare -F ai_models_gemini_chain >/dev/null 2>&1 && return 0
   # shellcheck source=scripts/lib/engine-models.sh
-  [ -f "$_GQ_LIB_DIR/engine-models.sh" ] && source "$_GQ_LIB_DIR/engine-models.sh"
+  [[ -f "$_GQ_LIB_DIR/engine-models.sh" ]] && source "$_GQ_LIB_DIR/engine-models.sh"
   declare -F ai_models_gemini_chain >/dev/null 2>&1
 }
 
@@ -740,7 +740,7 @@ _gq_pairs_jsonl() {
   local -a ms=()
   IFS=',' read -r -a ms <<< "$mcsv"
   for m in ${ms[@]+"${ms[@]}"}; do
-    [ -n "$m" ] || continue
+    [[ -n "$m" ]] || continue
     for idx in "$@"; do gq_remaining "$idx" "$m"; done
   done
 }
@@ -789,7 +789,7 @@ gq_tier_view() {
   local chain pf out
   _gq_ensure_models || { printf '{"tier":"%s","status":"unknown","chain":[]}\n' "$tier"; return 0; }
   chain="$(ai_models_gemini_chain "$tier")"
-  if [ "$#" -eq 0 ]; then
+  if [[ "$#" -eq 0 ]]; then
     local -a _ks=()
     mapfile -t _ks < <(gq_cap_key_indexes)
     set -- ${_ks[@]+"${_ks[@]}"}
@@ -810,7 +810,7 @@ gq_tier_snapshot() {
   local now ds de rolling t tiers=() chains=() all="" pf tf i c label
   now="$(gq_now)"
   IFS=$'\t' read -r ds de rolling <<< "$(gq_day_window)"
-  if [ "$#" -eq 0 ]; then
+  if [[ "$#" -eq 0 ]]; then
     local -a _ks=()
     mapfile -t _ks < <(gq_cap_key_indexes)
     set -- ${_ks[@]+"${_ks[@]}"}
@@ -830,9 +830,9 @@ gq_tier_snapshot() {
   done
   label="$(_gq_day_label "$ds")"
   jq -s -c --argjson now "$now" --argjson ds "$ds" \
-    --argjson de "$( [ "$rolling" = "0" ] && printf '%s' "$de" || printf 'null')" \
+    --argjson de "$( [[ "$rolling" = "0" ]] && printf '%s' "$de" || printf 'null')" \
     --arg label "$label" --arg rtime "$(gq_setting daily_reset_time)" --arg rtz "$(gq_setting daily_reset_tz)" \
-    --argjson rolling "$( [ "$rolling" = "0" ] && printf false || printf true)" \
+    --argjson rolling "$( [[ "$rolling" = "0" ]] && printf false || printf true)" \
     --argjson minute "$_GQ_MINUTE" \
     --argjson keys "$(printf '%s\n' "$@" | jq -R -s -c 'split("\n") | map(select(length > 0))')" '
     { schema_version: 1,
@@ -918,7 +918,7 @@ gq_tier_decision() {
           elif $x.status == "unavailable" then "unavailable\t"
           else "unknown\tthe tier status is \($x.status // "missing")" end
       end' "$snap" 2>/dev/null | head -1)" || out=""
-  [ -n "$out" ] || out=$'unknown\tthe snapshot could not be read'
+  [[ -n "$out" ]] || out=$'unknown\tthe snapshot could not be read'
   st="${out%%$'\t'*}"
   detail="${out#*$'\t'}"
   case "$st" in
@@ -937,16 +937,16 @@ gq_tier_decision() {
 gq_tier_notices() {
   local snap="$1" state="$2" day now t st fc dm ch
   day="$(jq -r '.window.day_label // empty' "$snap" 2>/dev/null)"
-  [ -n "$day" ] || return 0
+  [[ -n "$day" ]] || return 0
   now="$(gq_now)"
   while IFS=$'\t' read -r t st fc dm ch; do
-    [ -n "$t" ] || continue
-    if [ -f "$state" ] && jq -R -e --arg t "$t" --arg d "$day" 'try fromjson catch empty
+    [[ -n "$t" ]] || continue
+    if [[ -f "$state" ]] && jq -R -e --arg t "$t" --arg d "$day" 'try fromjson catch empty
          | select(type == "object" and .kind == "gemini_tier_notice" and .tier == $t and .day == $d)' \
          "$state" >/dev/null 2>&1; then
       continue
     fi
-    if [ "$st" = "degraded" ]; then
+    if [[ "$st" = "degraded" ]]; then
       printf '::warning::[gemini-tier] tier %s is degraded on Gemini (%s): its first choice %s has no usable key today, only %s can run — a quality change\n' \
         "$t" "$day" "$fc" "$dm"
     else
@@ -984,7 +984,7 @@ gq_day_history() {
   af="$(mktemp)" || { rm -f "$bf" "$rf"; return 1; }
   gq_day_bounds "$n" > "$bf"
   f="$(gq_ledger_file)"
-  if [ -n "$f" ] && [ -f "$f" ] && [ -r "$f" ]; then
+  if [[ -n "$f" ]] && [[ -f "$f" ]] && [[ -r "$f" ]]; then
     jq -R -r 'try fromjson catch empty
         | select(type == "object" and .engine == "gemini" and .key_index != null)
         | ((.ts // "") | try fromdateiso8601 catch null) as $e | select($e != null)
@@ -1010,25 +1010,25 @@ gq_day_history() {
         }' | sort -t$'\t' -k1,1n -k2,2 -k3,3 > "$af"
   fi
   while IFS=$'\t' read -r key idx model calls rej peak tpeak ev req; do
-    [ -n "$key" ] || continue
+    [[ -n "$key" ]] || continue
     k="$idx"$'\t'"$model"
-    if [ -z "${capcache[$k]+x}" ]; then
+    if [[ -z "${capcache[$k]+x}" ]]; then
       row="$(gq_caps_row_for "$idx" "$model")"
       capcache[$k]="$(printf '%s' "$row" | awk -F'\t' '{ print $3 "\t" $4 "\t" $5 }')"
     fi
     IFS=$'\t' read -r crpm crtpm crpd <<< "${capcache[$k]}"
     hit=0
     if [[ "$crpd" =~ ^[0-9]+$ ]]; then
-      { [ $(( 10#$crpd )) -eq 0 ] && [ "$req" -gt 0 ]; } && hit=1
-      { [ $(( 10#$crpd )) -gt 0 ] && [ "$req" -ge $(( 10#$crpd )) ]; } && hit=1
+      { [[ $(( 10#$crpd )) -eq 0 ]] && [ "$req" -gt 0 ]; } && hit=1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+      { [[ $(( 10#$crpd )) -gt 0 ]] && [ "$req" -ge $(( 10#$crpd )) ]; } && hit=1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     fi
     if [[ "$crpm" =~ ^[0-9]+$ ]]; then
-      { [ $(( 10#$crpm )) -eq 0 ] && [ "$req" -gt 0 ]; } && hit=1
-      { [ $(( 10#$crpm )) -gt 0 ] && [ "$peak" -ge $(( 10#$crpm )) ]; } && hit=1
+      { [[ $(( 10#$crpm )) -eq 0 ]] && [ "$req" -gt 0 ]; } && hit=1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+      { [[ $(( 10#$crpm )) -gt 0 ]] && [ "$peak" -ge $(( 10#$crpm )) ]; } && hit=1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     fi
     if [[ "$crtpm" =~ ^[0-9]+$ ]]; then
-      { [ $(( 10#$crtpm )) -eq 0 ] && [ "$tpeak" -gt 0 ]; } && hit=1
-      { [ $(( 10#$crtpm )) -gt 0 ] && [ "$tpeak" -ge $(( 10#$crtpm )) ]; } && hit=1
+      { [[ $(( 10#$crtpm )) -eq 0 ]] && [ "$tpeak" -gt 0 ]; } && hit=1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+      { [[ $(( 10#$crtpm )) -gt 0 ]] && [ "$tpeak" -ge $(( 10#$crtpm )) ]; } && hit=1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     fi
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$key" "$idx" "$model" "$calls" "$rej" "$peak" "$ev" "$hit" >> "$rf"
   done < "$af"

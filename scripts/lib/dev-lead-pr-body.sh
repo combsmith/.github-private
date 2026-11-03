@@ -42,7 +42,7 @@ _dlpb_test_files() {
 # from the areas touched. Highest-risk area present wins.
 dlpb_risk_line() {
   local files="${1:-}"
-  if [ -z "$(printf '%s' "$files" | tr -d '[:space:]')" ]; then
+  if [[ -z "$(printf '%s' "$files" | tr -d '[:space:]')" ]]; then
     echo "Low — no changed files detected."
     return 0
   fi
@@ -70,7 +70,7 @@ dlpb_risk_line() {
 dlpb_test_plan_line() {
   local files="${1:-}" tests
   tests=$(_dlpb_test_files "$files")
-  if [ -n "$tests" ]; then
+  if [[ -n "$tests" ]]; then
     local list
     list=$(printf '%s\n' "$tests" | sed 's/^/`/; s/$/`/' | paste -sd ', ' -)
     echo "Tests added/updated: ${list}. Verification: \`bash scripts/dev-lead-lint.sh\` (shellcheck --severity=warning) ran pre-commit; the bats suite runs in CI."
@@ -89,7 +89,7 @@ dlpb_rollback_line() {
 # dlpb_monitoring_line <files-newline> — the signal that shows success/regression.
 dlpb_monitoring_line() {
   local files="${1:-}"
-  if [ -z "$(printf '%s' "$files" | tr -d '[:space:]')" ]; then
+  if [[ -z "$(printf '%s' "$files" | tr -d '[:space:]')" ]]; then
     echo "n/a — no changed files detected."
     return 0
   fi
@@ -121,12 +121,12 @@ dlpb_problem_line() {
     | awk '/^[[:space:]]*#/{next} NF==0{if(seen)exit; else next} {seen=1; print}' \
     | tr '\n' ' ' \
     | sed 's/  */ /g; s/^ //; s/ $//')
-  [ "${#summary}" -gt 600 ] && summary="${summary:0:597}..."
-  if [ -n "$title" ] && [ -n "$summary" ]; then
+  [[ "${#summary}" -gt 600 ]] && summary="${summary:0:597}..."
+  if [[ -n "$title" ]] && [[ -n "$summary" ]]; then
     printf '%s\n\nFrom the issue: %s' "$title" "$summary"
-  elif [ -n "$title" ]; then
+  elif [[ -n "$title" ]]; then
     printf '%s' "$title"
-  elif [ -n "$summary" ]; then
+  elif [[ -n "$summary" ]]; then
     printf '%s' "$summary"
   else
     printf 'See the linked issue.'
@@ -198,7 +198,7 @@ dlpb_needs_backfill() {
   local n
   n=$(dlpb_missing_count "$body")
   [[ "$n" =~ ^[0-9]+$ ]] || n=0
-  [ "$n" -ge 3 ]
+  [ "$n" -ge 3 ]  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 }
 
 # dlpb_backfill_body <existing_body> <sections_block>
@@ -225,13 +225,13 @@ dlpb_backfill_body() {
 #   is derived from the PR's changed files.
 dlpb_backfill_pr_body() {
   local pr="${1:-}" repo="${2:-}" files="${3:-}"
-  [ -n "$pr" ] && [ -n "$repo" ] || return 0
+  [[ -n "$pr" ]] && [[ -n "$repo" ]] || return 0
 
   local body
   body=$(gh pr view "$pr" --repo "$repo" --json body --jq '.body // ""' 2>/dev/null) || return 0
   dlpb_needs_backfill "$body" || { echo "::notice::PR #${pr} body already has the required sections (or was backfilled) — skipping backfill"; return 0; }
 
-  if [ -z "$files" ]; then
+  if [[ -z "$files" ]]; then
     files=$(gh pr view "$pr" --repo "$repo" --json files --jq '.files[].path' 2>/dev/null || true)
   fi
 
@@ -254,7 +254,7 @@ dlpb_backfill_pr_body() {
   # gh's nature cannot fully close — the TOCTOU window; the backfill is best-effort.
   local current
   current=$(gh pr view "$pr" --repo "$repo" --json body --jq '.body // ""' 2>/dev/null) || { rm -f "$tmp"; return 0; }
-  if [ "$current" != "$body" ]; then
+  if [[ "$current" != "$body" ]]; then
     echo "::notice::PR #${pr} body changed since it was read — skipping backfill to avoid overwriting a concurrent update."
     rm -f "$tmp"
     return 0

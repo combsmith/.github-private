@@ -53,21 +53,21 @@ _advisory_gate_load_fallback_bots() {
 }
 
 _gate_reg_sh="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reviewer-sources.sh"
-if [ -f "$_gate_reg_sh" ]; then
+if [[ -f "$_gate_reg_sh" ]]; then
   # shellcheck source=scripts/lib/reviewer-sources.sh
   source "$_gate_reg_sh"
   # shellcheck disable=SC2034
   declare -A ADVISORY_BOTS=()
   if _adv_logins="$(reviewer_sources_advisory_gate_logins)"; then
     while IFS= read -r _adv_login; do
-      if [ -n "$_adv_login" ]; then
+      if [[ -n "$_adv_login" ]]; then
         ADVISORY_BOTS[$_adv_login]="$_adv_login (advisory)"
       fi
     done <<< "$_adv_logins"
   fi
   # If the read failed or produced nothing, degrade to the built-in set rather
   # than leaving the gate with zero advisory bots (or exiting the caller).
-  if [ "${#ADVISORY_BOTS[@]}" -eq 0 ]; then
+  if [[ "${#ADVISORY_BOTS[@]}" -eq 0 ]]; then
     echo "advisory-review-gate: reviewer_sources_advisory_gate_logins unavailable — using built-in advisory-bot fallback" >&2
     _advisory_gate_load_fallback_bots
   fi
@@ -349,7 +349,7 @@ _advisory_gate_load_fallback_notice_bots() {
 }
 
 if declare -f reviewer_sources_logins >/dev/null 2>&1 \
-    && _rlnb_raw="$(reviewer_sources_logins)" && [ -n "$_rlnb_raw" ]; then
+    && _rlnb_raw="$(reviewer_sources_logins)" && [[ -n "$_rlnb_raw" ]]; then
   # shellcheck disable=SC2034
   mapfile -t RATE_LIMIT_NOTICE_BOTS <<< "$_rlnb_raw"
   unset _rlnb_raw
@@ -471,7 +471,7 @@ Advisory bots were rate-limited; auto-approval is withheld until they recover. p
 #   DEFER (record facts, post NOTHING); post-pr-review.sh announces only after
 #   verifying the review (#1874).
 _record_partial_evidence() {
-  if [ -n "${PARTIAL_EVIDENCE_STATE_FILE:-}" ]; then
+  if [[ -n "${PARTIAL_EVIDENCE_STATE_FILE:-}" ]]; then
     printf '%s %s %s\n' "$1" "$2" "$3" > "$PARTIAL_EVIDENCE_STATE_FILE" 2>/dev/null \
       || echo "::warning::could not record deferred partial-evidence facts (#1874)"
     log_info "partial-evidence deferred ($1/$2 reason=$3) — announced after write verified (#1874)"

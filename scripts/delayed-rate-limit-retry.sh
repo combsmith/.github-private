@@ -72,13 +72,13 @@ case "$DELAYED_RETRY_MAX_SLEEP_SEC" in
     DELAYED_RETRY_MAX_SLEEP_SEC="$_min_sleep" ;;
   *)
     DELAYED_RETRY_MAX_SLEEP_SEC=$(( 10#$DELAYED_RETRY_MAX_SLEEP_SEC ))
-    if [ "$DELAYED_RETRY_MAX_SLEEP_SEC" -lt "$_min_sleep" ]; then
+    if [ "$DELAYED_RETRY_MAX_SLEEP_SEC" -lt "$_min_sleep" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       echo "::warning::delayed-rate-limit-retry: DELAYED_RETRY_MAX_SLEEP_SEC=${DELAYED_RETRY_MAX_SLEEP_SEC}s is below horizon+buffer (${_min_sleep}s) — raising it so the retry wakes after reset"
       DELAYED_RETRY_MAX_SLEEP_SEC="$_min_sleep"
     fi ;;
 esac
 
-if [ -z "$PR_URL" ] || [ -z "$HEAD_SHA" ]; then
+if [[ -z "$PR_URL" ]] || [[ -z "$HEAD_SHA" ]]; then
   echo "::error::delayed-rate-limit-retry: PR_URL and HEAD_SHA are required"
   exit 2
 fi
@@ -106,21 +106,21 @@ still_applicable() {
   fi
   _current_head=$(jq -r '.headRefOid? // ""' <<< "$_snapshot" || echo "")
   _state=$(jq -r '.state? // ""' <<< "$_snapshot" || echo "")
-  if [ -z "$_current_head" ]; then
+  if [[ -z "$_current_head" ]]; then
     echo "  no-op ($_phase): current head SHA empty for $PR_URL — leaving to the cron sweep"
     return 1
   fi
-  if [ "$_state" = "MERGED" ] || [ "$_state" = "CLOSED" ]; then
+  if [[ "$_state" = "MERGED" ]] || [[ "$_state" = "CLOSED" ]]; then
     echo "  no-op ($_phase): PR is $_state — nothing to retry"
     return 1
   fi
-  if [ "$_current_head" != "$HEAD_SHA" ]; then
+  if [[ "$_current_head" != "$HEAD_SHA" ]]; then
     echo "  no-op ($_phase): head advanced ${HEAD_SHA:0:8} -> ${_current_head:0:8} — superseded by a newer push; its event drives a fresh review"
     return 1
   fi
   _has_marker=$(jq -r --arg m "<!-- pr-review-agent rate-limited v1 sha=${HEAD_SHA} " \
     '[((.reviews // []) + (.comments // []))[]? | (.body // "" | tostring) | select(contains($m))] | length > 0' <<< "$_snapshot" 2>/dev/null || echo "false")
-  if [ "$_has_marker" != "true" ]; then
+  if [[ "$_has_marker" != "true" ]]; then
     echo "  no-op ($_phase): no rate-limit marker for head ${HEAD_SHA:0:8} — nothing armed to retry"
     return 1
   fi
@@ -141,16 +141,16 @@ nb_epoch=$(date -u -d "$NOT_BEFORE" +%s 2>/dev/null \
   || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$NOT_BEFORE" +%s 2>/dev/null \
   || echo "")
 
-if [ -n "$nb_epoch" ]; then
+if [[ -n "$nb_epoch" ]]; then
   target=$(( nb_epoch + DELAYED_RETRY_BUFFER_SEC ))
   sleep_secs=$(( target - now_epoch ))
-  if [ "$sleep_secs" -gt "$DELAYED_RETRY_MAX_SLEEP_SEC" ]; then
+  if [ "$sleep_secs" -gt "$DELAYED_RETRY_MAX_SLEEP_SEC" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     # A malformed/far reset must never sleep unbounded; cap and let the re-check
     # (and the cron backstop) govern correctness.
     echo "  sleep:      capping $sleep_secs s at ${DELAYED_RETRY_MAX_SLEEP_SEC}s ceiling"
     sleep_secs="$DELAYED_RETRY_MAX_SLEEP_SEC"
   fi
-  if [ "$sleep_secs" -gt 0 ]; then
+  if [ "$sleep_secs" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "  sleep:      ${sleep_secs}s until reset+buffer"
     sleep "$sleep_secs"
   else

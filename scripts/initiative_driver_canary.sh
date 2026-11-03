@@ -71,14 +71,14 @@ classify_canary_run() {
 # canary_is_failure <status>
 # Exit 0 (alert) for any status other than OK; exit 1 for OK.
 canary_is_failure() {
-  [ "${1:-}" != "OK" ]
+  [[ "${1:-}" != "OK" ]]
 }
 
 # canary_report <status> <repo> <target> <epic> <run_url> [today]
 # Writes a Markdown alert/health body to stdout. Pure: no network.
 canary_report() {
   local st="${1:-}" repo="${2:-}" target="${3:-}" epic="${4:-}" run_url="${5:-}" today="${6:-}"
-  [ -n "$today" ] || today="$(date -u +%Y-%m-%d)"
+  [[ -n "$today" ]] || today="$(date -u +%Y-%m-%d)"
 
   local icon headline
   case "$st" in
@@ -93,19 +93,19 @@ canary_report() {
     "$repo" "$target" "$epic"
   printf -- '- **Result:** %s — %s\n' "$st" "$headline"
   printf -- '- **Mode:** dry-run dispatch (`dry_run=true`) — applies no `dev-lead` label, releases nothing\n'
-  [ -n "$run_url" ] && printf -- '- **Run:** %s\n' "$run_url"
+  [[ -n "$run_url" ]] && printf -- '- **Run:** %s\n' "$run_url"
   printf '\n'
 
-  if [ "$st" = "HOLLOW_GREEN" ]; then
+  if [[ "$st" = "HOLLOW_GREEN" ]]; then
     printf '> The driver run concluded `success` but its log carried no '
     printf '`%s` decision for the fixture target. ' "$READY_MARKER"
     printf 'The cross-repo gate (`initiative:auto`) or `blocked_by` resolution produced no ready '
     printf 'sub-issue — the release path is silently broken even though CI is green. '
     printf 'Verify the fixture epic is still armed with a ready sub-issue, then inspect the driver logic.\n'
-  elif [ "$st" = "NO_RUN" ]; then
+  elif [[ "$st" = "NO_RUN" ]]; then
     printf '> No `workflow_dispatch` driver run completed within the poll window. '
     printf 'The dispatch may have been rejected (PAT missing/expired) or the run is still queued.\n'
-  elif [ "$st" != "OK" ]; then
+  elif [[ "$st" != "OK" ]]; then
     printf '> The dry-run driver dispatch did not conclude successfully — inspect the run log.\n'
   fi
 }
@@ -117,7 +117,7 @@ canary_report() {
 main() {
   local target="${CANARY_TARGET:-${INITIATIVE_DRIVER_CANARY_TARGET:-}}"
   local epic="${CANARY_EPIC:-${INITIATIVE_DRIVER_CANARY_EPIC:-}}"
-  if [ -z "$target" ] || [ -z "$epic" ]; then
+  if [[ -z "$target" ]] || [[ -z "$epic" ]]; then
     echo "::error::INITIATIVE_DRIVER_CANARY_TARGET and INITIATIVE_DRIVER_CANARY_EPIC (or CANARY_TARGET/CANARY_EPIC) are required (fixture target repo + epic)." >&2
     exit 1
   fi
@@ -130,7 +130,7 @@ main() {
     echo "::error::CANARY_EPIC must be a positive integer, got: '$epic'" >&2
     exit 1
   fi
-  if [ -z "${GH_TOKEN:-}" ]; then
+  if [[ -z "${GH_TOKEN:-}" ]]; then
     echo "::error::GH_TOKEN is required — a workflow_dispatch fired with GITHUB_TOKEN will not start a run." >&2
     exit 1
   fi
@@ -162,7 +162,7 @@ main() {
   # Poll for the workflow_dispatch run created after our dispatch timestamp.
   local deadline run_id="" conclusion="" run_status=""
   deadline=$(( $(date +%s) + timeout ))
-  while [ "$(date +%s)" -lt "$deadline" ]; do
+  while [[ "$(date +%s)" -lt "$deadline" ]]; do
     local row
     row="$(gh run list --repo "$REPO" --workflow "$WORKFLOW_FILE" \
       --event workflow_dispatch --created ">=${dispatch_ts}" --limit 20 \
@@ -171,14 +171,14 @@ main() {
             [(.databaseId // "" | tostring), (.status // ""), (.conclusion // "")] | @tsv' \
       2>/dev/null || true)"
     IFS=$'\t' read -r run_id run_status conclusion <<< "$row"
-    [ "$run_status" = "completed" ] && break
+    [[ "$run_status" = "completed" ]] && break
     sleep "$interval"
   done
 
   # Fetch logs of the completed run (best-effort) to scan for the READY decision.
   # A missing/unreadable log is treated as empty (→ HOLLOW_GREEN on a green run).
   local logs=""
-  if [ -n "$run_id" ]; then
+  if [[ -n "$run_id" ]]; then
     logs="$(gh run view "$run_id" --repo "$REPO" --log 2>/dev/null || true)"
   fi
 
@@ -186,24 +186,24 @@ main() {
   result="$(classify_canary_run "$conclusion" "$logs")"
 
   local run_url=""
-  [ -n "$run_id" ] && run_url="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs/${run_id}"
+  [[ -n "$run_id" ]] && run_url="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs/${run_id}"
 
   local report
   report="$(canary_report "$result" "$REPO" "$target" "$epic" "$run_url" "$today")"
   printf '%s\n' "$report"
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     printf '%s\n' "$report" >> "$GITHUB_STEP_SUMMARY"
   fi
-  if [ -n "${CANARY_OUT:-}" ]; then
+  if [[ -n "${CANARY_OUT:-}" ]]; then
     printf '%s\n' "$report" > "$CANARY_OUT"
   fi
 
-  if [ -n "${GITHUB_ENV:-}" ]; then
+  if [[ -n "${GITHUB_ENV:-}" ]]; then
     echo "CANARY_STATUS=${result}" >> "$GITHUB_ENV"
   fi
 
   if canary_is_failure "$result"; then
-    [ -n "${GITHUB_ENV:-}" ] && echo "CANARY_FAILED=true" >> "$GITHUB_ENV"
+    [[ -n "${GITHUB_ENV:-}" ]] && echo "CANARY_FAILED=true" >> "$GITHUB_ENV"
     echo "::error::Initiative-driver canary result: ${result}" >&2
     exit 1
   fi
@@ -211,6 +211,6 @@ main() {
 }
 
 # Only run main when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

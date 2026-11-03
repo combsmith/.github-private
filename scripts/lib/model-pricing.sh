@@ -18,7 +18,7 @@
 #   ET_BASELINE_MODEL   — model whose input price is ET's "1.0" (default claude-haiku-4-5) # model-pin-ok: ET baseline anchor — must stay fixed so historical ET multipliers never drift
 
 # Resolve the table path once, relative to this file (works when sourced from anywhere).
-if [ -z "${PRICING_TABLE:-}" ]; then
+if [[ -z "${PRICING_TABLE:-}" ]]; then
   PRICING_TABLE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/model-pricing.tsv"
 fi
 : "${ET_BASELINE_MODEL:=claude-haiku-4-5}" # model-pin-ok: ET baseline anchor — must stay fixed so historical ET multipliers never drift
@@ -29,8 +29,8 @@ fi
 # Echoes nothing when no row matches (caller treats as unknown price).
 price_for() {
   local model="$1" date="${2:-}"
-  [ -n "$date" ] || date="$(date -u +%Y-%m-%d 2>/dev/null || echo '9999-12-31')"
-  [ -f "$PRICING_TABLE" ] || return 0
+  [[ -n "$date" ]] || date="$(date -u +%Y-%m-%d 2>/dev/null || echo '9999-12-31')"
+  [[ -f "$PRICING_TABLE" ]] || return 0
 
   awk -F'\t' -v model="$model" -v d="$date" '
     function glob2re(g,   re) {
@@ -62,7 +62,7 @@ price_for() {
 cost_usd() {
   local model="$1" in="${2:-0}" cr="${3:-0}" out="${4:-0}" date="${5:-}" cw="${6:-0}"
   local p; p="$(price_for "$model" "$date")"
-  [ -n "$p" ] || return 0
+  [[ -n "$p" ]] || return 0
   local pin pcr pcw pout; read -r pin pcr pcw pout <<< "$p"
   awk -v i="$in" -v c="$cr" -v w="$cw" -v o="$out" \
       -v pin="$pin" -v pcr="$pcr" -v pcw="$pcw" -v pout="$pout" \
@@ -78,7 +78,7 @@ et_multiplier_for() {
   local mp bp
   mp="$(price_for "$model" "$date")"
   bp="$(price_for "$ET_BASELINE_MODEL" "$date")"
-  if [ -z "$mp" ] || [ -z "$bp" ]; then echo "1.0"; return 0; fi
+  if [[ -z "$mp" ]] || [[ -z "$bp" ]]; then echo "1.0"; return 0; fi
   # %.1f keeps the canonical "5.0"/"0.5" form used elsewhere; all current multipliers
   # (0.5, 1, 2, 3, 5) are exact at one decimal.
   awk -v m="${mp%% *}" -v b="${bp%% *}" \

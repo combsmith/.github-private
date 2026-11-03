@@ -71,7 +71,7 @@ cpc_stub_conflicts() {
   pinchan="${pinref##*/}"
 
   # (a) comment/pin consistency.
-  while IFS= read -r line || [ -n "$line" ]; do
+  while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in
       *"#"*) comment="${line#*#}" ;;                   # text after the first '#'
       *) continue ;;
@@ -80,7 +80,7 @@ cpc_stub_conflicts() {
     while IFS= read -r ref; do
       agent="${ref%/*}"
       chan="${ref##*/}"
-      if [ "$agent" = "$pinagent" ] && [ "$chan" != "$pinchan" ]; then
+      if [[ "$agent" = "$pinagent" ]] && [[ "$chan" != "$pinchan" ]]; then
         printf 'comment names channel `%s` but `uses:` pins `%s`\n' "$ref" "$pinref"
         found=1
       fi
@@ -89,7 +89,7 @@ cpc_stub_conflicts() {
 
   # (b) agent_ref/uses consistency (only when an agent_ref input is present).
   if aref="$(src_stub_agent_ref "$file")"; then
-    if [ "$aref" != "$pinref" ]; then
+    if [[ "$aref" != "$pinref" ]]; then
       printf '`agent_ref: %s` does not match the `uses:` pin `%s`\n' "$aref" "$pinref"
       found=1
     fi
@@ -117,7 +117,7 @@ cpc_assert_consistent() {
   {
     printf '::error::channel-pin INCONSISTENCY in %s (issue #1866, regression of #1819):\n' "$label"
     while IFS= read -r c; do
-      [ -n "$c" ] && printf '  - %s\n' "$c"
+      [[ -n "$c" ]] && printf '  - %s\n' "$c"
     done <<<"$conflicts"
     printf 'A guard comment or `agent_ref` in a caller stub must name the SAME channel as the\n'
     printf '`uses:` pin in the same file. The standards-sync generator preserves THIS repo'"'"'s own\n'

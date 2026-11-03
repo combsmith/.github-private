@@ -53,14 +53,14 @@ _AM_HEAD_SHA=""
 
 # hold_auto_merge — disable auto-merge for the duration of the run, if it is on.
 hold_auto_merge() {
-  [ -n "${PR_NUMBER:-}" ] || return 0
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  [[ -n "${PR_NUMBER:-}" ]] || return 0
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would hold auto-merge OFF on PR #${PR_NUMBER} while working"
     return 0
   fi
   local state
   state=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.auto_merge.merge_method // empty' 2>/dev/null || true)
-  [ -n "$state" ] || return 0   # already off — leave it alone
+  [[ -n "$state" ]] || return 0   # already off — leave it alone
   _AM_MERGE_METHOD="$state"
   _AM_COMMIT_TITLE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.auto_merge.commit_title // empty' 2>/dev/null || true)
   _AM_COMMIT_MESSAGE=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.auto_merge.commit_message // empty' 2>/dev/null || true)
@@ -74,7 +74,7 @@ hold_auto_merge() {
     # instead of continuing into checkout_pr_in_worktree on a deleted branch.
     local merged_state
     merged_state=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.state' 2>/dev/null || true)
-    if [ -n "$merged_state" ] && [ "$merged_state" != "open" ]; then
+    if [[ -n "$merged_state" ]] && [[ "$merged_state" != "open" ]]; then
       echo "::notice::PR #${PR_NUMBER} is ${merged_state} — merged/closed before hold could be set; exiting cleanly."
       exit 0
     fi
@@ -87,18 +87,18 @@ hold_auto_merge() {
 # hold_auto_merge disabled it and the PR is still open. Best-effort and
 # idempotent; no-ops when the success path already re-enabled it.
 restore_auto_merge() {
-  [ "${_AM_NEEDS_RESTORE:-0}" = "1" ] || return 0
+  [[ "${_AM_NEEDS_RESTORE:-0}" = "1" ]] || return 0
   _AM_NEEDS_RESTORE=0
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would restore auto-merge on PR #${PR_NUMBER}"
     return 0
   fi
   local pr_state
   pr_state=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.state' 2>/dev/null || true)
-  [ "$pr_state" != "closed" ] || return 0   # merged/closed — nothing to restore
+  [[ "$pr_state" != "closed" ]] || return 0   # merged/closed — nothing to restore
   local am
   am=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.auto_merge // empty' 2>/dev/null || true)
-  if [ -n "$am" ]; then return 0; fi     # success path already restored it
+  if [[ -n "$am" ]]; then return 0; fi     # success path already restored it
   local merge_flag
   case "${_AM_MERGE_METHOD:-squash}" in
     merge)  merge_flag="--merge" ;;
@@ -133,14 +133,14 @@ push_with_merge_guard() {
   # mid-run merge) returns 0, leaving the merge-race handling below to run.
   local reconcile_rc=0
   incorporate_remote_head "$@" || reconcile_rc=$?
-  if [ "$reconcile_rc" -ne 0 ]; then
+  if [[ "$reconcile_rc" -ne 0 ]]; then
     # A PR merged/closed mid-run can make the reconcile fail (e.g. a rebase
     # conflict against a head that is about to vanish). That is the benign merge
     # race this guard exists for, not a genuine escalation — check the PR's state
     # before failing the job, exactly as the post-push path below does.
     local reconcile_state
     reconcile_state=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.state' 2>/dev/null || true)
-    if [ -n "$reconcile_state" ] && [ "$reconcile_state" != "open" ]; then
+    if [[ -n "$reconcile_state" ]] && [[ "$reconcile_state" != "open" ]]; then
       echo "::notice::PR #${PR_NUMBER} is ${reconcile_state} — merged/closed mid-run; nothing to push. Exiting cleanly."
       exit 0
     fi
@@ -172,7 +172,7 @@ push_with_merge_guard() {
   local upstream
   upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
   if grep -qiE 'non-fast-forward|\[rejected\]|fetch first' "$errf" \
-     && [ -n "$upstream" ] \
+     && [[ -n "$upstream" ]] \
      && ! git merge-base --is-ancestor "$upstream" HEAD 2>/dev/null; then
     local discarded
     discarded=$(git rev-list "HEAD..${upstream}" 2>/dev/null | tr '\n' ' ')
@@ -192,7 +192,7 @@ push_with_merge_guard() {
   # the PR (state != open) and deletes its branch, so our push can't lock the ref.
   local state
   state=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.state' 2>/dev/null || true)
-  if [ -n "$state" ] && [ "$state" != "open" ]; then
+  if [[ -n "$state" ]] && [[ "$state" != "open" ]]; then
     echo "::notice::PR #${PR_NUMBER} is ${state} — its branch was merged/closed mid-run; nothing to push. Exiting cleanly."
     exit 0
   fi
