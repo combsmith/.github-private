@@ -64,6 +64,22 @@ make_claude() {
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   grep -q 'Log analysis skipped' pr_review_health_report.md
+  run grep -c "429 Too Many Requests" pr_review_health_report.md
+  [ "$output" = "0" ]
+}
+
+@test "documented 'reached your weekly limit' wording is recognised" {
+  make_claude 1 "You've reached your weekly limit · resets 4pm (UTC)"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q 'Log analysis skipped' pr_review_health_report.md
+}
+
+@test "'5-hour limit reached' wording is recognised" {
+  make_claude 1 "5-hour limit reached - resets 4pm"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q 'Log analysis skipped' pr_review_health_report.md
 }
 
 @test "non-quota Claude failure still fails the step" {

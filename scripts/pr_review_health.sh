@@ -247,7 +247,7 @@ llm_quota_refused() {
     [ -s "$f" ] && files+=("$f")
   done
   [ "${#files[@]}" -gt 0 ] || return 1
-  grep -qiE "hit your ([a-z]+ )?limit|usage limit|rate[ -]?limit|too many requests|quota (exceeded|exhausted|reached)|out of (credits|tokens)|overloaded_error|([^0-9]|^)(429|529)([^0-9]|$)" \
+  grep -qiE "hit your ([a-z]+ )?limit|reached your ([a-z]+ )?limit|limit reached|usage limit|rate[ -]?limit|too many requests|quota (exceeded|exhausted|reached)|out of (credits|tokens)|overloaded_error|([^0-9]|^)(429|529)([^0-9]|$)" \
     "${files[@]}"
 }
 
@@ -291,6 +291,12 @@ RUNS_SUMMARY=$(echo "$runs_json" | jq -r '
 ')
 LOG_DIR="${LOG_DIR:-}"
 
+logs_file=""
+llm_out=""
+llm_err=""
+# Registered before the first mktemp so every exit path (including a failed
+# second mktemp or a failed report append) removes whatever was created.
+trap 'rm -f "$logs_file" "$llm_out" "$llm_err"' EXIT
 logs_file=$(mktemp)
 # One jq pass over failed runs; append each log file in the same order
 while IFS=$'\t' read -r run_id run_meta; do
