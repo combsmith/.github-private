@@ -4,8 +4,8 @@
 # network I/O happens; the stubbed gh returns an empty run window.
 # Run locally: bats tests/pr_review_health.bats
 
+# Set up test environment: create stubs for gh and claude CLIs.
 setup() {
-  # Set up test environment: create stubs for gh and claude CLIs.
   SCRIPT="${BATS_TEST_DIRNAME}/../scripts/pr_review_health.sh"
   WORK="$(mktemp -d)"
   STUB_BIN="${WORK}/bin"
@@ -32,8 +32,8 @@ GH
   cd "$WORK" || return 1
 }
 
+# Clean up temporary test directories.
 teardown() {
-  # Clean up temporary test directories.
   rm -rf "$WORK"
 }
 

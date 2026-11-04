@@ -226,8 +226,8 @@ read -r dur_n dur_min dur_p50 dur_p95 dur_max < <(echo "$runs_json" | jq -r '
 # ---------------------------------------------------------------------------
 # 3. Helpers
 # ---------------------------------------------------------------------------
+# Format seconds as a human-readable duration (e.g., "5m30s" or "45s").
 fmt_dur() {
-  # Format seconds as a human-readable duration (e.g., "5m30s" or "45s").
   local s=$1
   if [ "$s" -ge 60 ]; then
     printf '%dm%ds' $((s / 60)) $((s % 60))
@@ -253,8 +253,8 @@ llm_quota_refused() {
     "${files[@]}"
 }
 
+# Return an emoji icon representing the workflow conclusion status.
 conclusion_icon() {
-  # Return an emoji icon representing the workflow conclusion status.
   case "$1" in
     success)   echo "✅" ;;
     failure)   echo "❌" ;;
