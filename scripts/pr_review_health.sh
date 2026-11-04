@@ -265,7 +265,6 @@ conclusion_icon() {
 }
 
 # overall is the pre-computed status fed as a hint to the LLM prompt below.
-# shellcheck disable=SC2034
 if [ "$failed_runs" -eq 0 ]; then
   overall="HEALTHY"
 elif [ "$(echo "$failure_rate > 50" | bc)" -eq 1 ]; then
@@ -384,6 +383,7 @@ You are analyzing GitHub Actions workflow run logs for the PR Review Agent.
 - Workflow: \`${WORKFLOW_FILE}\` in repo \`${WORKFLOW_REPO}\`
 - Analysis window: last ${LOOKBACK_DAYS} days (all runs fetched via pagination)
 - Report date: ${TODAY}
+- Pre-computed health status: \`${overall}\`
 - Total runs fetched: ${total_runs} | Successful: ${success_runs} | Failed: ${failed_runs} | Cancelled: ${cancelled_runs}
 - Run duration across ${dur_n} completed run(s): p50 $(fmt_dur "$dur_p50") | p95 $(fmt_dur "$dur_p95") (min $(fmt_dur "$dur_min") / max $(fmt_dur "$dur_max"))
 
@@ -463,10 +463,8 @@ elif llm_quota_refused "$llm_out" "$llm_err"; then
 else
   echo "::error::Claude invocation failed. CLI output follows:"
   cat "$llm_out" "$llm_err" >&2
-  rm -f "$logs_file" "$llm_out" "$llm_err"
   exit 1
 fi
-rm -f "$logs_file" "$llm_out" "$llm_err"
 
 [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "$REPORT_FILE" ] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
 
