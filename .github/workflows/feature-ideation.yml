@@ -128,7 +128,7 @@ jobs:
     steps:
       - name: Re-dispatch under workflow_dispatch
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_PAT_WORKFLOWS }}
           REPO: ${{ github.repository }}
           AUTHOR: ${{ github.event.discussion.user.login }}
           DISCUSSION_NUMBER: ${{ github.event.discussion.number }}
