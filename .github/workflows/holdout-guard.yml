@@ -36,9 +36,10 @@ jobs:
 
       - name: Enforce held-out eval immutability
         env:
-          GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           # shellcheck source=scripts/lib/holdout-guard.sh
@@ -46,7 +47,8 @@ jobs:
 
           echo "PR #${PR_NUMBER} authored by '${PR_AUTHOR}'"
 
-          changed="$(gh pr diff "$PR_NUMBER" --name-only)"
+          # Use git diff instead of gh pr diff to handle large diffs that exceed GitHub's API limit
+          changed="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
           echo "Changed paths:"
           printf '%s\n' "$changed" | sed 's/^/  /'
 
