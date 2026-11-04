@@ -622,6 +622,20 @@ check_maintainer_comments() {
     return 2
   }
 
+  # A registered info-status login with no author type can never clear as
+  # info-status (info_status_clear fails closed). Say so, so a stall on clean
+  # notices (e.g. the edit-time/author-type lookup failed) is diagnosable.
+  local untyped
+  untyped=$(printf '%s' "$json" | jq -r --argjson infopatterns "$info_patterns" '
+    [ (.comments // [])[]? | objects
+      | select(((.author?.__typename // null) | type) != "string")
+      | (.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $l
+      | select($infopatterns[$l] != null) ] | length
+  ' 2>/dev/null || echo 0)
+  if [[ "$untyped" =~ ^[0-9]+$ && "$untyped" -gt 0 ]]; then
+    log_warn "$untyped comment(s) from a registered info-status login carry no author type — not cleared as info-status (author-type lookup missing or failed)"
+  fi
+
   local blockers unreadable
   blockers=$(printf '%s' "$verdict" | jq -r '.blockers // empty' 2>/dev/null || true)
   unreadable=$(printf '%s' "$verdict" | jq -r '.unreadable // empty' 2>/dev/null || true)

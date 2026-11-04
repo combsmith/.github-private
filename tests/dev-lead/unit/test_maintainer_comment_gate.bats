@@ -875,14 +875,34 @@ _expect_open() {
   _expect_open '{"login":"chatgpt-codex-connector"}' "$_CODEX_1421_BODY"
 }
 
+@test "PR 1421: a registered notice with no author type logs why it was not cleared" {
+  local json
+  json=$(jq -cn --arg b "$_SONAR_1421_BODY" \
+    '{comments:[{id:"IC_n", author:{login:"sonarqubecloud"}, authorAssociation:"NONE", body:$b, isMinimized:false, minimizedReason:""}]}')
+  _run_check "$json"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"1 comment(s) from a registered info-status login carry no author type"* ]]
+  # A typed Bot notice logs nothing of the sort.
+  _run_check "$(_sonar_json sonarqubecloud "$_SONAR_1421_BODY")"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"carry no author type"* ]]
+}
+
+@test "Wiring: dev-lead's issue-comment fetch selects the author type info_status_clear needs" {
+  grep -q 'nodes{ id author{login __typename} authorAssociation body' "$SCRIPT_DIR/dev-lead-fix-reviews.sh"
+}
+
 @test "PR 1421: the Sonar passed summary that does not open the body still needs a disposition" {
   _expect_open '{"login":"sonarqubecloud","__typename":"Bot"}' $'Re-posting the earlier status:\n\n'"$_SONAR_1421_BODY"
 }
 
 @test "maintainer_gate_merge_edit_times merges author.__typename by comment id" {
   local bin="$BATS_TEST_TMPDIR/bin"; mkdir -p "$bin"
+  # The shim answers only a query that selects the author type, so dropping it
+  # from the lookup fails this test instead of silently stalling clean notices.
   cat > "$bin/gh" <<'SHIM'
 #!/usr/bin/env bash
+[[ "$*" == *'author{__typename}'* ]] || exit 1
 printf '%s' '{"data":{"resource":{"comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"IC_b","lastEditedAt":null,"author":{"__typename":"Bot"}},{"id":"IC_u","lastEditedAt":null,"author":{"__typename":"User"}},{"id":"IC_g","lastEditedAt":null,"author":null}]}}}}'
 SHIM
   chmod +x "$bin/gh"
