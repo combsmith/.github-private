@@ -5,6 +5,7 @@
 # Run locally: bats tests/pr_review_health.bats
 
 setup() {
+  # Set up test environment: create stubs for gh and claude CLIs.
   SCRIPT="${BATS_TEST_DIRNAME}/../scripts/pr_review_health.sh"
   WORK="$(mktemp -d)"
   STUB_BIN="${WORK}/bin"
@@ -32,6 +33,7 @@ GH
 }
 
 teardown() {
+  # Clean up temporary test directories.
   rm -rf "$WORK"
 }
 
