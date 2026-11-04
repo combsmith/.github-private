@@ -246,9 +246,9 @@ llm_quota_refused() {
   # Detect if a failed Claude call was refused due to quota or rate-limiting.
   local f files=()
   for f in "$@"; do
-    [ -s "$f" ] && files+=("$f")
+    [[ -s "$f" ]] && files+=("$f")
   done
-  [ "${#files[@]}" -gt 0 ] || return 1
+  [[ "${#files[@]}" -gt 0 ]] || return 1
   grep -qiE "hit your ([a-z]+ )?limit|reached your ([a-z]+ )?limit|[0-9]+-[a-z]+ limit reached|usage limit|too many requests|quota (exceeded|exhausted|reached)|out of (credits|tokens)|overloaded_error|([^0-9]|^)(429|529)([^0-9]|$)" \
     "${files[@]}"
 }
