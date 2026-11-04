@@ -40,7 +40,8 @@
 #       optional `.`/`!`, optionally the Claude Code footer) and nothing looser;
 #     • from an OWNER/MEMBER/COLLABORATOR only: the explicit opt-out marker
 #       `<!-- maintainer:not-a-finding -->`;
-#     • a registered clean info-status bot comment (#1918).
+#     • a registered clean info-status bot comment (#1918), from a GitHub App
+#       author (`author.__typename` "Bot") only.
 #   No author is exempt by login alone: don-petry is also the account dev-lead and
 #   the personas post from (ADR-0008). A steering comment stays in scope unless
 #   the maintainer opts it out. The definition is _MAINTAINER_GATE_SCOPE_JQ_DEFS,
@@ -122,6 +123,29 @@ readonly _MAINTAINER_GATE_SCOPE_JQ_DEFS='
       and (((.body // "") | tostring | test($markers)) | not)
       and (review_request | not)
       and (opted_out | not);
+'
+
+# The known-clean info-status classifier (#1918) as a jq definition, shared by
+# check_maintainer_comments and maintainer_gate_open_comment_ids so the gate and
+# dev-lead's candidate filter cannot disagree. The caller binds $infopatterns
+# (_maintainer_gate_info_patterns_json) and $findre (_maintainer_gate_finding_re).
+#   info_status_clear — ALL of: the author is a GitHub App bot
+#                    (author.__typename "Bot"); its login, with any [bot] suffix
+#                    stripped, has a registered info_status_pattern; the body
+#                    matches that pattern; and the body carries no finding-bearing
+#                    section (#2008). The login alone is not enough: an ordinary
+#                    User account can hold a registered bot's bare login (a User
+#                    named `sonarqubecloud` exists), so the same text from it must
+#                    still block. A missing __typename is not "Bot" (fail closed).
+readonly _MAINTAINER_GATE_INFO_JQ_DEFS='
+  def info_status_clear:
+    ((.author?.__typename // "") == "Bot")
+    and ((.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $lbare
+         | ($infopatterns[$lbare] // null) as $p
+         | ((.body // "") | tostring) as $b
+         | ($p != null)
+           and (($b | test($findre)) | not)
+           and ($b | test($p)));
 '
 
 # This library's own directory, resolved ONCE at source time. dev-lead-fix-reviews.sh
@@ -309,6 +333,9 @@ log_warn() {
 #   that comment WITHOUT a lastEditedAt key. The gate then fails closed (rc 2) for
 #   any edited RESOLVED bot comment. The snapshot is never fabricated: on any
 #   failure it is echoed unchanged.
+#   The same read also merges each comment's author.__typename, which `gh pr view`
+#   does not expose either. info_status_clear needs it ("Bot"); a comment without it
+#   is never cleared as info-status, so a failed lookup fails closed there too.
 maintainer_gate_merge_edit_times() {
   local pr_url="${1:-}" snapshot="${2:-}"
   [[ -n "$snapshot" ]] || return 0
@@ -317,7 +344,7 @@ maintainer_gate_merge_edit_times() {
     return 0
   fi
   # shellcheck disable=SC2016  # $url/$cursor are GraphQL variables, not shell
-  local _gql='query($url:URI!,$cursor:String){resource(url:$url){...on PullRequest{comments(first:100,after:$cursor){pageInfo{hasNextPage endCursor} nodes{id lastEditedAt}}}}}'
+  local _gql='query($url:URI!,$cursor:String){resource(url:$url){...on PullRequest{comments(first:100,after:$cursor){pageInfo{hasNextPage endCursor} nodes{id lastEditedAt author{__typename}}}}}}'
   local edits="[]" page nodes has_next="true" cursor="" pages=0
   local -a cursor_args=()
   while [[ "$has_next" == "true" ]]; do
@@ -359,10 +386,18 @@ maintainer_gate_merge_edit_times() {
   done
   printf '%s' "$snapshot" | jq -c --argjson edits "$edits" '
     ([ $edits[] | objects | select(.id != null) | {key: .id, value: .lastEditedAt} ] | from_entries) as $m
+    | ([ $edits[] | objects | select(.id != null)
+         | select(((.author?.__typename // null) | type) == "string")
+         | {key: .id, value: .author.__typename} ] | from_entries) as $t
     | if (.comments | type) == "array" then
         .comments |= map(if (type == "object") and ((.id // null) | type) == "string"
                             and (.id as $id | $m | has($id))
-                         then . + {lastEditedAt: $m[.id]} else . end)
+                         then . + {lastEditedAt: $m[.id]}
+                           | if (.id as $id | $t | has($id))
+                               and (((.author // null) | type) == "object" or .author == null)
+                             then .author = ((.author // {}) + {__typename: $t[.id]})
+                             else . end
+                         else . end)
       else . end
   ' 2>/dev/null || printf '%s' "$snapshot"
 }
@@ -484,9 +519,11 @@ maintainer_gate_head_committer_date() {
 #   node id per line for every comment in the gate's scope (in_gate_scope) that is
 #   not minimized RESOLVED, so the harness never tries to disposition a comment the
 #   gate does not count. <comments_array_json> is the harness's issue-comment nodes,
-#   each {id, author{login}, authorAssociation, body, isMinimized, minimizedReason}.
-#   Filters out clean registered info-status comments matching check_maintainer_comments
-#   so the gate and candidate filter never disagree. Unreadable input echoes nothing
+#   each {id, author{login,__typename}, authorAssociation, body, isMinimized,
+#   minimizedReason}. Filters out clean registered info-status comments with the same
+#   info_status_clear definition check_maintainer_comments uses, so the gate and
+#   candidate filter never disagree. A node without author.__typename "Bot" is never
+#   filtered as info-status. Unreadable input echoes nothing
 #   and returns non-zero.
 maintainer_gate_open_comment_ids() {
   local comments="${1:-}" bot_user="${2:-donpetry-bot}" info_patterns finding_re
@@ -496,16 +533,11 @@ maintainer_gate_open_comment_ids() {
     --arg botuser "$bot_user" \
     --arg markers "$_MAINTAINER_GATE_AGENT_MARKERS" \
     --arg findre "$finding_re" \
-    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_SCOPE_JQ_DEFS"'
+    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_SCOPE_JQ_DEFS$_MAINTAINER_GATE_INFO_JQ_DEFS"'
       if type != "array" then error("not an array") else . end
       | [ .[] | objects
           | select(in_gate_scope)
-          | (.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $lbare
-          | ((.body // "") | tostring | test($findre)) as $findings
-          | select(
-              ($infopatterns[$lbare] // null) as $p
-              | ($p == null) or $findings or (((.body // "") | test($p)) | not)
-            )
+          | select(info_status_clear | not)
           | select(((.isMinimized // false) == true)
                    and (((.minimizedReason // "") | ascii_downcase) == "resolved") | not)
           | .id ]
@@ -530,7 +562,8 @@ check_maintainer_comments() {
   # Data-driven info-status classifier (#1918): {login: pattern} of KNOWN CLEAN
   # informational status comments (e.g. sonarqubecloud → "Quality Gate passed"),
   # read from the reviewer-source registry. A comment authored by a listed login
-  # whose body matches its pattern carries no finding and is treated as addressed.
+  # (a Bot author only, see info_status_clear) whose body matches its pattern
+  # carries no finding and is treated as addressed.
   # An unreadable registry yields "{}" → no comment is auto-cleared (fail closed).
   local info_patterns
   info_patterns="$(_maintainer_gate_info_patterns_json)"
@@ -542,7 +575,8 @@ check_maintainer_comments() {
   registered="$(_maintainer_gate_registered_logins_json)"
 
   # Per non-agent comment, classify: "clear" | "block" | "unreadable".
-  #   • A KNOWN CLEAN info-status comment (registered login + its pattern) is clear,
+  #   • A KNOWN CLEAN info-status comment (Bot author + registered login + its
+  #     pattern) is clear,
   #     unless its body carries a finding-bearing section (#2008). A rate-limit or
   #     status notice never clears the findings beside it.
   #   • A comment not minimized RESOLVED blocks.
@@ -562,21 +596,18 @@ check_maintainer_comments() {
     --arg botuser "$bot_user" \
     --arg findre "$finding_re" \
     --argjson registered "$registered" \
-    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_DISP_JQ_DEFS$_MAINTAINER_GATE_SCOPE_JQ_DEFS"'
+    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_DISP_JQ_DEFS$_MAINTAINER_GATE_SCOPE_JQ_DEFS$_MAINTAINER_GATE_INFO_JQ_DEFS"'
       (.comments // []) as $all
       | [ $all[] | objects
         | (.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $lbare
         # #2209: our login, registered markers, review requests, opt-outs.
         | select(in_gate_scope)
-        | ((.body // "") | tostring | test($findre)) as $findings
-        # Drop KNOWN CLEAN info-status comments: author is a registered source, its
-        # body matches that source pattern, and it carries no finding-bearing
-        # section. Anything else (a failing status, an unrecognised body, a bot
-        # with no pattern, a human) is still evaluated.
-        | select(
-            ($infopatterns[$lbare] // null) as $p
-            | ($p == null) or $findings or (((.body // "") | test($p)) | not)
-          )
+        # Drop KNOWN CLEAN info-status comments: a Bot author that is a registered
+        # source, its body matches that source pattern, and it carries no
+        # finding-bearing section. Anything else (a failing status, an
+        # unrecognised body, a bot with no pattern, a human, a User account
+        # holding a bot login) is still evaluated.
+        | select(info_status_clear | not)
         | if ((.isMinimized // false) == true)
              and (((.minimizedReason // "") | ascii_downcase) == "resolved") | not
           then "block"
