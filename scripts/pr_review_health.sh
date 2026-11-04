@@ -249,7 +249,7 @@ llm_quota_refused() {
     [ -s "$f" ] && files+=("$f")
   done
   [ "${#files[@]}" -gt 0 ] || return 1
-  grep -qiE "hit your ([a-z]+ )?limit|reached your ([a-z]+ )?limit|limit reached|usage limit|rate[ -]?limit|too many requests|quota (exceeded|exhausted|reached)|out of (credits|tokens)|overloaded_error|([^0-9]|^)(429|529)([^0-9]|$)" \
+  grep -qiE "hit your ([a-z]+ )?limit|reached your ([a-z]+ )?limit|[0-9]+-[a-z]+ limit reached|usage limit|too many requests|quota (exceeded|exhausted|reached)|out of (credits|tokens)|overloaded_error|([^0-9]|^)(429|529)([^0-9]|$)" \
     "${files[@]}"
 }
 
