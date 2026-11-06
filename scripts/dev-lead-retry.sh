@@ -359,17 +359,19 @@ post_dispatch_guard() {
 # Returns JSON {id, details_url} for the most recent failed check matching
 # check_name on head_sha, so the retry dispatch has full failure context.
 lookup_check_run_details() {
-  local repo="$1" head_sha="$2" check_name="$3" out
-  # On an API error gh prints the error body to stdout, so a `|| echo` fallback
-  # would be appended to it; replace the output instead.
-  if ! out=$(gh api "repos/${repo}/commits/${head_sha}/check-runs?per_page=100" \
-    --jq --arg name "$check_name" \
-    '.check_runs
-     | map(select(.name == $name and .conclusion == "failure"))
-     | sort_by(.completed_at)
-     | last
-     | {id: (.id // ""), details_url: (.details_url // "")}' \
-    2>/dev/null); then
+  local repo="$1" head_sha="$2" check_name="$3" raw out
+  # `gh api --jq` takes no `--arg`, so filter the raw response with jq, which
+  # also keeps the check name out of the filter text. On an API error gh prints
+  # the error body to stdout, so a `|| echo` fallback would be appended to it;
+  # replace the output instead (an error body has no .check_runs, so jq fails).
+  if ! raw=$(gh api "repos/${repo}/commits/${head_sha}/check-runs?per_page=100" 2>/dev/null) \
+     || ! out=$(jq -c --arg name "$check_name" \
+       '.check_runs
+        | map(select(.name == $name and .conclusion == "failure"))
+        | sort_by(.completed_at)
+        | last
+        | {id: (.id // ""), details_url: (.details_url // "")}' \
+       <<< "$raw" 2>/dev/null); then
     out='{"id":"","details_url":""}'
   fi
   printf '%s\n' "$out"

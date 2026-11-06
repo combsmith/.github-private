@@ -261,6 +261,86 @@ GHEOF
   [ "$output" = '{"id":"","details_url":""}' ]
 }
 
+# _strict_gh_stub: parses its arguments the way the real gh does — value flags
+# take the next word, and `gh api` accepts exactly one positional (the endpoint),
+# else "accepts 1 arg(s), received N" and exit 1. The check-runs endpoint answers
+# $CHECK_RUNS_RAW through --jq; dispatches are captured to $PAYLOAD_FILE.
+_strict_gh_stub() {
+  cat > "$MOCK_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+shift  # "api"
+filter="." pos=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --jq|-q)                       filter="$2"; shift 2 ;;
+    --method|-X|-f|-F|-H|--input)  shift 2 ;;
+    --paginate|--silent|-i)        shift ;;
+    *)                             pos+=("$1"); shift ;;
+  esac
+done
+if [ "${#pos[@]}" -ne 1 ]; then
+  echo "accepts 1 arg(s), received ${#pos[@]}" >&2
+  exit 1
+fi
+case "${pos[0]}" in
+  */dispatches)  cat > "${PAYLOAD_FILE:-/dev/null}" ;;
+  */check-runs*) printf '%s' "${CHECK_RUNS_RAW:-{\}}" | jq -c "$filter" ;;
+  *)             echo "[]" ;;
+esac
+GHEOF
+  chmod +x "$MOCK_BIN/gh"
+}
+
+# Two failed runs of "CI" (the later one wins), a success and another check.
+_check_runs_raw() {
+  jq -nc --arg name "${1:-CI}" '{check_runs: [
+    {id: 11, name: $name, conclusion: "failure", completed_at: "2026-06-18T01:00:00Z",
+     details_url: "https://github.com/combsmith/app/actions/runs/1/job/11"},
+    {id: 12, name: $name, conclusion: "failure", completed_at: "2026-06-18T02:00:00Z",
+     details_url: "https://github.com/combsmith/app/actions/runs/2/job/12"},
+    {id: 13, name: $name, conclusion: "success", completed_at: "2026-06-18T03:00:00Z",
+     details_url: "https://github.com/combsmith/app/actions/runs/3/job/13"},
+    {id: 14, name: "lint", conclusion: "failure", completed_at: "2026-06-18T04:00:00Z",
+     details_url: "https://github.com/combsmith/app/actions/runs/4/job/14"}]}'
+}
+
+@test "lookup_check_run_details: returns the id and URL of the latest failed run of the check" {
+  _strict_gh_stub
+  CHECK_RUNS_RAW="$(_check_runs_raw)"
+  export CHECK_RUNS_RAW
+
+  run lookup_check_run_details "combsmith/app" abc123 "CI"
+
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.id' <<<"$output")" = "12" ]
+  [ "$(jq -r '.details_url' <<<"$output")" = "https://github.com/combsmith/app/actions/runs/2/job/12" ]
+}
+
+@test "lookup_check_run_details: a check name with quotes and backslashes matches literally" {
+  _strict_gh_stub
+  CHECK_RUNS_RAW="$(_check_runs_raw 'build "x" \\ (ubuntu)')"
+  export CHECK_RUNS_RAW
+
+  run lookup_check_run_details "combsmith/app" abc123 'build "x" \\ (ubuntu)'
+
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.id' <<<"$output")" = "12" ]
+}
+
+@test "dispatch_ci_retry: the payload carries the check run id and URL" {
+  _strict_gh_stub
+  CHECK_RUNS_RAW="$(_check_runs_raw)"
+  export CHECK_RUNS_RAW DRY_RUN="false"
+  rm -f "$PAYLOAD_FILE"
+
+  run dispatch_ci_retry "combsmith/app" 42 abc123 "CI"
+
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.event_type' "$PAYLOAD_FILE")" = "dev-lead-ci-failure" ]
+  [ "$(jq -r '.client_payload.checks[0].id' "$PAYLOAD_FILE")" = "12" ]
+  [ "$(jq -r '.client_payload.checks[0].details_url' "$PAYLOAD_FILE")" = "https://github.com/combsmith/app/actions/runs/2/job/12" ]
+}
+
 @test "gh_api_list: pages are joined into one array; a non-array page becomes []" {
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$PAGES"\n' > "$MOCK_BIN/gh"
   chmod +x "$MOCK_BIN/gh"
