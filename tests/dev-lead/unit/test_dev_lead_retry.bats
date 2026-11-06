@@ -210,7 +210,55 @@ GHEOF
 
   [ "$status" -eq 1 ]
   [ "$output" = "[]" ]
-  [[ "$stderr" == *"::warning::"*"repos/combsmith/x-ghsa-pc5f-cw67-7cmm/issues failed"* ]]
+  [[ "$stderr" == *"::warning::"*"repos/combsmith/x-ghsa-pc5f-cw67-7cmm/issues failed"*"(Not Found)"* ]]
+}
+
+@test "gh_api_list: a failure partway through pagination drops the pages already read" {
+  # Page 1 arrives, then gh prints the error body of page 2 and exits 1.
+  cat > "$MOCK_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+echo '[{"number":1}]'
+printf '{"message":"You have exceeded a secondary rate limit","status":"403"}'
+exit 1
+GHEOF
+  chmod +x "$MOCK_BIN/gh"
+
+  run --separate-stderr gh_api_list "combsmith/a" "issues?per_page=100" '.'
+
+  [ "$status" -eq 1 ]
+  [ "$output" = "[]" ]
+  [[ "$stderr" == *"repos/combsmith/a/issues failed"*"(You have exceeded a secondary rate limit)"* ]]
+}
+
+@test "retry: markers on two pages — the newest still wins" {
+  cat > "$MOCK_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *comments*) printf '%s\n%s\n' "$PAGE1" "$PAGE2" ;;
+  *pulls*)    echo '[]' ;;
+  *)          echo '[]' ;;
+esac
+GHEOF
+  chmod +x "$MOCK_BIN/gh"
+  PAGE1="$(jq -nc --arg m "$(_marker failed 1)" '[$m, "chatter"]')"
+  PAGE2="$(jq -nc --arg m "$(_marker failed 2)" '["more chatter", $m]')"
+  export PAGE1 PAGE2
+
+  run scan_issue_for_retry "combsmith/.github" 478
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"would dispatch dev-lead-issue-retry"* ]]
+  [[ "$output" == *"attempt=2"* ]]
+}
+
+@test "lookup_check_run_details: a failed call prints exactly the fallback object" {
+  _real_jq_gh_stub
+  export GH_FAIL_PATHS='repos/combsmith/app/commits/*'
+
+  run lookup_check_run_details "combsmith/app" abc123 "CI"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"id":"","details_url":""}' ]
 }
 
 @test "gh_api_list: pages are joined into one array; a non-array page becomes []" {
@@ -256,10 +304,32 @@ GHEOF
 @test "retry: open PRs that cannot be listed hold the issue retry (fail closed)" {
   _real_jq_gh_stub
   export GH_FAIL_PATHS='repos/combsmith/.github/pulls*'
+  export DRY_RUN="false"
+  rm -f "$PAYLOAD_FILE"
 
   run open_issue_pr_exists "combsmith/.github" 478
+  [ "$status" -eq 2 ]
+
+  # The caller holds a retryable issue, says why, and POSTs nothing.
+  COMMENTS_JSON="$(jq -nc --arg m "$(_marker failed 1)" '[$m]')"
+  export COMMENTS_JSON
+  cat > "$MOCK_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *dispatches*) cat > "${PAYLOAD_FILE:-/dev/null}"; exit 0 ;;
+  *comments*)   printf '%s' "${COMMENTS_JSON}" ;;
+  *pulls*)      printf '{"message":"Not Found","status":"404"}'; exit 1 ;;
+  *)            echo "[]" ;;
+esac
+GHEOF
+  chmod +x "$MOCK_BIN/gh"
+
+  run scan_issue_for_retry "combsmith/.github" 478
 
   [ "$status" -eq 0 ]
+  [ "${lines[-1]}" = "0" ]
+  [[ "$output" == *"[hold] issue #478: the open PR list of combsmith/.github is unreadable"* ]]
+  [ ! -f "$PAYLOAD_FILE" ]
 }
 
 @test "sweep: repos whose issues or pulls endpoint errors are skipped with warnings and the sweep reaches the next repo" {

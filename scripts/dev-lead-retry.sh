@@ -381,19 +381,24 @@ lookup_check_run_details() {
 # On a failed call gh prints the API's error body to stdout (e.g. a GHSA
 # temporary private fork answers 404 on /issues), so neither
 # `|| echo "[]"` nor `jq -s add` is safe on the raw output. A failed call or a
-# non-array page instead prints `[]`, emits a ::warning:: naming the repo and
-# endpoint, and returns 1, so one bad repo is visible but never aborts the sweep.
-# Callers that may treat an unreadable list as empty append `|| true`.
+# non-array page instead prints `[]`, emits a ::warning:: naming the repo, the
+# endpoint and the API's error message (when the body has one), and returns 1,
+# so one bad repo is visible but never aborts the sweep. Callers that may treat
+# an unreadable list as empty append `|| true`.
 gh_api_list() {
-  local repo="$1" path="$2" filter="$3" out
-  if ! out=$(gh api --paginate "repos/${repo}/${path}" --jq "$filter" 2>/dev/null) \
-     || ! out=$(jq -sc 'if all(type == "array") then add // [] else error("non-array page") end' \
-          <<< "$out" 2>/dev/null); then
-    echo "::warning::dev-lead-retry: GET repos/${repo}/${path%%\?*} failed or did not return a list; treating it as empty" >&2
-    echo "[]"
-    return 1
+  local repo="$1" path="$2" filter="$3" raw out msg
+  if raw=$(gh api --paginate "repos/${repo}/${path}" --jq "$filter" 2>/dev/null) \
+     && out=$(jq -sc 'if all(type == "array") then add // [] else error("non-array page") end' \
+          <<< "$raw" 2>/dev/null); then
+    printf '%s\n' "$out"
+    return 0
   fi
-  printf '%s\n' "$out"
+  # One line, bounded: the message lands inside a workflow command.
+  msg=$(jq -rs '[.[] | objects | .message | strings] | last // empty' <<< "$raw" 2>/dev/null || true)
+  msg=$(printf '%s' "$msg" | tr -c '[:alnum:] ._-' ' ' | cut -c1-120)
+  echo "::warning::dev-lead-retry: GET repos/${repo}/${path%%\?*} failed or did not return a list${msg:+ (${msg})}; treating it as empty" >&2
+  echo "[]"
+  return 1
 }
 
 # dispatch_ci_retry <repo> <pr_number> <head_sha> <check_name>
@@ -1531,13 +1536,13 @@ scan_repo() {
 # open_issue_pr_exists <repo> <issue_number>
 # Returns 0 if an open PR for this issue already exists (branch dev-lead/issue-<N>*),
 # meaning a prior attempt already produced — or is producing — a PR. In that case
-# the issue must NOT be re-dispatched (the PR path takes over). Also returns 0
-# when the open PRs cannot be listed: a retry dispatched blind could open a
-# duplicate PR, so fail closed.
+# the issue must NOT be re-dispatched (the PR path takes over). Returns 1 when
+# none exists, and 2 when the open PRs cannot be listed: a retry dispatched
+# blind could open a duplicate PR, so the caller holds it (fail closed).
 open_issue_pr_exists() {
   local repo="$1" issue_number="$2" prs
   prs=$(gh_api_list "$repo" "pulls?state=open&per_page=100" \
-    "[.[] | select(.head.ref | startswith(\"dev-lead/issue-${issue_number}-\"))]") || return 0
+    "[.[] | select(.head.ref | startswith(\"dev-lead/issue-${issue_number}-\"))]") || return 2
   [ "$(jq 'length' <<< "$prs")" -gt 0 ]
 }
 
@@ -1600,8 +1605,14 @@ scan_issue_for_retry() {
 
   # Skip if a PR already exists for this issue (prior attempt succeeded, or a
   # retry run is currently producing one).
-  if open_issue_pr_exists "$repo" "$issue_number"; then
+  local pr_rc=0
+  open_issue_pr_exists "$repo" "$issue_number" || pr_rc=$?
+  if [ "$pr_rc" -eq 0 ]; then
     echo "  [skip] issue #${issue_number}: an open dev-lead PR already exists" >&2
+    echo "0"; return 0
+  fi
+  if [ "$pr_rc" -ne 1 ]; then
+    echo "  [hold] issue #${issue_number}: the open PR list of ${repo} is unreadable — not re-dispatching (fail closed)" >&2
     echo "0"; return 0
   fi
 
