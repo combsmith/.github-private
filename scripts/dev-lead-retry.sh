@@ -1543,7 +1543,7 @@ open_issue_pr_exists() {
   local repo="$1" issue_number="$2" prs
   prs=$(gh_api_list "$repo" "pulls?state=open&per_page=100" \
     "[.[] | select(.head.ref | startswith(\"dev-lead/issue-${issue_number}-\"))]") || return 2
-  [ "$(jq 'length' <<< "$prs")" -gt 0 ]
+  (( $(jq 'length' <<< "$prs") > 0 ))
 }
 
 # scan_issue_for_retry <repo> <issue_number>
@@ -1607,11 +1607,11 @@ scan_issue_for_retry() {
   # retry run is currently producing one).
   local pr_rc=0
   open_issue_pr_exists "$repo" "$issue_number" || pr_rc=$?
-  if [ "$pr_rc" -eq 0 ]; then
+  if (( pr_rc == 0 )); then
     echo "  [skip] issue #${issue_number}: an open dev-lead PR already exists" >&2
     echo "0"; return 0
   fi
-  if [ "$pr_rc" -ne 1 ]; then
+  if (( pr_rc != 1 )); then
     echo "  [hold] issue #${issue_number}: the open PR list of ${repo} is unreadable — not re-dispatching (fail closed)" >&2
     echo "0"; return 0
   fi
