@@ -264,17 +264,19 @@ GHEOF
 # _strict_gh_stub: parses its arguments the way the real gh does — value flags
 # take the next word, and `gh api` accepts exactly one positional (the endpoint),
 # else "accepts 1 arg(s), received N" and exit 1. The check-runs endpoint answers
-# $CHECK_RUNS_RAW through --jq; dispatches are captured to $PAYLOAD_FILE.
+# $CHECK_RUNS_RAW (one JSON page per line; only the first without --paginate,
+# all back to back with it, as gh does) through --jq; dispatches are captured to $PAYLOAD_FILE.
 _strict_gh_stub() {
   cat > "$MOCK_BIN/gh" <<'GHEOF'
 #!/usr/bin/env bash
 shift  # "api"
-filter="." pos=()
+filter="." pages=1 pos=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --jq|-q)                       filter="$2"; shift 2 ;;
     --method|-X|-f|-F|-H|--input)  shift 2 ;;
-    --paginate|--silent|-i)        shift ;;
+    --paginate)                    pages=0; shift ;;
+    --silent|-i)                   shift ;;
     *)                             pos+=("$1"); shift ;;
   esac
 done
@@ -284,7 +286,8 @@ if [ "${#pos[@]}" -ne 1 ]; then
 fi
 case "${pos[0]}" in
   */dispatches)  cat > "${PAYLOAD_FILE:-/dev/null}" ;;
-  */check-runs*) printf '%s' "${CHECK_RUNS_RAW:-{\}}" | jq -c "$filter" ;;
+  */check-runs*) printf '%s\n' "${CHECK_RUNS_RAW:-{\}}" \
+                   | if [ "$pages" -eq 1 ]; then head -n 1; else cat; fi | jq -c "$filter" ;;
   *)             echo "[]" ;;
 esac
 GHEOF
@@ -316,15 +319,39 @@ _check_runs_raw() {
   [ "$(jq -r '.details_url' <<<"$output")" = "https://github.com/combsmith/app/actions/runs/2/job/12" ]
 }
 
-@test "lookup_check_run_details: a check name with quotes and backslashes matches literally" {
+@test "lookup_check_run_details: a check name with quotes, backslashes and \\(...) matches literally" {
   _strict_gh_stub
-  CHECK_RUNS_RAW="$(_check_runs_raw 'build "x" \\ (ubuntu)')"
+  local name='build "x" \\ \(env.OS) (ubuntu)'
+  CHECK_RUNS_RAW="$(_check_runs_raw "$name")"
   export CHECK_RUNS_RAW
 
-  run lookup_check_run_details "combsmith/app" abc123 'build "x" \\ (ubuntu)'
+  run lookup_check_run_details "combsmith/app" abc123 "$name"
 
   [ "$status" -eq 0 ]
   [ "$(jq -r '.id' <<<"$output")" = "12" ]
+}
+
+@test "lookup_check_run_details: a failure on a later page is found (all pages are read)" {
+  _strict_gh_stub
+  CHECK_RUNS_RAW="$(jq -nc '{check_runs: [{id: 1, name: "lint", conclusion: "success"}]}')"$'\n'"$(_check_runs_raw)"
+  export CHECK_RUNS_RAW
+
+  run lookup_check_run_details "combsmith/app" abc123 "CI"
+
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.id' <<<"$output")" = "12" ]
+  [ "$(jq -r '.details_url' <<<"$output")" = "https://github.com/combsmith/app/actions/runs/2/job/12" ]
+}
+
+@test "lookup_check_run_details: no failed run of the check prints empty fields, not null" {
+  _strict_gh_stub
+  CHECK_RUNS_RAW="$(_check_runs_raw)"
+  export CHECK_RUNS_RAW
+
+  run lookup_check_run_details "combsmith/app" abc123 "deploy"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"id":"","details_url":""}' ]
 }
 
 @test "dispatch_ci_retry: the payload carries the check run id and URL" {
