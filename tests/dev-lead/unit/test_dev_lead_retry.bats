@@ -255,10 +255,11 @@ GHEOF
   _real_jq_gh_stub
   export GH_FAIL_PATHS='repos/combsmith/app/commits/*'
 
-  run lookup_check_run_details "combsmith/app" abc123 "CI"
+  run --separate-stderr lookup_check_run_details "combsmith/app" abc123 "CI"
 
   [ "$status" -eq 0 ]
   [ "$output" = '{"id":"","details_url":""}' ]
+  [[ "$stderr" == *"::warning::"*"'CI'"*"combsmith/app@abc123"* ]]
 }
 
 # _strict_gh_stub: parses its arguments the way the real gh does — value flags
@@ -312,11 +313,12 @@ _check_runs_raw() {
   CHECK_RUNS_RAW="$(_check_runs_raw)"
   export CHECK_RUNS_RAW
 
-  run lookup_check_run_details "combsmith/app" abc123 "CI"
+  run --separate-stderr lookup_check_run_details "combsmith/app" abc123 "CI"
 
   [ "$status" -eq 0 ]
   [ "$(jq -r '.id' <<<"$output")" = "12" ]
   [ "$(jq -r '.details_url' <<<"$output")" = "https://github.com/combsmith/app/actions/runs/2/job/12" ]
+  [ -z "$stderr" ]
 }
 
 @test "lookup_check_run_details: a check name with quotes, backslashes and \\(...) matches literally" {
@@ -325,10 +327,24 @@ _check_runs_raw() {
   CHECK_RUNS_RAW="$(_check_runs_raw "$name")"
   export CHECK_RUNS_RAW
 
-  run lookup_check_run_details "combsmith/app" abc123 "$name"
+  run --separate-stderr lookup_check_run_details "combsmith/app" abc123 "$name"
 
   [ "$status" -eq 0 ]
   [ "$(jq -r '.id' <<<"$output")" = "12" ]
+}
+
+@test "lookup_check_run_details: the warning keeps a hostile check name to one bounded line" {
+  _strict_gh_stub
+  CHECK_RUNS_RAW="$(_check_runs_raw)"
+  export CHECK_RUNS_RAW
+
+  run --separate-stderr lookup_check_run_details "combsmith/app" abc123 $'x\n::error::y %0A'"$(printf 'z%.0s' {1..300})"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"id":"","details_url":""}' ]
+  [ "$(wc -l <<<"$stderr")" -eq 1 ]
+  [[ "$stderr" != *"::error::"* ]]
+  [[ "$stderr" != *"%0A"* ]]
 }
 
 @test "lookup_check_run_details: a failure on a later page is found (all pages are read)" {
@@ -336,7 +352,7 @@ _check_runs_raw() {
   CHECK_RUNS_RAW="$(jq -nc '{check_runs: [{id: 1, name: "lint", conclusion: "success"}]}')"$'\n'"$(_check_runs_raw)"
   export CHECK_RUNS_RAW
 
-  run lookup_check_run_details "combsmith/app" abc123 "CI"
+  run --separate-stderr lookup_check_run_details "combsmith/app" abc123 "CI"
 
   [ "$status" -eq 0 ]
   [ "$(jq -r '.id' <<<"$output")" = "12" ]
@@ -348,10 +364,12 @@ _check_runs_raw() {
   CHECK_RUNS_RAW="$(_check_runs_raw)"
   export CHECK_RUNS_RAW
 
-  run lookup_check_run_details "combsmith/app" abc123 "deploy"
+  run --separate-stderr lookup_check_run_details "combsmith/app" abc123 "deploy (prod)"
 
   [ "$status" -eq 0 ]
   [ "$output" = '{"id":"","details_url":""}' ]
+  [[ "$stderr" == *"::warning::"*"'deploy (prod)'"*"combsmith/app@abc123"* ]]
+  [ "$(grep -c '::warning::' <<<"$stderr")" -eq 1 ]
 }
 
 @test "dispatch_ci_retry: the payload carries the check run id and URL" {
