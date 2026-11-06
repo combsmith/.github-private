@@ -359,15 +359,46 @@ post_dispatch_guard() {
 # Returns JSON {id, details_url} for the most recent failed check matching
 # check_name on head_sha, so the retry dispatch has full failure context.
 lookup_check_run_details() {
-  local repo="$1" head_sha="$2" check_name="$3"
-  gh api "repos/${repo}/commits/${head_sha}/check-runs?per_page=100" \
+  local repo="$1" head_sha="$2" check_name="$3" out
+  # On an API error gh prints the error body to stdout, so a `|| echo` fallback
+  # would be appended to it; replace the output instead.
+  if ! out=$(gh api "repos/${repo}/commits/${head_sha}/check-runs?per_page=100" \
     --jq --arg name "$check_name" \
     '.check_runs
      | map(select(.name == $name and .conclusion == "failure"))
      | sort_by(.completed_at)
      | last
      | {id: (.id // ""), details_url: (.details_url // "")}' \
-    2>/dev/null || echo '{"id":"","details_url":""}'
+    2>/dev/null); then
+    out='{"id":"","details_url":""}'
+  fi
+  printf '%s\n' "$out"
+}
+
+# gh_api_list <repo> <path> <jq_filter>
+# GETs a paginated list endpoint (repos/<repo>/<path>) and prints ONE JSON array:
+# the pages, each mapped through <jq_filter> (which must yield an array), joined.
+# On a failed call gh prints the API's error body to stdout (e.g. a GHSA
+# temporary private fork answers 404 on /issues), so neither
+# `|| echo "[]"` nor `jq -s add` is safe on the raw output. A failed call or a
+# non-array page instead prints `[]`, emits a ::warning:: naming the repo, the
+# endpoint and the API's error message (when the body has one), and returns 1,
+# so one bad repo is visible but never aborts the sweep. Callers that may treat
+# an unreadable list as empty append `|| true`.
+gh_api_list() {
+  local repo="$1" path="$2" filter="$3" raw out msg
+  if raw=$(gh api --paginate "repos/${repo}/${path}" --jq "$filter" 2>/dev/null) \
+     && out=$(jq -sc 'if all(type == "array") then add // [] else error("non-array page") end' \
+          <<< "$raw" 2>/dev/null); then
+    printf '%s\n' "$out"
+    return 0
+  fi
+  # One line, bounded: the message lands inside a workflow command.
+  msg=$(jq -rs '[.[] | objects | .message | strings] | last // empty' <<< "$raw" 2>/dev/null || true)
+  msg=$(printf '%s' "$msg" | tr -c '[:alnum:] ._-' ' ' | cut -c1-120)
+  echo "::warning::dev-lead-retry: GET repos/${repo}/${path%%\?*} failed or did not return a list${msg:+ (${msg})}; treating it as empty" >&2
+  echo "[]"
+  return 1
 }
 
 # dispatch_ci_retry <repo> <pr_number> <head_sha> <check_name>
@@ -591,10 +622,15 @@ scan_pr_for_rate_limits() {
   fi
 
   # Fetch our automation's comment bodies, paginating to ensure we don't miss
-  # markers on busy PRs
+  # markers on busy PRs. Unreadable comments could hide a dispatch guard or an
+  # unexpired rate-limit marker, so fail closed.
   local comments_json
-  comments_json=$(gh api --paginate "repos/${repo}/issues/${pr_number}/comments?per_page=100" \
-    --jq "$(retry_marker_bodies_jq)" 2>/dev/null | jq -s 'add // []' || echo "[]")
+  if ! comments_json=$(gh_api_list "$repo" "issues/${pr_number}/comments?per_page=100" \
+    "$(retry_marker_bodies_jq)"); then
+    echo "  [warn] could not read PR ${pr_number} comments in ${repo} — skipping (fail closed)" >&2
+    echo "0"
+    return 0
+  fi
 
   # Deduplication guard: if a concurrent resume path already claimed dispatch
   # for this SHA, skip to prevent duplicate repository_dispatch calls (#1407).
@@ -1461,11 +1497,11 @@ scan_repo() {
   echo "[retry] scanning ${repo}..."
 
   local prs_json
-  prs_json=$(gh api --paginate "repos/${repo}/pulls?state=open&per_page=100" \
-    --jq '[.[] | {number: .number, head_sha: .head.sha}]' 2>/dev/null || echo "[]")
+  prs_json=$(gh_api_list "$repo" "pulls?state=open&per_page=100" \
+    '[.[] | {number: .number, head_sha: .head.sha}]') || true
 
   local pr_count
-  pr_count=$(echo "$prs_json" | jq -s 'add // [] | length')
+  pr_count=$(jq 'length' <<< "$prs_json")
   if [ "$pr_count" -eq 0 ]; then
     echo "  no open PRs in ${repo}"
   else
@@ -1488,7 +1524,7 @@ scan_repo() {
         dispatched=$(scan_pr_for_unreplied_bot_threads "$repo" "$pr_number")
         total_dispatched=$(( total_dispatched + dispatched ))
       fi
-    done < <(echo "$prs_json" | jq -sc 'add // [] | .[]')
+    done < <(jq -c '.[]' <<< "$prs_json")
     echo "  dispatched ${total_dispatched} PR retries from ${repo}"
   fi
 
@@ -1500,13 +1536,14 @@ scan_repo() {
 # open_issue_pr_exists <repo> <issue_number>
 # Returns 0 if an open PR for this issue already exists (branch dev-lead/issue-<N>*),
 # meaning a prior attempt already produced — or is producing — a PR. In that case
-# the issue must NOT be re-dispatched (the PR path takes over).
+# the issue must NOT be re-dispatched (the PR path takes over). Returns 1 when
+# none exists, and 2 when the open PRs cannot be listed: a retry dispatched
+# blind could open a duplicate PR, so the caller holds it (fail closed).
 open_issue_pr_exists() {
-  local repo="$1" issue_number="$2" count
-  count=$(gh api --paginate "repos/${repo}/pulls?state=open&per_page=100" \
-    --jq "[.[] | select(.head.ref | startswith(\"dev-lead/issue-${issue_number}-\"))]" \
-    2>/dev/null | jq -s 'add | length' || echo "0")
-  [ "${count:-0}" -gt 0 ]
+  local repo="$1" issue_number="$2" prs
+  prs=$(gh_api_list "$repo" "pulls?state=open&per_page=100" \
+    "[.[] | select(.head.ref | startswith(\"dev-lead/issue-${issue_number}-\"))]") || return 2
+  (( $(jq 'length' <<< "$prs") > 0 ))
 }
 
 # scan_issue_for_retry <repo> <issue_number>
@@ -1517,15 +1554,15 @@ scan_issue_for_retry() {
   local repo="$1" issue_number="$2"
 
   local comments_json
-  comments_json=$(gh api --paginate "repos/${repo}/issues/${issue_number}/comments?per_page=100" \
-    --jq "$(retry_marker_bodies_jq)" 2>/dev/null || echo "[]")
+  comments_json=$(gh_api_list "$repo" "issues/${issue_number}/comments?per_page=100" \
+    "$(retry_marker_bodies_jq)") || true
 
   # Newest dev-lead-issue marker for this issue (comments are chronological, so
   # the last matching one is the most recent attempt — earlier ones superseded).
   local prefix="${ISSUE_MARKER_PREFIX}${issue_number} "
   local marker
-  marker=$(echo "$comments_json" | jq -s -r --arg p "$prefix" \
-    '[ .[] | .[]? | select(. != null and (. | contains($p))) ] | last // ""' 2>/dev/null || echo "")
+  marker=$(echo "$comments_json" | jq -r --arg p "$prefix" \
+    '[ .[] | strings | select(contains($p)) ] | last // ""' 2>/dev/null || echo "")
 
   if [ -z "$marker" ]; then
     # No failure marker → nothing failed (or it succeeded). Nothing to retry.
@@ -1568,8 +1605,14 @@ scan_issue_for_retry() {
 
   # Skip if a PR already exists for this issue (prior attempt succeeded, or a
   # retry run is currently producing one).
-  if open_issue_pr_exists "$repo" "$issue_number"; then
+  local pr_rc=0
+  open_issue_pr_exists "$repo" "$issue_number" || pr_rc=$?
+  if (( pr_rc == 0 )); then
     echo "  [skip] issue #${issue_number}: an open dev-lead PR already exists" >&2
+    echo "0"; return 0
+  fi
+  if (( pr_rc != 1 )); then
+    echo "  [hold] issue #${issue_number}: the open PR list of ${repo} is unreadable — not re-dispatching (fail closed)" >&2
     echo "0"; return 0
   fi
 
@@ -1587,15 +1630,14 @@ scan_repo_issues() {
   # escalation label. The issues endpoint also returns PRs, so filter
   # .pull_request==null to keep true issues only.
   local issues_json
-  issues_json=$(gh api --paginate \
-    "repos/${repo}/issues?state=open&labels=${DEV_LEAD_LABEL}&per_page=100" \
-    --jq "[.[] | select(.pull_request == null)
+  issues_json=$(gh_api_list "$repo" \
+    "issues?state=open&labels=${DEV_LEAD_LABEL}&per_page=100" \
+    "[.[] | select(.pull_request == null)
            | select([.labels[].name] | index(\"${NEEDS_HUMAN_LABEL}\") | not)
-           | {number: .number}]" \
-    2>/dev/null || echo "[]")
+           | {number: .number}]") || true
 
   local issue_count
-  issue_count=$(echo "$issues_json" | jq -s 'add // [] | length')
+  issue_count=$(jq 'length' <<< "$issues_json")
   if [ "${issue_count:-0}" -eq 0 ]; then
     echo "  no open dev-lead issues in ${repo}"
     return 0
@@ -1613,15 +1655,27 @@ scan_repo_issues() {
   echo "  dispatched ${total_dispatched} issue retries from ${repo}"
 }
 
-# list_repos_for_org <org>: list all non-fork repos in the org.
+# list_repos_for_org <org>: list all non-fork repos in the org, leaving out GHSA
+# temporary private forks. GitHub creates those for security advisories without
+# the fork flag or a parent; they have issues and Actions disabled, so no
+# dev-lead work can live in or be dispatched to them. No single field marks
+# one, so a repo is left out only when ALL of these hold: it is private, its
+# issues are disabled, and its name is another repo in the listing plus
+# `-ghsa-` and a GHSA id (e.g. TalkTerm-ghsa-pc5f-cw67-7cmm next to TalkTerm).
 # Hard-errors (non-zero exit) when the list is empty and not in DRY_RUN, since
 # an empty result most likely means a token permission issue rather than a
 # legitimately empty org — silently scanning 0 repos would hide misconfig.
 list_repos_for_org() {
   local org="$1"
   local result
-  result=$(gh repo list "$org" --limit 1000 --json nameWithOwner,isFork \
-    --jq '[.[] | select(.isFork == false) | .nameWithOwner]' 2>/dev/null || echo "[]")
+  result=$(gh repo list "$org" --limit 1000 --json nameWithOwner,isFork,isPrivate,hasIssuesEnabled \
+    --jq '"-ghsa(-[23456789cfghjmpqrvwx]{4}){3}$" as $ghsa
+          | [.[].nameWithOwner] as $names
+          | [ .[] | select(.isFork == false)
+              | select((.isPrivate == true and .hasIssuesEnabled == false
+                        and (.nameWithOwner | test($ghsa))
+                        and ((.nameWithOwner | sub($ghsa; "")) as $p | any($names[]; . == $p))) | not)
+              | .nameWithOwner ]' 2>/dev/null || echo "[]")
   if [ "$result" = "[]" ] || [ -z "$result" ]; then
     echo "::warning::No repos found for org '${org}' — check GH_TOKEN has repo read scope" >&2
     if [ "${DRY_RUN:-false}" != "true" ]; then
