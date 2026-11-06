@@ -80,12 +80,12 @@ LOOKBACK_DAYS="${LOOKBACK_DAYS:-7}"
 # ---------------------------------------------------------------------------
 # Pricing — load the dated price table so cost + ET share one source of truth.
 # ---------------------------------------------------------------------------
-if [ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/model-pricing.sh" ]; then
+if [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/model-pricing.sh" ]]; then
   # shellcheck source=scripts/lib/model-pricing.sh
   source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/model-pricing.sh"
 fi
 # Gemini per-key caps (gemini-quota-caps.tsv) for the "Gemini quota" section (#2030).
-if [ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/gemini-quota.sh" ]; then
+if [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/gemini-quota.sh" ]]; then
   # shellcheck source=scripts/lib/gemini-quota.sh
   source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/gemini-quota.sh"
 fi
@@ -125,7 +125,7 @@ _fmt_usd() {
 annotate_records() {
   local dir="$1"
   local files=("$dir"/*.jsonl)
-  [ -e "${files[0]}" ] || return 0   # no JSONL files → no rows
+  [[ -e "${files[0]}" ]] || return 0   # no JSONL files → no rows
   local _et_baseline_default="claude-haiku-4-5" # model-pin-ok: ET baseline anchor — must stay fixed so historical ET multipliers never drift
   jq -r 'select(type == "object")
     | select((.kind // "token_usage") == "token_usage")
@@ -281,7 +281,7 @@ _gq_cell() {
 render_gemini_quota() {
   local dir="$1"
   local files=("$dir"/*.jsonl)
-  [ -e "${files[0]}" ] || return 0
+  [[ -e "${files[0]}" ]] || return 0
   # Day buckets follow the configured daily reset (settings rows daily_reset_time /
   # daily_reset_tz in the caps file), not UTC calendar days: bucket = local date of
   # (ts − reset time), so a call just before/after local reset lands in different
@@ -291,8 +291,8 @@ render_gemini_quota() {
     rtime="$(gq_setting daily_reset_time)"; rtz="$(gq_setting daily_reset_tz)"
   fi
   local reset_sec=0 offsets='{}' hr off
-  if [[ "$rtime" =~ ^([01][0-9]|2[0-3]):([0-5][0-9])$ ]] && [ -n "$rtz" ] && [ "$rtz" != "unknown" ] \
-     && TZ="$rtz" date +%z >/dev/null 2>&1 && [ "$(TZ="$rtz" date -d '2026-01-01T00:00:00Z' +%Y 2>/dev/null)" != "" ]; then
+  if [[ "$rtime" =~ ^([01][0-9]|2[0-3]):([0-5][0-9])$ ]] && [[ -n "$rtz" ]] && [[ "$rtz" != "unknown" ]] \
+     && TZ="$rtz" date +%z >/dev/null 2>&1 && [[ "$(TZ="$rtz" date -d '2026-01-01T00:00:00Z' +%Y 2>/dev/null)" != "" ]]; then
     reset_sec=$(( 10#${BASH_REMATCH[1]} * 3600 + 10#${BASH_REMATCH[2]} * 60 ))
     offsets="$(
       jq -r 'select(type == "object" and .engine == "gemini" and .key_index != null and .ts != null)
@@ -303,7 +303,7 @@ render_gemini_quota() {
           printf '%s\t%s\n' "$hr" "$(( ${BASH_REMATCH[1]}1 * (10#${BASH_REMATCH[2]} * 3600 + 10#${BASH_REMATCH[3]} * 60) ))"
         done | jq -R -s 'split("\n") | map(select(length > 0) | split("\t") | {(.[0]): (.[1] | tonumber)}) | add // {}'
     )"
-    [ -n "$offsets" ] || offsets='{}'
+    [[ -n "$offsets" ]] || offsets='{}'
     daylabel="${rtime} ${rtz} reset"
   fi
 
@@ -332,7 +332,7 @@ render_gemini_quota() {
         END { for (k in seen)
           printf "%s\t%d\t%d\t%d\t%d\t%d\n", k, calls[k], prm[k], ptm[k], prd[k], cd[k] }' \
     | sort -t$'\t' -k1,1n -k2,2)"
-  [ -n "$rows" ] || return 0
+  [[ -n "$rows" ]] || return 0
 
   printf '## Gemini quota (per key index)\n\n'
   printf 'Peak usage per window over the lookback, metered from the ledger against '
@@ -345,7 +345,7 @@ render_gemini_quota() {
     caps=""
     declare -F gq_caps_for >/dev/null 2>&1 && caps="$(gq_caps_for "$idx" "$model")"
     tier="unknown"; rpm="unknown"; tpm="unknown"; rpd="unknown"
-    [ -n "$caps" ] && IFS=$'\t' read -r tier rpm tpm rpd <<< "$caps"
+    [[ -n "$caps" ]] && IFS=$'\t' read -r tier rpm tpm rpd <<< "$caps"
     printf '| %s | `%s` | %s | %s | %s | %s | %s | %s |\n' \
       "$idx" "$model" "$tier" "$(_fmt_int "$calls")" \
       "$(_gq_cell "$prm" "$rpm")" "$(_gq_cell "$ptm" "$tpm")" "$(_gq_cell "$prd" "$rpd")" \
@@ -360,11 +360,11 @@ render_gemini_quota() {
 # from untrusted collected artifacts. Pure: no network.
 export_gemini_records() {
   local files=("$1"/*.jsonl)
-  [ -e "${files[0]}" ] || return 0
+  [[ -e "${files[0]}" ]] || return 0
   while IFS= read -r line; do
     local sample kind
     kind="$(jq -r '.kind // empty' <<< "$line" 2>/dev/null || true)"
-    if [ "$kind" = "gemini_rejection_sample" ]; then
+    if [[ "$kind" = "gemini_rejection_sample" ]]; then
       # Untrusted: validate shape, redact, cap, re-encode with --arg. Fail closed (drop).
       jq -e '(.key_index | type) == "number"
              and ((.ts // "") | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$"))' \
@@ -393,7 +393,7 @@ _TRUSTED_RECORD_JQ='def trusted:
 trusted_records_dir() {
   local files=("$1"/*.jsonl) out="$2/trusted.jsonl"
   : > "$out" || return 1
-  [ -e "${files[0]}" ] || return 0
+  [[ -e "${files[0]}" ]] || return 0
   jq -c "$_TRUSTED_RECORD_JQ"' select(type == "object") | select(trusted)' "${files[@]}" > "$out" 2>/dev/null
 }
 
@@ -404,7 +404,7 @@ trusted_records_dir() {
 # records cannot be read.
 gemini_provenance_counts() {
   local files=("$1"/*.jsonl)
-  [ -e "${files[0]}" ] || { printf '0\t0\t0\n'; return 0; }
+  [[ -e "${files[0]}" ]] || { printf '0\t0\t0\n'; return 0; }
   jq -n -r "$_TRUSTED_RECORD_JQ"'
     reduce (inputs | select(type == "object" and .engine == "gemini")
             | { f: input_filename, t: trusted }) as $r
@@ -425,14 +425,14 @@ gemini_provenance_counts() {
 # count, nothing (return 1) when the records or the caps cannot be read.
 gemini_unlisted_counts() {
   local files=("$1"/*.jsonl) pairs n idx model total=0 list=""
-  [ -e "${files[0]}" ] || { printf '0\t\n'; return 0; }
+  [[ -e "${files[0]}" ]] || { printf '0\t\n'; return 0; }
   declare -F gq_caps_row_for >/dev/null 2>&1 || return 1
   pairs="$(jq -r 'select(type == "object" and .engine == "gemini" and .key_index != null)
       | [ (.key_index | tostring), ((.model // "") | tostring) ] | @tsv' "${files[@]}" 2>/dev/null \
     | sort | uniq -c | awk '{ n = $1; sub(/^ *[0-9]+ /, ""); print n "\t" $0 }')" || return 1
   while IFS=$'\t' read -r n idx model; do
-    [ -n "$n" ] || continue
-    [ -z "$(gq_caps_row_for "$idx" "$model")" ] || continue
+    [[ -n "$n" ]] || continue
+    [[ -z "$(gq_caps_row_for "$idx" "$model")" ]] || continue
     total=$(( total + n ))
     list="${list:+$list,}${idx}:${model}"
   done <<< "$pairs"
@@ -452,7 +452,7 @@ render_token_report() {
   total_calls="$(wc -l < "$enriched" | tr -d ' ')"
 
   printf '# 📊 Token Cost Observatory — %s-day Report\n\n' "$lookback"
-  if [ -n "$generated_at" ]; then
+  if [[ -n "$generated_at" ]]; then
     printf '_Generated %s · org `%s` · %s repos scanned · %s agent runs · %s LLM calls_\n\n' \
       "$generated_at" "$ORG" "$repo_count" "$artifact_count" "$(_fmt_int "$total_calls")"
   else
@@ -460,7 +460,7 @@ render_token_report() {
       "$ORG" "$repo_count" "$artifact_count" "$(_fmt_int "$total_calls")"
   fi
 
-  if [ "$total_calls" -eq 0 ]; then
+  if [ "$total_calls" -eq 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     rm -f "$enriched"
     printf 'No token-usage records found in the last %s days.\n\n' "$lookback"
     render_gemini_quota "$dir"
@@ -486,7 +486,7 @@ render_token_report() {
     "$(_fmt_int "$total_calls")" "$(_fmt_int "$total_in")" "$(_fmt_int "$total_out")"
   printf -- '- **Cache tokens:** %s read · %s write\n' \
     "$(_fmt_int "$total_cr")" "$(_fmt_int "$total_cw")"
-  if [ "${unpriced:-0}" -gt 0 ]; then
+  if [ "${unpriced:-0}" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf -- '- ⚠️ **%s call(s) had no price** in the table and are excluded from cost (marked `*`).\n' \
       "$(_fmt_int "$unpriced")"
   fi
@@ -517,10 +517,10 @@ render_token_report() {
         cost[k], et[k], calls[k], inp[k], ca[k], out[k], unk[k], mean, p50, k } }' "$enriched" \
   | sort -t$'\t' -k1,1rn \
   | while IFS=$'\t' read -r cost et calls input cache output unk mean_ms p50_ms wf tier model; do
-      local pct mark=""; [ "$unk" -gt 0 ] && mark="*"
+      local pct mark=""; [ "$unk" -gt 0 ] && mark="*"  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       local mean_disp p50_disp
-      [ "$mean_ms" = "-" ] && mean_disp="-" || mean_disp="$(_fmt_int "$mean_ms")"
-      [ "$p50_ms" = "-" ] && p50_disp="-" || p50_disp="$(_fmt_int "$p50_ms")"
+      [[ "$mean_ms" = "-" ]] && mean_disp="-" || mean_disp="$(_fmt_int "$mean_ms")"
+      [[ "$p50_ms" = "-" ]] && p50_disp="-" || p50_disp="$(_fmt_int "$p50_ms")"
       pct="$(awk -v c="$cost" -v t="$total_cost" 'BEGIN { printf "%d%%", (t > 0 ? c / t * 100 : 0) }')"
       printf '| `%s` | %s | `%s` | %s | %s | %s | %s | %s%s | %s | %s | %s | %s |\n' \
         "$wf" "$tier" "$model" "$(_fmt_int "$calls")" "$(_fmt_int "$input")" \
@@ -541,7 +541,7 @@ render_token_report() {
       printf "%.6f\t%.4f\t%d\t%d\t%s\n", cost[k], et[k], calls[k], unk[k], k }' "$enriched" \
   | sort -t$'\t' -k1,1rn \
   | while IFS=$'\t' read -r cost et calls unk repo; do
-      local pct mark=""; [ "$unk" -gt 0 ] && mark="*"
+      local pct mark=""; [ "$unk" -gt 0 ] && mark="*"  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       pct="$(awk -v c="$cost" -v t="$total_cost" 'BEGIN { printf "%d%%", (t > 0 ? c / t * 100 : 0) }')"
       printf '| `%s` | %s | %s%s | %s | %s |\n' \
         "$repo" "$(_fmt_int "$calls")" "$(_fmt_usd "$cost")" "$mark" "$pct" "$(_fmt_int "$et")"
@@ -561,13 +561,13 @@ render_token_report() {
       calls[k]++; if ($10 == 1) cost[k] += $8 }
     END { for (k in calls) printf "%.6f\t%d\t%s\n", cost[k], calls[k], k }' "$enriched" \
     | sort -t$'\t' -k1,1rn | awk 'NR <= 10')"
-  if [ -n "$pr_rows" ]; then
+  if [[ -n "$pr_rows" ]]; then
     printf '## Most expensive PRs (top 10)\n\n'
     printf '| PR | Title | Calls | Cost |\n|---|---|---:|---:|\n'
     while IFS=$'\t' read -r cost calls pr; do
-      [ -n "$pr" ] || continue
+      [[ -n "$pr" ]] || continue
       local title=""
-      if [ -n "${PR_TITLE_FILE:-}" ] && [ -f "$PR_TITLE_FILE" ]; then
+      if [[ -n "${PR_TITLE_FILE:-}" ]] && [[ -f "$PR_TITLE_FILE" ]]; then
         # Look up title by URL, strip pipes/newlines, truncate to 35 chars (+…).
         title="$(awk -F'\t' -v u="$pr" '$1 == u {
           t = $2; gsub(/\r/, "", t); gsub(/\|/, "/", t)
@@ -598,7 +598,7 @@ COLLECT_CONCURRENCY="${COLLECT_CONCURRENCY:-8}"
 # unwrapped. gh is invoked via `bash -c` so an exported shell-function stub (used
 # by the unit tests) is still resolved under `timeout`, which only execs binaries.
 _gh_timeout() {
-  if [ "${ARTIFACT_OP_TIMEOUT:-0}" -gt 0 ] && command -v timeout >/dev/null 2>&1; then
+  if [ "${ARTIFACT_OP_TIMEOUT:-0}" -gt 0 ] && command -v timeout >/dev/null 2>&1; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     timeout "${ARTIFACT_OP_TIMEOUT}" bash -c 'gh "$@"' _ "$@"
   else
     gh "$@"
@@ -660,18 +660,18 @@ _list_repo_artifacts() {
          (if ($w.id | type) == "number" then ($w.id | tostring) else "-" end) ]
      | join(" ")')" || {
     echo "WARN: could not fetch artifacts for ${repo} — skipping (check actions:read permission or timed out)" >&2
-    [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/list.${repo//\//_}" 2>/dev/null
+    [[ -n "${COLLECT_FAILED_DIR:-}" ]] && : > "${COLLECT_FAILED_DIR}/list.${repo//\//_}" 2>/dev/null
     return 0
   }
-  [ -n "$arts" ] || return 0
+  [[ -n "$arts" ]] || return 0
   out="$(mktemp "${COLLECT_LIST_DIR}/list.XXXXXX")" || {
     echo "WARN: failed to create temporary file in ${COLLECT_LIST_DIR} — skipping ${repo}" >&2
-    [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/list.${repo//\//_}" 2>/dev/null
+    [[ -n "${COLLECT_FAILED_DIR:-}" ]] && : > "${COLLECT_FAILED_DIR}/list.${repo//\//_}" 2>/dev/null
     return 0
   }
   local entry
   while IFS= read -r entry; do
-    [ -n "$entry" ] || continue
+    [[ -n "$entry" ]] || continue
     printf '%s %s\n' "$repo" "$entry" >> "$out"
   done <<< "$arts"
 }
@@ -709,7 +709,7 @@ _artifact_run_trusted() {
 # run's look-up (COLLECT_LOOKUP_DIR), so a run is asked about once however many
 # artifacts it uploaded. Prints nothing when no such directory is set.
 _run_verdict_file() {
-  [ -n "${COLLECT_LOOKUP_DIR:-}" ] || return 0
+  [[ -n "${COLLECT_LOOKUP_DIR:-}" ]] || return 0
   printf '%s/%s.%s' "$COLLECT_LOOKUP_DIR" "${1//\//_}" "$2"
 }
 
@@ -719,7 +719,7 @@ _lookup_run() {
   local rc=0 vf
   _artifact_run_trusted "$1" "$2" || rc=$?
   vf="$(_run_verdict_file "$1" "$2")"
-  [ -z "$vf" ] || printf '%s\n' "$rc" > "$vf" 2>/dev/null || true
+  [[ -z "$vf" ]] || printf '%s\n' "$rc" > "$vf" 2>/dev/null || true
   return 0
 }
 
@@ -740,13 +740,13 @@ _collect_one_artifact() {
   mkdir -p "$ex"
   if ! _gh_timeout api "repos/${repo}/actions/artifacts/${id}/zip" > "$zip" 2>/dev/null; then
     echo "WARN: artifact ${id} from ${repo} — download failed or timed out; skipping (report may be incomplete)" >&2
-    [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/artifact.${id}" 2>/dev/null
+    [[ -n "${COLLECT_FAILED_DIR:-}" ]] && : > "${COLLECT_FAILED_DIR}/artifact.${id}" 2>/dev/null
     rm -rf "$zip" "$ex"
     return 0
   fi
   if ! _extract_zip "$zip" "$ex" 2>/dev/null; then
     echo "WARN: artifact ${id} from ${repo} — extraction failed; skipping (report may be incomplete)" >&2
-    [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/artifact.${id}" 2>/dev/null
+    [[ -n "${COLLECT_FAILED_DIR:-}" ]] && : > "${COLLECT_FAILED_DIR}/artifact.${id}" 2>/dev/null
     rm -rf "$zip" "$ex"
     return 0
   fi
@@ -756,19 +756,19 @@ _collect_one_artifact() {
   [[ "$run_id" =~ ^[0-9]+$ ]] && prov_run="$run_id"
   case "$origin" in
     default)
-      [ "$prov_run" != null ] && { trusted=true; basis="default-branch"; } ;;
+      [[ "$prov_run" != null ]] && { trusted=true; basis="default-branch"; } ;;
     unknown)
       # The listing does not say which run uploaded this. It may be real usage,
       # so it is a failed read, counted with the look-ups that could not be made.
       basis="run-unknown"
       echo "WARN: artifact ${id} from ${repo} — the listing does not say which run uploaded it; its records are not trusted (report may be incomplete)" >&2
-      [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/lookup.${id}" 2>/dev/null ;;
+      [[ -n "${COLLECT_FAILED_DIR:-}" ]] && : > "${COLLECT_FAILED_DIR}/lookup.${id}" 2>/dev/null ;;
     branch)
       # The verdict collect_org_jsonl stored for this run; asked here when there is
       # none (a caller that runs no look-up pass).
       local verdict="" vf
       vf="$(_run_verdict_file "$repo" "$run_id")"
-      [ -z "$vf" ] || IFS= read -r verdict < "$vf" 2>/dev/null || verdict=""
+      [[ -z "$vf" ]] || IFS= read -r verdict < "$vf" 2>/dev/null || verdict=""
       if ! [[ "$verdict" =~ ^[012]$ ]]; then
         verdict=0
         _artifact_run_trusted "$repo" "$run_id" || verdict=$?
@@ -778,7 +778,7 @@ _collect_one_artifact() {
         1) basis="run-not-verified" ;;
         *) basis="run-lookup-failed"
            echo "WARN: artifact ${id} from ${repo} — run ${run_id} could not be looked up; its records are not trusted (report may be incomplete)" >&2
-           [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/lookup.${id}" 2>/dev/null ;;
+           [[ -n "${COLLECT_FAILED_DIR:-}" ]] && : > "${COLLECT_FAILED_DIR}/lookup.${id}" 2>/dev/null ;;
       esac ;;
   esac
 
@@ -798,10 +798,10 @@ _collect_one_artifact() {
       # records in it are lost, so it is a failed read (#2147).
       rm -f "$dest" 2>/dev/null || true
       echo "WARN: artifact ${id} from ${repo} — a record file is not valid JSONL; its records are dropped (report may be incomplete)" >&2
-      [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/file.${id}.${nfile}" 2>/dev/null
+      [[ -n "${COLLECT_FAILED_DIR:-}" ]] && : > "${COLLECT_FAILED_DIR}/file.${id}.${nfile}" 2>/dev/null
     fi
   done < <(find "$ex" -type f -name '*.jsonl' -print)
-  [ "$found" = true ] && : > "$COLLECT_MARKER_DIR/$id"
+  [[ "$found" = true ]] && : > "$COLLECT_MARKER_DIR/$id"
 
   rm -rf "$zip" "$ex"
   return 0
@@ -833,7 +833,7 @@ collect_org_jsonl() {
     echo "ERROR: org repo discovery for '${ORG}' failed — verify GH_TOKEN has org read access." >&2
     return 1
   fi
-  [ -n "$repos_raw" ] || { echo "0 0"; return 0; }
+  [[ -n "$repos_raw" ]] || { echo "0 0"; return 0; }
 
   local repo_count
   repo_count="$(printf '%s\n' "$repos_raw" | awk 'NF{c++} END{print c+0}')"
@@ -870,12 +870,12 @@ collect_org_jsonl() {
   # at a time: one short line would shift every entry after it.
   local worklist="$workdir/worklist"
   find "$COLLECT_LIST_DIR" -type f -exec cat {} + 2>/dev/null | awk 'NF == 4' > "$worklist" || true
-  if [ -s "$worklist" ]; then
+  if [[ -s "$worklist" ]]; then
     # First the run look-ups the `branch` entries need, one per run: a re-run
     # attempt uploads another artifact under the same run id.
     local lookups="$workdir/lookup-list"
     awk '$3 == "branch" { print $1, $4 }' "$worklist" | sort -u > "$lookups" || true
-    if [ -s "$lookups" ]; then
+    if [[ -s "$lookups" ]]; then
       xargs -P "$COLLECT_CONCURRENCY" -n 2 bash -c '_lookup_run "$1" "$2"' _ < "$lookups" \
         || true
     fi
@@ -886,7 +886,7 @@ collect_org_jsonl() {
 
   local artifact_count
   artifact_count="$(find "$COLLECT_MARKER_DIR" -type f | wc -l | tr -d ' ')"
-  if [ -n "${COLLECT_STATS_FILE:-}" ]; then
+  if [[ -n "${COLLECT_STATS_FILE:-}" ]]; then
     printf '%s %s %s %s %s\n' "$(awk 'END { print NR }' "$worklist")" \
       "$(find "$COLLECT_FAILED_DIR" -type f -name 'list.*' | wc -l | tr -d ' ')" \
       "$(find "$COLLECT_FAILED_DIR" -type f -name 'artifact.*' | wc -l | tr -d ' ')" \
@@ -914,7 +914,7 @@ main() {
   # only those stamped as coming from a trusted run (#2147). If they cannot be
   # selected, nothing is handed over; never everything.
   local provenance_note=""
-  if [ -n "${GEMINI_RECORDS_OUT:-}" ]; then
+  if [[ -n "${GEMINI_RECORDS_OUT:-}" ]]; then
     local trusted_dir prov="" kept=0 ignored=0 ignored_arts=0 handed=false
     local listed="" list_failed="" art_failed="" lookup_failed="" files_bad=""
     local unlisted="" unlisted_pairs=""
@@ -923,18 +923,18 @@ main() {
     # is never taken for collected input.
     trusted_dir="$jsonl_dir/trusted-records"
     mkdir -p "$trusted_dir" 2>/dev/null || trusted_dir=""
-    if [ -n "$trusted_dir" ] && trusted_records_dir "$jsonl_dir" "$trusted_dir" \
+    if [[ -n "$trusted_dir" ]] && trusted_records_dir "$jsonl_dir" "$trusted_dir" \
        && export_gemini_records "$trusted_dir" >> "$GEMINI_RECORDS_OUT" 2>/dev/null; then
       handed=true
       # Of what was handed over: records no production call writes (see the function).
-      if prov="$(gemini_unlisted_counts "$trusted_dir")" && [ -n "$prov" ]; then
+      if prov="$(gemini_unlisted_counts "$trusted_dir")" && [[ -n "$prov" ]]; then
         IFS=$'\t' read -r unlisted unlisted_pairs <<< "$prov"
       fi
     else
       echo "WARN: could not write Gemini records to GEMINI_RECORDS_OUT" >&2
     fi
-    [ -n "$trusted_dir" ] && rm -rf "$trusted_dir"
-    if prov="$(gemini_provenance_counts "$jsonl_dir")" && [ -n "$prov" ]; then
+    [[ -n "$trusted_dir" ]] && rm -rf "$trusted_dir"
+    if prov="$(gemini_provenance_counts "$jsonl_dir")" && [[ -n "$prov" ]]; then
       IFS=$'\t' read -r kept ignored ignored_arts <<< "$prov"
     else
       handed=false
@@ -942,21 +942,21 @@ main() {
     fi
     read -r listed list_failed art_failed lookup_failed files_bad < "$COLLECT_STATS_FILE" 2>/dev/null || true
     provenance_note="Gemini ledger: ${kept} record(s) from trusted runs handed to the tier report; ${ignored} record(s) in ${ignored_arts} artifact(s) ignored as not traceable to a trusted run (a fork, a Dependabot run, or a run that could not be verified)."
-    if [ "${list_failed:-0}${art_failed:-0}${lookup_failed:-0}${files_bad:-0}" != "0000" ]; then
+    if [[ "${list_failed:-0}${art_failed:-0}${lookup_failed:-0}${files_bad:-0}" != "0000" ]]; then
       provenance_note="${provenance_note} Not read: ${list_failed:-?} repository listing(s), ${art_failed:-?} artifact(s), ${lookup_failed:-?} run look-up(s), ${files_bad:-?} record file(s). Usage may be missing, so the collection is incomplete."
       echo "::warning::[gemini-ledger] the collection is incomplete: ${list_failed:-?} repository listing(s), ${art_failed:-?} artifact(s), ${lookup_failed:-?} run look-up(s) and ${files_bad:-?} record file(s) could not be read, so Gemini usage may be missing (#2147)" >&2
     fi
-    if [ "${unlisted:-0}" != "0" ]; then
+    if [[ "${unlisted:-0}" != "0" ]]; then
       provenance_note="${provenance_note} Of the records handed over, ${unlisted:-an unknown number of} are for a key index and model the caps file does not list (${unlisted_pairs:-not counted}): no production call writes those, so this ledger was also written to by something else (engine tests run inside an agent session), and its other records cannot be told from real calls."
     fi
     echo "$provenance_note" >&2
-    if [ "${ignored:-0}" != "0" ]; then
+    if [[ "${ignored:-0}" != "0" ]]; then
       echo "::warning::[gemini-ledger] ${ignored} Gemini record(s) in ${ignored_arts} token-usage artifact(s) were ignored: not traceable to a trusted run (#2147)" >&2
     fi
-    if [ "${unlisted:-0}" != "0" ]; then
+    if [[ "${unlisted:-0}" != "0" ]]; then
       echo "::warning::[gemini-ledger] ${unlisted:-?} Gemini record(s) from trusted runs are for a key index and model the caps file does not list: test fixtures or an unlisted model are in the ledger, so the tier view is not a basis for a dispatch decision (#2147)" >&2
     fi
-    if [ -n "${GEMINI_COLLECTION_OUT:-}" ]; then
+    if [[ -n "${GEMINI_COLLECTION_OUT:-}" ]]; then
       jq -cn --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg epoch "$(date -u +%s)" \
         --arg listed "$listed" --arg lf "$list_failed" --arg af "$art_failed" \
         --arg rl "$lookup_failed" --arg fb "$files_bad" \
@@ -981,9 +981,9 @@ main() {
   titles_file="$jsonl_dir/pr_titles.tsv"
   if command -v gh >/dev/null 2>&1; then
     while IFS= read -r purl; do
-      [ -n "$purl" ] || continue
+      [[ -n "$purl" ]] || continue
       ptitle="$(gh pr view "$purl" --json title -q '.title' 2>/dev/null || true)"
-      [ -n "$ptitle" ] && printf '%s\t%s\n' "$purl" "$ptitle" >> "$titles_file"
+      [[ -n "$ptitle" ]] && printf '%s\t%s\n' "$purl" "$ptitle" >> "$titles_file"
     done < <(top_pr_urls "$jsonl_dir" 10)
   fi
   export PR_TITLE_FILE="$titles_file"
@@ -992,16 +992,16 @@ main() {
             "$repo_count" "$artifact_count" "$generated_at")"
 
   printf '%s\n' "$report"
-  if [ -n "${TOKEN_REPORT_OUT:-}" ]; then
+  if [[ -n "${TOKEN_REPORT_OUT:-}" ]]; then
     printf '%s\n' "$report" > "$TOKEN_REPORT_OUT"
   fi
   # After the report, on stdout only (the job summary): what the tier report got.
-  if [ -n "$provenance_note" ]; then
+  if [[ -n "$provenance_note" ]]; then
     printf '### Gemini ledger provenance\n\n%s\n\n' "$provenance_note"
   fi
 }
 
 # Only run main when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

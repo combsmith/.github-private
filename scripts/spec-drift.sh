@@ -149,8 +149,8 @@ _emit_verdict() {
   local envelope
   envelope="$(drift_verdict_envelope "$1" "$2" "$3" "$4")"
   printf '%s\n' "$envelope"
-  [ -n "${SPEC_DRIFT_OUT:-}" ] && printf '%s\n' "$envelope" > "$SPEC_DRIFT_OUT"
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  [[ -n "${SPEC_DRIFT_OUT:-}" ]] && printf '%s\n' "$envelope" > "$SPEC_DRIFT_OUT"
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     local fence='```'
     printf '%sjson\n%s\n%s\n' "$fence" "$envelope" "$fence" >> "$GITHUB_STEP_SUMMARY"
   fi
@@ -173,19 +173,19 @@ main() {
   fi
 
   # No source story → cannot resolve the spec. Inert (Fail Loud, Never Fake).
-  if [ -z "$story" ]; then
+  if [[ -z "$story" ]]; then
     echo "::notice::[spec-drift] no source story provided — inert INDETERMINATE" >&2
     _emit_verdict "INDETERMINATE" "$pr" "" "no source story provided"
     return 0
   fi
 
   local gh_repo_args=()
-  [ -n "$repo" ] && gh_repo_args=(--repo "$repo")
+  [[ -n "$repo" ]] && gh_repo_args=(--repo "$repo")
 
   local body
   body="$(gh issue view "$story" "${gh_repo_args[@]}" --json body -q .body 2>/dev/null || true)"
 
-  if [ -z "${body//[[:space:]]/}" ]; then
+  if [[ -z "${body//[[:space:]]/}" ]]; then
     echo "::warning::[spec-drift] could not fetch issue #${story} body (auth/network error or issue not found) — inert INDETERMINATE" >&2
     _emit_verdict "INDETERMINATE" "$pr" "$story" "could not fetch issue #${story} body"
     return 0
@@ -200,13 +200,13 @@ main() {
 
   local acs
   acs="$(parse_acceptance_criteria "$body")"
-  if [ -z "${acs//[[:space:]]/}" ]; then
+  if [[ -z "${acs//[[:space:]]/}" ]]; then
     echo "::notice::[spec-drift] no acceptance criteria found on story #${story} — inert INDETERMINATE" >&2
     _emit_verdict "INDETERMINATE" "$pr" "$story" "no acceptance criteria found on story #${story}"
     return 0
   fi
 
-  if [ -z "$pr" ]; then
+  if [[ -z "$pr" ]]; then
     echo "::notice::[spec-drift] no merged PR provided — cannot gather a diff, inert INDETERMINATE" >&2
     _emit_verdict "INDETERMINATE" "" "$story" "no merged PR provided"
     return 0
@@ -214,7 +214,7 @@ main() {
 
   local diff
   diff="$(gh pr diff "$pr" "${gh_repo_args[@]}" 2>/dev/null || true)"
-  if [ -z "${diff//[[:space:]]/}" ]; then
+  if [[ -z "${diff//[[:space:]]/}" ]]; then
     echo "::notice::[spec-drift] empty or unavailable diff for PR #${pr} — inert INDETERMINATE" >&2
     _emit_verdict "INDETERMINATE" "$pr" "$story" "empty or unavailable diff for PR #${pr}"
     return 0
@@ -235,10 +235,10 @@ main() {
 
   local analysis rc=0
   analysis="$(run_triage "$prompt_file" 2>"$triage_stderr")" || rc=$?
-  [ -s "$triage_stderr" ] && cat "$triage_stderr" >&2
+  [[ -s "$triage_stderr" ]] && cat "$triage_stderr" >&2
   rm -f "$prompt_file" "$triage_stderr"
 
-  if [ "$rc" -ne 0 ]; then
+  if [[ "$rc" -ne 0 ]]; then
     echo "::warning::[spec-drift] cheap-tier analysis failed (exit ${rc}) — verdict will be INDETERMINATE, not faked" >&2
   fi
 
@@ -256,6 +256,6 @@ main() {
 }
 
 # Only run main when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

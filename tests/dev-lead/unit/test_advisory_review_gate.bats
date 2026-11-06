@@ -137,13 +137,13 @@ teardown() {
 }
 
 @test "Advisory gate: review-one-pr.sh skips on return code 1 (waiting for bots)" {
-  grep -q 'if \[ $gate_rc -eq 1 \]' "$SCRIPT_DIR/review-one-pr.sh"
+  grep -q 'if \[\[ $gate_rc -eq 1 \]\]' "$SCRIPT_DIR/review-one-pr.sh"
   grep -q 'exit 100' "$SCRIPT_DIR/review-one-pr.sh"
   grep -q "waiting-for-advisory-bots" "$SCRIPT_DIR/review-one-pr.sh"
 }
 
 @test "Advisory gate: review-one-pr.sh fails on return code 2 (API error)" {
-  grep -q 'elif \[ $gate_rc -eq 2 \]' "$SCRIPT_DIR/review-one-pr.sh"
+  grep -q 'elif \[\[ $gate_rc -eq 2 \]\]' "$SCRIPT_DIR/review-one-pr.sh"
   grep -q "advisory-gate-api-error" "$SCRIPT_DIR/review-one-pr.sh"
 }
 

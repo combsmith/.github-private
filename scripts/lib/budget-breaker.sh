@@ -135,7 +135,7 @@ bb_warn() { printf '::warning::budget-breaker: %s\n' "$*" >&2; }
 # bb_now — epoch seconds, honoring $BUDGET_BREAKER_NOW (testability).
 # ---------------------------------------------------------------------------
 bb_now() {
-  if [ -n "${BUDGET_BREAKER_NOW:-}" ]; then
+  if [[ -n "${BUDGET_BREAKER_NOW:-}" ]]; then
     printf '%s' "$BUDGET_BREAKER_NOW"
     return 0
   fi
@@ -244,7 +244,7 @@ _BB_DECIDE_JQ='
 bb_decide() {
   local observations="${1:-}" paused="${2:-}" pause_source="${3:-}" pause_until="${4:-}"
   local now="${5:-}" out
-  [ -n "$now" ] || now="$(bb_now)"
+  [[ -n "$now" ]] || now="$(bb_now)"
   out=$(jq -cn \
     --arg obs "$observations" \
     --arg paused "$paused" --arg source "$pause_source" --arg until "$pause_until" \
@@ -253,7 +253,7 @@ bb_decide() {
     --arg win "${BUDGET_BREAKER_WINDOW_MIN:-30}" \
     --arg probe "${BUDGET_BREAKER_PROBE_HOURS:-2}" \
     "$_BB_DECIDE_JQ" 2>/dev/null) || out=""
-  if [ -z "$out" ]; then
+  if [[ -z "$out" ]]; then
     bb_warn "the decision could not be evaluated (jq failed); failing open with action=none"
     out='{"action":"none","until":null,"reason":"the decision could not be evaluated (jq failed); failing open","evidence_count":0}'
   fi
@@ -311,9 +311,9 @@ bb_observations_from_comments() {
     --arg kinds "${BUDGET_BREAKER_MARKER_KINDS:-$BUDGET_BREAKER_MARKER_KINDS_DEFAULT}" \
     --argjson trusted "$_BB_TRUSTED_ASSOCIATIONS" \
     "$_BB_OBSERVE_JQ" 2>/dev/null) || return 1
-  [ -n "$result" ] || return 1
+  [[ -n "$result" ]] || return 1
   untrusted=$(jq -r '.untrusted' <<< "$result")
-  if [ "${untrusted:-0}" != "0" ]; then
+  if [[ "${untrusted:-0}" != "0" ]]; then
     bb_warn "${repo}: ignored ${untrusted} quota marker(s) whose author is not an owner, member or collaborator as this credential sees it; they are not counted"
   fi
   jq -c '.observations' <<< "$result"
@@ -327,13 +327,13 @@ bb_observations_from_comments() {
 # ---------------------------------------------------------------------------
 bb_list_repos() {
   local org="${1:-}" out
-  [ -n "$org" ] || { bb_warn "bb_list_repos: no organisation given"; return 1; }
+  [[ -n "$org" ]] || { bb_warn "bb_list_repos: no organisation given"; return 1; }
   if ! out=$(gh repo list "$org" --limit 1000 --json nameWithOwner,isFork \
       --jq '.[] | select(.isFork == false) | .nameWithOwner' 2>/dev/null); then
     bb_warn "cannot list repositories for ${org}"
     return 1
   fi
-  if [ -z "$out" ]; then
+  if [[ -z "$out" ]]; then
     bb_warn "no repositories listed for ${org}; check the credential can read the organisation"
     return 1
   fi
@@ -357,7 +357,7 @@ bb_collect_observations() {
   local now win since repo raw obs all='[]' read_ok=0
   now="$(bb_now)"
   win="${BUDGET_BREAKER_WINDOW_MIN:-30}"
-  if ! [[ "$now" =~ ^[0-9]{1,12}$ && "$win" =~ ^[0-9]{1,6}$ ]] || [ "$((10#$win))" -le 0 ]; then
+  if ! [[ "$now" =~ ^[0-9]{1,12}$ && "$win" =~ ^[0-9]{1,6}$ ]] || [[ "$((10#$win))" -le 0 ]]; then
     bb_warn "cannot compute the evidence window (now='${now}' window_min='${win}'); collecting nothing"
     return 1
   fi
@@ -378,7 +378,7 @@ bb_collect_observations() {
     all=$(jq -cn --argjson a "$all" --argjson b "$obs" '$a + $b') || return 1
   done
 
-  if [ "$read_ok" -eq 0 ]; then
+  if [[ "$read_ok" -eq 0 ]]; then
     bb_warn "no repository could be read; there is no evidence to decide on"
     return 1
   fi
@@ -396,12 +396,12 @@ bb_collect() {
   for org in "$@"; do
     listed=$(bb_list_repos "$org") || continue
     while IFS= read -r repo; do
-      if [ -n "$repo" ]; then
+      if [[ -n "$repo" ]]; then
         repos+=("$repo")
       fi
     done <<< "$listed"
   done
-  if [ "${#repos[@]}" -eq 0 ]; then
+  if [[ "${#repos[@]}" -eq 0 ]]; then
     bb_warn "no repositories to scan; there is no evidence to decide on"
     return 1
   fi

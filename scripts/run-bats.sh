@@ -12,7 +12,7 @@ set -euo pipefail
 #
 # Usage: run-bats.sh <test-file> [<test-file> ...]
 
-if [ "$#" -eq 0 ]; then
+if [[ "$#" -eq 0 ]]; then
   echo "run-bats: no test files given" >&2
   exit 2
 fi
@@ -20,9 +20,9 @@ fi
 present_tmp="$(mktemp)"
 trap 'rm -f "$present_tmp"' EXIT
 for f in "$@"; do
-  if [ -f "$f" ]; then
+  if [[ -f "$f" ]]; then
     printf '%s\n' "$f" >> "$present_tmp"
-  elif [ -d "$f" ]; then
+  elif [[ -d "$f" ]]; then
     # Expand directory to find .bats files within it
     find "$f" -type f -name "*.bats" -print | sort >> "$present_tmp"
   else
@@ -30,7 +30,7 @@ for f in "$@"; do
   fi
 done
 
-if [ ! -s "$present_tmp" ]; then
+if [[ ! -s "$present_tmp" ]]; then
   echo "run-bats: no test files exist out of $# listed — nothing to run" >&2
   exit 1
 fi

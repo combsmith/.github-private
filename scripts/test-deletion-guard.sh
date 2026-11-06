@@ -17,19 +17,19 @@ set -euo pipefail
 : "${HEAD_SHA:?HEAD_SHA is required}"
 ACK="${ACK:-false}"
 
-if ! merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA" 2>/dev/null)" || [ -z "$merge_base" ]; then
+if ! merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA" 2>/dev/null)" || [[ -z "$merge_base" ]]; then
   echo "::error title=Test-Deletion Guard::No merge base between base ${BASE_SHA} and head ${HEAD_SHA} — cannot tell which test files this PR deletes." >&2
   exit 2
 fi
 
 deleted="$(git diff --no-renames --diff-filter=D --name-only "$merge_base" "$HEAD_SHA" -- 'tests/')"
-if [ -z "$deleted" ]; then
+if [[ -z "$deleted" ]]; then
   echo "No files deleted under tests/. OK."
   exit 0
 fi
 echo "::warning title=Test files deleted::This PR deletes file(s) under tests/:"
 printf '%s\n' "$deleted"
-if [ "$ACK" = "true" ]; then
+if [[ "$ACK" = "true" ]]; then
   echo "::notice::Deletion acknowledged via the 'ack-test-deletion' label."
   exit 0
 fi

@@ -38,9 +38,9 @@ ADD_LABEL_ERR=""
 _hold_label_api_message() {
   local raw="$1" msg
   msg=$(printf '%s\n' "$raw" | sed -n 's/^gh: //p' | head -1)
-  [ -n "$msg" ] || msg=$(printf '%s' "$raw" | jq -r '.message // empty' 2>/dev/null | head -1)
-  [ -n "$msg" ] || msg="$raw"
-  [ -n "$msg" ] || msg="(no error output)"
+  [[ -n "$msg" ]] || msg=$(printf '%s' "$raw" | jq -r '.message // empty' 2>/dev/null | head -1)
+  [[ -n "$msg" ]] || msg="$raw"
+  [[ -n "$msg" ]] || msg="(no error output)"
   printf '%s' "$msg" | tr '\n`' '  ' | cut -c1-300
 }
 
@@ -65,7 +65,7 @@ add_label_rest() {
 # (a subshell whose variables are lost) still reaches the parent's exit guard.
 _hold_label_mark_failed() {
   HOLD_LABEL_FAILED=1
-  [ -z "${HOLD_LABEL_FAILED_FILE:-}" ] || : > "$HOLD_LABEL_FAILED_FILE" 2>/dev/null || true
+  [[ -z "${HOLD_LABEL_FAILED_FILE:-}" ]] || : > "$HOLD_LABEL_FAILED_FILE" 2>/dev/null || true
 }
 
 # apply_hold_label <repo> <number> [label]
@@ -96,7 +96,7 @@ apply_hold_label() {
 #   the hold succeeded. Returns non-zero if posting fails.
 post_hold_failure_note() {
   local repo="$1" number="$2"
-  [ -n "$HOLD_LABEL_NOTE" ] || return 0
+  [[ -n "$HOLD_LABEL_NOTE" ]] || return 0
   # Marker-keyed: repeated deduped escalations post the note once.
   local marker="<!-- dev-lead:hold-failed -->"
   if gh api --paginate "repos/${repo}/issues/${number}/comments?per_page=100" 2>/dev/null \
@@ -124,12 +124,12 @@ disable_auto_merge_for_hold() {
   fi
   active=$(gh pr view "$number" --repo "$repo" --json autoMergeRequest \
     --jq '.autoMergeRequest != null' 2>/dev/null || echo unknown)
-  if [ "$active" = "true" ]; then
+  if [[ "$active" = "true" ]]; then
     echo "::error::could not disable auto-merge on PR #${number}: $(_hold_label_api_message "$out") — it may merge despite escalation (#2142)"
     _hold_label_mark_failed
     return 1
   fi
-  if [ "$active" = "unknown" ]; then
+  if [[ "$active" = "unknown" ]]; then
     echo "::error::could not verify auto-merge status on PR #${number}: $(_hold_label_api_message "$out") — unable to confirm hold (#2142)"
     _hold_label_mark_failed
     return 1
@@ -144,11 +144,11 @@ disable_auto_merge_for_hold() {
 #   trap 'rc=$?; restore_auto_merge; hold_label_exit_guard "$rc"' EXIT
 hold_label_exit_guard() {
   local rc=${1:-$?}
-  if [ "${HOLD_LABEL_FAILED:-0}" != "1" ] && [ -n "${HOLD_LABEL_FAILED_FILE:-}" ] && [ -e "$HOLD_LABEL_FAILED_FILE" ]; then
+  if [[ "${HOLD_LABEL_FAILED:-0}" != "1" ]] && [[ -n "${HOLD_LABEL_FAILED_FILE:-}" ]] && [[ -e "$HOLD_LABEL_FAILED_FILE" ]]; then
     HOLD_LABEL_FAILED=1
   fi
-  [ "${HOLD_LABEL_FAILED:-0}" = "1" ] || return 0
+  [[ "${HOLD_LABEL_FAILED:-0}" = "1" ]] || return 0
   echo "::error::a dev-lead escalation could not be held (needs-human-review not applied) — failing the run (#2142)"
-  [ "$rc" -ne 0 ] || rc=1
+  [ "$rc" -ne 0 ] || rc=1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   exit "$rc"
 }

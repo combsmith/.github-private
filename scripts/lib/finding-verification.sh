@@ -80,7 +80,7 @@ apply_finding_verification() {
   local context="${4:-}"
 
   # Safe no-ops: missing/empty file, no jq, or unparseable JSON.
-  [ -n "$file" ] && [ -s "$file" ] || return 0
+  [[ -n "$file" ]] && [[ -s "$file" ]] || return 0
   command -v jq >/dev/null 2>&1 || return 0
   jq empty "$file" 2>/dev/null || return 0
 
@@ -89,7 +89,7 @@ apply_finding_verification() {
   case "$count" in
     '' | *[!0-9]*) return 0 ;;
   esac
-  [ "$count" -gt 0 ] || return 0
+  [ "$count" -gt 0 ] || return 0  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 
   local tmp; tmp="$(mktemp)"
   if jq '
@@ -139,7 +139,7 @@ apply_finding_verification() {
   ' "$file" > "$tmp" 2>/dev/null; then
     local idx outcome sev_before sev_after
     while IFS=$'\t' read -r idx outcome sev_before sev_after; do
-      [ -n "$outcome" ] || continue
+      [[ -n "$outcome" ]] || continue
       emit_verification_record "$workflow" "$tier" "$outcome" "$sev_before" "$sev_after" "$idx" "$context"
     done < <(jq -r '._events[]? | "\(.index)\t\(.outcome)\t\(.severity_before)\t\(.severity_after)"' "$tmp" 2>/dev/null)
 

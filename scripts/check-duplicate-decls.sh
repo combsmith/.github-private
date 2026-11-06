@@ -46,12 +46,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/conflict-integrity.sh"
 
 SCAN_DIR="${1:-$SCRIPT_DIR}"
-if [ ! -d "$SCAN_DIR" ]; then
+if [[ ! -d "$SCAN_DIR" ]]; then
   echo "::error::check-duplicate-decls: scan directory does not exist: ${SCAN_DIR}" >&2
   exit 2
 fi
 
-if [ "$#" -ge 1 ]; then
+if [[ "$#" -ge 1 ]]; then
   PROMPTS_DIR="${DUPLICATE_DECL_PROMPTS_DIR:-}"
   PERSONAS_DIR="${DUPLICATE_DECL_PERSONAS_DIR:-}"
 else
@@ -83,7 +83,7 @@ if ! sh_files="$(find "$SCAN_DIR" -name '*.sh' -type f | LC_ALL=C sort)"; then
   exit 2
 fi
 while IFS= read -r f; do
-  [ -n "$f" ] || continue
+  [[ -n "$f" ]] || continue
   # `grep` exits 1 on a file with no functions at all — that is a clean result,
   # not an error, so neutralize the pipeline status under `set -o pipefail`.
   findings="$(extract_top_level_symbols "$f" \
@@ -91,7 +91,7 @@ while IFS= read -r f; do
     | sed 's/^fn://' \
     | LC_ALL=C sort | uniq -c \
     | awk '$1 > 1 { print $2 "\t" $1 }')"
-  if [ -n "$findings" ]; then
+  if [[ -n "$findings" ]]; then
     fail=1
     report="${report}$(format_integrity_findings "$f" "$findings")
 "
@@ -99,7 +99,7 @@ while IFS= read -r f; do
 done <<< "$sh_files"
 
 # --- prompts/ : duplicate markdown headings ----------------------------------
-if [ -n "$PROMPTS_DIR" ] && [ -d "$PROMPTS_DIR" ]; then
+if [[ -n "$PROMPTS_DIR" ]] && [[ -d "$PROMPTS_DIR" ]]; then
   if ! md_files="$(find "$PROMPTS_DIR" -name '*.md' -type f | LC_ALL=C sort)"; then
     echo "::error::check-duplicate-decls: failed to enumerate .md files under ${PROMPTS_DIR}" >&2
     exit 2
@@ -113,15 +113,15 @@ if [ -n "$PROMPTS_DIR" ] && [ -d "$PROMPTS_DIR" ]; then
   prompts_root="${PROMPTS_DIR%/}"
   prompts_name="$(basename "$prompts_root")"
   while IFS= read -r f; do
-    [ -n "$f" ] || continue
+    [[ -n "$f" ]] || continue
     rel="${prompts_name}/${f#"$prompts_root"/}"
     while IFS= read -r heading; do
-      [ -n "$heading" ] || continue
+      [[ -n "$heading" ]] || continue
       allowed=0
       for entry in "${MD_HEADING_ALLOWLIST[@]}"; do
-        if [ "$entry" = "${rel}::${heading}" ]; then allowed=1; break; fi
+        if [[ "$entry" = "${rel}::${heading}" ]]; then allowed=1; break; fi
       done
-      [ "$allowed" -eq 1 ] && continue
+      [[ "$allowed" -eq 1 ]] && continue
       fail=1
       report="${report}- \`${rel}\` — duplicate markdown heading: \`${heading}\`
 "
@@ -130,7 +130,7 @@ if [ -n "$PROMPTS_DIR" ] && [ -d "$PROMPTS_DIR" ]; then
 fi
 
 # --- personas/ : duplicate keys in the same mapping --------------------------
-if [ -n "$PERSONAS_DIR" ] && [ -d "$PERSONAS_DIR" ]; then
+if [[ -n "$PERSONAS_DIR" ]] && [[ -d "$PERSONAS_DIR" ]]; then
   if ! yml_files="$(find "$PERSONAS_DIR" \( -name '*.yml' -o -name '*.yaml' \) -type f | LC_ALL=C sort)"; then
     echo "::error::check-duplicate-decls: failed to enumerate persona YAML files under ${PERSONAS_DIR}" >&2
     exit 2
@@ -138,13 +138,13 @@ if [ -n "$PERSONAS_DIR" ] && [ -d "$PERSONAS_DIR" ]; then
   personas_root="${PERSONAS_DIR%/}"
   personas_name="$(basename "$personas_root")"
   while IFS= read -r f; do
-    [ -n "$f" ] || continue
+    [[ -n "$f" ]] || continue
     rel="${personas_name}/${f#"$personas_root"/}"
     while IFS= read -r dupline; do
-      [ -n "$dupline" ] || continue
+      [[ -n "$dupline" ]] || continue
       scope="${dupline%%$'\t'*}"
       key="${dupline##*$'\t'}"
-      [ -n "$scope" ] || scope="<root>"
+      [[ -n "$scope" ]] || scope="<root>"
       fail=1
       report="${report}- \`${rel}\` — duplicate key \`${key}\` in mapping \`${scope}\`
 "
@@ -152,7 +152,7 @@ if [ -n "$PERSONAS_DIR" ] && [ -d "$PERSONAS_DIR" ]; then
   done <<< "$yml_files"
 fi
 
-if [ "$fail" -ne 0 ]; then
+if [[ "$fail" -ne 0 ]]; then
   echo "::error::Duplicate declarations found — the #1485 corruption class. This merge is blocked."
   printf '%s\n' "$report"
   echo "This is the signature of a botched automated conflict resolution (see #1485"

@@ -60,7 +60,7 @@ echo ""
 # ---------------------------------------------------------------------------
 if ! gh api "repos/${WORKFLOW_REPO}/actions/workflows/${WORKFLOW_FILE}/runs?per_page=1" \
      >/dev/null 2>&1; then
-  if [ -n "${GH_PAT_FALLBACK:-}" ]; then
+  if [[ -n "${GH_PAT_FALLBACK:-}" ]]; then
     echo "::warning::GH_TOKEN cannot access ${WORKFLOW_REPO} — using GH_PAT_FALLBACK"
     export GH_TOKEN="$GH_PAT_FALLBACK"
   else
@@ -119,8 +119,8 @@ sweep_dispatched=()
 sweep_fetched=0
 total_sweep_ticks=$(jq 'length' <<< "$sweep_runs_meta" 2>/dev/null || echo 0)
 while IFS= read -r sweep_id; do
-  [ -n "$sweep_id" ] || continue
-  if [ "$sweep_fetched" -ge "$SWEEP_MAX_LOG_FETCH" ]; then
+  [[ -n "$sweep_id" ]] || continue
+  if [ "$sweep_fetched" -ge "$SWEEP_MAX_LOG_FETCH" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "::warning::sweep-hit-rate: reached SWEEP_MAX_LOG_FETCH=${SWEEP_MAX_LOG_FETCH}; omitting remaining ticks from the metric"
     break
   fi
@@ -130,7 +130,7 @@ while IFS= read -r sweep_id; do
   sweep_dispatched+=("${dispatched:-0}")
 done < <(jq -r '.[].id' <<< "$sweep_runs_meta")
 
-if [ "${#sweep_dispatched[@]}" -gt 0 ]; then
+if [[ "${#sweep_dispatched[@]}" -gt 0 ]]; then
   sweep_telemetry=$(jq -n '$ARGS.positional | map({event: "schedule", dispatched: (. | tonumber)})' --args "${sweep_dispatched[@]}")
 else
   sweep_telemetry='[]'
@@ -158,7 +158,7 @@ if ! ingress_wf_id=$(gh api "repos/${WORKFLOW_REPO}/actions/workflows?per_page=1
   --jq "first(.workflows[] | select((.path | split(\"/\") | last) == \"${INGRESS_WORKFLOW_BASENAME}\") | .id | tostring) // empty" \
   2>/dev/null); then
   echo "::warning::Cannot read workflows for ${WORKFLOW_REPO} — pr-review ingress attribution skipped"
-elif [ -n "$ingress_wf_id" ]; then
+elif [[ -n "$ingress_wf_id" ]]; then
   # A failed run-list read must not silently collapse to "no runs" — that would
   # hide the post-collapse signal. Warn and skip rather than report an empty set.
   if ! ingress_run_ids=$(gh api \
@@ -170,7 +170,7 @@ elif [ -n "$ingress_wf_id" ]; then
   else
     per_run_tmp=$(mktemp)
     while IFS= read -r run_id; do
-      [ -n "$run_id" ] || continue
+      [[ -n "$run_id" ]] || continue
       if ! jobs_raw=$(gh api "repos/${WORKFLOW_REPO}/actions/runs/${run_id}/jobs?per_page=100" --paginate \
         --jq '[.jobs[] | {name, conclusion}]' 2>/dev/null); then
         echo "::warning::Cannot read jobs for run ${run_id} — pr-review ingress attribution may undercount"
@@ -208,7 +208,7 @@ echo "  Success:    $success_runs"
 echo "  Failed:     $failed_runs"
 echo "  Cancelled:  $cancelled_runs"
 
-if [ "$total_runs" -gt 0 ]; then
+if [ "$total_runs" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   failure_rate=$(echo "scale=1; $failed_runs * 100 / $total_runs" | bc)
 else
   failure_rate="0.0"
@@ -228,7 +228,7 @@ read -r dur_n dur_min dur_p50 dur_p95 dur_max < <(echo "$runs_json" | jq -r '
 # ---------------------------------------------------------------------------
 fmt_dur() {
   local s=$1
-  if [ "$s" -ge 60 ]; then
+  if [ "$s" -ge 60 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf '%dm%ds' $((s / 60)) $((s % 60))
   else
     printf '%ds' "$s"
@@ -247,11 +247,11 @@ conclusion_icon() {
 
 # overall is the pre-computed status fed as a hint to the LLM prompt below.
 # shellcheck disable=SC2034
-if [ "$failed_runs" -eq 0 ]; then
+if [ "$failed_runs" -eq 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   overall="HEALTHY"
-elif [ "$(echo "$failure_rate > 50" | bc)" -eq 1 ]; then
+elif [ "$(echo "$failure_rate > 50" | bc)" -eq 1 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   overall="CRITICAL"
-elif [ "$(echo "$failure_rate > 20" | bc)" -eq 1 ]; then
+elif [ "$(echo "$failure_rate > 20" | bc)" -eq 1 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   overall="DEGRADED"
 else
   overall="WARNING"
@@ -260,8 +260,8 @@ fi
 # ---------------------------------------------------------------------------
 # 4. Build report
 # ---------------------------------------------------------------------------
-[ -n "${GITHUB_ENV:-}" ] && {
-  if [ "$failed_runs" -gt 0 ]; then
+[[ -n "${GITHUB_ENV:-}" ]] && {
+  if [ "$failed_runs" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "HAS_FAILURES=true" >> "$GITHUB_ENV"
   else
     echo "HAS_FAILURES=false" >> "$GITHUB_ENV"
@@ -278,9 +278,9 @@ LOG_DIR="${LOG_DIR:-}"
 logs_file=$(mktemp)
 # One jq pass over failed runs; append each log file in the same order
 while IFS=$'\t' read -r run_id run_meta; do
-  [ -n "$LOG_DIR" ] || continue
+  [[ -n "$LOG_DIR" ]] || continue
   log_file="${LOG_DIR}/run_${run_id}.txt"
-  [ -f "$log_file" ] || continue
+  [[ -f "$log_file" ]] || continue
   {
     printf '=== LOG: %s ===\n' "$run_meta"
     cat "$log_file"
@@ -318,7 +318,7 @@ workflow_source=$(gh api "repos/${WORKFLOW_REPO}/contents/.github/workflows/${WO
   # Per-role attribution for the post-collapse pr-review signal (#1727).
   # Deterministic — same truncation guarantee. Omitted when the repo carries no
   # agent-ingress.yml (current reality), so legacy repos see no empty section.
-  if [ -s "$ingress_attr_jsonl" ]; then
+  if [[ -s "$ingress_attr_jsonl" ]]; then
     attr_tsv=$(mktemp)
     # Fold the PRE-collapse legacy pr-review runs (Section 1's runs_json) into the
     # SAME per-role bucket as the POST-collapse ingress records so a role that ran
@@ -341,7 +341,7 @@ echo "Outcome mix (by event):"
 pr_review_outcomes_by_event "$runs_json" | sed 's/^/  /'
 IFS=$'\t' read -r sweep_ticks sweep_hits sweep_rate < <(pr_review_sweep_hit_rate "$sweep_telemetry")
 echo "Sweep hit-rate: ${sweep_hits}/${sweep_ticks} scheduled tick(s) re-dispatched — ${sweep_rate}"
-if [ "${total_sweep_ticks:-0}" -gt 0 ] && [ "$sweep_ticks" -lt "$total_sweep_ticks" ]; then
+if [ "${total_sweep_ticks:-0}" -gt 0 ] && [ "$sweep_ticks" -lt "$total_sweep_ticks" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   echo "  (partial: ${sweep_ticks} of ${total_sweep_ticks} ticks measured — cap or fetch errors omitted the rest)"
 fi
 
@@ -427,7 +427,7 @@ then
 fi
 rm -f "$logs_file"
 
-[ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "$REPORT_FILE" ] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+[[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && [[ -f "$REPORT_FILE" ]] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
 
 echo ""
 echo "Report written to $REPORT_FILE ($(wc -c < "$REPORT_FILE") bytes)"

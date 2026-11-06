@@ -41,13 +41,13 @@ set -euo pipefail
 #        2 nothing to scan or a scan error, so the tree cannot be certified clean
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [ "$#" -eq 0 ]; then
+if [[ "$#" -eq 0 ]]; then
   set -- "$ROOT/tests"
 fi
 
 files=()
 for target in "$@"; do
-  if [ -d "$target" ]; then
+  if [[ -d "$target" ]]; then
     # The listing is captured so its status is checked (pipefail covers find): in
     # a process substitution a failed find is ignored, and a partial traversal
     # would leave files unscanned while the tree is reported clean.
@@ -56,11 +56,11 @@ for target in "$@"; do
       exit 2
     }
     while IFS= read -r f; do
-      if [ -n "$f" ]; then
+      if [[ -n "$f" ]]; then
         files+=("$f")
       fi
     done <<< "$found"
-  elif [ -f "$target" ]; then
+  elif [[ -f "$target" ]]; then
     files+=("$target")
   else
     echo "check-bats-negation: no such file or directory: $target" >&2
@@ -70,7 +70,7 @@ done
 
 # No test files is a setup error, never a pass: "cannot check" must not read as
 # "nothing to check".
-if [ "${#files[@]}" -eq 0 ]; then
+if [[ "${#files[@]}" -eq 0 ]]; then
   echo "check-bats-negation: found no .bats files under: $*" >&2
   exit 2
 fi
@@ -215,13 +215,13 @@ findings=$(awk '
   }
 ' "${files[@]}") || rc=$?
 
-if [ "$rc" -ne 0 ]; then
-  [ -z "$findings" ] || printf '%s\n' "$findings"
+if [[ "$rc" -ne 0 ]]; then
+  [[ -z "$findings" ]] || printf '%s\n' "$findings"
   echo "check-bats-negation: the scan did not complete (awk exit $rc), so the tree cannot be certified clean" >&2
   exit 2
 fi
 
-if [ -n "$findings" ]; then
+if [[ -n "$findings" ]]; then
   printf '%s\n' "$findings"
   count=$(printf '%s\n' "$findings" | wc -l | tr -d ' ')
   {

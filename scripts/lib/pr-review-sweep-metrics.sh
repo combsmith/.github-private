@@ -36,7 +36,7 @@
 #           Absent/empty JSON → "0\t0\tn/a".
 pr_review_sweep_hit_rate() {
   local json="${1:-}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
   jq -r '
     (if type == "array" then . else [] end) as $r
     | ([$r[] | select(.event == "schedule")]) as $ticks
@@ -71,7 +71,7 @@ pr_review_sweep_dispatched_from_log() {
 #   truncation can never discard it (same guarantee as the outcome-mix section).
 pr_review_render_sweep_hit_rate() {
   local json="${1:-}" total_in_window="${2:-0}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
 
   local ticks hits rate
   IFS=$'\t' read -r ticks hits rate < <(pr_review_sweep_hit_rate "$json")
@@ -89,7 +89,7 @@ pr_review_render_sweep_hit_rate() {
   printf '| Scheduled sweep ticks | %s |\n' "$ticks"
   printf '| Ticks that re-dispatched a review (hits) | %s |\n' "$hits"
   printf '| **Sweep hit-rate** | **%s** |\n' "$rate"
-  if [ "${total_in_window:-0}" -gt 0 ] && [ "$ticks" -lt "$total_in_window" ]; then
+  if [ "${total_in_window:-0}" -gt 0 ] && [ "$ticks" -lt "$total_in_window" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf '| _Coverage_ | _%s of %s ticks measured (partial — cap or fetch errors)_ |\n' \
       "$ticks" "$total_in_window"
   fi

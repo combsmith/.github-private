@@ -32,8 +32,8 @@ UNATTRIBUTED_ROLE="__unattributed__"
 #   Exit 0 iff the workflow file's basename is the collapsed ingress workflow.
 attribution_is_ingress() {
   local wf="${1:-}"
-  [ -n "$wf" ] || return 1
-  [ "${wf##*/}" = "$INGRESS_WORKFLOW_BASENAME" ]
+  [[ -n "$wf" ]] || return 1
+  [[ "${wf##*/}" = "$INGRESS_WORKFLOW_BASENAME" ]]
 }
 
 # attribution_role_from_workflow <workflow_file>   (legacy path, AC #3)
@@ -53,7 +53,7 @@ attribution_role_from_workflow() {
 #   before the first " / "). An empty name yields the UNATTRIBUTED sentinel.
 attribution_role_from_job() {
   local name="${1:-}"
-  if [ -z "$name" ]; then
+  if [[ -z "$name" ]]; then
     printf '%s\n' "$UNATTRIBUTED_ROLE"
     return 0
   fi
@@ -155,11 +155,11 @@ attribution_buckets() {
 #   is the regression this guard exists to catch.
 attribution_role_present() {
   local tsv="${1:-}" role="${2:-}"
-  [ -n "$tsv" ] && [ -f "$tsv" ] || return 1
-  [ -n "$role" ] || return 1
+  [[ -n "$tsv" ]] && [[ -f "$tsv" ]] || return 1
+  [[ -n "$role" ]] || return 1
   local first
   while IFS=$'\t' read -r first _; do
-    [ "$first" = "$role" ] && return 0
+    [[ "$first" = "$role" ]] && return 0
   done < "$tsv"
   return 1
 }
@@ -170,7 +170,7 @@ attribution_role_present() {
 #   bucket is surfaced loudly (AC #5). Pure: no network.
 generate_attribution_report() {
   local tsv="${1:-}" heading="${2:-Run attribution by role}"
-  [ -n "$tsv" ] && [ -f "$tsv" ] && [ -s "$tsv" ] || return 0
+  [[ -n "$tsv" ]] && [[ -f "$tsv" ]] && [[ -s "$tsv" ]] || return 0
 
   printf '## %s\n\n' "$heading"
   printf 'Runs attributed to the role-bearing job (agent-ingress collapse, ADR-0007) '
@@ -181,8 +181,8 @@ generate_attribution_report() {
 
   local role total success failed cancelled label
   while IFS=$'\t' read -r role total success failed cancelled; do
-    [ -n "$role" ] || continue
-    if [ "$role" = "$UNATTRIBUTED_ROLE" ]; then
+    [[ -n "$role" ]] || continue
+    if [[ "$role" = "$UNATTRIBUTED_ROLE" ]]; then
       label='**⚠ UNATTRIBUTED**'
     else
       label="\`$role\`"

@@ -75,7 +75,7 @@ _ic_filter_human() {
                    created_at: (.created_at // ""),
                    body: (.body // "") } | @base64)
       end
-  ' 2>/dev/null | while IFS=$'\t' read -r tag a b || [ -n "$tag" ]; do
+  ' 2>/dev/null | while IFS=$'\t' read -r tag a b || [[ -n "$tag" ]]; do
     case "$tag" in
       K) printf '%s\n' "$a" ;;
       D) printf 'issue-comments: dropped comment by @%s: %s\n' "$a" "$b" >&2 ;;
@@ -91,19 +91,19 @@ _ic_filter_human() {
 render_issue_comments() {
   local -a rows=()
   local line
-  while IFS= read -r line || [ -n "$line" ]; do
-    [ -n "$line" ] && rows+=( "$line" )
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -n "$line" ]] && rows+=( "$line" )
   done < <(_ic_filter_human)
 
   local total=${#rows[@]}
-  if [ "$total" -eq 0 ]; then
+  if [[ "$total" -eq 0 ]]; then
     printf '_No human comments on this issue — only the title and body above are available. (Bot and dev-lead status comments are excluded.)_\n'
     return 0
   fi
 
   # 1) Most-recent-N window. Comments are chronological, so keep the tail.
   local start=0
-  if [ "$total" -gt "$ISSUE_COMMENTS_MAX" ]; then
+  if [ "$total" -gt "$ISSUE_COMMENTS_MAX" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     start=$(( total - ISSUE_COMMENTS_MAX ))
   fi
 
@@ -120,10 +120,10 @@ render_issue_comments() {
     obj=$(printf '%s' "${rows[$i]}" | base64 -d 2>/dev/null) || continue
     body=$(printf '%s' "$obj" | jq -r '.body' 2>/dev/null) || continue
     blen=${#body}
-    if [ "${#keep_idx[@]}" -eq 0 ]; then
+    if [[ "${#keep_idx[@]}" -eq 0 ]]; then
       # Newest comment always survives, but is truncated to the budget if it
       # alone is oversized — otherwise the budget would not be a hard bound.
-      if [ "$blen" -gt "$ISSUE_COMMENTS_CHAR_BUDGET" ]; then
+      if [ "$blen" -gt "$ISSUE_COMMENTS_CHAR_BUDGET" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
         newest_trunc=$ISSUE_COMMENTS_CHAR_BUDGET
         used=$ISSUE_COMMENTS_CHAR_BUDGET
       else
@@ -132,7 +132,7 @@ render_issue_comments() {
       keep_idx+=( "$i" )
       continue
     fi
-    if [ $(( used + blen )) -gt "$ISSUE_COMMENTS_CHAR_BUDGET" ]; then
+    if [ $(( used + blen )) -gt "$ISSUE_COMMENTS_CHAR_BUDGET" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       break
     fi
     used=$(( used + blen ))
@@ -145,11 +145,11 @@ render_issue_comments() {
 
   # Header +, when anything was dropped or truncated, an explicit note.
   printf '### Issue comments (%d shown, chronological — later human comments take precedence)\n\n' "$kept"
-  if [ "$omitted" -gt 0 ]; then
+  if [[ "$omitted" -gt 0 ]]; then
     printf '> _Note: this issue has %d human comment(s); showing only the most recent %d to fit the prompt budget. %d earlier human comment(s) were omitted — read them on the issue if needed. Bot and dev-lead status comments are excluded from this list._\n\n' \
       "$total" "$kept" "$omitted"
   fi
-  if [ "$newest_trunc" -gt 0 ]; then
+  if [ "$newest_trunc" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf '> _Note: the most recent comment exceeded the %d-character budget and was truncated to fit — read the full comment on the issue._\n\n' \
       "$ISSUE_COMMENTS_CHAR_BUDGET"
   fi
@@ -162,7 +162,7 @@ render_issue_comments() {
     login=$(printf '%s' "$obj" | jq -r '.login' 2>/dev/null) || login="unknown"
     created=$(printf '%s' "$obj" | jq -r '.created_at' 2>/dev/null) || created=""
     body=$(printf '%s' "$obj" | jq -r '.body' 2>/dev/null) || body=""
-    if [ "$newest_trunc" -gt 0 ] && [ "$idx" -eq "$newest_idx" ]; then
+    if [ "$newest_trunc" -gt 0 ] && [ "$idx" -eq "$newest_idx" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       body="${body:0:$newest_trunc}"$'\n\n_[Comment truncated to fit the prompt budget — read the full comment on the issue.]_'
     fi
     printf '#### @%s — %s\n\n%s\n\n' "$login" "$created" "$body"

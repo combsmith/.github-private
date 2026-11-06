@@ -23,7 +23,7 @@ set -euo pipefail
 
 # Resolve the manifest path once, relative to this file (works when sourced
 # from anywhere). Honor an override so callers/tests can point elsewhere.
-if [ -z "${REVIEW_REGISTRY_MANIFEST:-}" ]; then
+if [[ -z "${REVIEW_REGISTRY_MANIFEST:-}" ]]; then
   REVIEW_REGISTRY_MANIFEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/review-registry.tsv"
 fi
 
@@ -32,12 +32,12 @@ fi
 #   comment). Returns non-zero if absent so callers can detect a malformed
 #   manifest rather than silently using an unversioned one.
 review_registry_version() {
-  [ -f "$REVIEW_REGISTRY_MANIFEST" ] || { echo "review_registry_version: manifest file not found at $REVIEW_REGISTRY_MANIFEST" >&2; return 1; }
+  [[ -f "$REVIEW_REGISTRY_MANIFEST" ]] || { echo "review_registry_version: manifest file not found at $REVIEW_REGISTRY_MANIFEST" >&2; return 1; }
   local v
   v=$(awk '/^#[[:space:]]*schema_version:/ {
             gsub(/[^0-9]/, "", $0); print; exit
           }' "$REVIEW_REGISTRY_MANIFEST") || true
-  [ -n "$v" ] || { echo "review_registry_version: no schema_version in $REVIEW_REGISTRY_MANIFEST" >&2; return 1; }
+  [[ -n "$v" ]] || { echo "review_registry_version: no schema_version in $REVIEW_REGISTRY_MANIFEST" >&2; return 1; }
   printf '%s\n' "$v"
 }
 
@@ -45,7 +45,7 @@ review_registry_version() {
 #   Prints every registered artifact_type (first column of each data row),
 #   one per line. Comment and blank lines are ignored.
 review_registry_types() {
-  [ -f "$REVIEW_REGISTRY_MANIFEST" ] || { echo "review_registry_types: manifest file not found at $REVIEW_REGISTRY_MANIFEST" >&2; return 1; }
+  [[ -f "$REVIEW_REGISTRY_MANIFEST" ]] || { echo "review_registry_types: manifest file not found at $REVIEW_REGISTRY_MANIFEST" >&2; return 1; }
   awk -F'\t' '!/^[[:space:]]*#/ && $1 != "" { print $1 }' "$REVIEW_REGISTRY_MANIFEST"
 }
 
@@ -56,14 +56,14 @@ review_registry_types() {
 #   Exit codes: 0 ok; 1 unknown artifact_type; 2 missing/unknown field.
 review_registry_lookup() {
   local artifact_type="${1:-}" field="${2:-}" col
-  [ -n "$artifact_type" ] || { echo "review_registry_lookup: artifact_type required" >&2; return 2; }
+  [[ -n "$artifact_type" ]] || { echo "review_registry_lookup: artifact_type required" >&2; return 2; }
   case "$field" in
     rubric)         col=2 ;;
     output_channel) col=3 ;;
     '')             echo "review_registry_lookup: field required (rubric|output_channel)" >&2; return 2 ;;
     *)              echo "review_registry_lookup: unknown field '$field' (allowed: rubric, output_channel)" >&2; return 2 ;;
   esac
-  [ -f "$REVIEW_REGISTRY_MANIFEST" ] || { echo "review_registry_lookup: manifest file not found at $REVIEW_REGISTRY_MANIFEST" >&2; return 2; }
+  [[ -f "$REVIEW_REGISTRY_MANIFEST" ]] || { echo "review_registry_lookup: manifest file not found at $REVIEW_REGISTRY_MANIFEST" >&2; return 2; }
   local value
   value=$(awk -F'\t' -v t="$artifact_type" -v c="$col" '
             !/^[[:space:]]*#/ && $1 == t { print $c; found = 1; exit }
@@ -72,6 +72,6 @@ review_registry_lookup() {
     echo "review_registry_lookup: unknown artifact_type '$artifact_type'" >&2
     return 1
   }
-  [ -n "$value" ] || { echo "review_registry_lookup: field '$field' is empty for '$artifact_type'" >&2; return 2; }
+  [[ -n "$value" ]] || { echo "review_registry_lookup: field '$field' is empty for '$artifact_type'" >&2; return 2; }
   printf '%s\n' "$value"
 }

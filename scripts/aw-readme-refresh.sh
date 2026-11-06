@@ -47,11 +47,11 @@ warn()   { echo "::warning::readme-refresh: $*"; }
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-if [ -z "${GH_TOKEN:-}" ]; then
+if [[ -z "${GH_TOKEN:-}" ]]; then
   echo "::error::GH_TOKEN must be set" >&2
   exit 1
 fi
-if [ ! -f "$PROMPT_TEMPLATE" ]; then
+if [[ ! -f "$PROMPT_TEMPLATE" ]]; then
   echo "::error::Prompt template not found at $PROMPT_TEMPLATE" >&2
   exit 1
 fi
@@ -87,23 +87,23 @@ gather_facts() {
     echo "$repo_json"
     echo '```'
     echo ""
-    if [ -n "$EMPTY_DESC_REPOS" ]; then
+    if [[ -n "$EMPTY_DESC_REPOS" ]]; then
       echo "Repos with an EMPTY GitHub description (keep any existing curated text; do not blank): ${EMPTY_DESC_REPOS}"
       echo ""
     fi
     echo "### Standards docs in \`$ORG/.github/standards/\` (each with its section headings as subtopics)"
     echo ""
-    if [ -n "$standards_files" ]; then
+    if [[ -n "$standards_files" ]]; then
       local sf sname sheadings
       while IFS= read -r sf; do
-        [ -n "$sf" ] || continue
+        [[ -n "$sf" ]] || continue
         sname="${sf%.md}"
         printf -- '- `%s`\n' "$sname"
         # Pull the doc body and list its ##/###/#### headings (fence-aware) as searchable subtopics.
         sheadings=$(gh api "repos/$ORG/.github/contents/standards/$sf" \
           -H "Accept: application/vnd.github.v3.raw" 2>/dev/null \
           | awk '/^[[:space:]]*```/{f=!f;next} !f && /^#{2,4} /{sub(/^#{2,4}[[:space:]]+/,"");print}' || true)
-        if [ -n "$sheadings" ]; then
+        if [[ -n "$sheadings" ]]; then
           printf '%s\n' "$sheadings" | sed 's/^/    - /'
         fi
       done <<< "$standards_files"
@@ -115,7 +115,7 @@ gather_facts() {
     echo ""
     local f name desc
     for f in "$REPO_ROOT"/agents/*.md; do
-      [ -e "$f" ] || continue
+      [[ -e "$f" ]] || continue
       name="$(basename "$f" .md)"
       # Handle inline (`description: text`) AND folded/literal block scalars (`description: >` / `|`),
       # where the text sits on the following indented lines. Collapse to one trimmed line.
@@ -134,16 +134,16 @@ gather_facts() {
     # Self-describing: an agentic workflow opts in with a `# readme-agent: <desc>` marker line.
     local awf adesc
     for awf in "$REPO_ROOT"/.github/workflows/*.yml; do
-      [ -e "$awf" ] || continue
+      [[ -e "$awf" ]] || continue
       adesc="$(grep -m1 -E '^# readme-agent:' "$awf" 2>/dev/null | sed -E 's/^# readme-agent:[[:space:]]*//' || true)"
-      [ -n "$adesc" ] && printf -- '- `%s` (.github/workflows/%s): %s\n' "$(basename "$awf")" "$(basename "$awf")" "$adesc"
+      [[ -n "$adesc" ]] && printf -- '- `%s` (.github/workflows/%s): %s\n' "$(basename "$awf")" "$(basename "$awf")" "$adesc"
     done
     echo ""
     echo "### Installed frameworks in \`.github-private/frameworks/\` (from each VENDOR.md)"
     echo ""
     local d src
     for d in "$REPO_ROOT"/frameworks/*/; do
-      [ -d "$d" ] || continue
+      [[ -d "$d" ]] || continue
       name="$(basename "$d")"
       src="$(grep -iE '^(source|upstream|tag|version)' "$d/VENDOR.md" 2>/dev/null | head -2 | tr '\n' '; ' | sed 's/; *$//' || true)"
       printf -- '- `%s` (%s)\n' "$name" "${src:-vendored}"
@@ -156,18 +156,18 @@ gather_facts() {
     # best-effort (|| true) so a transient fetch failure degrades to fewer rows, never an abort.
     local wf rdesc
     for wf in "$REPO_ROOT"/.github/workflows/*.yml; do
-      [ -e "$wf" ] || continue
+      [[ -e "$wf" ]] || continue
       rdesc="$(grep -m1 -E '^# readme-report:' "$wf" 2>/dev/null | sed -E 's/^# readme-report:[[:space:]]*//' || true)"
-      [ -n "$rdesc" ] && printf -- '- `%s` (.github-private; link: .github/workflows/%s): %s\n' "$(basename "$wf")" "$(basename "$wf")" "$rdesc"
+      [[ -n "$rdesc" ]] && printf -- '- `%s` (.github-private; link: .github/workflows/%s): %s\n' "$(basename "$wf")" "$(basename "$wf")" "$rdesc"
     done
     # Sorted --jq list + while-read for deterministic order (stable README diffs) and no word-splitting.
     while IFS= read -r wf; do
-      [ -n "$wf" ] || continue
+      [[ -n "$wf" ]] || continue
       rdesc="$(gh api "repos/$ORG/.github/contents/.github/workflows/$wf" \
                 -H "Accept: application/vnd.github.v3.raw" 2>/dev/null \
                 | grep -m1 -E '^# readme-report:' \
                 | sed -E 's/^# readme-report:[[:space:]]*//' || true)"
-      [ -n "$rdesc" ] && printf -- '- `%s` (.github; link: https://github.com/%s/.github/blob/main/.github/workflows/%s): %s\n' "$wf" "$ORG" "$wf" "$rdesc"
+      [[ -n "$rdesc" ]] && printf -- '- `%s` (.github; link: https://github.com/%s/.github/blob/main/.github/workflows/%s): %s\n' "$wf" "$ORG" "$wf" "$rdesc"
     done < <(gh api "repos/$ORG/.github/contents/.github/workflows" \
                --jq '[.[] | select((.name // "") | endswith(".yml")) | .name] | sort | .[]' 2>/dev/null || true)
   } > "$facts_file"
@@ -180,7 +180,7 @@ gather_facts() {
 # to avoid ARG_MAX limits (same technique as release-notes.sh).
 
 render_prompt() {
-  if [ $# -lt 5 ]; then return 1; fi
+  if [[ $# -lt 5 ]]; then return 1; fi
   local facts_file="$1" current_file="$2" target_label="$3" target_type="$4" maxlen="$5"
   TARGET_LABEL="$target_label" TARGET_TYPE="$target_type" LINT_MAXLEN="$maxlen" \
     envsubst '${TARGET_LABEL} ${TARGET_TYPE} ${LINT_MAXLEN}' < "$PROMPT_TEMPLATE" \
@@ -229,8 +229,8 @@ overlong_lines() {
 # Reject obviously-malformed output before writing (protects lint + prevents junk PRs).
 valid_content() {
   local content="$1" target_type="$2"
-  [ -n "$content" ] || return 1
-  [ "$content" = "SKIP" ] && return 1
+  [[ -n "$content" ]] || return 1
+  [[ "$content" = "SKIP" ]] && return 1
   case "$target_type" in
     org-profile-public|github-repo-readme)
       # .github repo requires MD041: first line is a top-level heading.
@@ -256,7 +256,7 @@ push_branch_with_retry() {
     fi
     warn "$label: push to $branch failed (attempt $attempt/$PUSH_RETRY_ATTEMPTS) — re-syncing remote ref and retrying"
     git -C "$dir" fetch --prune --quiet origin 2>/dev/null || true
-    if [ "$attempt" -lt "$PUSH_RETRY_ATTEMPTS" ]; then sleep "$PUSH_RETRY_SLEEP_SEC"; fi
+    if [ "$attempt" -lt "$PUSH_RETRY_ATTEMPTS" ]; then sleep "$PUSH_RETRY_SLEEP_SEC"; fi  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   done
   return 1
 }
@@ -265,7 +265,7 @@ push_branch_with_retry() {
 # Target matrix, grouped by repo. Fields: <rel_path>|<target_type>|<label>|<maxlen>
 
 targets_for_repo() {
-  if [ $# -lt 1 ]; then return 1; fi
+  if [[ $# -lt 1 ]]; then return 1; fi
   case "$1" in
     ".github")
       printf '%s\n' \
@@ -281,7 +281,7 @@ targets_for_repo() {
 }
 
 process_repo() {
-  if [ $# -lt 2 ]; then return 1; fi
+  if [[ $# -lt 2 ]]; then return 1; fi
   local repo="$1" facts_file="$2"
   local full_repo="$ORG/$repo"
   local dir="$WORK_DIR/$repo"
@@ -291,7 +291,7 @@ process_repo() {
   # Auth is handled by gh's git credential helper (configured in main via `gh auth setup-git`),
   # which works for both PATs and App tokens. Guard the clone so a failure aborts this repo
   # loudly instead of silently generating into an empty directory.
-  if ! GIT_TERMINAL_PROMPT=0 git clone --quiet "https://github.com/${full_repo}.git" "$dir" || [ ! -d "$dir/.git" ]; then
+  if ! GIT_TERMINAL_PROMPT=0 git clone --quiet "https://github.com/${full_repo}.git" "$dir" || [[ ! -d "$dir/.git" ]]; then
     warn "clone failed for $full_repo — skipping this repo"
     return 1
   fi
@@ -302,10 +302,10 @@ process_repo() {
 
   local changed=0 ok_count=0 fail_count=0 rel_path target_type label maxlen
   while IFS='|' read -r rel_path target_type label maxlen; do
-    [ -n "$rel_path" ] || continue
+    [[ -n "$rel_path" ]] || continue
     local target_path="$dir/$rel_path"
     local current_file="$WORK_DIR/current.$$"
-    if [ -f "$target_path" ]; then cp "$target_path" "$current_file"; else : > "$current_file"; fi
+    if [[ -f "$target_path" ]]; then cp "$target_path" "$current_file"; else : > "$current_file"; fi
 
     local prompt_file="$WORK_DIR/prompt.md"
     render_prompt "$facts_file" "$current_file" "$label" "$target_type" "$maxlen" > "$prompt_file"
@@ -314,8 +314,8 @@ process_repo() {
     local raw content violations="" attempt=1
     while :; do
       raw="$(generate_content "$prompt_file")"
-      if [ "$attempt" -eq 1 ] && [ "$(printf '%s' "$raw" | tr -d '[:space:]')" = "SKIP" ]; then
-        if [ -s "$current_file" ]; then
+      if [[ "$attempt" -eq 1 ]] && [[ "$(printf '%s' "$raw" | tr -d '[:space:]')" = "SKIP" ]]; then
+        if [[ -s "$current_file" ]]; then
           content="__SKIP__"; break
         else
           log "  → SKIP rejected: target is new/empty, retrying"
@@ -326,7 +326,7 @@ process_repo() {
       content="$(trim_blank_edges "$(extract_readme "$raw")")"
       if ! valid_content "$content" "$target_type"; then content="__INVALID__"; break; fi
       violations="$(overlong_lines "$content" "$maxlen")"
-      if [ -z "$violations" ] || [ "$attempt" -ge 2 ]; then break; fi
+      if [[ -z "$violations" ]] || [[ "$attempt" -ge 2 ]]; then break; fi
       log "  → retry: body line(s) over $maxlen chars at $violations"
       {
         printf '\n## Correction (attempt %d)\n' "$((attempt + 1))"
@@ -336,19 +336,19 @@ process_repo() {
       attempt=$((attempt + 1))
     done
 
-    if [ "$content" = "__SKIP__" ]; then
+    if [[ "$content" = "__SKIP__" ]]; then
       log "  → SKIP (already accurate)"
       ok_count=$((ok_count + 1))
       rm -f "$current_file"
       continue
     fi
-    if [ "$content" = "__INVALID__" ]; then
+    if [[ "$content" = "__INVALID__" ]]; then
       warn "  → invalid/empty output for $repo/$rel_path — leaving unchanged"
       fail_count=$((fail_count + 1))
       rm -f "$current_file"
       continue
     fi
-    if [ -n "$violations" ]; then
+    if [[ -n "$violations" ]]; then
       warn "  → $repo/$rel_path still has body line(s) over $maxlen ($violations) after retry — writing; trim before merge"
       LINT_WARNINGS="${LINT_WARNINGS}- \`$rel_path\`: body line(s) exceed ${maxlen} chars (${violations})"$'\n'
     fi
@@ -361,7 +361,7 @@ process_repo() {
       return 1
     fi
     ok_count=$((ok_count + 1))
-    if [ -n "${README_REFRESH_OUTPUT_DIR:-}" ]; then
+    if [[ -n "${README_REFRESH_OUTPUT_DIR:-}" ]]; then
       if ! mkdir -p "$README_REFRESH_OUTPUT_DIR/$repo/$(dirname "$rel_path")" \
          || ! cp "$target_path" "$README_REFRESH_OUTPUT_DIR/$repo/$rel_path"; then
         echo "::error::readme-refresh: $full_repo: failed to copy $rel_path into README_REFRESH_OUTPUT_DIR" >&2
@@ -369,7 +369,7 @@ process_repo() {
       fi
     fi
     if git -C "$dir" diff --quiet -- "$rel_path" 2>/dev/null && \
-       [ -n "$(git -C "$dir" ls-files -- "$rel_path")" ]; then
+       [[ -n "$(git -C "$dir" ls-files -- "$rel_path")" ]]; then
       log "  → no change"
     else
       log "  → updated"
@@ -378,12 +378,12 @@ process_repo() {
     rm -f "$current_file"
   done < <(targets_for_repo "$repo")
 
-  if [ "$fail_count" -gt 0 ]; then
+  if [[ "$fail_count" -gt 0 ]]; then
     echo "::error::readme-refresh: $full_repo: $fail_count README target(s) failed generation (treating as failure)" >&2
     return 1
   fi
 
-  if [ "$changed" -eq 0 ]; then
+  if [[ "$changed" -eq 0 ]]; then
     notice "$full_repo: all READMEs already accurate — nothing to do"
     return 0
   fi
@@ -397,7 +397,7 @@ process_repo() {
   echo "### $full_repo" >> "$WORK_DIR/summary.md"
   git -C "$dir" --no-pager diff --cached --stat >> "$WORK_DIR/summary.md" 2>/dev/null || true
 
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     log "DRY-RUN: would open/update PR on $full_repo (branch $BRANCH). Diff:"
     git -C "$dir" --no-pager diff --cached --stat >&2 || true
     return 0
@@ -420,11 +420,11 @@ process_repo() {
     --json url --jq '.[0]?.url' 2>/dev/null || echo "")"
 
   local empty_note=""
-  [ -n "$EMPTY_DESC_REPOS" ] && empty_note=$'\n\n**Action needed:** these repos have empty GitHub descriptions — set them on the repo page so future refreshes can enrich the table: '"$EMPTY_DESC_REPOS"
+  [[ -n "$EMPTY_DESC_REPOS" ]] && empty_note=$'\n\n**Action needed:** these repos have empty GitHub descriptions — set them on the repo page so future refreshes can enrich the table: '"$EMPTY_DESC_REPOS"
   local lint_note=""
-  [ -n "$LINT_WARNINGS" ] && lint_note=$'\n\n**⚠️ Trim before merge — these lines exceed the markdownlint length limit:**\n'"$LINT_WARNINGS"
+  [[ -n "$LINT_WARNINGS" ]] && lint_note=$'\n\n**⚠️ Trim before merge — these lines exceed the markdownlint length limit:**\n'"$LINT_WARNINGS"
 
-  if [ -n "$existing" ]; then
+  if [[ -n "$existing" ]]; then
     notice "$full_repo: updated existing PR $existing"
   else
     local url=""
@@ -440,7 +440,7 @@ Regenerated the org meta-repo README(s) in \`$full_repo\` from live org state
 Generated by the weekly \`readme-refresh\` workflow in \`$ORG/.github-private\`.
 Review the diff — curated prose is preserved; only missing/stale facts are corrected.${empty_note}${lint_note}
 EOF
-)")" && [ -n "$url" ]; then
+)")" && [[ -n "$url" ]]; then
       # Make the PR auto-rebase-eligible from creation (combsmith/.github#711):
       # an unapproved PR without the ready label is skipped by auto-rebase, drifts
       # into conflict, and cannot be approved — a deadlock. Ensure the label exists
@@ -471,7 +471,7 @@ fi
 # "Authorization: Bearer" header, which GitHub rejects for a classic/fine-grained PAT.
 # Isolate the config writes to a temp file so local runs don't mutate ~/.gitconfig; CI
 # sets GIT_CONFIG_GLOBAL already, so we only override when it is unset.
-if [ -z "${GIT_CONFIG_GLOBAL:-}" ]; then
+if [[ -z "${GIT_CONFIG_GLOBAL:-}" ]]; then
   _gc_tmp="$(mktemp)"
   export GIT_CONFIG_GLOBAL="$_gc_tmp"
 fi
@@ -491,10 +491,10 @@ for _repo in ".github" ".github-private"; do
   fi
 done
 
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "$WORK_DIR/summary.md" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && [[ -f "$WORK_DIR/summary.md" ]]; then
   {
     echo "## README Refresh"
-    [ "$DRY_RUN" = "true" ] && echo "> **DRY-RUN** — no branches or PRs were created" && echo ""
+    [[ "$DRY_RUN" = "true" ]] && echo "> **DRY-RUN** — no branches or PRs were created" && echo ""
     cat "$WORK_DIR/summary.md"
   } >> "$GITHUB_STEP_SUMMARY"
 fi
@@ -502,7 +502,7 @@ fi
 # Surface any per-repo failure as a non-zero exit so the Actions run goes red.
 # Previously a failed push / PR-create / generation was only warned about, and the
 # script still exited 0 — masking the failure as a green run.
-if [ "$REFRESH_FAILED" -ne 0 ]; then
+if [[ "$REFRESH_FAILED" -ne 0 ]]; then
   echo "::error::readme-refresh: one or more repos failed to refresh — see errors above" >&2
   exit 1
 fi

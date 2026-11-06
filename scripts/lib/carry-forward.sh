@@ -74,7 +74,7 @@ cf_all_intervening_are_base_merges() {
   local commits_json="${1:-[]}"
   local n
   n=$(jq 'length' <<<"$commits_json" 2>/dev/null) || { echo "unparseable-commits"; return 1; }
-  if [ -z "$n" ] || [ "$n" = "0" ]; then
+  if [[ -z "$n" ]] || [[ "$n" = "0" ]]; then
     echo "no-intervening-commits"
     return 1
   fi
@@ -84,7 +84,7 @@ cf_all_intervening_are_base_merges() {
     echo "unparseable-commits"
     return 1
   }
-  if [ -n "$content_sha" ]; then
+  if [[ -n "$content_sha" ]]; then
     echo "content-commit:$content_sha"
     return 1
   fi
@@ -96,7 +96,7 @@ cf_all_intervening_are_base_merges() {
 #   diff-vs-merge-base of the prior SHA against the current head (#1865 AC #1).
 cf_diffs_identical() {
   local a="$1" b="$2"
-  [ -f "$a" ] && [ -f "$b" ] || return 1
+  [[ -f "$a" ]] && [[ -f "$b" ]] || return 1
   cmp -s "$a" "$b"
 }
 
@@ -159,7 +159,7 @@ evaluate_carry_forward() {
   # URL path.
   local base_tip
   base_tip=$(gh api "repos/$repo/commits/$base_ref" --jq '.sha' 2>/dev/null) || base_tip=""
-  if [ -z "$base_tip" ]; then
+  if [[ -z "$base_tip" ]]; then
     rm -rf "$tmp"
     echo "full:base-tip-unresolved"
     return 0
@@ -171,13 +171,13 @@ evaluate_carry_forward() {
   #    object, slurped into an array and flattened to the full commit list.
   local compare_json commits_json reason total_commits collected
   compare_json=$(gh api --paginate "repos/$repo/compare/$prior_sha...$head_sha?per_page=100" 2>/dev/null) || compare_json=""
-  if [ -z "$compare_json" ]; then
+  if [[ -z "$compare_json" ]]; then
     rm -rf "$tmp"
     echo "full:compare-api-error"
     return 0
   fi
   commits_json=$(jq -sc '[.[].commits[]?]' <<<"$compare_json" 2>/dev/null) || commits_json=""
-  if [ -z "$commits_json" ]; then
+  if [[ -z "$commits_json" ]]; then
     rm -rf "$tmp"
     echo "full:compare-unparseable"
     return 0
@@ -187,7 +187,7 @@ evaluate_carry_forward() {
   # fail toward reviewing rather than carry an approval over an unverified commit.
   total_commits=$(jq -s '.[0].total_commits // 0' <<<"$compare_json" 2>/dev/null) || total_commits=0
   collected=$(jq 'length' <<<"$commits_json" 2>/dev/null) || collected=0
-  if [ "${total_commits:-0}" -gt "${collected:-0}" ]; then
+  if [ "${total_commits:-0}" -gt "${collected:-0}" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     rm -rf "$tmp"
     echo "full:compare-truncated"
     return 0
@@ -220,7 +220,7 @@ evaluate_carry_forward() {
   local count i m_sha parents p1 p2 merge_files base_delta cmp_status
   count=$(jq 'length' <<<"$commits_json" 2>/dev/null) || count=0
   i=0
-  while [ "$i" -lt "$count" ]; do
+  while [ "$i" -lt "$count" ]; do  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     # Guard every jq substitution with `|| var=""`: under `set -e` an unguarded jq
     # failure (unparseable/unexpected JSON) would abort mid-loop and leak $tmp. An
     # empty result is caught by the emptiness check below and fails toward reviewing.
@@ -228,17 +228,17 @@ evaluate_carry_forward() {
     parents=$(jq -c ".[$i].parents // []" <<<"$commits_json" 2>/dev/null) || parents=""
     p1=$(jq -r '.[0].sha // ""' <<<"$parents" 2>/dev/null) || p1=""
     p2=$(jq -r '.[1].sha // ""' <<<"$parents" 2>/dev/null) || p2=""
-    if [ -z "$m_sha" ] || [ -z "$p1" ] || [ -z "$p2" ]; then
+    if [[ -z "$m_sha" ]] || [[ -z "$p1" ]] || [[ -z "$p2" ]]; then
       rm -rf "$tmp"; echo "full:merge-parents-unresolved"; return 0
     fi
     # More than two parents (octopus merge) is unusual for a base merge — fail safe.
-    if [ "$(jq 'length' <<<"$parents" 2>/dev/null)" != "2" ]; then
+    if [[ "$(jq 'length' <<<"$parents" 2>/dev/null)" != "2" ]]; then
       rm -rf "$tmp"; echo "full:octopus-merge"; return 0
     fi
 
     # The base-side parent (p2) must be an ancestor of the base tip.
     cmp_status=$(gh api "repos/$repo/compare/$p2...$base_tip" --jq '.status' 2>/dev/null) || cmp_status=""
-    if [ -z "$cmp_status" ]; then
+    if [[ -z "$cmp_status" ]]; then
       rm -rf "$tmp"; echo "full:parent-compare-error"; return 0
     fi
     if ! cf_parent_in_base "$cmp_status"; then
@@ -251,7 +251,7 @@ evaluate_carry_forward() {
     # concatenates, so a truncated page can't hide a non-base blob and mint a false carry.
     merge_files=$(gh api --paginate "repos/$repo/commits/$m_sha?per_page=100" --jq '[.files[]? | {filename, sha}]' 2>/dev/null | jq -sc 'add // []' 2>/dev/null) || merge_files=""
     base_delta=$(gh api --paginate "repos/$repo/compare/$p1...$p2?per_page=100" --jq '[.files[]? | {filename, sha}]' 2>/dev/null | jq -sc 'add // []' 2>/dev/null) || base_delta=""
-    if [ -z "$merge_files" ] || [ -z "$base_delta" ]; then
+    if [[ -z "$merge_files" ]] || [[ -z "$base_delta" ]]; then
       rm -rf "$tmp"; echo "full:merge-files-error"; return 0
     fi
     if ! cf_merge_introduces_only_base "$merge_files" "$base_delta"; then

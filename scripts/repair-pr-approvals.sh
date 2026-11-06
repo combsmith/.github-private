@@ -31,18 +31,18 @@ skipped=0
 
 # Build list of all repos
 while IFS= read -r repo; do
-  [ -z "$repo" ] && continue
+  [[ -z "$repo" ]] && continue
   echo "Checking $repo..."
 
   # Get all open PRs with approval marker comments in this repo
   while IFS='|' read -r pr_url pr_num; do
     # Check if PR has agent approval marker comment
     marker=$(gh pr view "$pr_url" --json comments --jq '.comments[] | select(.body | contains("pr-review-agent") and contains("decision=approved")) | .body' 2>/dev/null | head -1 || true)
-    [ -z "$marker" ] && continue
+    [[ -z "$marker" ]] && continue
 
     # Check if PR already has an actual approval review
     approval_count=$(gh pr view "$pr_url" --json reviews --jq '[.reviews[] | select(.state == "APPROVED")] | length' 2>/dev/null || echo 0)
-    if [ "$approval_count" -gt 0 ]; then
+    if [[ "$approval_count" -gt 0 ]]; then
       echo "  ✓ PR #$pr_num - already has approval review"
       skipped=$((skipped + 1))
       continue
@@ -50,17 +50,17 @@ while IFS= read -r repo; do
 
     # Get the approval comment to use as review body
     comment=$(gh pr view "$pr_url" --json comments --jq '.comments[] | select(.body | contains("pr-review-agent") and contains("decision=approved")) | .body' 2>/dev/null | tail -1 || true)
-    [ -z "$comment" ] && continue
+    [[ -z "$comment" ]] && continue
 
     echo "  → PR #$pr_num - posting approval review..."
-    if [ "$DRY_RUN" = "true" ]; then
+    if [[ "$DRY_RUN" = "true" ]]; then
       echo "    [DRY RUN] Would post approval review"
       approved=$((approved + 1))
     else
       # The marker names the commit that was reviewed. Approve that commit, and only
       # while it is still the head.
       head_sha=$(gh pr view "$pr_url" --json headRefOid --jq '.headRefOid' 2>/dev/null || true)
-      if [ -z "$head_sha" ] || [[ "$comment" != *"sha=$head_sha"* ]]; then
+      if [[ -z "$head_sha" ]] || [[ "$comment" != *"sha=$head_sha"* ]]; then
         echo "    - approval marker is not for the current head — skipping"
         skipped=$((skipped + 1))
         continue
@@ -72,7 +72,7 @@ while IFS= read -r repo; do
 
         # Check if auto-merge is enabled, enable if needed
         automerge=$(gh pr view "$pr_url" --json autoMerge --jq '.autoMerge != null' 2>/dev/null || echo false)
-        if [ "$automerge" = "false" ]; then
+        if [[ "$automerge" = "false" ]]; then
           echo "    → Enabling auto-merge..."
           if gh pr merge "$pr_url" --auto --squash --match-head-commit "$head_sha" 2>&1; then
             echo "    ✓ Auto-merge enabled"

@@ -101,7 +101,7 @@ for wf in "${WORKFLOWS[@]}"; do
 done
 
 echo ""
-if [ "$FAIL" -eq 0 ]; then
+if [[ "$FAIL" -eq 0 ]]; then
   echo "All concurrency config checks passed."
 else
   echo "$FAIL check(s) failed."

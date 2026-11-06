@@ -58,7 +58,7 @@ TODAY=$(date -u +%Y-%m-%d)
 # TRUSTED_BOTS — the #1425 trust set. Prefer an explicit override, else derive from
 # the reviewer-source registry (identical to dev-lead-intent.sh), else the pinned
 # default. A thread from a bot OUTSIDE this set is the #1425 agent-blocked shape.
-if [ -z "${TRUSTED_BOTS:-}" ]; then
+if [[ -z "${TRUSTED_BOTS:-}" ]]; then
   TRUSTED_BOTS="$(reviewer_sources_trusted_bots_csv 2>/dev/null || true)"
 fi
 TRUSTED_BOTS="${TRUSTED_BOTS:-copilot-pull-request-reviewer[bot],gemini-code-assist[bot],sonarqubecloud[bot],coderabbitai[bot],chatgpt-codex-connector[bot],qodo-code-review[bot],codeant-ai[bot],graphite-app[bot],cubic-dev-ai[bot]}"
@@ -78,7 +78,7 @@ echo ""
 # ---------------------------------------------------------------------------
 mergeready_fetch_review_threads() {
   local pr="${1:-}"
-  [ -n "$pr" ] || return 0
+  [[ -n "$pr" ]] || return 0
   local pr_url="https://github.com/${REPO}/pull/${pr}"
   # Two query shapes: first page (no cursor) and subsequent pages (with cursor).
   # shellcheck disable=SC2016  # $url/$cursor are GraphQL variable placeholders, not shell
@@ -87,15 +87,15 @@ mergeready_fetch_review_threads() {
   local _gql_next='query($url:URI!,$cursor:String!){resource(url:$url){...on PullRequest{reviewThreads(first:100,after:$cursor){nodes{isResolved comments(first:1){nodes{author{login __typename}}}}pageInfo{hasNextPage endCursor}}}}}'
   local all_nodes='[]' cursor="" has_next="true" _raw _page_nodes
 
-  while [ "$has_next" = "true" ]; do
-    if [ -z "$cursor" ]; then
+  while [[ "$has_next" = "true" ]]; do
+    if [[ -z "$cursor" ]]; then
       _raw=$(gh api graphql -f query="$_gql_first" -f url="$pr_url" 2>/dev/null) || return 1
     else
       _raw=$(gh api graphql -f query="$_gql_next" -f url="$pr_url" -f cursor="$cursor" 2>/dev/null) || return 1
     fi
-    [ -n "$_raw" ] || return 1
+    [[ -n "$_raw" ]] || return 1
     _page_nodes=$(printf '%s' "$_raw" | jq '.data?.resource?.reviewThreads?.nodes // empty' 2>/dev/null) || return 1
-    [ -n "$_page_nodes" ] || return 1
+    [[ -n "$_page_nodes" ]] || return 1
     all_nodes=$(jq -n --argjson a "$all_nodes" --argjson b "$_page_nodes" '$a + $b') || return 1
     has_next=$(printf '%s' "$_raw" | jq -r '.data?.resource?.reviewThreads?.pageInfo?.hasNextPage // false' 2>/dev/null) || return 1
     cursor=$(printf '%s' "$_raw" | jq -r '.data?.resource?.reviewThreads?.pageInfo?.endCursor // ""' 2>/dev/null) || return 1
@@ -108,7 +108,7 @@ mergeready_fetch_review_threads() {
 # 0. Token selection — fall back to GH_PAT_FALLBACK if REPO is unreachable
 # ---------------------------------------------------------------------------
 if ! gh api "repos/${REPO}" >/dev/null 2>&1; then
-  if [ -n "${GH_PAT_FALLBACK:-}" ]; then
+  if [[ -n "${GH_PAT_FALLBACK:-}" ]]; then
     echo "::warning::GH_TOKEN cannot access ${REPO} — using GH_PAT_FALLBACK"
     export GH_TOKEN="$GH_PAT_FALLBACK"
     if ! gh api "repos/${REPO}" >/dev/null 2>&1; then
@@ -130,7 +130,7 @@ open_prs=$(gh api --paginate "repos/${REPO}/pulls?state=open&per_page=100" \
   exit 1
 }
 
-if [ -z "$open_prs" ]; then
+if [[ -z "$open_prs" ]]; then
   echo "No open PRs in ${REPO}."
 fi
 
@@ -147,7 +147,7 @@ scanned=0
 scan_incomplete=false
 
 while IFS= read -r pr; do
-  [ -n "$pr" ] || continue
+  [[ -n "$pr" ]] || continue
   scanned=$(( scanned + 1 ))
 
   # One snapshot gives review decision, mergeability, CI rollup (with check-run
@@ -191,7 +191,7 @@ while IFS= read -r pr; do
   # failure; a PR always has ≥1 commit, so [] is a reliable signal the event API is
   # unavailable — skip rather than emit a false stranded signal.
   events=$(gather_pr_automation_events "$pr" "$REPO") || events=""
-  if [ "$events" = "[]" ] || [ -z "$events" ]; then
+  if [[ "$events" = "[]" ]] || [[ -z "$events" ]]; then
     echo "  skip PR #${pr} — event API returned no data (possible rate-limit or error); skipping to avoid false merge-ready signal"
     scan_incomplete=true
     continue
@@ -215,17 +215,17 @@ while IFS= read -r pr; do
   # candidate (approved + mergeable + green + idle + not gated) — this bounds the
   # extra GraphQL call to the handful of PRs that could actually be flagged.
   agent_blocked=false
-  if [ "$gated" != "true" ] \
-     && [ "$review_decision" = "APPROVED" ] \
-     && [ "$mergeable" = "MERGEABLE" ] \
-     && [ "$ci_status" = "passing" ] \
-     && [ "$hours_idle" -gt "$(_mergeready_threshold "${MERGEREADY_MIN_AGE_HOURS}" 12)" ]; then
+  if [[ "$gated" != "true" ]] \
+     && [[ "$review_decision" = "APPROVED" ]] \
+     && [[ "$mergeable" = "MERGEABLE" ]] \
+     && [[ "$ci_status" = "passing" ]] \
+     && [ "$hours_idle" -gt "$(_mergeready_threshold "${MERGEREADY_MIN_AGE_HOURS}" 12)" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     if ! threads_json=$(mergeready_fetch_review_threads "$pr"); then
       echo "  skip PR #${pr} — review-thread query failed (API error or parse failure); skipping to avoid false merge-ready signal"
       scan_incomplete=true
       continue
     fi
-    if [ -n "$threads_json" ] && pr_mergeready_thread_agent_blocked "$threads_json" "$TRUSTED_BOTS"; then
+    if [[ -n "$threads_json" ]] && pr_mergeready_thread_agent_blocked "$threads_json" "$TRUSTED_BOTS"; then
       agent_blocked=true
     fi
   fi
@@ -242,7 +242,7 @@ while IFS= read -r pr; do
   esac
 
   reason=$(pr_mergeready_reasons "$review_decision" "$mergeable" "$ci_status" "$agent_blocked" "$hours_idle" "$gated")
-  if [ -n "$reason" ]; then
+  if [[ -n "$reason" ]]; then
     # Sanitize the title for a single markdown table cell: strip newlines/tabs (the
     # TSV delimiter) and pipes (the markdown column delimiter).
     safe_title=$(printf '%s' "$title" | tr '\n\t|' '   ')
@@ -265,21 +265,21 @@ echo "Scanned ${scanned} open PR(s); ${mergeready_count} merge-ready-idle candid
   printf '# Merge-Ready-and-Idle PR Detection — %s\n\n' "$TODAY"
   printf '**Repo:** `%s` | **Open PRs scanned:** %s | **Candidates:** %s\n\n' \
     "$REPO" "$scanned" "$mergeready_count"
-  if [ "$scan_incomplete" = "true" ]; then
+  if [[ "$scan_incomplete" = "true" ]]; then
     printf '> ⚠️ **Scan incomplete**: one or more PRs were skipped due to API errors or rate limits. The candidate count above may understate actual stranded PRs.\n\n'
   fi
   generate_mergeready_report "$candidates_file"
 } > "$REPORT_FILE"
 
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
 fi
 
-if [ -n "${GITHUB_ENV:-}" ]; then
+if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "MERGEREADY_COUNT=${mergeready_count}" >> "$GITHUB_ENV"
-  if [ "$mergeready_count" -gt 0 ]; then
+  if [ "$mergeready_count" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "HAS_MERGEREADY=true" >> "$GITHUB_ENV"
-  elif [ "$scan_incomplete" = "true" ]; then
+  elif [[ "$scan_incomplete" = "true" ]]; then
     echo "::warning::Merge-ready scan incomplete (PRs skipped due to API errors) — not emitting HAS_MERGEREADY=false to avoid a false all-clear"
   else
     echo "HAS_MERGEREADY=false" >> "$GITHUB_ENV"

@@ -29,10 +29,10 @@ MANIFEST="${CONSUMER_MANIFEST:-$SCRIPT_DIR/lib/consumer-manifest.json}"
 ORG="${TARGET_ORG:-combsmith}"
 DRY_RUN=0
 
-while [ "$#" -gt 0 ]; do
+while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --manifest)
-      if [ "$#" -lt 2 ]; then
+      if [[ "$#" -lt 2 ]]; then
         echo "refresh-consumer-manifest: --manifest requires a value" >&2
         exit 2
       fi
@@ -40,7 +40,7 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --org)
-      if [ "$#" -lt 2 ]; then
+      if [[ "$#" -lt 2 ]]; then
         echo "refresh-consumer-manifest: --org requires a value" >&2
         exit 2
       fi
@@ -68,7 +68,7 @@ fi
 
 # Preserve providers + surface_sources from the existing manifest; default to the
 # fixed provider list (#653) when no manifest exists yet.
-if [ -f "$MANIFEST" ] && jq empty "$MANIFEST" 2>/dev/null; then
+if [[ -f "$MANIFEST" ]] && jq empty "$MANIFEST" 2>/dev/null; then
   providers_json=$(jq -c '.providers // [".github", ".github-private"]' "$MANIFEST")
   surface_json=$(jq -c '.surface_sources // {}' "$MANIFEST")
 else
@@ -96,23 +96,23 @@ fi
 # Scan each repo's workflow files for `uses:` references to a provider reusable
 # workflow. Each detection is recorded as a "<repo>\t<provider>/.github/workflows/<name>.yml" line.
 while IFS= read -r repo; do
-  [ -n "$repo" ] || continue
+  [[ -n "$repo" ]] || continue
   while IFS= read -r wf_path; do
-    [ -n "$wf_path" ] || continue
+    [[ -n "$wf_path" ]] || continue
     case "$wf_path" in *.yml|*.yaml) : ;; *) continue ;; esac
     content_b64=$(gh api "repos/$repo/contents/$wf_path" --jq '.content' 2>/dev/null || true)
-    if [ -n "$content_b64" ] && [ "$content_b64" != "null" ]; then
+    if [[ -n "$content_b64" ]] && [[ "$content_b64" != "null" ]]; then
       content=$(printf '%s' "$content_b64" | tr -d '\r\n' | jq -Rr '@base64d' 2>/dev/null || true)
     else
       content=""
     fi
-    [ -n "$content" ] || continue
+    [[ -n "$content" ]] || continue
     matches=$(printf '%s\n' "$content" \
       | grep -oE "${ORG}/(${providers_alt})/\.github/workflows/[A-Za-z0-9_.-]+\.yml" \
       | sed "s#^${ORG}/##" || true)
-    [ -n "$matches" ] || continue
+    [[ -n "$matches" ]] || continue
     while IFS= read -r ref; do
-      [ -n "$ref" ] || continue
+      [[ -n "$ref" ]] || continue
       printf '%s\t%s\n' "$repo" "$ref" >> "$pairs_file"
     done <<< "$matches"
   done < <(gh api "repos/$repo/contents/.github/workflows" --jq '.[].path' 2>/dev/null || true)
@@ -133,7 +133,7 @@ manifest_json=$(jq -n --sort-keys \
   --argjson surface_sources "$surface_json" \
   '{ providers: $providers, consumers: $consumers, surface_sources: $surface_sources }')
 
-if [ "$DRY_RUN" -eq 1 ]; then
+if [[ "$DRY_RUN" -eq 1 ]]; then
   printf '%s\n' "$manifest_json"
 else
   printf '%s\n' "$manifest_json" > "$MANIFEST"

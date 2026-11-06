@@ -84,13 +84,13 @@ pr_runaway_reasons() {
   min_age=$(_runaway_threshold "${RUNAWAY_MIN_AGE_HOURS}" 48)
   churn_floor=$(_runaway_threshold "${RUNAWAY_CHURN_MIN_CYCLES}" 1)
 
-  [ "$commits" -gt "$max_commits" ] && \
+  [ "$commits" -gt "$max_commits" ] &&  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf 'commits: %s (>%s)\n' "$commits" "$max_commits"
-  [ "$comments" -gt "$max_comments" ] && \
+  [ "$comments" -gt "$max_comments" ] &&  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf 'comments: %s (>%s)\n' "$comments" "$max_comments"
-  [ "$cycles" -gt "$max_cycles" ] && \
+  [ "$cycles" -gt "$max_cycles" ] &&  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf 'automated cycles: %s (>%s)\n' "$cycles" "$max_cycles"
-  if [ "$age" -gt "$min_age" ] && [ "$cycles" -ge "$churn_floor" ]; then
+  if [ "$age" -gt "$min_age" ] && [ "$cycles" -ge "$churn_floor" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf 'open %sh with agent churn (%s cycles, >%sh)\n' \
       "$age" "$cycles" "$min_age"
   fi
@@ -102,7 +102,7 @@ pr_runaway_reasons() {
 is_pr_runaway() {
   local reasons
   reasons=$(pr_runaway_reasons "$@")
-  [ -n "$reasons" ]
+  [[ -n "$reasons" ]]
 }
 
 # pr_rebase_smell <commits> <changed_files>
@@ -119,7 +119,7 @@ pr_rebase_smell() {
   min_commits=$(_runaway_threshold "${REBASE_SMELL_MIN_COMMITS}" 50)
   max_files=$(_runaway_threshold "${REBASE_SMELL_MAX_FILES}" 20)
 
-  if [ "$commits" -gt "$min_commits" ] && [ "$files" -gt 0 ] && [ "$files" -lt "$max_files" ]; then
+  if [ "$commits" -gt "$min_commits" ] && [ "$files" -gt 0 ] && [ "$files" -lt "$max_files" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf 'merge-stacked: %s commits / %s files — rebase/squash candidate (>%s commits, <%s files)\n' \
       "$commits" "$files" "$min_commits" "$max_files"
   fi
@@ -132,15 +132,15 @@ pr_rebase_smell() {
 pr_age_hours() {
   local created="${1:-}" now
   now=$(_runaway_int "${2:-}")
-  [ "$now" -gt 0 ] || now=$(date -u +%s)
+  [ "$now" -gt 0 ] || now=$(date -u +%s)  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   local created_epoch
   created_epoch=$(date -u -d "$created" +%s 2>/dev/null || date -u -v0d -f "%Y-%m-%dT%H:%M:%SZ" "$created" +%s 2>/dev/null || true)
-  if [ -z "$created_epoch" ]; then
+  if [[ -z "$created_epoch" ]]; then
     echo 0
     return 0
   fi
   local diff=$(( now - created_epoch ))
-  [ "$diff" -lt 0 ] && diff=0
+  [[ "$diff" -lt 0 ]] && diff=0
   echo $(( diff / 3600 ))
 }
 
@@ -167,7 +167,7 @@ generate_runaway_report() {
     "$smell_commits" "$smell_files"
   printf 'Detection only — no PR is mutated. See #948 / #949 / the #860 post-mortem.\n\n'
 
-  if [ -z "$f" ] || [ ! -s "$f" ]; then
+  if [[ -z "$f" ]] || [[ ! -s "$f" ]]; then
     printf '✅ No open PR crossed a runaway threshold.\n'
     return 0
   fi
@@ -176,7 +176,7 @@ generate_runaway_report() {
   printf '|---|---|---|\n'
   local num url title reasons
   while IFS=$'\t' read -r num url title reasons; do
-    [ -n "$num" ] || continue
+    [[ -n "$num" ]] || continue
     printf '| [#%s](%s) | %s | %s |\n' "$num" "$url" "$title" "$reasons"
   done < "$f"
 }

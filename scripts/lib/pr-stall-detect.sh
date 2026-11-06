@@ -135,10 +135,10 @@ pr_stall_reasons() {
   esac
 
   # Only the actionable-but-unresolved state can stall.
-  [ "$ci" = "passing" ] || return 0
-  [ "$decision" = "REVIEW_REQUIRED" ] || return 0
-  [ "$reviewed" -eq 0 ] || return 0
-  [ "$mins" -gt "$min_age" ] || return 0
+  [[ "$ci" = "passing" ]] || return 0
+  [[ "$decision" = "REVIEW_REQUIRED" ]] || return 0
+  [ "$reviewed" -eq 0 ] || return 0  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+  [ "$mins" -gt "$min_age" ] || return 0  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 
   printf 'stalled %sm: CI-green + REVIEW_REQUIRED, no agent activity or pending event (>%sm)\n' \
     "$mins" "$min_age"
@@ -150,7 +150,7 @@ pr_stall_reasons() {
 is_pr_stall() {
   local reasons
   reasons=$(pr_stall_reasons "$@")
-  [ -n "$reasons" ]
+  [[ -n "$reasons" ]]
 }
 
 # pr_minutes_since <iso8601> [now_epoch]
@@ -159,15 +159,15 @@ is_pr_stall() {
 pr_minutes_since() {
   local ts="${1:-}" now
   now=$(_stall_int "${2:-}")
-  [ "$now" -gt 0 ] || now=$(date -u +%s)
+  [ "$now" -gt 0 ] || now=$(date -u +%s)  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   local ts_epoch
   ts_epoch=$(date -u -d "$ts" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s 2>/dev/null || true)
-  if [ -z "$ts_epoch" ]; then
+  if [[ -z "$ts_epoch" ]]; then
     echo 0
     return 0
   fi
   local diff=$(( now - ts_epoch ))
-  if [ "$diff" -lt 0 ]; then
+  if [[ "$diff" -lt 0 ]]; then
     diff=0
   fi
   echo $(( diff / 60 ))
@@ -190,7 +190,7 @@ generate_stall_report() {
   printf 'Human-gated halts (needs-human-review, dev-lead:hands-off, initiative:hold) are excluded. '
   printf 'Detection only — no PR is mutated. See #1410 / the #860 post-mortem (detection must be pushed).\n\n'
 
-  if [ -z "$content" ]; then
+  if [[ -z "$content" ]]; then
     printf '✅ No open PR is stalled.\n'
     return 0
   fi
@@ -199,7 +199,7 @@ generate_stall_report() {
   printf '|---|---|---|\n'
   local num url title reason
   while IFS=$'\t' read -r num url title reason; do
-    [ -n "$num" ] || continue
+    [[ -n "$num" ]] || continue
     printf '| [#%s](%s) | %s | %s |\n' "$num" "$url" "$title" "$reason"
   done <<< "$content"
 }
@@ -235,13 +235,13 @@ pr_stranded_approval_reasons() {
   esac
 
   # Only a green, auto-merge-armed PR with no standing approval can strand.
-  [ "$ci" = "passing" ] || return 0
+  [[ "$ci" = "passing" ]] || return 0
   case "$armed" in
     true|TRUE|1) ;;
     *) return 0 ;;
   esac
-  [ "$standing" -eq 0 ] || return 0
-  [ "$hours" -gt "$min_hours" ] || return 0
+  [ "$standing" -eq 0 ] || return 0  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+  [ "$hours" -gt "$min_hours" ] || return 0  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 
   printf 'stranded %sh: CI-green + auto-merge armed, no standing approval (>%sh)\n' \
     "$hours" "$min_hours"
@@ -253,7 +253,7 @@ pr_stranded_approval_reasons() {
 is_pr_stranded_approval() {
   local reasons
   reasons=$(pr_stranded_approval_reasons "$@")
-  [ -n "$reasons" ]
+  [[ -n "$reasons" ]]
 }
 
 # generate_stranded_approval_report <candidates_tsv>
@@ -275,7 +275,7 @@ generate_stranded_approval_report() {
   printf 'Human-gated halts (needs-human-review, dev-lead:hands-off, initiative:hold) are excluded. '
   printf 'Detection only — no PR is mutated.\n\n'
 
-  if [ -z "$content" ]; then
+  if [[ -z "$content" ]]; then
     printf '✅ No open PR has a stranded approval.\n'
     return 0
   fi
@@ -284,7 +284,7 @@ generate_stranded_approval_report() {
   printf '|---|---|---|\n'
   local num url title reason
   while IFS=$'\t' read -r num url title reason; do
-    [ -n "$num" ] || continue
+    [[ -n "$num" ]] || continue
     printf '| [#%s](%s) | %s | %s |\n' "$num" "$url" "$title" "$reason"
   done <<< "$content"
 }

@@ -26,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/hold-gate.sh"
 PR_URL="${1:-}"
 FORMAT="markdown"
-[ "${2:-}" = "--json" ] && FORMAT="json"
+[[ "${2:-}" = "--json" ]] && FORMAT="json"
 if [[ ! "$PR_URL" =~ ^https://github\.com/[^/]+/[^/]+/pull/[0-9]+$ ]]; then
   echo "usage: pr-approval-diagnostic.sh https://github.com/<owner>/<repo>/pull/<n> [--json]" >&2
   exit 2
@@ -42,7 +42,7 @@ set -e
 
 # The run's verdict is its LAST emit_verdict line (a JSON object with .decision).
 verdict=$(grep -E '^\{"pr":' "$LOG" | tail -n 1 || true)
-if [ -z "$verdict" ] || ! jq -e '.decision' <<<"$verdict" >/dev/null 2>&1; then
+if [[ -z "$verdict" ]] || ! jq -e '.decision' <<<"$verdict" >/dev/null 2>&1; then
   echo "pr-approval-diagnostic: the gate chain produced no verdict (exit $rc); last lines:" >&2
   tail -n 20 "$LOG" >&2
   exit 2
@@ -55,7 +55,7 @@ pr_json=$(gh pr view "$PR_URL" --json state,isDraft,headRefOid,reviewDecision,me
   && jq -e '.headRefOid' <<<"$pr_json" >/dev/null 2>&1 \
   || { echo "pr-approval-diagnostic: could not read the PR's review facts (gh pr view failed)" >&2; exit 2; }
 verdict_sha=$(jq -r '.sha // ""' <<<"$verdict")
-if [ -n "$verdict_sha" ] && [ "$(jq -r '.headRefOid' <<<"$pr_json")" != "$verdict_sha" ]; then
+if [[ -n "$verdict_sha" ]] && [[ "$(jq -r '.headRefOid' <<<"$pr_json")" != "$verdict_sha" ]]; then
   echo "pr-approval-diagnostic: the PR head moved while diagnosing (gate run saw ${verdict_sha:0:8}); re-run" >&2
   exit 2
 fi
@@ -73,7 +73,7 @@ gate_log=$(sed 's/\x1b\[[0-9;]*m//g' "$LOG" | grep -E '^    |\[advisory-gate\]' 
 report=$(jq -cn --argjson v "$verdict" --argjson f "$facts" --arg log "$gate_log" \
   '$v + {facts: $f, gate_log: $log}')
 
-if [ "$FORMAT" = "json" ]; then
+if [[ "$FORMAT" = "json" ]]; then
   printf '%s\n' "$report"
   exit 0
 fi

@@ -29,7 +29,7 @@
 #   caller decides whether an unreadable surface is indeterminate.
 approval_review_present() {
   local reviews_json="${1:-}" bot="${2:-}" sha="${3:-}"
-  [ -z "$reviews_json" ] && return 1
+  [[ -z "$reviews_json" ]] && return 1
   # `gh api --paginate` can emit one JSON array per page as a concatenated stream
   # (`[...][...]`). Feeding that raw to a single array comprehension counts each
   # page separately, producing a multi-line count and hiding an approval that
@@ -47,6 +47,6 @@ approval_review_present() {
   # Under `set -e`, return the status explicitly rather than letting a standalone
   # `[ ... ]` be the function's last command (a false test would abort the caller).
   local status=1
-  [ "${n:-0}" -gt 0 ] && status=0
+  [ "${n:-0}" -gt 0 ] && status=0  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   return "$status"
 }

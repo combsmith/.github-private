@@ -70,7 +70,7 @@ checkout_pr_in_worktree() {
       _pr_cross="$(echo "$_pr_json" | jq -r '.isCrossRepository' 2>/dev/null || true)"
     fi
     case "$_pr_cross" in true|false) break ;; esac
-    if [ "$_attempt" -lt 3 ]; then sleep "$(( _attempt * ${DEV_LEAD_LOOKUP_RETRY_SEC:-2} ))"; fi
+    if [[ "$_attempt" -lt 3 ]]; then sleep "$(( _attempt * ${DEV_LEAD_LOOKUP_RETRY_SEC:-2} ))"; fi
   done
   if [[ -n "$_pr_state" && "$_pr_state" != "OPEN" ]]; then
     echo "::notice::PR #${pr} is ${_pr_state} — skipping checkout (nothing to modify on a merged/closed PR)"
@@ -81,11 +81,11 @@ checkout_pr_in_worktree() {
   # outside this repository is refused, whichever intent got here. Only an explicit
   # `false` proceeds: a lookup still failing after the retries above fails the run.
   # Before the EXIT trap for the same reason as the closed-PR exit above.
-  if [ "$_pr_cross" = "true" ]; then
+  if [[ "$_pr_cross" = "true" ]]; then
     echo "::notice::PR #${pr} has its head in another repository — dev-lead does not work on those"
     exit 0
   fi
-  if [ "$_pr_cross" != "false" ]; then
+  if [[ "$_pr_cross" != "false" ]]; then
     echo "::error::could not confirm that PR #${pr} has its head in ${repo} — not checking it out"
     exit 1
   fi
@@ -122,7 +122,7 @@ checkout_pr_in_worktree() {
   #      checkout in place (it cannot be removed), force-remove any other.
   git worktree prune 2>/dev/null || true
 
-  if [ -n "$_pr_branch" ]; then
+  if [[ -n "$_pr_branch" ]]; then
     # Resolve the agent worktree's ROOT for comparison. `git worktree list`
     # emits each worktree's top-level, fully-resolved path, but
     # PR_WORKTREE_AGENT_DIR comes from `pwd` — which may be a SUBDIRECTORY of
@@ -139,9 +139,9 @@ checkout_pr_in_worktree() {
         "worktree "*) _wt_path="${_wt_line#worktree }" ;;
         "branch refs/heads/"*)
           _held="${_wt_line#branch refs/heads/}"
-          if [ "$_held" = "$_pr_branch" ] && [ -n "$_wt_path" ]; then
+          if [[ "$_held" = "$_pr_branch" ]] && [[ -n "$_wt_path" ]]; then
             _wt_real="$(cd "$_wt_path" 2>/dev/null && pwd -P || printf '%s' "$_wt_path")"
-            if [ "$_wt_real" = "$_agent_real" ]; then
+            if [[ "$_wt_real" = "$_agent_real" ]]; then
               # The agent's own checkout holds the branch — never remove it;
               # detaching releases the branch so the new worktree can claim it.
               git -C "$_wt_path" checkout --detach --quiet 2>/dev/null || true
@@ -167,7 +167,7 @@ checkout_pr_in_worktree() {
 # cleanup_pr_worktree — return to the agent checkout and remove the worktree.
 # Idempotent and safe to call from an EXIT trap or by hand.
 cleanup_pr_worktree() {
-  [ -n "${PR_WORKTREE_DIR:-}" ] || return 0
+  [[ -n "${PR_WORKTREE_DIR:-}" ]] || return 0
   local wt="$PR_WORKTREE_DIR" parent
   parent="$(dirname "$wt")"
   PR_WORKTREE_DIR=""
@@ -175,7 +175,7 @@ cleanup_pr_worktree() {
   cd "${PR_WORKTREE_AGENT_DIR:-/}" 2>/dev/null || true
   git worktree remove --force "$wt" 2>/dev/null || true
   # Best-effort: drop the mktemp parent and prune any dangling registry entry.
-  if [ -n "$parent" ] && [ "$parent" != "/" ] && [[ "$parent" == *"/dev-lead-wt-"* ]]; then
+  if [[ -n "$parent" ]] && [[ "$parent" != "/" ]] && [[ "$parent" == *"/dev-lead-wt-"* ]]; then
     rm -rf "$parent" 2>/dev/null || true
   fi
   git worktree prune 2>/dev/null || true

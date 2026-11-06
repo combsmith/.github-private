@@ -6096,7 +6096,7 @@ _resolved_bot_comment() {
   local fn block
   fn=$(awk '/^resolve_dispositioned_comments\(\) \{/,/^}/' "$FIX_REVIEWS_SCRIPT")
   grep -q 'RDC_STATE_UNKNOWN=0' <<< "$fn"
-  grep -A3 'if \[ "\$cur_minimized" = "unknown" \]' <<< "$fn" | grep -q 'RDC_STATE_UNKNOWN=1'
+  grep -A3 'if \[\[ "\$cur_minimized" = "unknown" \]\]' <<< "$fn" | grep -q 'RDC_STATE_UNKNOWN=1'
   start=$(grep -n '^  fix-bot-comment)$' "$FIX_REVIEWS_SCRIPT" | head -1 | cut -d: -f1)
   end=$(grep -n '^  on-mention)$' "$FIX_REVIEWS_SCRIPT" | head -1 | cut -d: -f1)
   block=$(sed -n "${start},${end}p" "$FIX_REVIEWS_SCRIPT")

@@ -66,7 +66,7 @@ DEV_LEAD_STAMP_KEY='Dev-Lead-Stamp'
 # tree and these parents. Pure: hashes its arguments, reads no repository.
 dev_lead_stamp_of() {
   local tree="${1:-}"
-  [ -n "$tree" ] || return 1
+  [[ -n "$tree" ]] || return 1
   shift
   {
     printf 'tree %s\n' "$tree"
@@ -89,10 +89,10 @@ dev_lead_stamp_trailer() {
     parents+=("$head")
   fi
   merge_head_file=$(git rev-parse --git-path MERGE_HEAD 2>/dev/null || true)
-  if [ -n "$merge_head_file" ] && [ -f "$merge_head_file" ]; then
+  if [[ -n "$merge_head_file" ]] && [[ -f "$merge_head_file" ]]; then
     local mh
     while IFS= read -r mh; do
-      [ -n "$mh" ] && parents+=("$mh")
+      [[ -n "$mh" ]] && parents+=("$mh")
     done < "$merge_head_file"
   fi
   stamp=$(dev_lead_stamp_of "$tree" ${parents[@]+"${parents[@]}"}) || return 1
@@ -104,13 +104,13 @@ dev_lead_stamp_trailer() {
 # <parents>. Pure apart from `git hash-object --stdin`.
 dev_lead_stamp_matches() {
   local tree="${1:-}" parent_list="${2:-}" message="${3:-}" expected claimed
-  [ -n "$tree" ] || return 1
+  [[ -n "$tree" ]] || return 1
   # Word-split on purpose: <parents> is the space-separated %P list.
   # shellcheck disable=SC2086
   expected=$(dev_lead_stamp_of "$tree" $parent_list 2>/dev/null) || return 1
-  [ -n "$expected" ] || return 1
+  [[ -n "$expected" ]] || return 1
   while IFS= read -r claimed; do
-    [ "$claimed" = "$expected" ] && return 0
+    [[ "$claimed" = "$expected" ]] && return 0
   done < <(sed -nE "s/^${DEV_LEAD_STAMP_KEY}:[[:space:]]*([0-9a-f]+)[[:space:]]*\$/\1/p" <<<"$message")
   return 1
 }

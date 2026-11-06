@@ -83,13 +83,13 @@ premature_closure_reasons() {
   max_minutes=$(_pc_threshold "${PC_MAX_OPEN_MINUTES}" "$_PC_THRESHOLD_DEFAULT")
 
   # 1. Only a "completed" close is premature; "not_planned"/other are legitimate.
-  [ "$state_reason" = "completed" ] || return 0
+  [[ "$state_reason" = "completed" ]] || return 0
   # 2. A merged closing PR means the fix actually landed — not premature.
   if _pc_is_truthy "$has_pr"; then
     return 0
   fi
   # 3. Must be the fast task-attempt close (strict <, matching "within N minutes").
-  [ "$minutes" -lt "$max_minutes" ] || return 0
+  [ "$minutes" -lt "$max_minutes" ] || return 0  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 
   printf 'closed as completed %sm after open with no merged closing PR (<%sm window)\n' \
     "$minutes" "$max_minutes"
@@ -101,7 +101,7 @@ premature_closure_reasons() {
 is_premature_closure() {
   local reasons
   reasons=$(premature_closure_reasons "$@")
-  [ -n "$reasons" ]
+  [[ -n "$reasons" ]]
 }
 
 # minutes_between <iso_from> <iso_to>
@@ -111,12 +111,12 @@ minutes_between() {
   local from="${1:-}" to="${2:-}" from_epoch to_epoch
   from_epoch=$(date -u -d "$from" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$from" +%s 2>/dev/null || true)
   to_epoch=$(date -u -d "$to" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$to" +%s 2>/dev/null || true)
-  if [ -z "$from_epoch" ] || [ -z "$to_epoch" ]; then
+  if [[ -z "$from_epoch" ]] || [[ -z "$to_epoch" ]]; then
     echo 0
     return 0
   fi
   local diff=$(( to_epoch - from_epoch ))
-  [ "$diff" -lt 0 ] && diff=0
+  [[ "$diff" -lt 0 ]] && diff=0
   echo $(( diff / 60 ))
 }
 
@@ -131,7 +131,7 @@ _pc_render_candidate_table() {
   printf '|---|---|---|\n'
   local num url title reason
   while IFS=$'\t' read -r num url title reason; do
-    [ -n "$num" ] || continue
+    [[ -n "$num" ]] || continue
     title=${title//$'|'/'\|'}
     title=${title//$'\n'/ }
     reason=${reason//$'|'/'\|'}
@@ -155,7 +155,7 @@ generate_premature_closure_report() {
   printf '(the fix never landed on the default branch). See #1077 — dev-lead should '
   printf 'leave such issues open and labeled `dev-lead:needs-human`, not close them as done.\n\n'
 
-  if [ -z "$f" ] || [ ! -s "$f" ]; then
+  if [[ -z "$f" ]] || [[ ! -s "$f" ]]; then
     printf 'No prematurely-closed issue detected in the audited window.\n'
     return 0
   fi
@@ -214,8 +214,8 @@ supersede_claim_body() {
   local body="${1:-}" banner="${2:-}"
   printf '%s\n' "$banner"
   local line prefix text struck=0
-  while IFS= read -r line || [ -n "$line" ]; do
-    if [ "$struck" -eq 0 ]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$struck" -eq 0 ]]; then
       case "$line" in
         '#'*)
           # Split the leading run of '#'/spaces from the heading text, then strike
@@ -259,7 +259,7 @@ unbacked_completion_claim_reasons() {
 is_unbacked_completion_claim() {
   local reasons
   reasons=$(unbacked_completion_claim_reasons "$@")
-  [ -n "$reasons" ]
+  [[ -n "$reasons" ]]
 }
 
 # generate_unbacked_claim_report <candidates_tsv_file>
@@ -276,7 +276,7 @@ generate_unbacked_claim_report() {
   printf '#1445 — a completion claim must be backed by a verifiable artifact (PR/SHA) and '
   printf 'retracted on terminal failure.\n\n'
 
-  if [ -z "$f" ] || [ ! -s "$f" ]; then
+  if [[ -z "$f" ]] || [[ ! -s "$f" ]]; then
     printf 'No open issue with an unbacked completion claim detected in the audited window.\n'
     return 0
   fi

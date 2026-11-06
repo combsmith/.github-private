@@ -43,7 +43,7 @@ fail() { echo "::error::verify-persona-identity: $*" >&2; exit 1; }
 
 is_grandfathered() {
   local c="$1" g
-  for g in "${GRANDFATHERED[@]}"; do [ "$c" = "$g" ] && return 0; done
+  for g in "${GRANDFATHERED[@]}"; do [[ "$c" = "$g" ]] && return 0; done
   return 1
 }
 
@@ -52,14 +52,14 @@ is_grandfathered() {
 runtime_for() {
   local id="$1" pair
   for pair in "${WRITE_RUNTIMES[@]}"; do
-    [ "${pair%%:*}" = "$id" ] && { printf '%s' "${pair#*:}"; return 0; }
+    [[ "${pair%%:*}" = "$id" ]] && { printf '%s' "${pair#*:}"; return 0; }
   done
   return 1
 }
 
 count=0
 for manifest in "$ROOT"/*/persona.yml; do
-  [ -f "$manifest" ] || continue
+  [[ -f "$manifest" ]] || continue
   manifest_dir="${manifest%/persona.yml}"
   id="${manifest_dir##*/}"
   account="$(bash "$RESOLVE" "$id" "$ROOT" account)"
@@ -82,7 +82,7 @@ for manifest in "$ROOT"/*/persona.yml; do
 
   # 3. write personas must consume the manifest identity at runtime
   if wf="$(runtime_for "$id")"; then
-    [ -f "$wf" ] || fail "$id: declared runtime workflow '$wf' does not exist"
+    [[ -f "$wf" ]] || fail "$id: declared runtime workflow '$wf' does not exist"
     if ! grep -qE '(bash|sh)[[:space:]]+.*resolve-persona-identity\.sh' "$wf"; then
       fail "$id: runtime workflow '$wf' must resolve identity from the manifest (call resolve-persona-identity.sh), not vars.BOT_USER"
     fi
@@ -92,7 +92,7 @@ for manifest in "$ROOT"/*/persona.yml; do
   count=$((count + 1))
 done
 
-if [ "$count" -eq 0 ]; then
+if [[ "$count" -eq 0 ]]; then
   echo "no persona manifests under $ROOT — nothing to verify."
 else
   echo "verify-persona-identity: $count persona identity mapping(s) consistent."

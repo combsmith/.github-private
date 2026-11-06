@@ -79,7 +79,7 @@ STANDARDS_REF="${STANDARDS_REF:-}"
 STANDARDS_CHANNEL="${STANDARDS_CHANNEL:-standards/v1-stable}"
 DEPENDABOT_STACK="${DEPENDABOT_STACK:-frontend}"
 
-_is_dry() { [ "$DRY_RUN" = "true" ]; }
+_is_dry() { [[ "$DRY_RUN" = "true" ]]; }
 
 # _require <cmd>... — fail loud if any listed command is missing. Checked at the
 # point of use (not unconditionally up front) so the local-only emit seams — e.g.
@@ -142,7 +142,7 @@ readonly -a REFERENCE_MANIFEST=(
 _reference_row() {
   local key="${1%.yml}" row
   for row in "${REFERENCE_MANIFEST[@]}"; do
-    [ "${row%%|*}" = "$key" ] && { printf '%s\n' "$row"; return 0; }
+    [[ "${row%%|*}" = "$key" ]] && { printf '%s\n' "$row"; return 0; }
   done
   return 1
 }
@@ -151,7 +151,7 @@ _reference_row() {
 _emit_reference() {
   local path="${1#*|}" file
   file="${SEED_REPO_ROOT}/${path}"
-  if [ ! -f "$file" ]; then
+  if [[ ! -f "$file" ]]; then
     echo "::error::reference artifact not found: ${path}" >&2
     return 1
   fi
@@ -180,7 +180,7 @@ readonly -a BASELINE_MANIFEST=(
 _manifest_row() {
   local key="${1%.yml}" row
   for row in "${WORKFLOW_MANIFEST[@]}"; do
-    [ "${row%%|*}" = "$key" ] && { printf '%s\n' "$row"; return 0; }
+    [[ "${row%%|*}" = "$key" ]] && { printf '%s\n' "$row"; return 0; }
   done
   return 1
 }
@@ -209,16 +209,16 @@ _ref_commit_sha() {
 }
 
 _resolve_standards_ref() {
-  if [ -n "${_STD_REF+x}" ]; then printf '%s' "$_STD_REF"; return 0; fi
+  if [[ -n "${_STD_REF+x}" ]]; then printf '%s' "$_STD_REF"; return 0; fi
   local ref sha src
-  if [ -n "${STANDARDS_DIR:-}" ]; then
+  if [[ -n "${STANDARDS_DIR:-}" ]]; then
     ref="STANDARDS_DIR"; sha=""; src="local"
-  elif [ -n "${STANDARDS_REF:-}" ]; then
+  elif [[ -n "${STANDARDS_REF:-}" ]]; then
     ref="$STANDARDS_REF"; sha=""; src="explicit"
   else
     _require gh || return 1
     sha="$(_ref_commit_sha "$STANDARDS_CHANNEL")"
-    if [ -n "$sha" ]; then
+    if [[ -n "$sha" ]]; then
       ref="$STANDARDS_CHANNEL"; src="channel"
     else
       sha="$(_ref_commit_sha HEAD)"; ref="${sha:-HEAD}"; src="head-fallback"
@@ -233,7 +233,7 @@ _resolve_standards_ref() {
 # unless a caller actually wants the SHA. Empty for the STANDARDS_DIR local seam.
 _resolved_standards_sha() {
   _resolve_standards_ref > /dev/null
-  if [ -z "${_STD_SHA:-}" ] && [ "$_STD_REF" != "STANDARDS_DIR" ]; then
+  if [[ -z "${_STD_SHA:-}" ]] && [[ "$_STD_REF" != "STANDARDS_DIR" ]]; then
     _STD_SHA="$(_ref_commit_sha "$_STD_REF")"
   fi
   printf '%s' "${_STD_SHA:-}"
@@ -242,7 +242,7 @@ _resolved_standards_sha() {
 # ── Fetch a path from the canonical standards repo (or a local checkout) ───────
 _fetch_standard() {
   local path="$1" ref
-  if [ -n "${STANDARDS_DIR:-}" ] && [ -f "${STANDARDS_DIR}/${path}" ]; then
+  if [[ -n "${STANDARDS_DIR:-}" ]] && [[ -f "${STANDARDS_DIR}/${path}" ]]; then
     cat "${STANDARDS_DIR}/${path}"
     return 0
   fi
@@ -251,7 +251,7 @@ _fetch_standard() {
   # A seed run pins every read to the commit it recorded in the PR body (#1925).
   # Reading through the ref name would follow a channel that moved mid-run, and the
   # PR would then name a commit its content did not come from.
-  [ -z "${_STD_PIN:-}" ] || ref="$_STD_PIN"
+  [[ -z "${_STD_PIN:-}" ]] || ref="$_STD_PIN"
   local -a ref_q=()
   case "$ref" in
     ""|STANDARDS_DIR) : ;;                 # no explicit ref (local seam / default)
@@ -311,11 +311,11 @@ _emit_workflow() {
   row="$(_manifest_row "$1")" || { echo "::error::unknown workflow stub: $1" >&2; return 2; }
   IFS='|' read -r name kind host <<<"$row"
   content="$(_fetch_standard "standards/workflows/${name}.yml")" || content=""
-  if [ -z "$content" ]; then
+  if [[ -z "$content" ]]; then
     echo "::error::could not fetch standards/workflows/${name}.yml from ${STANDARDS_REPO}" >&2
     return 1
   fi
-  if [ "$kind" = "caller" ]; then
+  if [[ "$kind" = "caller" ]]; then
     _repin_stub_content "$name" "$host" <<< "$content"
   else
     printf '%s\n' "$content"
@@ -332,7 +332,7 @@ readonly COMMERCIAL_SUPPORT_STANDARD="standards/commercial-support-standard.md"
 _commercial_support_section() {
   local content section
   content="$(_fetch_standard "$COMMERCIAL_SUPPORT_STANDARD")" || content=""
-  if [ -z "$content" ]; then
+  if [[ -z "$content" ]]; then
     echo "::error::could not fetch ${COMMERCIAL_SUPPORT_STANDARD} from ${STANDARDS_REPO}" >&2
     return 1
   fi
@@ -344,7 +344,7 @@ _commercial_support_section() {
     in_block { print }
     END { if (!done) exit 1 }
   ')" || section=""
-  if [ -z "$section" ]; then
+  if [[ -z "$section" ]]; then
     echo "::error::no \`\`\`markdown block under '## Canonical README Section' in ${COMMERCIAL_SUPPORT_STANDARD}" >&2
     return 1
   fi
@@ -1002,25 +1002,25 @@ _dependabot_scope_out_actions() {
 _emit_baseline() {
   local path="$1" row source
   for row in "${BASELINE_MANIFEST[@]}"; do
-    [ "${row%%|*}" = "$path" ] && { source="${row#*|}"; break; }
+    [[ "${row%%|*}" = "$path" ]] && { source="${row#*|}"; break; }
   done
-  if [ -z "${source:-}" ]; then
+  if [[ -z "${source:-}" ]]; then
     echo "::error::unknown baseline file: $path" >&2
     return 2
   fi
   local content std_path scope_actions=0
-  if [ "$source" = "gen" ]; then
+  if [[ "$source" = "gen" ]]; then
     _gen_baseline "$path"
   else
-    if [ "$source" = "fetch" ]; then
+    if [[ "$source" = "fetch" ]]; then
       # Dependabot special case: the standards path is DEPENDABOT_STACK-derived.
       # Scope github-actions out so a Dependabot bump can't drift the template (#1435).
       std_path="standards/dependabot/${DEPENDABOT_STACK}.yml"
       scope_actions=1
-    elif [ "${source#fetch:}" != "$source" ]; then
+    elif [[ "${source#fetch:}" != "$source" ]]; then
       # General verbatim fetch: source=fetch:<standards-path> (e.g. .gitleaks.toml).
       std_path="${source#fetch:}"
-      if [ -z "$std_path" ]; then
+      if [[ -z "$std_path" ]]; then
         echo "::error::empty standards path in source '${source}' for ${path}" >&2
         return 2
       fi
@@ -1029,11 +1029,11 @@ _emit_baseline() {
       return 2
     fi
     content="$(_fetch_standard "$std_path")" || content=""
-    if [ -z "$content" ]; then
+    if [[ -z "$content" ]]; then
       echo "::error::could not fetch ${std_path} from ${STANDARDS_REPO}" >&2
       return 1
     fi
-    if [ "$scope_actions" = 1 ]; then
+    if [[ "$scope_actions" = 1 ]]; then
       printf '%s\n' "$content" | _dependabot_scope_out_actions
     else
       printf '%s\n' "$content"
@@ -1063,7 +1063,7 @@ _existing_file_content() {
   local repo="$1" path="$2" ref="$3" out rc=0
   _require gh jq base64 || return 1
   out="$(gh api "repos/${repo}/contents/${path}?ref=${ref}" 2>/dev/null)" || rc=$?
-  if [ "$rc" -ne 0 ]; then
+  if [[ "$rc" -ne 0 ]]; then
     # A 404 is the ONE benign failure: the file is genuinely absent → empty content.
     # Any other failure (auth, rate-limit, 5xx, network) must abort loudly rather
     # than masquerade as "absent", which would let _seed_file CREATE over a file it
@@ -1087,7 +1087,7 @@ _seed_report_dry() {
   case "$action" in
     create) echo "  [dry-run] would CREATE ${path} (${new_lines} lines) — ${reason}" ;;
     write)
-      if [ "$new_lines" -lt "$old_lines" ]; then
+      if [[ "$new_lines" -lt "$old_lines" ]]; then
         echo "  [dry-run] would REPLACE ${path}: ${old_lines}-line file → ${new_lines}-line content (DESTRUCTIVE — ${reason})"
       else
         echo "  [dry-run] would UPDATE ${path}: ${old_lines} → ${new_lines} lines (${reason})"
@@ -1129,16 +1129,16 @@ _SEED_AHEAD=()         # paths refused because the template is ahead
 #   newer   — the resolved commit is an ancestor of HEAD (_SEED_NEWER_SHA).
 #   unknown — HEAD, the resolved commit, or their relation could not be read.
 _seed_newer_standards() {
-  [ -z "$_SEED_NEWER_STATE" ] || return 0
+  [[ -z "$_SEED_NEWER_STATE" ]] || return 0
   _SEED_NEWER_STATE="none"; _SEED_NEWER_SHA=""
-  [ "${_STD_SRC:-}" != "local" ] || return 0
+  [[ "${_STD_SRC:-}" != "local" ]] || return 0
   local head relation
   head="$(_template_drift_head_sha)"
-  if [ -z "$head" ] || [ -z "${_STD_SHA:-}" ]; then
+  if [[ -z "$head" ]] || [[ -z "${_STD_SHA:-}" ]]; then
     _SEED_NEWER_STATE="unknown"
     return 0
   fi
-  [ "$head" != "$_STD_SHA" ] || return 0
+  [[ "$head" != "$_STD_SHA" ]] || return 0
   relation="$(_template_drift_compare "$_STD_SHA" "$head")"
   case "$relation" in
     ahead) _SEED_NEWER_STATE="newer"; _SEED_NEWER_SHA="$head" ;;
@@ -1153,7 +1153,7 @@ _seed_newer_standards() {
 _seed_emit_at() {
   local out
   out="$(STANDARDS_REF="$1" DRY_RUN=false bash "${SEED_REPO_ROOT}/scripts/seed-repo-template.sh" "$2" "$3" 2>/dev/null)" || return 1
-  [ -n "$out" ] || return 1
+  [[ -n "$out" ]] || return 1
   printf '%s' "$out"
 }
 
@@ -1174,13 +1174,13 @@ _seed_is_ahead() {
     echo "::error::cannot compute the standards HEAD (${_SEED_NEWER_SHA:0:12}) emission for ${arg} — refusing to overwrite a differing file that may be ahead of ${_STD_REF} (#1925)" >&2
     return 2
   fi
-  [ "$existing" = "$newer" ]
+  [[ "$existing" = "$newer" ]]
 }
 
 # _seed_report_ahead — after the per-file pass, say once that the channel is behind
 # the template when any file was refused. Prints nothing otherwise.
 _seed_report_ahead() {
-  [ "${#_SEED_AHEAD[@]}" -gt 0 ] || return 0
+  [[ "${#_SEED_AHEAD[@]}" -gt 0 ]] || return 0
   echo "::warning::standards channel is behind the template — promote standards (scripts/cut-standards-release.sh in ${STANDARDS_REPO}). ${#_SEED_AHEAD[@]} file(s) already match the emission at standards HEAD ${_SEED_NEWER_SHA:0:12}, newer than ${_STD_REF}, and were NOT overwritten: ${_SEED_AHEAD[*]} (#1925)"
 }
 
@@ -1206,14 +1206,14 @@ _seed_source_label() {
 # shellcheck disable=SC2016
 _seed_pr_body() {
   local ref="${1:-}" sha="${2:-}" src="${3:-}" p
-  [ $# -lt 3 ] || shift 3
+  [[ $# -lt 3 ]] || shift 3
   printf 'Seeds the org baseline scaffold (workflow stubs pinned to published channel tags + root/baseline files) from %s standards/. Generated by seed-repo-template.sh (#966).\n\n' "$STANDARDS_REPO"
   printf '## Standards provenance\n\n'
   printf -- '- **Resolved ref:** `%s`\n' "$ref"
   printf -- '- **Source:** %s\n' "$(_seed_source_label "$src")"
   printf -- '- **Commit:** `%s`\n\n' "${sha:-unknown}"
   printf '<!-- seed-repo-template standards_ref=%s standards_sha=%s source=%s -->\n' "$ref" "${sha:-unknown}" "$src"
-  if [ $# -gt 0 ]; then
+  if [[ $# -gt 0 ]]; then
     printf '\n## Left alone: the template is ahead of the channel\n\n'
     printf 'These files already match the seed emission at a newer standards commit than `%s`, so this run did not overwrite them. The standards channel is behind the template: promote standards.\n\n' "$ref"
     for p in "$@"; do printf -- '- `%s`\n' "$p"; done
@@ -1228,9 +1228,9 @@ _seed_close_superseded() {
   local repo="$1" keep="$2" lines="$3" n b failed=0
   while IFS=$'\t' read -r n b; do
     [[ "$n" =~ ^[0-9]+$ ]] || continue
-    [ "${b#seed-scaffold/}" != "$b" ] || continue
-    [ "$n" != "$keep" ] || continue
-    if [ -z "$keep" ]; then
+    [[ "${b#seed-scaffold/}" != "$b" ]] || continue
+    [[ "$n" != "$keep" ]] || continue
+    if [[ -z "$keep" ]]; then
       echo "::warning::could not identify this run's seed PR on ${repo} — leaving older seed PR #${n} open; close it by hand" >&2
       failed=1
       continue
@@ -1276,20 +1276,20 @@ _seed_file() {
   # errexit inside its subshell, so an unreadable existing file (non-404) must fail
   # the seed rather than be treated as absent and overwritten with a CREATE (#1812).
   existing="$(_existing_file_content "$repo" "$path" "$base_ref")"
-  [ $? -eq 0 ] || return 1
+  [[ $? -eq 0 ]] || return 1
 
-  if [ -z "$existing" ]; then
+  if [[ -z "$existing" ]]; then
     action="create"; reason="new file"
   elif template_drift_allowlisted "$path"; then
     action="preserve"; reason="drift-allowlisted, customized per consumer (AC #2)"
   elif _content_has_managed_marker "$existing"; then
     action="preserve"; reason="carries a managed-block marker owned by another process (AC #1)"
-  elif [ "$existing" = "$content" ]; then
+  elif [[ "$existing" = "$content" ]]; then
     action="skip"; reason="unchanged (AC #3)"
   else
     action="write"; reason="content differs from the standards-derived baseline"
     # Only a file that would be overwritten pays for the newer-commit comparison.
-    if [ -n "$emit_flag" ]; then
+    if [[ -n "$emit_flag" ]]; then
       ahead_rc=0
       _seed_is_ahead "$existing" "$emit_flag" "$emit_arg" || ahead_rc=$?
       case "$ahead_rc" in
@@ -1309,11 +1309,11 @@ _seed_file() {
     return 0
   fi
 
-  if [ "$reuse" = 1 ]; then
-    if [ "$action" = "preserve" ] || [ "$action" = "ahead" ]; then desired="$existing"; else desired="$content"; fi
+  if [[ "$reuse" = 1 ]]; then
+    if [[ "$action" = "preserve" ]] || [[ "$action" = "ahead" ]]; then desired="$existing"; else desired="$content"; fi
     on_branch="$(_existing_file_content "$repo" "$path" "$branch")"
-    [ $? -eq 0 ] || return 1
-    if [ "$on_branch" = "$desired" ]; then
+    [[ $? -eq 0 ]] || return 1
+    if [[ "$on_branch" = "$desired" ]]; then
       echo "  [seed] ${path} already current on ${branch} — ${reason}"
     else
       _put_file "$repo" "$path" "$desired" "$branch" "seed ${path}"
@@ -1340,7 +1340,7 @@ _seed_all_files() {
     # (`content="$(…)" || return 1`) disables errexit inside its subshell, swallowing
     # an internal failure of _emit_workflow instead of aborting the seed (#1868 review).
     content="$(_emit_workflow "${name}.yml")"
-    [ $? -eq 0 ] || return 1
+    [[ $? -eq 0 ]] || return 1
     _seed_file "$repo" "$path" "$content" "$branch" "$base_ref" "$reuse" --emit-workflow "${name}.yml" || return 1
   done
   for row in "${BASELINE_MANIFEST[@]}"; do
@@ -1351,14 +1351,14 @@ _seed_all_files() {
     # must not block every other update.
     # Emit once and decide on that single read, so a second fetch cannot fail
     # after the guard passed and abort the run.
-    if [ "$path" = "README.md" ]; then
+    if [[ "$path" = "README.md" ]]; then
       if ! content="$(_emit_baseline "$path")"; then
         echo "::warning::skipping README.md — ${COMMERCIAL_SUPPORT_STANDARD} is unreadable; leaving the existing file untouched" >&2
         continue
       fi
     else
       content="$(_emit_baseline "$path")"
-      [ $? -eq 0 ] || return 1
+      [[ $? -eq 0 ]] || return 1
     fi
     _seed_file "$repo" "$path" "$content" "$branch" "$base_ref" "$reuse" --emit-baseline "$path" || return 1
   done
@@ -1380,7 +1380,7 @@ _seed_repo() {
   fi
   echo "[seed] target repo: ${repo} (stack: ${DEPENDABOT_STACK})"
   echo "[seed] standards ref: ${_STD_REF} (commit ${_STD_SHA:-unknown}, source ${_STD_SRC:-?}) on ${STANDARDS_REPO}"
-  if [ "${_STD_SRC:-}" = "head-fallback" ]; then
+  if [[ "${_STD_SRC:-}" = "head-fallback" ]]; then
     echo "[seed] note: STANDARDS_CHANNEL '${STANDARDS_CHANNEL}' is not published yet — fetching at HEAD commit ${_STD_SHA:-unknown} (#1448 AC #10)."
   fi
   echo "[seed] workflow stubs: $(printf '%s ' "${WORKFLOW_MANIFEST[@]%%|*}")"
@@ -1395,7 +1395,7 @@ _seed_repo() {
   # a repo whose default is not main, or let a dry-run falsely succeed (#1868 review).
   local drc=0
   default_branch="$(gh api "repos/${repo}" --jq '.default_branch' 2>/dev/null)" || drc=$?
-  if [ "$drc" -ne 0 ] || [ -z "$default_branch" ]; then
+  if [[ "$drc" -ne 0 ]] || [[ -z "$default_branch" ]]; then
     echo "::error::cannot resolve default branch on ${repo} (gh api exit ${drc})" >&2
     return 1
   fi
@@ -1409,7 +1409,7 @@ _seed_repo() {
   fi
 
   base_sha="$(gh api "repos/${repo}/git/ref/heads/${default_branch}" --jq '.object.sha' 2>/dev/null || true)"
-  if [ -z "$base_sha" ]; then
+  if [[ -z "$base_sha" ]]; then
     echo "::error::cannot read ${default_branch} head on ${repo}" >&2
     return 1
   fi
@@ -1431,7 +1431,7 @@ _seed_repo() {
   fi
   open_seed="$(printf '%s\n' "$open_seeds" | tail -n 1)"
   IFS=$'\t' read -r open_pr open_branch <<< "$open_seed" || true
-  if [ -n "$open_pr" ] && [ "${open_branch#seed-scaffold/}" != "$open_branch" ]; then
+  if [[ -n "$open_pr" ]] && [[ "${open_branch#seed-scaffold/}" != "$open_branch" ]]; then
     branch="$open_branch"; reuse=1
     echo "[seed] seed PR #${open_pr} is already open on ${repo} — updating its branch ${branch} instead of opening another"
   elif gh api "repos/${repo}/git/refs" --method POST \
@@ -1454,10 +1454,10 @@ _seed_repo() {
   # Nothing was written to a fresh branch: there is nothing to open a PR for. This
   # is the outcome when the template already matches the ref, or when every
   # differing file is ahead of it — a refused downgrade must not become a PR.
-  if [ "$branch_created" = 1 ] && [ "$_SEED_WRITES" -eq 0 ]; then
+  if [[ "$branch_created" = 1 ]] && [[ "$_SEED_WRITES" -eq 0 ]]; then
     gh api "repos/${repo}/git/refs/heads/${branch}" --method DELETE --silent 2>/dev/null \
       || echo "::warning::could not delete the empty branch ${branch} on ${repo}" >&2
-    if [ "${#_SEED_AHEAD[@]}" -gt 0 ]; then
+    if [[ "${#_SEED_AHEAD[@]}" -gt 0 ]]; then
       echo "[seed] no PR opened on ${repo}: the only differing files are ahead of ${_STD_REF} (see the warning above)"
     else
       echo "[seed] no PR opened on ${repo}: it already matches ${_STD_REF}"
@@ -1476,17 +1476,17 @@ _seed_repo() {
   # A dated branch left by an earlier run, with no open PR, and nothing written by
   # this run: open a PR only if the branch still has something the base lacks. If
   # that cannot be read, go on to `gh pr create`, which fails loudly on an empty PR.
-  if [ -z "$existing_pr" ] && [ "$branch_created" != 1 ] && [ "$_SEED_WRITES" -eq 0 ]; then
+  if [[ -z "$existing_pr" ]] && [[ "$branch_created" != 1 ]] && [[ "$_SEED_WRITES" -eq 0 ]]; then
     local ahead_by
     ahead_by="$(gh api "repos/${repo}/compare/${default_branch}...${branch}" --jq '.ahead_by' 2>/dev/null || true)"
-    if [ "$ahead_by" = "0" ]; then
+    if [[ "$ahead_by" = "0" ]]; then
       echo "[seed] no PR opened on ${repo}: branch ${branch} has nothing ${default_branch} lacks"
       echo "[seed] PASS — ${repo}"
       return 0
     fi
   fi
 
-  if [ -n "$existing_pr" ]; then
+  if [[ -n "$existing_pr" ]]; then
     echo "[seed] PR #$existing_pr already open for branch $branch on $repo"
     keep_pr="$existing_pr"
     # The PR now carries THIS run's content, so its body must name this run's ref.
@@ -1499,7 +1499,7 @@ _seed_repo() {
       || { echo "::error::cannot open PR on ${repo}" >&2; return 1; }
     keep_pr="${pr_url##*/}"
     [[ "$keep_pr" =~ ^[0-9]+$ ]] || keep_pr=""
-    [ -z "$keep_pr" ] || echo "[seed] opened seed PR #${keep_pr} on ${repo}"
+    [[ -z "$keep_pr" ]] || echo "[seed] opened seed PR #${keep_pr} on ${repo}"
   fi
 
   if ! _seed_close_superseded "$repo" "$keep_pr" "$open_seeds"; then
@@ -1515,7 +1515,7 @@ _put_file() {
   _require base64 || return 1
   local -a sha_arg=()
   sha="$(gh api "repos/${repo}/contents/${path}?ref=${branch}" --jq '.sha' 2>/dev/null || true)"
-  [ -n "$sha" ] && [ "$sha" != "null" ] && sha_arg=(--field "sha=${sha}")
+  [[ -n "$sha" ]] && [[ "$sha" != "null" ]] && sha_arg=(--field "sha=${sha}")
   encoded="$(printf '%s' "$content" | base64 -w 0 2>/dev/null || printf '%s' "$content" | base64)"
   gh api "repos/${repo}/contents/${path}" --method PUT \
     --field "message=${msg}" --field "content=${encoded}" --field "branch=${branch}" \
@@ -1534,7 +1534,7 @@ main() {
   # _resolve_standards_ref network path, _put_file) so local-only seams such as
   # --emit-workflow of a docs/ reference stay reachable without them (#1724).
   local repo="$TEMPLATE_REPO"
-  while [ $# -gt 0 ]; do
+  while [[ $# -gt 0 ]]; do
     case "$1" in
       --list-workflows) _list_workflows; return 0 ;;
       --list-baseline)  _list_baseline;  return 0 ;;
@@ -1546,20 +1546,20 @@ main() {
         _resolved_standards_sha > /dev/null
         printf '%s\t%s\t%s\n' "$_STD_REF" "${_STD_SHA:-}" "${_STD_SRC:-?}"
         return 0 ;;
-      --emit-workflow)  [ $# -ge 2 ] || { echo "::error::--emit-workflow needs a name" >&2; return 2; }; _emit_workflow "$2"; return $? ;;
-      --emit-baseline)  [ $# -ge 2 ] || { echo "::error::--emit-baseline needs a path" >&2; return 2; }; _emit_baseline "$2"; return $? ;;
+      --emit-workflow)  [[ $# -ge 2 ]] || { echo "::error::--emit-workflow needs a name" >&2; return 2; }; _emit_workflow "$2"; return $? ;;
+      --emit-baseline)  [[ $# -ge 2 ]] || { echo "::error::--emit-baseline needs a path" >&2; return 2; }; _emit_baseline "$2"; return $? ;;
       --repin)
-        [ $# -ge 2 ] || { echo "::error::--repin needs a stub name" >&2; return 2; }
+        [[ $# -ge 2 ]] || { echo "::error::--repin needs a stub name" >&2; return 2; }
         local row name kind host
         row="$(_manifest_row "$2")" || { echo "::error::unknown workflow stub: $2" >&2; return 2; }
         IFS='|' read -r name kind host <<<"$row"
-        if [ "$kind" = "caller" ]; then
+        if [[ "$kind" = "caller" ]]; then
           _repin_stub_content "$name" "$host"
         else
           cat
         fi
         return 0 ;;
-      --repo) [ $# -ge 2 ] || { echo "::error::--repo needs a value" >&2; return 2; }; repo="$2"; shift 2; continue ;;
+      --repo) [[ $# -ge 2 ]] || { echo "::error::--repo needs a value" >&2; return 2; }; repo="$2"; shift 2; continue ;;
       --repo=*) repo="${1#--repo=}"; shift; continue ;;
       --dry-run) DRY_RUN=true; shift; continue ;;
       -h|--help) sed -n '2,40p' "$0"; return 0 ;;
@@ -1576,6 +1576,6 @@ main() {
 }
 
 # Source-guard: tests source this to exercise individual helpers.
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   main "$@"
 fi

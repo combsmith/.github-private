@@ -52,8 +52,8 @@ _sync_trim() {
 #   ignored so the block can be formatted for readability.
 sync_extract_declared_paths() {
   local line trimmed in_block=0
-  while IFS= read -r line || [ -n "$line" ]; do
-    if [ "$in_block" -eq 0 ]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$in_block" -eq 0 ]]; then
       case "$line" in
         *"$SYNC_SCOPE_MARKER_BEGIN"*) in_block=1 ;;
       esac
@@ -63,7 +63,7 @@ sync_extract_declared_paths() {
       *"$SYNC_SCOPE_MARKER_END"*) break ;;
     esac
     trimmed=$(_sync_trim "$line")
-    [ -n "$trimmed" ] && printf '%s\n' "$trimmed"
+    [[ -n "$trimmed" ]] && printf '%s\n' "$trimmed"
   done
   return 0
 }
@@ -76,7 +76,7 @@ is_generated_sync_pr() {
   local labels="${1:-}" body="${2:-}" label trimmed
   while IFS= read -r label; do
     trimmed=$(_sync_trim "$label")
-    [ "$trimmed" = "$SYNC_SCOPE_LABEL" ] && return 0
+    [[ "$trimmed" = "$SYNC_SCOPE_LABEL" ]] && return 0
   done <<< "$labels"
   case "$body" in
     *"$SYNC_SCOPE_MARKER_BEGIN"*) return 0 ;;
@@ -91,7 +91,7 @@ is_generated_sync_pr() {
 #   nested paths. Deterministic: no external process, no model.
 _sync_path_matches() {
   local path="$1" pattern="$2"
-  [ "$path" = "$pattern" ] && return 0
+  [[ "$path" = "$pattern" ]] && return 0
   # shellcheck disable=SC2053  # intentional glob match: RHS must stay unquoted
   [[ "$path" == $pattern ]]
 }
@@ -106,13 +106,13 @@ sync_scope_violations() {
   local line trimmed
   while IFS= read -r line; do
     trimmed=$(_sync_trim "$line")
-    [ -n "$trimmed" ] && patterns+=("$trimmed")
+    [[ -n "$trimmed" ]] && patterns+=("$trimmed")
   done <<< "$declared"
 
   local path matched pattern
   while IFS= read -r path; do
     trimmed=$(_sync_trim "$path")
-    [ -n "$trimmed" ] || continue
+    [[ -n "$trimmed" ]] || continue
     matched=0
     for pattern in ${patterns[@]+"${patterns[@]}"}; do
       if _sync_path_matches "$trimmed" "$pattern"; then
@@ -120,7 +120,7 @@ sync_scope_violations() {
         break
       fi
     done
-    [ "$matched" -eq 0 ] && printf '%s\n' "$trimmed"
+    [[ "$matched" -eq 0 ]] && printf '%s\n' "$trimmed"
   done <<< "$changed"
   return 0
 }

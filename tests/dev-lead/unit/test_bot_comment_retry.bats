@@ -815,7 +815,7 @@ GHEOF
   REVIEW="$SCRIPT_DIR/scripts/review-one-pr.sh"
   scan_line=$(grep -n 'scan_pr_for_undispositioned_bot_comments "\$_OWNER_REPO"' "$REVIEW" | head -1 | cut -d: -f1)
   verdict_line=$(grep -n 'emit_verdict skip undispositioned-pr-comment' "$REVIEW" | head -1 | cut -d: -f1)
-  gate_line=$(grep -n 'if \[ "\$mc_gate_rc" -eq 1 \]' "$REVIEW" | head -1 | cut -d: -f1)
+  gate_line=$(grep -n 'if \[\[ "\$mc_gate_rc" -eq 1 \]\]' "$REVIEW" | head -1 | cut -d: -f1)
   [ -n "$scan_line" ] && [ -n "$verdict_line" ] && [ -n "$gate_line" ]
   # Inside the rc=1 (undispositioned) branch, before its verdict/exit.
   [ "$gate_line" -lt "$scan_line" ]
@@ -823,7 +823,7 @@ GHEOF
   # Never in DRY_RUN, and best-effort (cannot fail the review run). Anchored to
   # the retry block's OWN guard (it is the condition that also requires an
   # owner/repo), not to an unrelated DRY_RUN check elsewhere in the range.
-  guard_line=$(grep -n 'if \[ "\${DRY_RUN:-false}" != "true" \] && \[ -n "\$_OWNER_REPO" \]' "$REVIEW" | head -1 | cut -d: -f1)
+  guard_line=$(grep -n 'if \[\[ "\${DRY_RUN:-false}" != "true" \]\] && \[\[ -n "\$_OWNER_REPO" \]\]' "$REVIEW" | head -1 | cut -d: -f1)
   [ -n "$guard_line" ]
   [ "$gate_line" -lt "$guard_line" ]
   [ "$guard_line" -lt "$scan_line" ]

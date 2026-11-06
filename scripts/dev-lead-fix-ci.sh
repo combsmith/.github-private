@@ -101,14 +101,14 @@ has_rate_limited_marker() {
   count=$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" 2>/dev/null \
     | jq "[.[] | select(.body | test(\"${pattern}\"))] | length" 2>/dev/null \
     || echo "0")
-  [ "${count:-0}" -gt 0 ]
+  [[ "${count:-0}" -gt 0 ]]
 }
 
 collect_logs() {
   local check_name="$1" details_url="$2"
   local run_id
   run_id=$(echo "$details_url" | grep -oP '(?<=runs/)\d+' || true)
-  if [ -n "$run_id" ]; then
+  if [[ -n "$run_id" ]]; then
     gh run view "$run_id" --log-failed 2>/dev/null | tail -n "$LOG_MAX_LINES" || true
   else
     # External quality gate (e.g. SonarCloud) — no GitHub Actions run logs exist.
@@ -148,7 +148,7 @@ post_summary() {
 ## Dev-Lead Fix CI — ${status}
 **PR:** #${PR_NUMBER} | **SHA:** \`${HEAD_SHA}\`
 ${details}"
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would post PR comment: $status"
     echo "$body"
   else
@@ -171,7 +171,7 @@ post_rate_limited() {
   local reset_time
   reset_time=$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" 2>/dev/null || true)
   local reset_detail=""
-  if [ -n "$reset_time" ]; then
+  if [[ -n "$reset_time" ]]; then
     reset_detail=" reset=${reset_time}"
   fi
 
@@ -181,7 +181,7 @@ post_rate_limited() {
 
   local marker="${MARKER_PREFIX}${HEAD_SHA} status=rate-limited${reset_detail} check=${check_name} -->"
   local details="All engines were rate-limited. The retry cron will re-attempt automatically."
-  if [ -n "$reset_time" ]; then
+  if [[ -n "$reset_time" ]]; then
     details="${details} Rate limit resets at: \`${reset_time}\`"
   fi
   local body="${marker}
@@ -189,7 +189,7 @@ post_rate_limited() {
 **PR:** #${PR_NUMBER} | **SHA:** \`${HEAD_SHA}\`
 ${details}"
 
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would post PR comment: rate-limited"
     echo "$body"
   else
@@ -207,7 +207,7 @@ This PR has had **${MAX_FAIL_ATTEMPTS}** consecutive engine failures (timeouts o
 **Reason for last failure:** ${reason}
 
 To re-enable, delete this comment or push a new commit with a substantially different change."
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would post exhaustion comment"
   else
     gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$body"
@@ -243,7 +243,7 @@ $(ssg_declined_body "fix-ci" "$rows")${HOLD_LABEL_NOTE}" \
 fix_ci_channel_pin_guard() {
   local pre="$1" base="${2:-}" out rc=0
   out=$(cpg_scan_pass "$pre" HEAD "$base") || rc=$?
-  [ "$rc" -eq 0 ] && return 0
+  [[ "$rc" -eq 0 ]] && return 0
   echo "::error::Channel-pin guard: the fix-ci pass changed a caller stub's channel pin ($(printf '%s\n' "$out" | head -1)) — refusing to push (#2220)"
   cpg_flag_refused "fix-ci" "$(printf '%s\n' "$out" | sed '1d')"
   post_summary "refused" "The pass changed a caller stub's channel pin, so nothing was pushed. See the escalation comment (#2220)."
@@ -251,7 +251,7 @@ fix_ci_channel_pin_guard() {
 }
 
 main() {
-  if [ -z "$PR_NUMBER" ] || [ -z "$HEAD_SHA" ]; then
+  if [[ -z "$PR_NUMBER" ]] || [[ -z "$HEAD_SHA" ]]; then
     echo "::error::PR_NUMBER and HEAD_SHA are required"
     exit 1
   fi
@@ -261,8 +261,8 @@ main() {
   # re-dispatches alike. An empty or unparseable CHECKS_JSON is left as it was.
   local trigger_checks
   if trigger_checks=$(fix_ci_trigger_checks 2>/dev/null) \
-     && [ "$(jq 'length' <<<"$CHECKS_JSON" 2>/dev/null || echo 0)" -gt 0 ]; then
-    if [ "$(jq 'length' <<<"$trigger_checks")" -eq 0 ]; then
+     && [ "$(jq 'length' <<<"$CHECKS_JSON" 2>/dev/null || echo 0)" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+    if [ "$(jq 'length' <<<"$trigger_checks")" -eq 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
       echo "::notice::fix-ci: $(jq -r '[.[]?.name // empty] | join(", ")' <<<"$CHECKS_JSON" 2>/dev/null) is not a fix-ci trigger — skipping (#2220)"
       exit 0
     fi
@@ -277,7 +277,7 @@ main() {
   # automation budget since the last human interaction, stop before any writes.
   # Checked before holding auto-merge so the escalation's auto-merge disable is
   # not undone by the restore_auto_merge EXIT trap.
-  if [ "${DEV_LEAD_DRY_RUN:-false}" != "true" ] && enforce_pr_budget "$PR_NUMBER" "$REPO"; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" != "true" ]] && enforce_pr_budget "$PR_NUMBER" "$REPO"; then
     echo "::warning::PR #${PR_NUMBER} automation budget exhausted — skipping fix-ci"
     exit 0
   fi
@@ -301,7 +301,7 @@ main() {
   local prompt_file
   prompt_file=$(build_prompt)
 
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] fix-ci: would run engine with prompt: $prompt_file"
     post_summary "dry-run" "Would apply fix for: $(echo "$CHECKS_JSON" | jq -r '[.[].name] | join(", ")')"
     exit 0
@@ -315,7 +315,7 @@ main() {
   local pre_pass_sha base_ref base_rev=""
   pre_pass_sha=$(git rev-parse HEAD 2>/dev/null || true)
   base_ref=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.base.ref // empty' 2>/dev/null || true)
-  if [ -n "$base_ref" ] && git fetch -q origin "$base_ref" 2>/dev/null; then
+  if [[ -n "$base_ref" ]] && git fetch -q origin "$base_ref" 2>/dev/null; then
     base_rev="origin/${base_ref}"
   fi
 
@@ -325,14 +325,14 @@ main() {
   dlpb_backfill_pr_body "$PR_NUMBER" "$REPO" || true
 
   local cycle=1
-  while [ "$cycle" -le "$MAX_CI_CYCLES" ]; do
+  while [ "$cycle" -le "$MAX_CI_CYCLES" ]; do  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "  [fix-ci] cycle $cycle/$MAX_CI_CYCLES"
 
     local engine_rc=0
     run_writer_with_fallback "$prompt_file" "fix-ci" || engine_rc=$?
 
-    if [ "$engine_rc" -ne 0 ]; then
-      if [ "$engine_rc" -eq 2 ]; then
+    if [[ "$engine_rc" -ne 0 ]]; then
+      if [[ "$engine_rc" -eq 2 ]]; then
         # Rate-limited (all engines exhausted) — not a real failure; do not
         # count toward exhaustion threshold. Post rate-limited marker for retry cron.
         echo "::warning::All engines rate-limited — posting rate-limited marker for retry cron"
@@ -342,14 +342,14 @@ main() {
 
       # Real engine failure (exit 1 or 124) — counts toward exhaustion threshold
       local reason="Engine invocation failed (exit ${engine_rc})"
-      [ "$engine_rc" -eq 124 ] && reason="Engine timed out — PR may be too large for automated fixing"
+      [[ "$engine_rc" -eq 124 ]] && reason="Engine timed out — PR may be too large for automated fixing"
       post_summary "failed" "$reason"
 
       # Check if we've hit the consecutive-failure threshold for this PR
       local fail_count
       fail_count=$(count_recent_failures)
       echo "  [fix-ci] consecutive failures on this PR: $fail_count (threshold: $MAX_FAIL_ATTEMPTS)"
-      if [ "$fail_count" -ge "$MAX_FAIL_ATTEMPTS" ]; then
+      if [ "$fail_count" -ge "$MAX_FAIL_ATTEMPTS" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
         echo "::warning::Exhaustion threshold reached — posting PR-level block to prevent further token spend"
         post_exhaustion "$reason"
       fi
@@ -360,12 +360,12 @@ main() {
     # git status --porcelain catches untracked files that git diff misses.
     # Also detect engine-committed-but-not-pushed changes via upstream comparison.
     local has_uncommitted=false has_unpushed=false
-    [ -n "$(git status --porcelain)" ] && has_uncommitted=true
+    [[ -n "$(git status --porcelain)" ]] && has_uncommitted=true
     local upstream
     upstream=$(git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || true)
-    if [ -n "$upstream" ]; then
+    if [[ -n "$upstream" ]]; then
       git log "${upstream}..HEAD" --oneline 2>/dev/null | grep -q . && has_unpushed=true
-    elif [ -n "${HEAD_SHA:-}" ]; then
+    elif [[ -n "${HEAD_SHA:-}" ]]; then
       git log "${HEAD_SHA}..HEAD" --oneline 2>/dev/null | grep -q . && has_unpushed=true
     fi
 
@@ -399,11 +399,11 @@ main() {
       ssg_pr=$(ssg_read_pr "$REPO" "$PR_NUMBER")
     fi
     local ssg_head_ref=""
-    if [ -n "$ssg_pr" ]; then
+    if [[ -n "$ssg_pr" ]]; then
       ssg_head_ref=$(jq -r '.head?.ref // empty' <<<"$ssg_pr" 2>/dev/null) || ssg_head_ref=""
     fi
     ssg_out=$(ssg_evaluate "$pre_pass_sha" HEAD "$ssg_pr" "$ssg_head_ref") || ssg_rc=$?
-    if [ "$ssg_rc" -ne 0 ]; then
+    if [[ "$ssg_rc" -ne 0 ]]; then
       echo "::error::Sync-stub guard: the fix-ci pass changed a synced org-standard stub on a standards-sync PR ($(printf '%s\n' "$ssg_out" | head -1)) — refusing to push (#2212)"
       flag_sync_stub_drift "$(printf '%s\n' "$ssg_out" | sed '1d')"
       post_summary "declined" "The fix changed a synced org-standard stub on this standards-sync PR, so it was not pushed. See the declined comment (#2212)."
@@ -423,6 +423,6 @@ main() {
 }
 
 # Source-guard: tests source this to exercise the helpers; CI executes it.
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   main "$@"
 fi

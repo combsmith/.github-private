@@ -54,7 +54,7 @@ echo ""
 # 0. Token selection — fall back to GH_PAT_FALLBACK if REPO is unreachable
 # ---------------------------------------------------------------------------
 if ! gh api "repos/${REPO}" >/dev/null 2>&1; then
-  if [ -n "${GH_PAT_FALLBACK:-}" ]; then
+  if [[ -n "${GH_PAT_FALLBACK:-}" ]]; then
     echo "::warning::GH_TOKEN cannot access ${REPO} — using GH_PAT_FALLBACK"
     export GH_TOKEN="$GH_PAT_FALLBACK"
     if ! gh api "repos/${REPO}" >/dev/null 2>&1; then
@@ -76,7 +76,7 @@ open_prs=$(gh api --paginate "repos/${REPO}/pulls?state=open&per_page=100" \
   exit 1
 }
 
-if [ -z "$open_prs" ]; then
+if [[ -z "$open_prs" ]]; then
   echo "No open PRs in ${REPO}."
 fi
 
@@ -95,7 +95,7 @@ scanned=0
 scan_incomplete=false
 
 while IFS= read -r pr; do
-  [ -n "$pr" ] || continue
+  [[ -n "$pr" ]] || continue
   scanned=$(( scanned + 1 ))
 
   # One snapshot gives CI rollup, review decision, head, review/comment bodies,
@@ -148,13 +148,13 @@ while IFS= read -r pr; do
   # an empty result is a reliable signal that the event API is unavailable — skip
   # the PR rather than falling back to potentially misleading updatedAt data.
   events=$(gather_pr_automation_events "$pr" "$REPO")
-  if [ "$events" = "[]" ] || [ -z "$events" ]; then
+  if [[ "$events" = "[]" ]] || [[ -z "$events" ]]; then
     echo "  skip PR #${pr} — event API returned no data (possible rate-limit or error); skipping to avoid false stall signal"
     scan_incomplete=true
     continue
   fi
   last_activity=$(jq -r '[ .[] | .when | select(. != null and . != "") ] | max // ""' <<< "$events" 2>/dev/null || echo "")
-  [ -n "$last_activity" ] || last_activity="$updated_at"
+  [[ -n "$last_activity" ]] || last_activity="$updated_at"
   mins_idle=$(pr_minutes_since "$last_activity" "$now_epoch")
 
   # Sanitize the title once for a single markdown table cell: strip newlines/tabs
@@ -162,7 +162,7 @@ while IFS= read -r pr; do
   safe_title=$(printf '%s' "$title" | tr '\n\t|' '   ')
 
   reason=$(pr_stall_reasons "$ci_status" "$review_decision" "$reviewed_at_head" "$mins_idle" "$gated")
-  if [ -n "$reason" ]; then
+  if [[ -n "$reason" ]]; then
     candidates_rows+=$(printf '%s\t%s\t%s\t%s' "$pr" "$html_url" "$safe_title" "$reason")$'\n'
     echo "::warning::Stalled PR #${pr} — ${reason}"
   fi
@@ -183,7 +183,7 @@ while IFS= read -r pr; do
   # fires on time.
   hours_idle=$(( (mins_idle + 59) / 60 ))
   stranded_reason=$(pr_stranded_approval_reasons "$ci_status" "$auto_merge_armed" "$standing_approval" "$hours_idle" "$gated")
-  if [ -n "$stranded_reason" ]; then
+  if [[ -n "$stranded_reason" ]]; then
     stranded_rows+=$(printf '%s\t%s\t%s\t%s' "$pr" "$html_url" "$safe_title" "$stranded_reason")$'\n'
     echo "::warning::Stranded-approval PR #${pr} — ${stranded_reason}"
   fi
@@ -204,7 +204,7 @@ echo "Scanned ${scanned} open PR(s); ${stall_count} stall candidate(s), ${strand
   printf '# Stalled PR Detection — %s\n\n' "$TODAY"
   printf '**Repo:** `%s` | **Open PRs scanned:** %s | **Stall candidates:** %s | **Stranded-approval candidates:** %s\n\n' \
     "$REPO" "$scanned" "$stall_count" "$stranded_count"
-  if [ "$scan_incomplete" = "true" ]; then
+  if [[ "$scan_incomplete" = "true" ]]; then
     printf '> ⚠️ **Scan incomplete**: one or more PRs were skipped due to API errors or rate limits. The candidate count above may understate actual stalls.\n\n'
   fi
   generate_stall_report "$candidates_rows"
@@ -212,18 +212,18 @@ echo "Scanned ${scanned} open PR(s); ${stall_count} stall candidate(s), ${strand
   generate_stranded_approval_report "$stranded_rows"
 } > "$REPORT_FILE"
 
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
 fi
 
-if [ -n "${GITHUB_ENV:-}" ]; then
+if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "STALL_COUNT=${stall_count}" >> "$GITHUB_ENV"
   echo "STRANDED_APPROVAL_COUNT=${stranded_count}" >> "$GITHUB_ENV"
   # Fold both nets into the single HAS_STALL flag the daily health-check workflow
   # already gates the report post on — no new workflow wiring (#1665 AC8).
-  if [ "$stall_count" -gt 0 ] || [ "$stranded_count" -gt 0 ]; then
+  if [ "$stall_count" -gt 0 ] || [ "$stranded_count" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "HAS_STALL=true" >> "$GITHUB_ENV"
-  elif [ "$scan_incomplete" = "true" ]; then
+  elif [[ "$scan_incomplete" = "true" ]]; then
     echo "::warning::Stall scan incomplete (PRs skipped due to API errors) — not emitting HAS_STALL=false to avoid a false all-clear"
   else
     echo "HAS_STALL=false" >> "$GITHUB_ENV"

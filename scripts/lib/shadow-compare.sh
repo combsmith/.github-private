@@ -46,7 +46,7 @@ sc_normalize() {
 
 # sc_conclusion_ok <conclusion> — return 0 iff the run concluded success.
 sc_conclusion_ok() {
-  [ "${1:-}" = "success" ]
+  [[ "${1:-}" = "success" ]]
 }
 
 # sc_conclusion_present <conclusion> — return 0 iff a run was actually observed.
@@ -76,16 +76,16 @@ sc_classify() {
   sc_conclusion_ok "$stable_concl" && stable_ok=0
   sc_conclusion_ok "$shadow_concl" && shadow_ok=0
 
-  if [ "$stable_ok" -eq 0 ] && [ "$shadow_ok" -eq 0 ]; then
+  if [[ "$stable_ok" -eq 0 ]] && [[ "$shadow_ok" -eq 0 ]]; then
     # Both concluded success — compare the actual outputs.
     local sn hn
     sn="$(sc_normalize "$stable_out")"
     hn="$(sc_normalize "$shadow_out")"
     # A shadow that "succeeds" but emitted nothing where stable produced output is
     # a silent regression, not a match.
-    if [ -z "$hn" ] && [ -n "$sn" ]; then
+    if [[ -z "$hn" ]] && [[ -n "$sn" ]]; then
       printf '%s' "REGRESSION"
-    elif [ "$sn" = "$hn" ]; then
+    elif [[ "$sn" = "$hn" ]]; then
       printf '%s' "MATCH"
     else
       printf '%s' "DIVERGED"
@@ -93,12 +93,12 @@ sc_classify() {
     return 0
   fi
 
-  if [ "$stable_ok" -eq 0 ] && [ "$shadow_ok" -ne 0 ]; then
+  if [[ "$stable_ok" -eq 0 ]] && [[ "$shadow_ok" -ne 0 ]]; then
     printf '%s' "REGRESSION"
     return 0
   fi
 
-  if [ "$stable_ok" -ne 0 ] && [ "$shadow_ok" -eq 0 ]; then
+  if [[ "$stable_ok" -ne 0 ]] && [[ "$shadow_ok" -eq 0 ]]; then
     printf '%s' "SHADOW_ONLY_OK"
     return 0
   fi
@@ -109,7 +109,7 @@ sc_classify() {
 # sc_is_blocking <status> — return 0 iff the status must block promotion. Only a
 # REGRESSION blocks; every other status is healthy/advisory/inconclusive.
 sc_is_blocking() {
-  [ "${1:-}" = "REGRESSION" ]
+  [[ "${1:-}" = "REGRESSION" ]]
 }
 
 # sc_signal_json <status> <reusable> <channel> <stable_run_id> <shadow_run_id>
@@ -151,7 +151,7 @@ sc_signal_json() {
 sc_report() {
   local status="${1:-}" reusable="${2:-}" channel="${3:-}"
   local stable_url="${4:-}" shadow_url="${5:-}" today="${6:-}"
-  [ -n "$today" ] || today="$(date -u +%Y-%m-%d)"
+  [[ -n "$today" ]] || today="$(date -u +%Y-%m-%d)"
 
   local icon headline
   case "$status" in
@@ -173,8 +173,8 @@ sc_report() {
   else
     printf -- '- **Promotion:** not blocked by this signal.\n'
   fi
-  [ -n "$stable_url" ] && printf -- '- **Stable run:** %s\n' "$stable_url"
-  [ -n "$shadow_url" ] && printf -- '- **Shadow run:** %s\n' "$shadow_url"
+  [[ -n "$stable_url" ]] && printf -- '- **Stable run:** %s\n' "$stable_url"
+  [[ -n "$shadow_url" ]] && printf -- '- **Shadow run:** %s\n' "$shadow_url"
   printf '\n'
   printf '> The shadow (`%s`) output is **not posted** to the PR — only the `stable` ' "$channel"
   printf 'lane posts. The shadow output is logged and compared here for '

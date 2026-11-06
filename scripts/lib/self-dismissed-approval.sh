@@ -43,7 +43,7 @@ SDA_GATE_DISMISSAL_PREFIXES=(
 #   (including malformed input).
 sda_pending_reevaluation() {
   local reviews="${1:-}" events="${2:-}" head="${3:-}" bot="${4:-}" automation="${5:-${AUTOMATION_BOT_LOGINS:-}}"
-  [ -n "$head" ] && [ -n "$bot" ] || return 1
+  [[ -n "$head" ]] && [[ -n "$bot" ]] || return 1
   local prefixes
   prefixes=$(printf '%s\n' "${SDA_GATE_DISMISSAL_PREFIXES[@]}" | jq -R . | jq -sc .) || return 1
   jq -e -n \
@@ -91,7 +91,7 @@ sda_pending_reevaluation() {
 #   sda_pending_reevaluation. Any API failure → exit 1 (not pending).
 sda_check_pr() {
   local repo="$1" pr="$2" head="$3" bot="$4" reviews events
-  [ -n "$repo" ] && [ -n "$pr" ] || return 1
+  [[ -n "$repo" ]] && [[ -n "$pr" ]] || return 1
   reviews=$(gh api --paginate "repos/${repo}/pulls/${pr}/reviews?per_page=100" 2>/dev/null | jq -s 'add // []' 2>/dev/null) || return 1
   events=$(gh api --paginate "repos/${repo}/issues/${pr}/events?per_page=100" 2>/dev/null | jq -s 'add // []' 2>/dev/null) || return 1
   sda_pending_reevaluation "$reviews" "$events" "$head" "$bot"

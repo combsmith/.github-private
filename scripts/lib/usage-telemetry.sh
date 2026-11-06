@@ -52,7 +52,7 @@ usage_telemetry_log() { printf 'usage-telemetry: %s\n' "$*" >&2; }
 # usage_telemetry_now — current epoch seconds, honoring $USAGE_TELEMETRY_NOW.
 # ---------------------------------------------------------------------------
 usage_telemetry_now() {
-  if [ -n "${USAGE_TELEMETRY_NOW:-}" ]; then
+  if [[ -n "${USAGE_TELEMETRY_NOW:-}" ]]; then
     printf '%s' "$USAGE_TELEMETRY_NOW"
     return 0
   fi
@@ -80,12 +80,12 @@ usage_telemetry_int() {
 # ---------------------------------------------------------------------------
 usage_telemetry_user_agent() {
   local ver=""
-  if [ -n "${CLAUDE_CODE_VERSION:-}" ]; then
+  if [[ -n "${CLAUDE_CODE_VERSION:-}" ]]; then
     ver="$CLAUDE_CODE_VERSION"
   elif command -v claude >/dev/null 2>&1; then
     ver="$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || printf '')"
   fi
-  [ -z "$ver" ] && ver="unknown"
+  [[ -z "$ver" ]] && ver="unknown"
   printf 'claude-code/%s' "$ver"
 }
 
@@ -95,7 +95,7 @@ usage_telemetry_user_agent() {
 # ---------------------------------------------------------------------------
 usage_telemetry_retry_after() {
   local hdrfile="${1:-}" now_epoch="${2:-}" value target
-  [ -n "$hdrfile" ] && [ -f "$hdrfile" ] || return 0
+  [[ -n "$hdrfile" ]] && [[ -f "$hdrfile" ]] || return 0
   value="$(grep -i '^retry-after:' "$hdrfile" 2>/dev/null | head -n1 \
     | cut -d: -f2- | tr -d '[:space:]\r' || printf '')"
   if [[ "$value" =~ ^[0-9]+$ ]]; then
@@ -105,12 +105,12 @@ usage_telemetry_retry_after() {
   # RFC 9110 also allows an HTTP-date; convert to delta seconds (GNU, then BSD date).
   value="$(grep -i '^retry-after:' "$hdrfile" 2>/dev/null | head -n1 \
     | cut -d: -f2- | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || printf '')"
-  [ -n "$value" ] || return 0
+  [[ -n "$value" ]] || return 0
   target="$(date -u -d "$value" +%s 2>/dev/null \
     || date -u -j -f '%a, %d %b %Y %H:%M:%S GMT' "$value" +%s 2>/dev/null || printf '')"
   [[ "$target" =~ ^[0-9]+$ ]] || return 0
-  [ -n "$now_epoch" ] || now_epoch="$(usage_telemetry_now)"
-  if [ "$target" -gt "$now_epoch" ]; then
+  [[ -n "$now_epoch" ]] || now_epoch="$(usage_telemetry_now)"
+  if [ "$target" -gt "$now_epoch" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     printf '%s' "$((target - now_epoch))"
   fi
 }
@@ -127,7 +127,7 @@ usage_telemetry_envelope() {
   local -a args=(--argjson status "$(usage_telemetry_int "$status" 0)")
   local filter='{status: $status}'
 
-  if [ -n "$observed_at" ]; then
+  if [[ -n "$observed_at" ]]; then
     args+=(--argjson observed_at "$(usage_telemetry_int "$observed_at" 0)")
     filter+=' | .observed_at = $observed_at'
   fi
@@ -135,7 +135,7 @@ usage_telemetry_envelope() {
     args+=(--argjson retry_after "$retry_after")
     filter+=' | .retry_after = $retry_after'
   fi
-  if [ -n "$body_raw" ] && jq -e . <<<"$body_raw" >/dev/null 2>&1; then
+  if [[ -n "$body_raw" ]] && jq -e . <<<"$body_raw" >/dev/null 2>&1; then
     args+=(--argjson body "$body_raw")
     filter+=' | .body = $body'
   fi
@@ -153,7 +153,7 @@ usage_telemetry_fetch() {
   now="$(usage_telemetry_now)"
   token="${CLAUDE_CODE_OAUTH_TOKEN:-}"
 
-  if [ -z "$token" ]; then
+  if [[ -z "$token" ]]; then
     usage_telemetry_log "CLAUDE_CODE_OAUTH_TOKEN unset — status=0 (degraded; library fails safe to allow)"
     usage_telemetry_envelope 0 "" "$now" ""
     return 0
@@ -191,12 +191,12 @@ usage_telemetry_fetch() {
   # When the body was empty, the strip above leaves "" (raw was "\n<status>").
 
   retry_after=""
-  if [ "$status" = "429" ]; then
+  if [[ "$status" = "429" ]]; then
     retry_after="$(usage_telemetry_retry_after "$hdrfile" "$now")"
   fi
   rm -f "$hdrfile"
 
-  if [ "$status" != "200" ]; then
+  if [[ "$status" != "200" ]]; then
     usage_telemetry_log "usage endpoint returned HTTP ${status} (non-200; library fails safe)"
   fi
 
@@ -211,7 +211,7 @@ usage_telemetry_fetch() {
 # ---------------------------------------------------------------------------
 usage_telemetry_publish_file() {
   local envelope="$1" file="${2:-${AGENT_TOKEN_BUDGET_TELEMETRY_FILE:-}}"
-  if [ -z "$file" ]; then
+  if [[ -z "$file" ]]; then
     file="$(mktemp "${TMPDIR:-/tmp}/agent-token-telemetry.XXXXXX")" || {
       usage_telemetry_log "failed to create temporary file for telemetry"
       return 1

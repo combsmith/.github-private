@@ -140,7 +140,7 @@ _norm_iso() {
   # GNU date uses -d; BSD/macOS date needs -j -f (same fallback as the other scripts).
   if ! rt="$(date -u -d "$n" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
       || date -u -j -f %Y-%m-%dT%H:%M:%SZ "$n" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" \
-      || [ "$rt" != "$n" ]; then
+      || [[ "$rt" != "$n" ]]; then
     echo "ERROR: invalid UTC timestamp '${t}': not a real calendar date/time." >&2
     return 1
   fi
@@ -155,10 +155,10 @@ _norm_iso() {
 # a controlled-comparison operational error — is never masked by a real-PR PASS
 # (#1953).
 _combine_verdict() {
-  if [ "$1" -gt 2 ]; then printf '%s' "$1"; return; fi
-  if [ "$2" -gt 2 ]; then printf '%s' "$2"; return; fi
-  if [ "$1" = 1 ] || [ "$2" = 1 ]; then printf 1
-  elif [ "$1" = 2 ] || [ "$2" = 2 ]; then printf 2
+  if [ "$1" -gt 2 ]; then printf '%s' "$1"; return; fi  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+  if [ "$2" -gt 2 ]; then printf '%s' "$2"; return; fi  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+  if [[ "$1" = 1 ]] || [[ "$2" = 1 ]]; then printf 1
+  elif [[ "$1" = 2 ]] || [[ "$2" = 2 ]]; then printf 2
   else printf 0; fi
 }
 
@@ -185,7 +185,7 @@ _fmt_usd_or_na() {
 canary_annotate() {
   local dir="$1"
   local files=("$dir"/*.jsonl)
-  [ -e "${files[0]}" ] || return 0   # no JSONL files → no rows
+  [[ -e "${files[0]}" ]] || return 0   # no JSONL files → no rows
 
   # Reject structurally invalid evidence before scoring (#1953). A structurally
   # invalid record — a non-object (array/scalar), a token_usage object missing a
@@ -230,7 +230,7 @@ canary_annotate() {
         end' "${files[@]}" 2>/dev/null)"; then
     return 1
   fi
-  [ -z "$_invalid" ] || return 1
+  [[ -z "$_invalid" ]] || return 1
 
   # Emit pass: one enriched TSV row per token_usage record; non-token audit kinds are
   # skipped. Validation above guarantees every emitted record is complete.
@@ -377,7 +377,7 @@ render_canary_report() {
   label="${CANARY_LABEL-Canary go/no-go — real PRs}"
   mode="${CANARY_MODE-real}"
 
-  if [ -z "$candidate" ] || [ -z "$incumbent" ]; then
+  if [[ -z "$candidate" ]] || [[ -z "$incumbent" ]]; then
     echo "ERROR: both a candidate and an incumbent model are required (--candidate / --incumbent)." >&2
     return 3
   fi
@@ -405,7 +405,7 @@ render_canary_report() {
 
   # Identical candidate/incumbent IDs make the two arms the same model over different
   # time windows — workload drift alone could then PASS. A misconfiguration, not a verdict.
-  if [ "$candidate" = "$incumbent" ]; then
+  if [[ "$candidate" = "$incumbent" ]]; then
     echo "ERROR: --candidate and --incumbent must differ (both '${candidate}')." >&2
     return 3
   fi
@@ -442,10 +442,10 @@ render_canary_report() {
   fb_file="$(mktemp)"   || { echo "ERROR: failed to create temporary file" >&2; return 3; }
 
   local f_wf f_tier
-  if [ "$mode" = "real" ]; then f_wf="$workflow"; f_tier="$tier"; else f_wf=""; f_tier=""; fi
+  if [[ "$mode" = "real" ]]; then f_wf="$workflow"; f_tier="$tier"; else f_wf=""; f_tier=""; fi
 
   local c_since c_until
-  if [ "$mode" = "real" ]; then c_since="$since"; c_until="$until"; else c_since=""; c_until=""; fi
+  if [[ "$mode" = "real" ]]; then c_since="$since"; c_until="$until"; else c_since=""; c_until=""; fi
   awk -F'\t' -v wf="$f_wf" -v tier="$f_tier" -v m="$candidate" \
       -v s="$c_since" -v u="$c_until" \
     '(wf == "" || $2 == wf) && (tier == "" || $3 == tier) && $4 == m {
@@ -455,7 +455,7 @@ render_canary_report() {
      }' "$enriched" > "$cand_file"
 
   local i_since i_until
-  if [ "$mode" = "real" ]; then i_since="$b_since"; i_until="$b_until"; else i_since=""; i_until=""; fi
+  if [[ "$mode" = "real" ]]; then i_since="$b_since"; i_until="$b_until"; else i_since=""; i_until=""; fi
   awk -F'\t' -v wf="$f_wf" -v tier="$f_tier" -v m="$incumbent" \
       -v s="$i_since" -v u="$i_until" \
     '(wf == "" || $2 == wf) && (tier == "" || $3 == tier) && $4 == m {
@@ -476,7 +476,7 @@ render_canary_report() {
   # arm (selected by model, no window), so it is excluded from the fallback list
   # there to avoid reporting a scored arm as a fallback.
   local fb_excl_inc=""
-  [ "$mode" = "controlled" ] && fb_excl_inc="$incumbent"
+  [[ "$mode" = "controlled" ]] && fb_excl_inc="$incumbent"
   awk -F'\t' -v wf="$f_wf" -v tier="$f_tier" -v c="$candidate" -v xi="$fb_excl_inc" \
       -v s="$c_since" -v u="$c_until" \
     '(wf == "" || $2 == wf) && (tier == "" || $3 == tier) && $4 != c && (xi == "" || $4 != xi) {
@@ -487,7 +487,7 @@ render_canary_report() {
 
   # Candidate cap: keep only the first max_prs distinct PR contexts in time order
   # (earliest ts per context). Real mode only; a non-positive cap disables it.
-  if [ "$mode" = "real" ] && [ "$max_prs" -gt 0 ]; then
+  if [[ "$mode" = "real" ]] && [ "$max_prs" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     local allowed capped
     allowed="$(awk -F'\t' '$9 ~ /^https:\/\/github[.]com\/[^\/]+\/[^\/]+\/pull\/[0-9]+$/ { if (!($9 in first) || $1 < first[$9]) first[$9] = $1 }
                  END { for (k in first) printf "%s\t%s\n", first[k], k }' "$cand_file" \
@@ -499,7 +499,7 @@ render_canary_report() {
     # Leaving cand_file untouched lets the distinct-PR guard report the real state.
     # Once a cap applies, records with no context are dropped too: they are not PR
     # observations and would otherwise bypass the cap and skew cost/latency verdicts.
-    if [ -n "$allowed" ]; then
+    if [[ -n "$allowed" ]]; then
       capped="$(mktemp)" || { echo "ERROR: failed to create temporary file" >&2; return 3; }
       awk -F'\t' -v allow="$allowed" 'BEGIN { n = split(allow, a, "\n"); for (k = 1; k <= n; k++) keep[a[k]] = 1 }
         $9 in keep { print }' "$cand_file" > "$capped"
@@ -511,8 +511,8 @@ render_canary_report() {
   local cm im
   cm="$(_canary_arm_metrics < "$cand_file")"
   im="$(_canary_arm_metrics < "$inc_file")"
-  [ -n "$cm" ] || cm=$'0\t0\t0\t0\t-1\t-1\t-1\t-1\t-1\t-1\t0\t0\t-1'
-  [ -n "$im" ] || im=$'0\t0\t0\t0\t-1\t-1\t-1\t-1\t-1\t-1\t0\t0\t-1'
+  [[ -n "$cm" ]] || cm=$'0\t0\t0\t0\t-1\t-1\t-1\t-1\t-1\t-1\t0\t0\t-1'
+  [[ -n "$im" ]] || im=$'0\t0\t0\t0\t-1\t-1\t-1\t-1\t-1\t-1\t0\t0\t-1'
 
   local c_inv c_prs c_priced c_unpr c_mcost c_pcost c_mcr c_mdur c_pdur c_durc c_perm
   local i_inv i_prs i_priced i_unpr i_mcost i_pcost i_mcr i_mdur i_pdur i_durc i_perm
@@ -526,12 +526,12 @@ render_canary_report() {
   # a PR_URL context, so it has zero distinct PRs by construction — there the guard
   # is per-arm INVOCATIONS (min_inv), or every controlled run would be INSUFFICIENT.
   local base_insuff=0
-  if [ "$mode" = "controlled" ]; then
-    [ "$c_inv" -lt "$min_inv" ] && base_insuff=1
-    [ "$i_inv" -lt "$min_inv" ] && base_insuff=1
+  if [[ "$mode" = "controlled" ]]; then
+    [ "$c_inv" -lt "$min_inv" ] && base_insuff=1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+    [ "$i_inv" -lt "$min_inv" ] && base_insuff=1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   else
-    [ "$c_prs" -lt "$min_prs" ] && base_insuff=1
-    [ "$i_inv" -lt "$min_inv" ] && base_insuff=1
+    [ "$c_prs" -lt "$min_prs" ] && base_insuff=1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+    [ "$i_inv" -lt "$min_inv" ] && base_insuff=1  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   fi
 
   # Any unpriced record has an UNKNOWN cost, so it is excluded from its arm's
@@ -544,7 +544,7 @@ render_canary_report() {
   # arm carries unpriced records we cannot certify a genuine cost/cache win, so both
   # bars are INSUFFICIENT (never PASS on partial pricing) (#1953).
   local cost_status cache_status latency_status
-  if [ "$base_insuff" -eq 1 ] || [ "$c_priced" -eq 0 ] || [ "$i_priced" -eq 0 ] || [ "$c_unpr" -gt 0 ] || [ "$i_unpr" -gt 0 ]; then
+  if [[ "$base_insuff" -eq 1 ]] || [ "$c_priced" -eq 0 ] || [ "$i_priced" -eq 0 ] || [ "$c_unpr" -gt 0 ] || [ "$i_unpr" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     cost_status="INSUFFICIENT"; cache_status="INSUFFICIENT"
   else
     cost_status="$(_bar_status "$c_mcost" "$i_mcost" "$cost_bar")"
@@ -557,11 +557,11 @@ render_canary_report() {
   # In real mode the candidate durations must also span min_prs DISTINCT PRs: raw
   # duration counts can come from retries of a single PR.
   local c_dur_prs=0
-  if [ "$mode" = "real" ]; then
+  if [[ "$mode" = "real" ]]; then
     c_dur_prs="$(awk -F'\t' '$10 != "" && $9 ~ /^https:\/\/github[.]com\/[^\/]+\/[^\/]+\/pull\/[0-9]+$/ && !($9 in s) { s[$9] = 1; n++ } END { print n + 0 }' "$cand_file")"
   fi
-  if [ "$base_insuff" -eq 1 ] || [ "$c_durc" -lt "$min_inv" ] || [ "$i_durc" -lt "$min_inv" ] \
-     || { [ "$mode" = "real" ] && [ "$c_dur_prs" -lt "$min_prs" ]; }; then
+  if [[ "$base_insuff" -eq 1 ]] || [ "$c_durc" -lt "$min_inv" ] || [ "$i_durc" -lt "$min_inv" ] ||  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+     { [[ "$mode" = "real" ]] && [ "$c_dur_prs" -lt "$min_prs" ]; }; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     latency_status="INSUFFICIENT"
   else
     latency_status="$(_bar_status "$c_mdur" "$i_mdur" "$latency_bar")"
@@ -569,9 +569,9 @@ render_canary_report() {
 
   # Overall: a definite FAIL is a no-go; else any INSUFFICIENT is a no-go; else PASS.
   local overall rc
-  if [ "$cost_status" = "FAIL" ] || [ "$cache_status" = "FAIL" ] || [ "$latency_status" = "FAIL" ]; then
+  if [[ "$cost_status" = "FAIL" ]] || [[ "$cache_status" = "FAIL" ]] || [[ "$latency_status" = "FAIL" ]]; then
     overall="FAIL"; rc=1
-  elif [ "$cost_status" = "INSUFFICIENT" ] || [ "$cache_status" = "INSUFFICIENT" ] || [ "$latency_status" = "INSUFFICIENT" ]; then
+  elif [[ "$cost_status" = "INSUFFICIENT" ]] || [[ "$cache_status" = "INSUFFICIENT" ]] || [[ "$latency_status" = "INSUFFICIENT" ]]; then
     overall="INSUFFICIENT"; rc=2
   else
     overall="PASS"; rc=0
@@ -608,32 +608,32 @@ render_canary_report() {
   printf '| Bar | Candidate | Incumbent | Reduction | Result |\n|---|---:|---:|---:|:--|\n'
   printf '| Cost per invocation (≥ %s lower) | %s | %s | %s | %s |\n' \
     "$(_fmt_pct "$cost_bar")" "$(_fmt_usd_or_na "$c_mcost")" "$(_fmt_usd_or_na "$i_mcost")" \
-    "$( [ "$cost_red" = "-999" ] && printf 'n/a' || _fmt_pct "$cost_red" )" "$cost_status"
+    "$( [[ "$cost_red" = "-999" ]] && printf 'n/a' || _fmt_pct "$cost_red" )" "$cost_status"
   printf '| Cache-read cost per invocation (≥ %s lower) | %s | %s | %s | %s |\n' \
     "$(_fmt_pct "$cache_bar")" "$(_fmt_usd_or_na "$c_mcr")" "$(_fmt_usd_or_na "$i_mcr")" \
-    "$( [ "$cache_red" = "-999" ] && printf 'n/a' || _fmt_pct "$cache_red" )" "$cache_status"
+    "$( [[ "$cache_red" = "-999" ]] && printf 'n/a' || _fmt_pct "$cache_red" )" "$cache_status"
   printf '| Latency / duration_ms (≥ %s better) | %s | %s | %s | %s |\n\n' \
     "$(_fmt_pct "$latency_bar")" "$(_fmt_ms "$c_mdur")" "$(_fmt_ms "$i_mdur")" \
-    "$( [ "$lat_red" = "-999" ] && printf 'n/a' || _fmt_pct "$lat_red" )" "$latency_status"
+    "$( [[ "$lat_red" = "-999" ]] && printf 'n/a' || _fmt_pct "$lat_red" )" "$latency_status"
 
-  if [ "$latency_status" = "INSUFFICIENT" ]; then
+  if [[ "$latency_status" = "INSUFFICIENT" ]]; then
     local lat_note=""
-    [ "$c_durc" -lt "$min_inv" ] && lat_note="candidate (${c_durc} of ${min_inv} required duration_ms values)"
-    if [ "$i_durc" -lt "$min_inv" ]; then
-      [ -n "$lat_note" ] && lat_note="${lat_note} and "
+    [ "$c_durc" -lt "$min_inv" ] && lat_note="candidate (${c_durc} of ${min_inv} required duration_ms values)"  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+    if [ "$i_durc" -lt "$min_inv" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
+      [[ -n "$lat_note" ]] && lat_note="${lat_note} and "
       lat_note="${lat_note}incumbent (${i_durc} of ${min_inv} required duration_ms values)"
     fi
-    [ -n "$lat_note" ] && printf 'Latency INSUFFICIENT: too few duration_ms values on the %s arm.\n\n' "$lat_note"
+    [[ -n "$lat_note" ]] && printf 'Latency INSUFFICIENT: too few duration_ms values on the %s arm.\n\n' "$lat_note"
   fi
 
   # Fallback deep-tier calls (excluded from both arms) — listed, never merged.
   local fb_rows
   fb_rows="$(awk -F'\t' '{ c[$4]++ } END { for (k in c) printf "%s\t%d\n", k, c[k] }' "$fb_file" | sort)"
-  if [ -n "$fb_rows" ]; then
+  if [[ -n "$fb_rows" ]]; then
     printf '### Deep-tier fallback calls (excluded from both arms)\n\n'
     printf '| Model | Calls |\n|---|---:|\n'
     while IFS=$'\t' read -r fbm fbc; do
-      [ -n "$fbm" ] || continue
+      [[ -n "$fbm" ]] || continue
       printf '| `%s` | %s |\n' "$fbm" "$(_fmt_int "$fbc")"
     done <<< "$fb_rows"
     printf '\n'
@@ -724,7 +724,7 @@ collect_repo_jsonl() {
 
   local collected
   collected="$(find "$COLLECT_MARKER_DIR" -type f | wc -l | tr -d ' ')"
-  if [ "$collected" -lt "$requested" ]; then
+  if [ "$collected" -lt "$requested" ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
     echo "ERROR: only ${collected}/${requested} selected token-usage artifacts for ${repo} yielded records — download/extract failures make the sample partial; refusing to score incomplete evidence." >&2
     return 1
   fi
@@ -750,12 +750,12 @@ main() {
   local cost_bar="${CANARY_COST_BAR-0.20}" cache_bar="${CANARY_CACHE_BAR-0.50}" latency_bar="${CANARY_LATENCY_BAR-0.20}"
   local dir="" model_ab_dir="" collect_only="false"
 
-  while [ "$#" -gt 0 ]; do
+  while [[ "$#" -gt 0 ]]; do
     # A value-taking option with no value is an operational error (64), not a
     # `set -u` abort (exit 1), which the workflow would read as a FAIL verdict.
     case "$1" in
       --repo|--candidate|--incumbent|--workflow|--tier|--since|--until|--baseline-since|--baseline-until|--baseline-days|--candidate-max-prs|--min-prs|--min-invocations|--cost-bar|--cache-bar|--latency-bar|--dir|--model-ab-dir)
-        if [ "$#" -lt 2 ]; then echo "ERROR: $1 requires a value." >&2; return 64; fi ;;
+        if [[ "$#" -lt 2 ]]; then echo "ERROR: $1 requires a value." >&2; return 64; fi ;;
     esac
     case "$1" in
       --repo)            repo="$2"; shift 2 ;;
@@ -782,19 +782,19 @@ main() {
     esac
   done
 
-  if [ "$collect_only" != "true" ] && { [ -z "$candidate" ] || [ -z "$incumbent" ]; }; then
+  if [[ "$collect_only" != "true" ]] && { [[ -z "$candidate" ]] || [[ -z "$incumbent" ]]; }; then
     echo "ERROR: --candidate <candidate-model> and --incumbent <incumbent-model> are required." >&2
     echo "Usage: canary_report.sh --candidate <model> --incumbent <model> [--since ISO] [--dir PATH] (see --help)" >&2
     return 3
   fi
-  if [ "$candidate" = "$incumbent" ] && [ -n "$candidate" ]; then
+  if [[ "$candidate" = "$incumbent" ]] && [[ -n "$candidate" ]]; then
     echo "ERROR: --candidate and --incumbent must differ (both '${candidate}')." >&2
     return 64
   fi
   case "$b_days" in
     ''|*[!0-9]*) echo "ERROR: --baseline-days must be a positive integer (got '${b_days}')." >&2; return 64 ;;
   esac
-  [ "$b_days" -gt 0 ] || { echo "ERROR: --baseline-days must be a positive integer." >&2; return 64; }
+  [ "$b_days" -gt 0 ] || { echo "ERROR: --baseline-days must be a positive integer." >&2; return 64; }  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
 
   # Canonicalize every ISO bound to UTC seconds precision up front so the collector
   # (jq) and the renderer (awk) compare bounds and record timestamps consistently. A
@@ -823,16 +823,16 @@ main() {
   # full baseline window below (an empty lower bound would admit them — #1953).
   # Derive the baseline window when not given explicitly: --baseline-days ending at
   # --since (or at --baseline-until when only that is given).
-  if [ -z "$b_until" ]; then b_until="$since"; fi
-  if [ -z "$b_since" ] && [ -n "$b_until" ]; then
+  if [[ -z "$b_until" ]]; then b_until="$since"; fi
+  if [[ -z "$b_since" ]] && [[ -n "$b_until" ]]; then
     b_since="$(date -u -d "${b_until/Z/} UTC - ${b_days} days" +%Y-%m-%dT%H:%M:%SZ)" \
       || { echo "ERROR: could not derive the baseline window." >&2; return 64; }
   fi
-  [ -z "$since" ] && since="$b_until"
+  [[ -z "$since" ]] && since="$b_until"
   # Without a cut both windows would be unbounded (collection falls back to 1970) and
   # the report would compare all retained history rather than canary vs baseline.
   # Local snapshots (--dir / --model-ab-dir) do no collection, so only live runs need it.
-  if [ -z "$since" ] && [ -z "$b_until" ] && { [ "$collect_only" = "true" ] || { [ -z "$dir" ] && [ -z "$model_ab_dir" ]; }; }; then
+  if [[ -z "$since" ]] && [[ -z "$b_until" ]] && { [[ "$collect_only" = "true" ]] || { [[ -z "$dir" ]] && [[ -z "$model_ab_dir" ]]; }; }; then
     echo "ERROR: --since (the canary cut) or --baseline-until is required." >&2
     return 64
   fi
@@ -841,11 +841,11 @@ main() {
   # misspelled/unreadable path would otherwise glob to zero rows and render an
   # ordinary INSUFFICIENT, making a bad path indistinguishable from empty evidence.
   # (--collect-only creates --dir, so this check is scoped to the scoring paths.)
-  if [ "$collect_only" != "true" ] && [ -n "$dir" ] && { [ ! -d "$dir" ] || [ ! -r "$dir" ] || [ ! -x "$dir" ]; }; then
+  if [[ "$collect_only" != "true" ]] && [[ -n "$dir" ]] && { [[ ! -d "$dir" ]] || [[ ! -r "$dir" ]] || [[ ! -x "$dir" ]]; }; then
     echo "ERROR: --dir path does not exist or is not a readable directory: $dir" >&2
     return 66
   fi
-  if [ -n "$model_ab_dir" ] && { [ ! -d "$model_ab_dir" ] || [ ! -r "$model_ab_dir" ] || [ ! -x "$model_ab_dir" ]; }; then
+  if [[ -n "$model_ab_dir" ]] && { [[ ! -d "$model_ab_dir" ]] || [[ ! -r "$model_ab_dir" ]] || [[ ! -x "$model_ab_dir" ]]; }; then
     echo "ERROR: --model-ab-dir path does not exist or is not a readable directory: $model_ab_dir" >&2
     return 66
   fi
@@ -864,14 +864,14 @@ main() {
   # just after the cutoff are not lost (#1953).
   local scored_dir="" own_tmp="" col_since count
   col_since="$b_since"
-  if [ -z "$col_since" ] || { [ -n "$since" ] && [[ "$since" < "$col_since" ]]; }; then col_since="$since"; fi
-  [ -n "$col_since" ] || col_since="1970-01-01T00:00:00Z"
+  if [[ -z "$col_since" ]] || { [[ -n "$since" ]] && [[ "$since" < "$col_since" ]]; }; then col_since="$since"; fi
+  [[ -n "$col_since" ]] || col_since="1970-01-01T00:00:00Z"
 
   # --collect-only snapshots artifacts to a persistent directory and exits without
   # scoring; it REQUIRES --dir. A temp dir would be wiped by the EXIT trap before
   # the advertised snapshot could be reused, so refuse rather than silently lose it.
-  if [ "$collect_only" = "true" ]; then
-    if [ -z "$dir" ]; then
+  if [[ "$collect_only" = "true" ]]; then
+    if [[ -z "$dir" ]]; then
       echo "ERROR: --collect-only requires --dir <path> to persist the snapshot." >&2
       return 64
     fi
@@ -887,9 +887,9 @@ main() {
 
   # Resolve the real-PR section's directory: a local snapshot (--dir) or a fresh
   # windowed download into a temp dir cleaned up on EXIT.
-  if [ -n "$dir" ]; then
+  if [[ -n "$dir" ]]; then
     scored_dir="$dir"
-  elif [ -n "$model_ab_dir" ]; then
+  elif [[ -n "$model_ab_dir" ]]; then
     : # controlled-only invocation: no live collection or credentials needed
   else
     own_tmp="$(mktemp -d)" || { echo "ERROR: failed to create temporary directory" >&2; return 3; }

@@ -62,7 +62,7 @@ MATERIALIZED_COUNT=0
 materialize_accepted_findings() {
   local epic_number="$1" reconcile="${2:-0}"
   local existing_keys=""
-  if [ "$reconcile" = "1" ]; then
+  if [[ "$reconcile" = "1" ]]; then
     existing_keys="$(existing_reconcile_keys "$REPO" "$epic_number" || true)"
   fi
   MATERIALIZED_COUNT=0
@@ -72,10 +72,10 @@ materialize_accepted_findings() {
   done <<< "$existing_keys"
   local q_index ps_title rk ps_body ps_out ps_number ps_id pbb
   while IFS= read -r q_index; do
-    [ -n "$q_index" ] || continue
+    [[ -n "$q_index" ]] || continue
     ps_title="$(jq -r --argjson i "$q_index" '.open_questions[$i].proposed_story.title' "$PLAN_PATH")"
     rk="$(_reconcile_key "${src:-0}" "$ps_title")"
-    if [ "$reconcile" = "1" ] && [[ -n "${existing_keys_map["$rk"]:-}" ]]; then
+    if [[ "$reconcile" = "1" ]] && [[ -n "${existing_keys_map["$rk"]:-}" ]]; then
       echo "  reconcile: proposed_story already materialized (key match) — skipping: ${ps_title}"
       continue
     fi
@@ -95,7 +95,7 @@ materialize_accepted_findings() {
     # proposed_blocked_by is the EXISTING issue this new story gates; wire it so
     # that issue becomes blocked_by the new story (the new story must land first).
     pbb="$(jq -r --argjson i "$q_index" '.open_questions[$i].proposed_blocked_by // empty' "$PLAN_PATH")"
-    if [ -n "$pbb" ]; then
+    if [[ -n "$pbb" ]]; then
       add_blocked_by "$REPO" "$pbb" "$ps_number"
       echo "  edge: #${pbb} blocked_by materialized #${ps_number} (proposed_blocked_by)"
     fi
@@ -115,12 +115,12 @@ DISCUSSION_REPO="${DISCUSSION_REPO:-$REPO}"
 #   issue_prefix  qualifies REPO issue numbers in text posted to the Discussion
 disc_prefix=""
 issue_prefix=""
-if [ "$DISCUSSION_REPO" != "$REPO" ]; then
+if [[ "$DISCUSSION_REPO" != "$REPO" ]]; then
   disc_prefix="$DISCUSSION_REPO"
   issue_prefix="$REPO"
 fi
 
-[ -s "$PLAN_PATH" ] || { echo "::error::plan file '$PLAN_PATH' missing or empty" >&2; exit 1; }
+[[ -s "$PLAN_PATH" ]] || { echo "::error::plan file '$PLAN_PATH' missing or empty" >&2; exit 1; }
 
 # ── blocking open-questions gate ──────────────────────────────────────────────
 # Bob routes anything he can't resolve to `open_questions`. A question shaped as
@@ -137,10 +137,10 @@ fi
 # is excluded here. An un-accepted proposed_story finding still gates like any
 # other blocking open_question until the human accepts it.
 blocking_count="$(jq '[(.open_questions // [])[] | select(type=="object" and .blocking==true and .accepted != true)] | length' "$PLAN_PATH")"
-if [ "$blocking_count" -gt 0 ]; then
+if [ "$blocking_count" -gt 0 ]; then  # NOSONAR(shell:S7688): decimal integer test; [[ -eq ]] would arithmetic-evaluate the operand (octal 08, empty=0) - #2449
   src_g="$(jq -r '.source_discussion // empty' "$PLAN_PATH")"
-  [ -n "$src_g" ] || src_g="$DISCUSSION_NUMBER"
-  if [ -n "$DISCUSSION_NODE_ID" ]; then
+  [[ -n "$src_g" ]] || src_g="$DISCUSSION_NUMBER"
+  if [[ -n "$DISCUSSION_NODE_ID" ]]; then
     blocking_list="$(jq -r '[(.open_questions // [])[] | select(type=="object" and .blocking==true and .accepted != true) | .question] | map("- " + .) | join("\n")' "$PLAN_PATH")"
     other_list="$(jq -r '(.open_questions // []) | map(select((type=="string") or (type=="object" and .blocking != true))) | map(if type=="string" then . else .question end) | if length>0 then "\n\n_Also worth confirming (non-blocking):_\n" + (map("- " + .) | join("\n")) else "" end' "$PLAN_PATH")"
     printf -v gate_comment '<!-- initiative-planner -->\n**⏸️ Not yet planned — the BMAD Scrum Master (Bob) has blocking open questions.**\n\nThis idea cannot be turned into an epic until these are answered:\n\n%s%s\n\n---\n**No epic or stories were created.** Answer the questions above, then re-approve / re-dispatch the planner and Bob will materialize the full epic + sub-issue DAG.' \
@@ -149,9 +149,9 @@ if [ "$blocking_count" -gt 0 ]; then
     echo "posted 'not yet planned' open-questions back to discussion #${DISCUSSION_NUMBER:-?}"
   fi
   echo "::warning::initiative-planner: idea #${src_g:-?} has ${blocking_count} blocking open question(s) — no epic created. Answer them and re-dispatch."
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     {
-      echo "## Initiative not yet planned — needs answers$(if [ "${DRY_RUN:-0}" = "1" ]; then echo " (DRY_RUN)"; fi)"
+      echo "## Initiative not yet planned — needs answers$(if [[ "${DRY_RUN:-0}" = "1" ]]; then echo " (DRY_RUN)"; fi)"
       echo "- Source discussion: #${src_g:-?}"
       echo "- Blocking open questions: ${blocking_count}"
       echo "- **No epic or stories were created.** Answer the questions and re-dispatch the planner."
@@ -164,7 +164,7 @@ fi
 # Resolve the source discussion once (plan wins, else env) — used by the
 # idempotency/supersede guard (in the epic section) and the epic back-reference.
 src="$(jq -r '.source_discussion // empty' "$PLAN_PATH")"
-[ -n "$src" ] || src="$DISCUSSION_NUMBER"
+[[ -n "$src" ]] || src="$DISCUSSION_NUMBER"
 
 # Set by the idempotency/supersede guard (below) when force_replan supersedes an
 # existing epic; consumed by the supersede step after the new DAG is created.
@@ -176,13 +176,13 @@ SUPERSEDE_OLD_EPIC=""
 # They are opposite intents — reject setting both so a caller can't silently get
 # a supersede when they meant an additive reconcile (or vice versa).
 RECONCILE="${RECONCILE:-0}"
-if [ "$RECONCILE" = "1" ] && [ "${FORCE_REPLAN:-0}" = "1" ]; then
+if [[ "$RECONCILE" = "1" ]] && [[ "${FORCE_REPLAN:-0}" = "1" ]]; then
   echo "::error::RECONCILE and FORCE_REPLAN are mutually exclusive — reconcile is additive-in-place; force_replan supersedes. Pick one." >&2
   exit 2
 fi
 # Reconcile binds to the existing epic via the source-discussion back-reference,
 # so it requires a source discussion to key on.
-if [ "$RECONCILE" = "1" ] && [ -z "$src" ]; then
+if [[ "$RECONCILE" = "1" ]] && [[ -z "$src" ]]; then
   echo "::error::RECONCILE requires a source discussion (plan.source_discussion or DISCUSSION_NUMBER) to bind to the existing epic." >&2
   exit 2
 fi
@@ -197,10 +197,10 @@ epic_body="$(jq -r '.epic.body' "$PLAN_PATH")"
 # issues). Appended before the idempotency footer so the footer stays at the bottom.
 # Guarded so an empty/absent array leaves epic_body byte-for-byte as-is.
 untracked_prereqs="$(jq -r '(.epic.untracked_prerequisites // []) | map("- [ ] " + .) | join("\n")' "$PLAN_PATH")"
-if [ -n "$untracked_prereqs" ]; then
+if [[ -n "$untracked_prereqs" ]]; then
   epic_body="${epic_body}"$'\n\n'"## Untracked prerequisites"$'\n'"${untracked_prereqs}"
 fi
-if [ -n "$src" ]; then
+if [[ -n "$src" ]]; then
   # idem_key is the idempotency back-reference embedded in every epic body and
   # reused verbatim as the search key by find_existing_epic.
   idem_key="Planned from idea discussion ${disc_prefix}#${src}"
@@ -223,12 +223,12 @@ if [ -n "$src" ]; then
   # stories are never recreated, edited, or closed. Un-accepted findings still
   # gate above (the #682/#600 blocking-open-questions gate ran already), so
   # nothing self-promotes and the epic stays inert.
-  if [ "$RECONCILE" = "1" ]; then
-    if [ -z "$existing_epic" ]; then
+  if [[ "$RECONCILE" = "1" ]]; then
+    if [[ -z "$existing_epic" ]]; then
       echo "::warning::reconcile: no existing epic for idea discussion #${src} — nothing to reconcile. Run the planner (idea:approved) first."
-      if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+      if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
         {
-          echo "## Initiative reconcile — nothing to do$(if [ "${DRY_RUN:-0}" = "1" ]; then echo " (DRY_RUN)"; fi)"
+          echo "## Initiative reconcile — nothing to do$(if [[ "${DRY_RUN:-0}" = "1" ]]; then echo " (DRY_RUN)"; fi)"
           echo "- No existing epic found for idea discussion #${src}."
           echo "- **Nothing created.** Plan the idea first (\`idea:approved\`), then reconcile."
         } >>"$GITHUB_STEP_SUMMARY"
@@ -240,16 +240,16 @@ if [ -n "$src" ]; then
     echo "reconcile: binding to existing epic #${existing_epic} for idea discussion #${src}"
     materialize_accepted_findings "$existing_epic" 1
 
-    if [ "$MATERIALIZED_COUNT" -gt 0 ] && [ -n "$DISCUSSION_NODE_ID" ]; then
+    if [[ "$MATERIALIZED_COUNT" -gt 0 ]] && [[ -n "$DISCUSSION_NODE_ID" ]]; then
       printf -v reconcile_comment '<!-- initiative-planner -->\n**🔁 Reconciled epic %s#%s in place.**\n\n%s newly-surfaced item(s) were added as sub-issues of the existing epic (harvested from sub-issue/review comments, vetted through the plan-critic + acceptance gate). No existing story was rewritten; the epic stays inert (labelled `initiative`, NOT `initiative:auto`).' \
         "$issue_prefix" "$existing_epic" "$MATERIALIZED_COUNT"
       comment_on_discussion "$DISCUSSION_NODE_ID" "$DISCUSSION_REPO" "$reconcile_comment"
       echo "posted reconcile summary to discussion #${DISCUSSION_NUMBER:-?}"
     fi
 
-    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
       {
-        echo "## Initiative reconciled in place$(if [ "${DRY_RUN:-0}" = "1" ]; then echo " (DRY_RUN)"; fi)"
+        echo "## Initiative reconciled in place$(if [[ "${DRY_RUN:-0}" = "1" ]]; then echo " (DRY_RUN)"; fi)"
         echo "- Epic: #${existing_epic} (bound via back-reference; not recreated)"
         echo "- New sub-issues added: ${MATERIALIZED_COUNT}"
         echo "- Base/in-flight stories untouched; epic remains **inert** (no \`initiative:auto\`)."
@@ -259,20 +259,20 @@ if [ -n "$src" ]; then
     exit 0
   fi
 
-  if [ -n "$existing_epic" ]; then
-    if [ "${FORCE_REPLAN:-0}" = "1" ]; then
+  if [[ -n "$existing_epic" ]]; then
+    if [[ "${FORCE_REPLAN:-0}" = "1" ]]; then
       SUPERSEDE_OLD_EPIC="$existing_epic"
       echo "force_replan: existing epic #${existing_epic} will be superseded after the new plan is created."
     else
       echo "already planned (epic #${existing_epic}) for idea discussion #${src} — skipping creation"
-      if [ -n "$DISCUSSION_NODE_ID" ]; then
+      if [[ -n "$DISCUSSION_NODE_ID" ]]; then
         printf -v guard_comment '<!-- initiative-planner -->\n**ℹ️ Already planned — no new epic created.**\n\nThis idea is already materialized as epic %s#%s. Nothing was created on this run.\n\nTo re-plan from scratch (close the existing epic and its stories and build a fresh DAG), re-dispatch the planner with `force_replan=true`.' "$issue_prefix" "$existing_epic"
         comment_on_discussion "$DISCUSSION_NODE_ID" "$DISCUSSION_REPO" "$guard_comment"
         echo "posted 'already planned' notice back to discussion #${DISCUSSION_NUMBER:-?}"
       fi
-      if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+      if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
         {
-          echo "## Initiative plan skipped$(if [ "${DRY_RUN:-0}" = "1" ]; then echo " (DRY_RUN)"; fi)"
+          echo "## Initiative plan skipped$(if [[ "${DRY_RUN:-0}" = "1" ]]; then echo " (DRY_RUN)"; fi)"
           echo "- Already planned: epic #${existing_epic} for idea discussion #${src}"
           echo "- No issues created (idempotency guard). Re-dispatch with \`force_replan=true\` to supersede."
         } >>"$GITHUB_STEP_SUMMARY"
@@ -319,14 +319,14 @@ for lid in "${local_ids[@]}"; do
   body="${body}"$'\n\n'"_Story prepared by the BMAD Scrum Master (Bob) for epic #${epic_number}. Status: ready-for-dev._"
 
   labels="initiative"
-  if [ "$hands_off" = "true" ]; then
+  if [[ "$hands_off" = "true" ]]; then
     labels="initiative,dev-lead:hands-off,initiative:hold"
   fi
 
   story_out="$(create_issue "$REPO" "$title" "$body" "$labels")"
   read -r s_number s_id <<< "$story_out"
   NUM_BY_LOCAL[$lid]="$s_number"
-  echo "  story[$lid]: #${s_number} (id ${s_id}) — ${title}$(if [ "$hands_off" = "true" ]; then echo ' [hands-off]'; fi)"
+  echo "  story[$lid]: #${s_number} (id ${s_id}) — ${title}$(if [[ "$hands_off" = "true" ]]; then echo ' [hands-off]'; fi)"
 
   link_sub_issue "$REPO" "$epic_number" "$s_id"
 done
@@ -337,14 +337,14 @@ for lid in "${local_ids[@]}"; do
 
   # intra-plan blockers (local ids -> created numbers)
   while IFS= read -r dep_local; do
-    [ -n "$dep_local" ] || continue
+    [[ -n "$dep_local" ]] || continue
     add_blocked_by "$REPO" "$issue_num" "${NUM_BY_LOCAL[$dep_local]}"
     echo "  edge: #${issue_num} blocked_by #${NUM_BY_LOCAL[$dep_local]} (plan-local ${lid}<-${dep_local})"
   done < <(jq -r --argjson i "$lid" '.stories[] | select(.id==$i) | (.blocked_by // [])[]' "$PLAN_PATH")
 
   # existing-issue prerequisites (real numbers as-is)
   while IFS= read -r dep_existing; do
-    [ -n "$dep_existing" ] || continue
+    [[ -n "$dep_existing" ]] || continue
     add_blocked_by "$REPO" "$issue_num" "$dep_existing"
     echo "  edge: #${issue_num} blocked_by existing #${dep_existing}"
   done < <(jq -r --argjson i "$lid" '.stories[] | select(.id==$i) | (.blocked_by_existing_issues // [])[]' "$PLAN_PATH")
@@ -364,7 +364,7 @@ done
 materialize_accepted_findings "$epic_number" 0
 
 # ── post the plan back to the discussion ──────────────────────────────────────
-if [ -n "$DISCUSSION_NODE_ID" ]; then
+if [[ -n "$DISCUSSION_NODE_ID" ]]; then
   rows=""
   for lid in "${local_ids[@]}"; do
     t="$(jq -r --argjson i "$lid" '.stories[] | select(.id==$i) | .title' "$PLAN_PATH")"
@@ -382,13 +382,13 @@ fi
 # The fresh epic + DAG now exist and have been announced; close (never delete)
 # the superseded epic and its sub-issues so history and inbound references stay
 # resolvable, each pointing forward to the replacement.
-if [ -n "${SUPERSEDE_OLD_EPIC:-}" ]; then
+if [[ -n "${SUPERSEDE_OLD_EPIC:-}" ]]; then
   echo "force_replan: closing superseded epic #${SUPERSEDE_OLD_EPIC} and its sub-issues (replaced by #${epic_number})."
   # Capture into a variable (not process substitution) so a failed lookup trips
   # set -e and aborts, rather than silently skipping the sub-issue closes.
   old_subs="$(list_sub_issue_numbers "$REPO" "$SUPERSEDE_OLD_EPIC")"
   while IFS= read -r old_sub; do
-    [ -n "$old_sub" ] || continue
+    [[ -n "$old_sub" ]] || continue
     close_issue "$REPO" "$old_sub" "Superseded by the re-planned initiative epic #${epic_number} (re-planned from idea discussion ${disc_prefix}#${src})."
     echo "  closed superseded story #${old_sub}"
   done <<< "$old_subs"
@@ -397,13 +397,13 @@ if [ -n "${SUPERSEDE_OLD_EPIC:-}" ]; then
 fi
 
 # ── step summary ──────────────────────────────────────────────────────────────
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
-    echo "## Initiative plan applied$(if [ "${DRY_RUN:-0}" = "1" ]; then echo " (DRY_RUN)"; fi)"
+    echo "## Initiative plan applied$(if [[ "${DRY_RUN:-0}" = "1" ]]; then echo " (DRY_RUN)"; fi)"
     echo "- Epic: #${epic_number} — ${epic_title}"
     echo "- Stories: ${story_count}"
     echo "- Epic is **inert** (no \`initiative:auto\`); add it manually to activate."
-    if [ -n "${SUPERSEDE_OLD_EPIC:-}" ]; then
+    if [[ -n "${SUPERSEDE_OLD_EPIC:-}" ]]; then
       echo "- Superseded prior epic #${SUPERSEDE_OLD_EPIC} (closed, not deleted)."
     fi
   } >>"$GITHUB_STEP_SUMMARY"

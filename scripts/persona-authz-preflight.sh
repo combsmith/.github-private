@@ -41,12 +41,12 @@ POSTING_CREDENTIAL="${POSTING_CREDENTIAL:-<unknown>}"
 # earlier: the post step fails closed on an unset PAT and on a wrong identity.
 # Running the probe with no token would only produce a 401 we would (correctly)
 # treat as indeterminate, so skip cleanly and let the existing path own it.
-if [ -z "${GH_TOKEN:-}" ]; then
+if [[ -z "${GH_TOKEN:-}" ]]; then
   echo "::notice::authz-preflight: no PAT for credential '${POSTING_CREDENTIAL}' — deferring to the existing missing-secret handling (not this preflight's concern)"
   exit 0
 fi
 
-if [ -z "$SOURCE_REPO" ]; then
+if [[ -z "$SOURCE_REPO" ]]; then
   echo "::notice::authz-preflight: no source repo to probe — skipping"
   exit 0
 fi
@@ -62,7 +62,7 @@ if ! resp="$(gh api "repos/${SOURCE_REPO}" 2>"$errfile")"; then
 fi
 
 admin="" ; maintain="" ; push="" ; triage=""
-if [ "$probe_ok" = "yes" ]; then
+if [[ "$probe_ok" = "yes" ]]; then
   # `.permissions` may be absent for some token/endpoint combinations; default it
   # to {} so a missing object yields empty fields (capability "unknown"), never a
   # jq error. A jq failure (malformed JSON) also degrades to an unreadable surface.
@@ -87,7 +87,7 @@ case "$decision" in
     ;;
   INDETERMINATE)
     # Fail OPEN (AC #4): a transient/unreadable result must not gate the advisory.
-    if [ "$probe_ok" != "yes" ]; then
+    if [[ "$probe_ok" != "yes" ]]; then
       echo "::warning::authz-preflight: permission surface for ${SOURCE_REPO} was unreadable: $(tr '\n' ' ' < "$errfile")"
     fi
     echo "::warning::${diag}"
