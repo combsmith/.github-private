@@ -377,7 +377,7 @@ lookup_check_run_details() {
        <<< "$raw" 2>/dev/null); then
     out='{"id":"","details_url":""}'
   fi
-  if [ "$out" = '{"id":"","details_url":""}' ]; then
+  if [[ "$out" == '{"id":"","details_url":""}' ]]; then
     # One line, bounded: the name lands inside a workflow command.
     safe_name=$(printf '%s' "$check_name" | tr -c '[:alnum:] ._()/-' ' ' | cut -c1-120)
     echo "::warning::dev-lead-retry: no failed check run '${safe_name}' found on ${repo}@${head_sha:0:8} (or check runs unreadable); the CI retry is sent without its id and details_url" >&2
