@@ -193,8 +193,9 @@ for f in ${GH_FAIL_PATHS:-}; do
   fi
 done
 case "$path" in
-  repos/*/issues\?*) raw="${ISSUES_RAW:-[]}" ;;
-  *)                 raw="[]" ;;
+  repos/*/issues\?*)      raw="${ISSUES_RAW:-[]}" ;;
+  repos/*/pulls/[0-9]*)   raw="${PR_RAW:-{\}}" ;;
+  *)                      raw="[]" ;;
 esac
 printf '%s' "$raw" | jq -c "$filter"
 GHEOF
@@ -282,18 +283,56 @@ GHEOF
   [[ "$output" != *"jq: error"* ]]
 }
 
+# _repo <name> <isFork> <isPrivate> <hasIssuesEnabled>
+_repo() {
+  jq -nc --arg n "combsmith/$1" --argjson f "$2" --argjson p "$3" --argjson i "$4" \
+    '{nameWithOwner: $n, isFork: $f, isPrivate: $p, hasIssuesEnabled: $i}'
+}
+
 @test "list_repos_for_org: GHSA temporary private forks and real forks are left out" {
   _real_jq_gh_stub
-  export REPOS_RAW='[{"nameWithOwner":"combsmith/TalkTerm","isFork":false},
-                     {"nameWithOwner":"combsmith/TalkTerm-ghsa-pc5f-cw67-7cmm","isFork":false},
-                     {"nameWithOwner":"combsmith/.github-private-ghsa-rw84-v39h-45cp","isFork":false},
-                     {"nameWithOwner":"combsmith/ghsa-notes","isFork":false},
-                     {"nameWithOwner":"combsmith/upstream-copy","isFork":true}]'
+  REPOS_RAW=$(jq -sc '.' <<< "$(_repo TalkTerm false false true)
+$(_repo TalkTerm-ghsa-pc5f-cw67-7cmm false true false)
+$(_repo .github-private false false true)
+$(_repo .github-private-ghsa-rw84-v39h-45cp false true false)
+$(_repo upstream-copy true false true)")
+  export REPOS_RAW
 
   run list_repos_for_org combsmith
 
   [ "$status" -eq 0 ]
-  [ "$output" = '["combsmith/TalkTerm","combsmith/ghsa-notes"]' ]
+  [ "$output" = '["combsmith/TalkTerm","combsmith/.github-private"]' ]
+}
+
+@test "list_repos_for_org: a GHSA-shaped name alone never leaves a repo out" {
+  _real_jq_gh_stub
+  # Each kept repo misses one signal: public; issues enabled; no repo of the
+  # prefix name in the org; not a GHSA id (the id alphabet has no 'a' or 'b').
+  REPOS_RAW=$(jq -sc '.' <<< "$(_repo app false true false)
+$(_repo app-ghsa-pc5f-cw67-7cmm false false false)
+$(_repo app-ghsa-rw84-v39h-45cp false true true)
+$(_repo gone-ghsa-fx78-wx9r-525p false true false)
+$(_repo app-ghsa-aaaa-bbbb-aaaa false true false)
+$(_repo ghsa-notes false true false)")
+  export REPOS_RAW
+
+  run list_repos_for_org combsmith
+
+  [ "$status" -eq 0 ]
+  [ "$output" = '["combsmith/app","combsmith/app-ghsa-pc5f-cw67-7cmm","combsmith/app-ghsa-rw84-v39h-45cp","combsmith/gone-ghsa-fx78-wx9r-525p","combsmith/app-ghsa-aaaa-bbbb-aaaa","combsmith/ghsa-notes"]' ]
+}
+
+@test "scan_pr_for_rate_limits: unreadable PR comments skip the PR (fail closed)" {
+  _real_jq_gh_stub
+  export GH_FAIL_PATHS='repos/combsmith/app/issues/12/comments*'
+  export PR_RAW='{"number":12,"state":"open","head":{"sha":"abc123def456"},"labels":[]}'
+  pr_resume_suppressed() { return 1; }  # past the human/budget gate
+
+  run --separate-stderr scan_pr_for_rate_limits "combsmith/app" 12
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "0" ]
+  [[ "$stderr" == *"could not read PR 12 comments in combsmith/app"* ]]
 }
 
 # ── #2008: sweep trigger for bot comments edited after their disposition ──────

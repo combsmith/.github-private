@@ -617,10 +617,15 @@ scan_pr_for_rate_limits() {
   fi
 
   # Fetch our automation's comment bodies, paginating to ensure we don't miss
-  # markers on busy PRs
+  # markers on busy PRs. Unreadable comments could hide a dispatch guard or an
+  # unexpired rate-limit marker, so fail closed.
   local comments_json
-  comments_json=$(gh_api_list "$repo" "issues/${pr_number}/comments?per_page=100" \
-    "$(retry_marker_bodies_jq)") || true
+  if ! comments_json=$(gh_api_list "$repo" "issues/${pr_number}/comments?per_page=100" \
+    "$(retry_marker_bodies_jq)"); then
+    echo "  [warn] could not read PR ${pr_number} comments in ${repo} — skipping (fail closed)" >&2
+    echo "0"
+    return 0
+  fi
 
   # Deduplication guard: if a concurrent resume path already claimed dispatch
   # for this SHA, skip to prevent duplicate repository_dispatch calls (#1407).
@@ -1640,18 +1645,26 @@ scan_repo_issues() {
 }
 
 # list_repos_for_org <org>: list all non-fork repos in the org, leaving out GHSA
-# temporary private forks (<repo>-ghsa-xxxx-xxxx-xxxx). GitHub creates
-# those for security advisories without the fork flag; they have no issues and
-# no Actions, so no dev-lead work can live in or be dispatched to them.
+# temporary private forks. GitHub creates those for security advisories without
+# the fork flag or a parent; they have issues and Actions disabled, so no
+# dev-lead work can live in or be dispatched to them. No single field marks
+# one, so a repo is left out only when ALL of these hold: it is private, its
+# issues are disabled, and its name is another repo in the listing plus
+# `-ghsa-` and a GHSA id (e.g. TalkTerm-ghsa-pc5f-cw67-7cmm next to TalkTerm).
 # Hard-errors (non-zero exit) when the list is empty and not in DRY_RUN, since
 # an empty result most likely means a token permission issue rather than a
 # legitimately empty org — silently scanning 0 repos would hide misconfig.
 list_repos_for_org() {
   local org="$1"
   local result
-  result=$(gh repo list "$org" --limit 1000 --json nameWithOwner,isFork \
-    --jq '[.[] | select(.isFork == false) | .nameWithOwner
-           | select(test("-ghsa(-[23456789cfghjmpqrvwx]{4}){3}$") | not)]' 2>/dev/null || echo "[]")
+  result=$(gh repo list "$org" --limit 1000 --json nameWithOwner,isFork,isPrivate,hasIssuesEnabled \
+    --jq '"-ghsa(-[23456789cfghjmpqrvwx]{4}){3}$" as $ghsa
+          | [.[].nameWithOwner] as $names
+          | [ .[] | select(.isFork == false)
+              | select((.isPrivate == true and .hasIssuesEnabled == false
+                        and (.nameWithOwner | test($ghsa))
+                        and ((.nameWithOwner | sub($ghsa; "")) as $p | any($names[]; . == $p))) | not)
+              | .nameWithOwner ]' 2>/dev/null || echo "[]")
   if [ "$result" = "[]" ] || [ -z "$result" ]; then
     echo "::warning::No repos found for org '${org}' — check GH_TOKEN has repo read scope" >&2
     if [ "${DRY_RUN:-false}" != "true" ]; then
