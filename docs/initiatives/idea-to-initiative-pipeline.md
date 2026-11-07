@@ -10,7 +10,14 @@ feature-ideation.yml        (weekly, automated)   ──>  Ideas DISCUSSIONS
 idea-triage.yml             (weekly, automated)    ──>  "🧭 Idea Promotion Queue"
   ranks ripeness; never approves                        tracking issue (shortlist)
         │
-   ★ HUMAN — add `idea:approved` to a Discussion
+        ▼
+decision-brief.yml          (Ripe in the queue, or `needs-brief`; automated)
+  BMAD Analyst "Mary"       ──>  PR: ideas/<slug>/{brief,market-research,ost}.md
+                                 (RICE/ICE, riskiest assumption + cheapest test,
+                                  go/no-go; every market claim cited or
+                                  "unknown — needs discovery")
+        │
+   ★ HUMAN — read the brief, then add `idea:approved` to the Discussion
         │
         ▼
 initiative-planner.yml      (on approval / dispatch, automated)
@@ -151,6 +158,36 @@ inputs.
   idea. It **never** applies `idea:approved` — that's the human's pick.
 - Tooling: `scripts/idea-triage/{gather-ideas,upsert-queue}.sh`.
 
+### `decision-brief.yml` — BMAD Analyst "Mary" (the go/no-go brief)
+- Closes the gap named in [combsmith/incubator#3](https://github.com/combsmith/incubator/issues/3):
+  before it, a human applied `idea:approved` on one enhancement comment and a
+  triage score. Now a **decision brief** is the artifact they approve on.
+- Trigger: an Ideas Discussion gets the `needs-brief` label (bridged to
+  `workflow_dispatch` by the `redispatch` job — claude-code-action aborts on
+  `discussion` events), or a `from_queue=true` dispatch that briefs every idea
+  idea-triage ranked **Ripe** in the target's Idea Promotion Queue and that has
+  no brief yet (capped per sweep). Manual dispatch defaults `dry_run: true`.
+- Mary fills the **target repo's own** `ideas/_TEMPLATE/{brief,market-research,ost}.md`
+  (`prompts/incubation/decision-brief-stage.md` + the per-artifact producers,
+  wrapping the vendored BMAD analysis skills by path): problem + JTBD with the
+  evidence, cited market context, OST, **ICE by default** (RICE only when a Reach
+  figure is cited; Confidence tied to the evidence rung), a **riskiest-assumption
+  and cheapest-test** table, and a **go / no-go / park** recommendation that says
+  what a POC must prove and what would make the decider say no.
+- **Provenance guard (#1160).** `scripts/decision-brief/validate-package.sh`
+  runs in a separate `land` job from a clean checkout after the model job: any quantified market claim without a
+  URL / `[^n]` footnote / `[ASSUMPTION]` tag / "unknown — needs discovery", a
+  missing score or Confidence, an empty assumptions table, a recommendation that
+  takes no position, or a leftover template placeholder fails the run — the
+  package stays an artifact and never becomes a PR.
+- `open-pr.sh` (same isolated `land` job, the only one holding the org PAT)
+  lands the package on `incubate/<slug>` in the target (one commit via the Git
+  Data API, author = the business-analyst persona's runtime account),
+  opens or refreshes the PR, and links it from the Discussion. **It never applies
+  `idea:approved`.**
+- Tooling: `scripts/decision-brief/` (tests: `tests/test_decision_brief.bats`,
+  `tests/test_decision_brief_workflow.bats`).
+
 ### `initiative-planner.yml` — BMAD Scrum Master "Bob"
 - Trigger: a Discussion gets labelled `idea:approved`, or manual
   `workflow_dispatch` with a discussion number (`dry_run` defaults to **true**).
@@ -185,7 +222,65 @@ inputs.
   flow is unchanged. The handoff is artifact-download-by-run-ID; the artifact
   is re-fetched from GitHub Actions and not taken from a local file. This plan-review gate is **distinct** from the `initiative:auto` gate: the
   former binds the plan *contents*, the latter activates auto-*implementation*.
+- **Planning inputs.** `gather-context.sh` also reads the target repo's
+  `_bmad-output/planning-artifacts/` (the planning source of truth named in org
+  `AGENTS.md`) into `planning_artifacts`: `prd.md` in full, every other
+  top-level `.md` truncated (12,000 chars by default). When a PRD is present Bob
+  plans from its functional requirements and success metrics and treats the
+  Discussion as context; with no folder (404) or no markdown in it,
+  `planning_artifacts` is `null` and Bob plans from the Discussion as before.
+- **`discussion_repo`** (optional) names the repo the Discussion lives in when it
+  differs from `target_repo` — see [Graduation](#graduation-incubator-idea--product-repo).
 - Tooling: `scripts/initiative-planner/` (persona: `prompts/bmad/scrum-master.md`).
+
+## Graduation: incubator idea → product repo
+
+An idea is approved in `combsmith/incubator`, but its epic belongs in the product
+repo it graduates into. The planner reads the Discussion from one repo and plans
+into another:
+
+```
+combsmith/incubator: ★ Ideas Discussion #N approved (decision brief merged)
+   │
+   ▼
+product repo (e.g. combsmith/worldchest): seed _bmad-output/planning-artifacts/
+   │   prd.md (+ brief.md, architecture.md, ...) committed on the default branch
+   ▼
+combsmith/.github-private  initiative-planner.yml
+   -f discussion=N -f discussion_repo=combsmith/incubator -f target_repo=<product repo>
+   │   reads Discussion #N from the incubator, the PRD + open epics from the
+   │   product repo; Bob plans from the PRD's FRs and success metrics
+   ▼
+inert epic + story DAG in the product repo; the plan reply is posted on the
+incubator Discussion, with links qualified as <product repo>#n
+```
+
+1. **Approve in the incubator.** The decision brief for Discussion #N is merged and
+   the owner decides to build. The incubator has no planner stub, so this does not
+   dispatch anything by itself.
+2. **Seed the artifacts in the product repo.** Copy the PRD and its companions
+   into `_bmad-output/planning-artifacts/` on the product repo's default branch
+   (the planner reads it through the contents API, so it must be merged, not on
+   a branch).
+3. **Dry-run the planner** with both repos set:
+
+   ```bash
+   gh workflow run initiative-planner.yml --repo combsmith/.github-private \
+     -f discussion=N -f discussion_repo=combsmith/incubator \
+     -f target_repo=combsmith/<product> -f dry_run=true
+   ```
+
+4. **Review and apply.** Download the `initiative-plan-dry-run` artifact, review
+   `plan.json`, then re-dispatch the same command with
+   `-f plan_artifact_run_id=<dry-run run id> -f dry_run=false`.
+5. **Arm it.** Add `initiative:auto` to the new epic in the product repo.
+
+The epic's back-reference is `Planned from idea discussion combsmith/incubator#N`,
+which is also the idempotency key, so re-dispatching (or `force_replan` /
+`reconcile`) binds to the same epic. Same-repo runs keep the bare `#N` key, so
+epics planned before this change still bind. A cross-repo run uses the PAT for
+both repos (`GITHUB_TOKEN` only covers `.github-private`). No mirror Discussion in
+the product repo is needed.
 
 ## Labels the pipeline relies on
 
@@ -193,6 +288,8 @@ inputs.
 |-------|----|---------|
 | `idea:approved` | Discussion | Human blessed this idea for planning → fires the planner |
 | `idea-triage` | Issue | Marks the Idea Promotion Queue tracking issue |
+| `needs-brief` | Discussion | Human asks Mary for a decision brief → fires decision-brief |
+| `decision-brief` | PR | The brief package PR Mary opened in the target repo |
 | `initiative` | Epic + stories | Part of a tracked initiative |
 | `initiative:auto` | Epic | Human activated auto-implementation (driver may release) |
 | `initiative:hold` / `dev-lead:hands-off` | Story | Never auto-released; needs a human |
@@ -250,6 +347,14 @@ inert epic + DAG in the fleet repo; the **driver** leg releases that epic's
 ready stories to `dev-lead` cross-repo once a human arms it. Both ship only a
 thin per-repo stub and dispatch the central workflow with `target_repo`.
 
+- **decision-brief leg (hosted here).** `standards/workflows/decision-brief.yml`
+  (staging copy; to be promoted to `combsmith/.github/standards/workflows/`) is the
+  thin caller a fleet repo adds. It pins
+  `combsmith/.github-private/.github/workflows/decision-brief-reusable.yml@decision-brief/v1-stable`,
+  which forwards `needs-brief` label events and the weekly post-triage sweep to the
+  central `decision-brief.yml` with `target_repo=<fleet repo>`; the brief PR lands
+  THERE. The fleet repo needs `ideas/_TEMPLATE/`, the `needs-brief` and
+  `idea:approved` labels, and the org PAT.
 - **`target_repo`** parameterizes the central planner/triage/enhancer **and the
   driver**; empty ⇒ the dogfood/self path (`.github-private` plans + drives its
   own issues), non-empty ⇒ the named fleet repo.

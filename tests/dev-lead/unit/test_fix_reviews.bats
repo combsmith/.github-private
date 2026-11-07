@@ -45,6 +45,7 @@ case "$ARGS" in
     exit 0 ;;
   *"issue comment"*)
     exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -130,7 +131,7 @@ teardown() {
 ARGS="$*"
 case "$ARGS" in
   *"pr view"*)
-    echo '{"state":"OPEN","headRefName":"feature-branch"}' ;;
+    echo '{"state":"OPEN","headRefName":"feature-branch","isCrossRepository":false}' ;;
   *"pr checkout"*)
     exit 0 ;;
   *"api"*"repos/"*"issues/"*"comments"*)
@@ -209,6 +210,7 @@ case "$ARGS" in
     echo "COMMENT_POSTED: $ARGS"; exit 0 ;;
   *"api"*"pulls/"*)
     echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -323,6 +325,7 @@ case "$ARGS" in
   *"api"*"repos/"*"issues/"*"comments"*) echo "[]" ;;
   *"pr comment"*) echo "COMMENT_POSTED: $ARGS"; exit 0 ;;
   *"api"*"pulls/"*) echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -376,6 +379,7 @@ case "$ARGS" in
   *"api"*"repos/"*"issues/"*"comments"*) echo "[]" ;;
   *"pr comment"*) echo "COMMENT_POSTED: $ARGS"; exit 0 ;;
   *"api"*"pulls/"*) echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -467,6 +471,7 @@ case "$ARGS" in
     echo "[]" ;;
   *"pr comment"*)
     echo "COMMENT_POSTED: $ARGS"; exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -515,6 +520,7 @@ case "$ARGS" in
     echo '{"head":{"sha":"ddd444eee555"}}' ;;
   *"copilot"*)
     echo "hit your limit"; exit 1 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -567,6 +573,7 @@ case "\$ARGS" in
     count=\$(cat "${comment_count_file}")
     echo \$((count + 1)) > "${comment_count_file}"
     echo "COMMENT_POSTED #\$((count + 1))"; exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -609,6 +616,7 @@ case "$ARGS" in
     echo "COMMENT_POSTED"; exit 0 ;;
   *"copilot"*)
     echo "rate limit exceeded"; exit 1 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -643,6 +651,7 @@ case "$ARGS" in
     echo '[{"id":1,"body":"<!-- dev-lead-fix-reviews pr=54 sha=ddd444eee555 intent=fix-reviews status=rate-limited -->"}]' ;;
   *"pr comment"*)
     echo "COMMENT_POSTED"; exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -768,6 +777,7 @@ case "$ARGS" in
     echo "AUTO_MERGE_CALLED: $ARGS"; exit 0 ;;
   *"pr comment"*)
     echo "COMMENT_POSTED: $ARGS"; exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -1016,6 +1026,7 @@ case "$ARGS" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) echo "COMMENT_POSTED"; exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"}}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -1079,6 +1090,7 @@ case "\$ARGS" in
     echo "\$*" >> "$comment_file"
     exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"}}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -1237,6 +1249,7 @@ case "\$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"issues/"*"comments"*) echo '[]' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -1390,6 +1403,7 @@ case "\$ARGS" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -1466,6 +1480,7 @@ case "\$ARGS" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -1523,6 +1538,7 @@ case "\$ARGS" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -1597,6 +1613,7 @@ case "\$ARGS" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -1692,6 +1709,7 @@ case "\$ARGS" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -1848,6 +1866,7 @@ case "\$ARGS" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -2370,6 +2389,7 @@ case "\$ARGS" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -2501,6 +2521,7 @@ case "\$ARGS" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -2557,6 +2578,7 @@ case "\$ARGS" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -2610,6 +2632,7 @@ case "\$ARGS" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -2664,6 +2687,7 @@ case "\$ARGS" in
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -2731,6 +2755,7 @@ case "\$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"issues/"*"comments"*) echo '[]' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -2992,6 +3017,7 @@ case "\$ARGS" in
     count=\$(cat "${comment_count_file}")
     echo \$((count + 1)) > "${comment_count_file}"
     echo "COMMENT_POSTED #\$((count + 1))"; exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3049,6 +3075,7 @@ case "\$ARGS" in
   *"pr comment"*)
     echo "COMMENT" >> "${comment_log}"
     echo "COMMENT_POSTED"; exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3097,6 +3124,7 @@ case "\$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3359,6 +3387,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3414,6 +3443,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3463,6 +3493,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3516,6 +3547,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3565,6 +3597,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3618,6 +3651,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3695,6 +3729,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3737,6 +3772,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3799,6 +3835,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3858,6 +3895,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3918,6 +3956,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -3964,6 +4003,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4026,6 +4066,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4073,6 +4114,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4125,6 +4167,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4182,6 +4225,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4228,6 +4272,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4272,6 +4317,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4321,6 +4367,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4372,6 +4419,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4421,6 +4469,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4482,6 +4531,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4543,6 +4593,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4591,6 +4642,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4651,6 +4703,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"ddd444eee555"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4697,6 +4750,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4753,6 +4807,7 @@ case "\$ARGS" in
   *"pr comment"*) echo "COMMENT_POSTED"; exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4805,6 +4860,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4859,6 +4915,7 @@ case "\$ARGS" in
   *"pr comment"*) echo "COMMENT_POSTED"; exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4911,6 +4968,7 @@ case "$ARGS" in
   *"pr comment"*) exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -4966,6 +5024,7 @@ case "\$ARGS" in
   *"pr comment"*) echo "COMMENT_POSTED"; exit 0 ;;
   *"pr merge"*) exit 0 ;;
   *"pulls/"*) echo '{"head":{"sha":"abc123"},"auto_merge":null}' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -5033,7 +5092,7 @@ _noop_gh_stub() {
 #!/usr/bin/env bash
 ARGS="\$*"
 case "\$ARGS" in
-  *"pr view"*) echo '{"state":"OPEN","headRefName":"feat"}' ;;
+  *"pr view"*) echo '{"state":"OPEN","headRefName":"feat","isCrossRepository":false}' ;;
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) echo "\$*" >> "${comment_file}"; exit 0 ;;
   *"pr edit"*) echo "\$*" >> "${comment_file}"; exit 0 ;;
@@ -5295,7 +5354,7 @@ _ev_gh_stub() {
 #!/usr/bin/env bash
 ARGS="\$*"
 case "\$ARGS" in
-  *"pr view"*) echo '{"state":"OPEN","headRefName":"feat"}' ;;
+  *"pr view"*) echo '{"state":"OPEN","headRefName":"feat","isCrossRepository":false}' ;;
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) echo "\$*" >> "${comment_file}"; exit 0 ;;
   *"pr edit"*) echo "\$*" >> "${comment_file}"; exit 0 ;;
@@ -5685,7 +5744,7 @@ case "$ARGS" in
   *"graphql"*)
     printf '%s' '{"data":{}}'; exit 0 ;;
   *"pr view"*)
-    printf '%s' '{"state":"OPEN","headRefName":"testbranch"}'; exit 0 ;;
+    printf '%s' '{"state":"OPEN","headRefName":"testbranch","isCrossRepository":false}'; exit 0 ;;
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) echo "$ARGS" >> "${COMMENTLOG:-/dev/null}"; exit 0 ;;
   *"issue comment"*) exit 0 ;;
@@ -6249,6 +6308,7 @@ case "\$ARGS" in
   *"pr comment"*) echo "PR_COMMENT: \$*" ;;
   *"pr edit"*) echo "PR_EDIT: \$*" ;;
   *"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -6952,6 +7012,7 @@ case "\$ARGS" in
   *"pulls/"*"reviews"*) echo '[]' ;;
   *"pulls/"*) echo '{"head":{"sha":"abc"},"auto_merge":null}' ;;
   *"issues/"*"comments"*) echo '[]' ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -7026,6 +7087,7 @@ case "$ARGS" in
   *"reviewThreads(first:"*"after:"*) echo "HTTP 502: Bad Gateway" >&2; exit 1 ;;
   *"graphql"*) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}' ;;
   *"api"*"repos/"*"issues/"*) echo "[]" ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF
@@ -7106,7 +7168,7 @@ case "$ARGS" in
   *"graphql"*)
     printf '%s' '{"data":{}}'; exit 0 ;;
   *"pr view"*)
-    printf '%s' '{"state":"OPEN","headRefName":"testbranch"}'; exit 0 ;;
+    printf '%s' '{"state":"OPEN","headRefName":"testbranch","isCrossRepository":false}'; exit 0 ;;
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) echo "$ARGS" >> "$POSTLOG"; exit 0 ;;
   *"issue comment"*) exit 0 ;;
@@ -7567,6 +7629,7 @@ case "\$ARGS" in
   *"pulls/"*"reviews"*) echo '[]' ;;
   *"pulls/"*) echo '{"head":{"sha":"${NC_BASE_SHA}"},"auto_merge":null}' ;;
   *"pr checkout"*|*"pr comment"*|*"pr merge"*) exit 0 ;;
+  *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
 GHEOF

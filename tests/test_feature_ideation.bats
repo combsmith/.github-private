@@ -103,10 +103,18 @@ setup() {
   grep -qE "github\.event\.discussion\.user\.type[[:space:]]*!=[[:space:]]*['\"]Bot['\"]" "$FEATURE_IDEATION_YML"
 }
 
-@test "feature-ideation.yml redispatch requires GH_PAT_WORKFLOWS (GITHUB_TOKEN won't start a run)" {
-  # A workflow_dispatch fired with GITHUB_TOKEN is accepted but never starts a
-  # run (loop prevention) — same constraint as the initiative-planner bridge.
-  grep -qF "secrets.GH_PAT_WORKFLOWS" "$FEATURE_IDEATION_YML"
+@test "feature-ideation.yml redispatch uses the job token, not GH_PAT_WORKFLOWS (#2444)" {
+  # workflow_dispatch and repository_dispatch are the two events the job token
+  # can start runs with, so the redispatch needs no personal token (#2444), and
+  # GH_PAT_WORKFLOWS is being retired (#1326).
+  local job
+  job=$(awk '/^  redispatch:/{f=1; print; next} f && /^  [A-Za-z0-9_-]+:/{f=0} f' "$FEATURE_IDEATION_YML")
+  [ -n "$job" ]
+  grep -qE 'GH_TOKEN:[[:space:]]*\$\{\{[[:space:]]*github\.token[[:space:]]*\}\}' <<<"$job"
+  if grep -qF "secrets.GH_PAT_WORKFLOWS" "$FEATURE_IDEATION_YML"; then
+    echo "feature-ideation.yml still references secrets.GH_PAT_WORKFLOWS" >&2
+    return 1
+  fi
 }
 
 @test "feature-ideation.yml redispatch forwards target_discussion via workflow_dispatch" {

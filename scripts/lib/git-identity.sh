@@ -35,3 +35,82 @@ setup_git_identity() {
   fi
   git config user.name "$bot"
 }
+
+# dev-lead commit stamp (#2313). Since ADR-0008 dev-lead commits with the same
+# noreply email as the owner and every Claude Code session on the owner's
+# machine, so the committer identity cannot tell dev-lead's commits from theirs.
+# dev-lead marks the commits it creates with a trailer the push guard can check:
+#
+#   Dev-Lead-Stamp: <hash of "tree <T>\nparent <P>..." — the commit's own tree and
+#                    parents, in the order a commit object lists them>
+#
+# The harness stamps the commits it makes as it makes them. It never rewrites a
+# commit after the fact to add one: the engine's claims, the #2143 test handoff
+# and the #2269 this-pass checks all cite exact SHAs. Commits the engine makes
+# with its own `git commit` are covered instead by the push guard's ledger of
+# pushed SHAs (refs/notes/dev-lead-pushed, git-push-guard.sh).
+#
+# The stamp is bound to the commit's content and position. Amending a stamped
+# commit (new tree) or cherry-picking or rebasing it (new parents) keeps the
+# trailer text but breaks the match, so a copied stamp marks nothing. It is a
+# record dev-lead keeps, not a signature: it guards against copies made by
+# accident, not against someone who computes a stamp on purpose. A reword that
+# changes only the message keeps tree and parents, so the stamp still matches:
+# dev-lead may then rewrite that commit, which can lose the reworded message but
+# never content that is not already in its own commit.
+# Not readonly: the push guard sources this file too, and a second `readonly`
+# assignment would abort a script running under `set -e`.
+DEV_LEAD_STAMP_KEY='Dev-Lead-Stamp'
+
+# dev_lead_stamp_of <tree> [parent...] — echo the stamp for a commit with this
+# tree and these parents. Pure: hashes its arguments, reads no repository.
+dev_lead_stamp_of() {
+  local tree="${1:-}"
+  [ -n "$tree" ] || return 1
+  shift
+  {
+    printf 'tree %s\n' "$tree"
+    local p
+    for p in "$@"; do printf 'parent %s\n' "$p"; done
+  } | git hash-object --stdin
+}
+
+# dev_lead_stamp_trailer — echo the `Dev-Lead-Stamp: <hash>` line for the commit
+# `git commit` is about to make from the current index: tree = the staged tree,
+# parents = HEAD (none on an unborn branch) plus MERGE_HEAD when a merge is being
+# concluded. Pass it as the last `-m` of the commit so it lands in the trailer
+# block. Echoes nothing and returns 1 when the index cannot be written; the
+# commit then goes out unstamped and the push guard treats it as foreign.
+dev_lead_stamp_trailer() {
+  local tree head merge_head_file stamp
+  local -a parents=()
+  tree=$(git write-tree 2>/dev/null) || return 1
+  if head=$(git rev-parse --verify --quiet HEAD 2>/dev/null); then
+    parents+=("$head")
+  fi
+  merge_head_file=$(git rev-parse --git-path MERGE_HEAD 2>/dev/null || true)
+  if [ -n "$merge_head_file" ] && [ -f "$merge_head_file" ]; then
+    local mh
+    while IFS= read -r mh; do
+      [ -n "$mh" ] && parents+=("$mh")
+    done < "$merge_head_file"
+  fi
+  stamp=$(dev_lead_stamp_of "$tree" ${parents[@]+"${parents[@]}"}) || return 1
+  printf '%s: %s\n' "$DEV_LEAD_STAMP_KEY" "$stamp"
+}
+
+# dev_lead_stamp_matches <tree> <parents> <message> — true when <message> has a
+# Dev-Lead-Stamp line equal to the stamp of <tree> and the space-separated
+# <parents>. Pure apart from `git hash-object --stdin`.
+dev_lead_stamp_matches() {
+  local tree="${1:-}" parent_list="${2:-}" message="${3:-}" expected claimed
+  [ -n "$tree" ] || return 1
+  # Word-split on purpose: <parents> is the space-separated %P list.
+  # shellcheck disable=SC2086
+  expected=$(dev_lead_stamp_of "$tree" $parent_list 2>/dev/null) || return 1
+  [ -n "$expected" ] || return 1
+  while IFS= read -r claimed; do
+    [ "$claimed" = "$expected" ] && return 0
+  done < <(sed -nE "s/^${DEV_LEAD_STAMP_KEY}:[[:space:]]*([0-9a-f]+)[[:space:]]*\$/\1/p" <<<"$message")
+  return 1
+}

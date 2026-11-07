@@ -517,8 +517,9 @@ case "$*" in
   *"repo list"*)
     echo '[{"nameWithOwner":"combsmith/test-repo","isFork":false}]' ;;
   *startswith*)
-    # open_issue_pr_exists probe → no existing PR for the issue
-    echo "0" ;;
+    # open_issue_pr_exists probe → no existing PR for the issue (post-jq shape:
+    # an empty array; anything that is not an array now holds the retry)
+    echo '[]' ;;
   *"issues/478/comments"*)
     # post-jq shape (gh applies --jq '[.[].body]'): array of comment-body strings
     echo '["<!-- dev-lead-issue 478 status=failed attempt=1 reason=engine-error run=99 -->"]' ;;

@@ -33,6 +33,7 @@ REGISTRY_REL="scripts/lib/fleet-pause-registry.tsv"
 NEWLY_GATED=(
   persona-runner-reusable.yml
   gh-aw-cross-org.yml issue-triage-runner.yml initiative-planner.yml idea-triage.yml
+  decision-brief.yml
   dependency-advisory.yml docs-health-check.yml readme-refresh.yml
   release-notes.yml stale-manager.yml skill-eval-report.yml model-ab.yml
   dev-lead-retry.yml pr-review-sweep.yml
@@ -210,8 +211,8 @@ PY
   local wf jobs job n=0
   while IFS=$'\t' read -r wf jobs; do
     job="${jobs%%,*}"
-    # The first `vars.AGENTS_PAUSED != 'true'` in the file is that job's gate.
-    replace_in "$WF/$wf" "vars\.AGENTS_PAUSED != 'true'" "true"
+    # The first `vars.AGENTS_PAUSED != 'true'` after the job's key is its gate.
+    replace_in "$WF/$wf" "(?s)(\n  ${job}:\n.*?)vars\.AGENTS_PAUSED != 'true'" '\1true'
     check
     [ "$status" -eq 1 ] || { echo "$wf: a neutralised gate was not detected"; return 1; }
     [[ "$output" == *"$wf: job '$job' is not paused by AGENTS_PAUSED"* ]] || { echo "$wf: wrong message: $output"; return 1; }

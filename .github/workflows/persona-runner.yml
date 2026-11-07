@@ -47,4 +47,9 @@ jobs:
       # Absent surface -> 'mention' so existing dispatches are unchanged (#1905).
       surface: ${{ github.event.client_payload.surface || 'mention' }}
       event_action: ${{ github.event.client_payload.event_action || '' }}
-    secrets: inherit
+    # Named, not inherited: the reusable gets the three secrets it declares and no
+    # other org secret.
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      DON_PETRY_BOT_GH_PAT: ${{ secrets.DON_PETRY_BOT_GH_PAT }}
+      GH_PAT_DON_PETRY: ${{ secrets.GH_PAT_DON_PETRY }}
