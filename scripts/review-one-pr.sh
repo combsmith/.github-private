@@ -81,6 +81,23 @@ source "$SCRIPT_DIR/lib/fewshot.sh"
 # when off. Story 5 consumers verify the PR_HEAD_SHA stamp before use.
 # shellcheck source=lib/pr-context-prefetch.sh
 source "$SCRIPT_DIR/lib/pr-context-prefetch.sh"
+
+# A sandboxed model has no `gh`, so the pre-fed context is its only view of the PR.
+model_sandbox_require || exit 1
+if model_sandbox_enabled; then
+  export PREFETCH_CONTEXT_ENABLED=true
+fi
+
+# post_verdict <verdict_file> — hand a verdict to the output channel, propagating its
+# exit status. A verdict a sandboxed model produced is validated first, once nothing
+# is left running as the model user.
+post_verdict() {
+  if model_sandbox_enabled; then
+    model_sandbox_reap
+    model_sandbox_validate_verdict "$1" "$PR_HEAD_SHA" || return 1
+  fi
+  bash "$REVIEW_OUTPUT_CHANNEL" "$PR_URL" "$1" "$DRY_RUN"
+}
 # Agentic iterative validation (issue #1092): apply_finding_verification applies
 # the repro-outcome downgrade/drop discipline to the deep tier's logic/correctness
 # findings and emits kind:"finding_verification" records so the false-positive-rate
@@ -1190,6 +1207,13 @@ if [ "${PREFETCH_CONTEXT_ENABLED:-false}" = "true" ]; then
   fi
   unset _prefetch_rc
 fi
+if model_sandbox_enabled; then
+  if [ ! -s "${PR_CONTEXT_METADATA_FILE:-}" ] || [ ! -s "${PR_CONTEXT_DIFF_FILE:-}" ]; then
+    echo "::error::no pre-fed context for $PR_URL — a sandboxed model cannot review without it"
+    exit 1
+  fi
+  prefetch_review_extras "$PR_URL" "$PR_HEAD_SHA" "${PRIOR_REVIEW_SHA:-}" "/tmp/cascade"
+fi
 
 rm -f "$_gh_meta_err" "$_gh_diff_err" "$_gh_diff_tmp" "${_fallback_tmp:-}"
 unset _gh_meta_err _gh_diff_err _gh_diff_tmp _gh_meta_err_content _gh_diff_err_content _fallback_tmp _prefetch_full_diff_file
@@ -1511,7 +1535,7 @@ if [ "$TRIAGE_ESCALATE" = "false" ]; then
   # classifies the outcome correctly instead of counting an escalation as a posted
   # review (#1754).
   post_rc=0
-  bash "$REVIEW_OUTPUT_CHANNEL" "$PR_URL" "$VERDICT_JSON" "$DRY_RUN" || post_rc=$?
+  post_verdict "$VERDICT_JSON" || post_rc=$?
   echo "    [done]  $PR_URL"
   exit "$post_rc"
 fi
@@ -1799,7 +1823,7 @@ if [ "$COMBINED_ESCALATE" != "true" ]; then
   # classifies the outcome correctly instead of counting an escalation as a posted
   # review (#1754).
   post_rc=0
-  bash "$REVIEW_OUTPUT_CHANNEL" "$PR_URL" "$VERDICT_JSON" "$DRY_RUN" || post_rc=$?
+  post_verdict "$VERDICT_JSON" || post_rc=$?
   echo "    [done]  $PR_URL"
   exit "$post_rc"
 fi
@@ -1877,6 +1901,6 @@ duck_skip_note "$VERDICT_JSON" "$DUCK_SKIP_REASON"
 # classifies the outcome correctly instead of counting an escalation as a posted
 # review (#1754).
 post_rc=0
-bash "$REVIEW_OUTPUT_CHANNEL" "$PR_URL" "$VERDICT_JSON" "$DRY_RUN" || post_rc=$?
+post_verdict "$VERDICT_JSON" || post_rc=$?
 echo "    [done]  $PR_URL"
 exit "$post_rc"

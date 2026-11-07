@@ -130,6 +130,61 @@ pr_ensure_marker() {
 }
 
 # ----------------------------------------------------------------------------
+# Handoff from the agent job to the post job
+# ----------------------------------------------------------------------------
+# The two jobs run on separate runners and share one artifact holding one file.
+# The post job reads that file as data only: it never sources or runs anything
+# from the artifact, and takes the target repo and item from the workflow inputs.
+
+# The file's name. Mirrored by the upload step's `path:` in the reusable.
+PR_HANDOFF_FILE='advisory.txt'
+# GitHub caps a comment at 65,536 characters, at most 4 bytes each.
+PR_HANDOFF_MAX_BYTES=262144
+
+# pr_write_handoff <agent_out_file> <handoff_file> — write only the advisory
+# between the sentinels, redacted, with the sentinels pr_extract_advisory expects.
+# Everything else the agent printed stays out of the artifact, which is readable
+# by anyone on a public repository. No advisory writes an empty block, which
+# pr_run_post reports as nothing to post.
+pr_write_handoff() {
+  local agent_out="$1" handoff="$2" body
+  body="$(pr_extract_advisory "$(cat "$agent_out")")"
+  mkdir -p "$(dirname "$handoff")"
+  {
+    printf '%s\n' "$PR_ADVISORY_BEGIN"
+    if [ -n "$body" ]; then
+      printf '%s\n' "$body" | redact_secrets
+    fi
+    printf '%s\n' "$PR_ADVISORY_END"
+  } > "$handoff"
+}
+
+# pr_validate_handoff <handoff_dir> — 0 only if the directory holds exactly one
+# entry: a regular file named $PR_HANDOFF_FILE, no larger than
+# $PR_HANDOFF_MAX_BYTES. Fails closed, and never prints the artifact's content.
+pr_validate_handoff() {
+  local dir="$1" file="$1/$PR_HANDOFF_FILE" count size
+  if [ -L "$dir" ] || [ ! -d "$dir" ]; then
+    echo "::error::advisory handoff: '${dir}' is not a directory — nothing posted" >&2
+    return 1
+  fi
+  count="$(find "$dir" -mindepth 1 | wc -l)"
+  if [ "$count" -ne 1 ]; then
+    echo "::error::advisory handoff: expected one file, found ${count// /} entries — nothing posted" >&2
+    return 1
+  fi
+  if [ -L "$file" ] || [ ! -f "$file" ]; then
+    echo "::error::advisory handoff: ${PR_HANDOFF_FILE} is not a regular file — nothing posted" >&2
+    return 1
+  fi
+  size="$(wc -c < "$file")"
+  if [ "$size" -gt "$PR_HANDOFF_MAX_BYTES" ]; then
+    echo "::error::advisory handoff: ${size// /} bytes is over the ${PR_HANDOFF_MAX_BYTES}-byte cap — nothing posted" >&2
+    return 1
+  fi
+}
+
+# ----------------------------------------------------------------------------
 # Post-failure preservation (#1775)
 # ----------------------------------------------------------------------------
 # The advisory is produced once, at a cost, and is correct. Before #1775 a

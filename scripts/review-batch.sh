@@ -205,8 +205,9 @@ sys.stdout.write(json.dumps({
 
     rc=0
     raw=$(
-      timeout 30 curl -sSL \
-        -H "Authorization: Bearer ${COPILOT_GITHUB_TOKEN}" \
+      # The token goes on stdin, so it never appears on a command line.
+      printf 'header = "Authorization: Bearer %s"\n' "$COPILOT_GITHUB_TOKEN" |
+      timeout 30 curl -sSL --config - \
         -H "Content-Type: application/json" \
         -H "X-GitHub-Api-Version: 2022-11-28" \
         https://models.github.ai/inference/chat/completions \

@@ -14,7 +14,7 @@ create-story template, which `plan.schema.json` mirrors field-for-field.
 | File | Role |
 |------|------|
 | `redispatch.sh` | Bridge the `discussion [labeled]` trigger to `workflow_dispatch` (claude-code-action rejects `discussion` event contexts). Fired with a PAT so the dispatch actually starts a run. Forwards `force_replan=true` when the firing label is `initiative:replan`, or `reconcile=true` when it is `initiative:reconcile` (vs the default `idea:approved` plan path). |
-| `gather-context.sh` | Fetch the approved Discussion + repo context → `$CONTEXT_PATH`; export `DISCUSSION_NODE_ID`. Under `RECONCILE=1` also harvests the bound epic's sub-issues (state, labels, comments) into a `reconcile` block so Bob can pick up comment-surfaced follow-ups (#708). |
+| `gather-context.sh` | Fetch the approved Discussion (from `DISCUSSION_REPO`, default `REPO`) + the target repo's context and `_bmad-output/planning-artifacts/` (`planning_artifacts`; PRD in full, other `.md` truncated, `null` when absent) → `$CONTEXT_PATH`; export `DISCUSSION_NODE_ID`. Under `RECONCILE=1` also harvests the bound epic's sub-issues (state, labels, comments) into a `reconcile` block so Bob can pick up comment-surfaced follow-ups (#708). |
 | `plan.schema.json` | The plan contract Bob must emit (epic + stories + `blocked_by`). |
 | `validate-plan.py` | Schema + semantic checks: unique ids, acyclic DAG, an entry point, no dangling edges. |
 | `lib/mutations.sh` | DRY_RUN-aware GitHub helpers (create issue, link sub-issue, add `blocked_by`, comment on Discussion, find/close issues for the idempotency guard, list existing reconcile-keys for the reconcile diff). |

@@ -371,3 +371,27 @@ PY
   echo "$output"
   [[ "$status" -eq 0 ]]
 }
+
+@test "dispatch job: the token it holds prefers the writer secret, and the owner PAT is only a fallback" {
+  run python3 - "$WF" <<'PY'
+import re, sys, yaml
+job = yaml.safe_load(open(sys.argv[1]))["jobs"]["dispatch"]
+bad = []
+def walk(v):
+    if isinstance(v, dict):
+        for x in v.values(): walk(x)
+    elif isinstance(v, list):
+        for x in v: walk(x)
+    elif isinstance(v, str):
+        for expr in re.findall(r"\$\{\{(.*?)\}\}", v, re.S):
+            if re.search(r"secrets\.GH_PAT_(DON_PETRY|WORKFLOWS)\b", expr) \
+               and not expr.strip().startswith("secrets.GH_PAT_DON_PETRY_WRITER ||"):
+                bad.append(expr.strip())
+walk(job)
+assert job["env"]["GH_TOKEN"].startswith("${{ secrets.GH_PAT_DON_PETRY_WRITER ||"), job["env"]["GH_TOKEN"]
+assert not bad, bad
+print("ok")
+PY
+  [ "$status" -eq 0 ]
+  [ "$output" = "ok" ]
+}

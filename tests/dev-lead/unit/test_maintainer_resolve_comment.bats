@@ -299,8 +299,9 @@ _mrc_minimized_reason() {
 # #1918 review: the registered-bot path must require a GitHub App actor. A PERSON
 # whose login happens to equal a registered bot login (e.g. a user account named
 # `sonarqubecloud`) must be refused like any other human — never minimized.
-# A SonarCloud clean-status body that matches its registered info_status_pattern.
-SONAR_PASS_JSON_BODY='**Quality Gate passed**\n[0 New issues]\n[0 Security Hotspots]'
+# A SonarCloud clean-status body that matches its registered info_status_pattern,
+# which is anchored to the passed-badge image the body opens with.
+SONAR_PASS_JSON_BODY='## [![Quality Gate Passed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-passed-20px.png)](https://sonarcloud.io/dashboard) **Quality Gate passed**\n[0 New issues]\n[0 Security Hotspots]'
 
 _mrc_fake_gh() {
   # $1 = author __typename, $2 = author login (default sonarqubecloud), $3 = the
