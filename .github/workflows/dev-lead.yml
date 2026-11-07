@@ -69,9 +69,9 @@ jobs:
     # Promotion is done by moving the channel tags centrally; this
     # caller is never edited on release. agent_ref threads the same channel into
     # dev-lead's own scripts/prompts checkout. See https://github.com/combsmith/.github/blob/main/standards/ci-standards.md#dev-lead-agent.
-    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-ring0  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-next  # NOSONAR(githubactions:S7637) first-party channel ref
     with:
-      agent_ref: dev-lead/v139-ring0
+      agent_ref: dev-lead/v139-next
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable
     permissions:
       contents: write
