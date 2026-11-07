@@ -56,12 +56,29 @@ We will narrow #1813's "every PR issue comment" scope to every PR issue comment
    finding-bearing section (#2008). The author must be a GitHub App
    (`author.__typename` is `Bot`), because a User account can hold a registered
    bot's bare login.
+6. **A no-finding review summary** (added after PRs 2456 and 2467 deadlocked
+   under `dev-lead:hands-off`): a Codex or CodeRabbit summary comment whose
+   bot reports in its own structured state that the review found nothing, and
+   whose body carries no finding-bearing section. Codex: exactly one
+   `codex-review-state:v1` JSON with a `completed` code review,
+   `has_any_findings` and `has_unresolved_findings` both `false`, and a security
+   review that never ran or completed the same way. CodeRabbit: exactly one
+   `final_review_risk_label` field reading Merge Risk `⚪ Minimal`, exactly one
+   `final_review_risk_coverage` JSON with kind `reviewed`, and only `passed`
+   pre-merge check badges. The author must be that GitHub App (`Bot`). The match
+   is on the structured state, never on prose, so it holds however often the bot
+   edits the comment (`_MAINTAINER_GATE_NO_FINDING_JQ_DEFS`).
 
 We will never exempt by author login alone, because `don-petry` is also the
 account dev-lead and the personas post from. A steering comment stays in scope
 unless the maintainer opts it out. Fail closed holds: a missing
 `authorAssociation` grants neither exemption 3 nor 4, and an unreadable
 snapshot still blocks.
+
+Exemptions 5 and 6 are shared the same way (`_MAINTAINER_GATE_INFO_JQ_DEFS`,
+`_MAINTAINER_GATE_NO_FINDING_JQ_DEFS`), and exemption 6 also by the #2008
+re-open and stale-disposition lists and the bot-comment retry, so nothing
+re-opens, chases or retries a summary the gate clears.
 
 We will keep exemptions 1–4 in one definition (`_MAINTAINER_GATE_SCOPE_JQ_DEFS`)
 used by both the gate and dev-lead's candidate filter
