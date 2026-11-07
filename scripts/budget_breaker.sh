@@ -307,7 +307,7 @@ run_url() {
 # announces a pause. Its first line is the pause's marker, which is how a later
 # run finds it (bbw_pause_notice_posted).
 pause_notice_body() {
-  printf '%s\n**%s**\n\n- **Why:** %s\n- **Until:** `%s` (the breaker lifts its own pause at the first run after that time)\n- **Set:** `%s=true`, `%s=%s`, `%s=%s` on the organisation `%s`\n\nItems that reported a quota refusal (up to 20):\n%s\n\nTo keep the fleet paused by hand, set `%s=true` and delete `%s`: the breaker never touches a pause without its own source. To end this pause early, set `%s=false` and delete `%s`.' \
+  printf '%s\n**%s**\n\n- **Why:** %s\n- **Until:** `%s` (the breaker lifts its own pause at the first run after that time)\n- **Set:** `%s=true`, `%s=%s`, `%s=%s` on the organisation `%s`\n\nItems that reported a quota refusal (up to 20):\n%s\n\nTo keep the fleet paused by hand, follow "Setting a pause by hand" in AGENTS.md (set `%s=true` and delete `%s` in the order given there, then check): the breaker never touches a pause without its own source, but it can lift this one between your calls. To end this pause early, set `%s=false` and delete `%s`.' \
     "$(bbw_pause_marker "$1")" "$2" "$3" "$1" \
     "$BBW_VAR_PAUSED" "$BBW_VAR_SOURCE" "$BUDGET_BREAKER_PAUSE_SOURCE" "$BBW_VAR_UNTIL" "$1" "$ORG" \
     "${4:-- none listed}" "$BBW_VAR_PAUSED" "$BBW_VAR_SOURCE" "$BBW_VAR_PAUSED" "$BBW_VAR_SOURCE"
