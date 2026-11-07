@@ -1085,3 +1085,246 @@ _stale_nodes() {
   _run_check "$(jq -c '{reviews:[], comments:.}' <<< "$after")"
   [ "$status" -eq 0 ]
 }
+
+# ────────────────────────────────────────────────────────────────────
+# No-finding summaries on a dev-lead:hands-off PR (combsmith/.github-private
+# PRs 2456 and 2467, 2026-11-06). Codex and CodeRabbit edit ONE summary comment
+# on every push, and SonarQube Cloud posts a fresh quality-gate notice. Under
+# #2008 every edit needed a new dev-lead disposition; on a hands-off PR dev-lead
+# writes none, so pr-review approved and then dismissed its own approval. A
+# summary whose bot reports, in its own structured state, that the review found
+# nothing now needs no disposition (no_finding_summary). Any other state, any
+# finding-bearing section, or a non-Bot author still blocks.
+# ────────────────────────────────────────────────────────────────────
+
+_FIX="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)/../../fixtures"
+_CODEX_NF_BODY="$(cat "$_FIX/codex/pr2467-review-summary-no-findings.md")"
+_CR_2467_BODY="$(cat "$_FIX/coderabbit/pr2467-summary-minimal-ratelimited.md")"
+_CR_2456_BODY="$(cat "$_FIX/coderabbit/pr2456-summary-minimal.md")"
+_SONAR_2467_BODY="$(cat "$_FIX/sonarqubecloud/pr2467-quality-gate-passed.md")"
+_CR_ARCH_FINDING=$'\n<!-- architecture_review_start -->\n### Security Architecture Review\n\n**Security architecture risk:** _🟡 Moderate_ · up to `11929`\n\n**Retained concerns**\n- **Medium · security · inferred:** the lookup trusts an unvalidated name.\n<!-- architecture_review_end -->\n'
+
+# _codex_body <code_review_json> [security_review_json] — the live PR 2467 summary
+# with its codex-review-state:v1 JSON replaced.
+_CODEX_SEC_NONE='{"commit_sha":null,"has_any_findings":null,"has_unresolved_findings":null,"status":null}'
+_codex_body() {
+  local cr="$1" sr="${2:-$_CODEX_SEC_NONE}"
+  jq -rn --arg b "$_CODEX_NF_BODY" --arg s "{\"code_review\":$cr,\"security_review\":$sr}" \
+    '$b | sub("codex-review-state:v1 \\{[^\\n]*\\} -->"; "codex-review-state:v1 " + $s + " -->")'
+}
+# _cxs <has_any_findings> <has_unresolved_findings> <status> [commit_sha] — one
+# review object of the state JSON. Values are JSON literals ("null", "false", …).
+_cxs() {
+  jq -cn --argjson a "$1" --argjson u "$2" --argjson s "$3" \
+    --argjson c "${4:-\"11929668fede1b15458100abc4347bb494eff259\"}" \
+    '{commit_sha:$c, has_any_findings:$a, has_unresolved_findings:$u, status:$s}'
+}
+
+# _sub <body> <regex> <replacement> — one jq sub() on a body.
+_sub() { jq -rn --arg b "$1" --arg r "$2" --arg t "$3" '$b | sub($r; $t)'; }
+
+# _hands_off_pr <codex_body> <coderabbit_body> <sonar_body> — the PR 2467 shape at
+# the moment pr-review dismissed its approval: all three bot comments edited or
+# re-posted after the last disposition, and no dev-lead reply to cover them. The
+# Codex summary is still minimized RESOLVED from an earlier pass.
+_hands_off_pr() {
+  jq -cn --arg cx "$1" --arg cr "$2" --arg sq "$3" '
+    def bot($id; $l; $b; $e; $m):
+      {id:$id, author:{login:$l, __typename:"Bot"}, authorAssociation:"NONE", body:$b,
+       createdAt:"2026-11-06T21:16:21Z", lastEditedAt:$e, isMinimized:$m,
+       minimizedReason:(if $m then "resolved" else null end)};
+    {reviews:[], comments:[
+      {id:"IC_req", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+       body:"@donpetry-bot please review", createdAt:"2026-11-06T21:16:15Z",
+       lastEditedAt:null, isMinimized:false, minimizedReason:null},
+      bot("IC_cx"; "chatgpt-codex-connector"; $cx; "2026-11-06T22:14:29Z"; true),
+      {id:"IC_disp", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+       body:"Clean status.\n<!-- dev-lead:comment-disposition id=IC_cx disposition=informational -->",
+       createdAt:"2026-11-06T21:50:02Z", lastEditedAt:null, isMinimized:false, minimizedReason:null},
+      bot("IC_cr"; "coderabbitai"; $cr; "2026-11-06T22:12:56Z"; false),
+      bot("IC_sq"; "sonarqubecloud"; $sq; null; false)
+    ]}'
+}
+
+# _expect_nf_open <author_json> <body> — gate → 1 and the comment is a dev-lead candidate.
+_expect_nf_open() { _expect_open "$@"; }
+
+@test "hands-off: the live PR 2467 snapshot (Codex, CodeRabbit, Sonar no-finding notices) keeps approval → 0" {
+  _run_check "$(_hands_off_pr "$_CODEX_NF_BODY" "$_CR_2467_BODY" "$_SONAR_2467_BODY")"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no undispositioned PR issue comments"* ]]
+}
+
+@test "hands-off: the same snapshot leaves dev-lead nothing to disposition, re-open or chase" {
+  local comments
+  comments=$(_hands_off_pr "$_CODEX_NF_BODY" "$_CR_2467_BODY" "$_SONAR_2467_BODY" | jq -c .comments)
+  run bash -c "source '$GATE'; maintainer_gate_open_comment_ids \"\$1\" donpetry-bot" _ "$comments"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  run bash -c "source '$GATE'; maintainer_gate_reopen_candidates \"\$1\" donpetry-bot" _ "$comments"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+  run bash -c "source '$GATE'; maintainer_gate_stale_dispositions \"\$1\" donpetry-bot" _ "$comments"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+}
+
+@test "hands-off: the same snapshot with a failed Sonar gate still withholds approval → 1" {
+  _run_check "$(_hands_off_pr "$_CODEX_NF_BODY" "$_CR_2467_BODY" "$_SONAR_FAILED_BODY")"
+  [ "$status" -eq 1 ]
+}
+
+@test "hands-off: the same snapshot with a Codex summary reporting findings still withholds approval → 1" {
+  _run_check "$(_hands_off_pr "$(_codex_body "$(_cxs 'true' 'true' '"completed"')")" "$_CR_2467_BODY" "$_SONAR_2467_BODY")"
+  [ "$status" -eq 1 ]
+}
+
+@test "hands-off: the same snapshot with a Low-risk CodeRabbit summary still withholds approval → 1" {
+  _run_check "$(_hands_off_pr "$_CODEX_NF_BODY" "$(_sub "$_CR_2467_BODY" '\*\*⚪ Minimal\*\* · up to' '**🔵 Low** · up to')" "$_SONAR_2467_BODY")"
+  [ "$status" -eq 1 ]
+}
+
+# ── Codex: codex-review-state:v1 ─────────────────────────────────────
+
+# The builders must produce well-formed state, or a "still blocks" case below would
+# pass on malformed JSON instead of on the state it means to test.
+@test "Codex: the test body builder writes the state JSON it is given" {
+  local cr sr out
+  cr="$(_cxs true false '"completed"')"
+  sr="$(_cxs false false '"completed"')"
+  out="$(_codex_body "$cr" "$sr" | sed -n 2p | sed -E 's/^<!-- codex-review-state:v1 (.*) -->$/\1/')"
+  [ "$(jq -c . <<< "$out")" = "$(jq -cn --argjson c "$cr" --argjson s "$sr" '{code_review:$c, security_review:$s}')" ]
+  out="$(_codex_body "$cr" | sed -n 2p | sed -E 's/^<!-- codex-review-state:v1 (.*) -->$/\1/')"
+  [ "$(jq -c .security_review <<< "$out")" = "$_CODEX_SEC_NONE" ]
+}
+
+@test "Codex: the live no-finding summary needs no disposition, unminimized or edited" {
+  _expect_clear chatgpt-codex-connector Bot "$_CODEX_NF_BODY"
+  _expect_clear 'chatgpt-codex-connector[bot]' Bot "$_CODEX_NF_BODY"
+  # Edited after its only disposition: #2008 would re-block a plain RESOLVED comment.
+  _run_check "$(_edit_json chatgpt-codex-connector "$_CODEX_NF_BODY" true "2026-10-01T20:35:00Z" "$(_disp 2026-10-01T19:23:54Z informational)" \
+    | jq -c '.comments[0].author.__typename = "Bot"')"
+  [ "$status" -eq 0 ]
+}
+
+@test "Codex: a security review that completed with no findings also clears" {
+  _expect_clear chatgpt-codex-connector Bot "$(_codex_body "$(_cxs 'false' 'false' '"completed"')" "$(_cxs 'false' 'false' '"completed"')")"
+}
+
+@test "Codex: a code review with findings, resolved or not, still needs a disposition" {
+  local bot='{"login":"chatgpt-codex-connector","__typename":"Bot"}'
+  _expect_nf_open "$bot" "$(_codex_body "$(_cxs 'true' 'true' '"completed"')")"
+  _expect_nf_open "$bot" "$(_codex_body "$(_cxs 'true' 'false' '"completed"')")"
+  _expect_nf_open "$bot" "$(_codex_body "$(_cxs 'false' 'true' '"completed"')")"
+}
+
+@test "Codex: a failed, running or unknown review still needs a disposition" {
+  local bot='{"login":"chatgpt-codex-connector","__typename":"Bot"}'
+  _expect_nf_open "$bot" "$(_codex_body "$(_cxs 'true' 'true' '"failed"')")"
+  _expect_nf_open "$bot" "$(_codex_body "$(_cxs 'false' 'false' '"in_progress"')")"
+  _expect_nf_open "$bot" "$(_codex_body '{"commit_sha":null,"has_any_findings":null,"has_unresolved_findings":null,"status":"completed"}')"
+  _expect_nf_open "$bot" "$(_codex_body "$(_cxs 'false' 'false' '"completed"' '"1192966"')")"
+  _expect_nf_open "$bot" "$(_codex_body "$(_cxs '"false"' 'false' '"completed"')")"
+}
+
+@test "Codex: a security review with findings, or still running, still needs a disposition" {
+  local bot='{"login":"chatgpt-codex-connector","__typename":"Bot"}' ok
+  ok="$(_cxs false false '"completed"')"
+  _expect_nf_open "$bot" "$(_codex_body "$ok" "$(_cxs 'true' 'true' '"completed"')")"
+  _expect_nf_open "$bot" "$(_codex_body "$ok" "$(_cxs 'null' 'null' '"in_progress"')")"
+  # The security_review key missing altogether is not "never ran".
+  _expect_nf_open "$bot" "$(jq -rn --arg b "$_CODEX_NF_BODY" '$b | sub(",\"security_review\":\\{[^}]*\\}"; "")')"
+}
+
+@test "Codex: malformed, duplicated or misplaced state still needs a disposition" {
+  local bot='{"login":"chatgpt-codex-connector","__typename":"Bot"}'
+  _expect_nf_open "$bot" "$(_sub "$_CODEX_NF_BODY" '"status":"completed"\}' '"status":"completed"')"
+  _expect_nf_open "$bot" "$_CODEX_NF_BODY"$'\n'"$(printf '%s' "$_CODEX_NF_BODY" | sed -n 2p)"
+  _expect_nf_open "$bot" $'Earlier state, quoted:\n\n'"$_CODEX_NF_BODY"
+  _expect_nf_open "$bot" "$(_sub "$_CODEX_NF_BODY" 'codex-review-state:v1' 'codex-review-state:v2')"
+}
+
+@test "Codex: a no-finding state beside a finding-bearing section still needs a disposition" {
+  _expect_nf_open '{"login":"chatgpt-codex-connector","__typename":"Bot"}' "$_CODEX_NF_BODY"$'\n\nActionable comments posted: 2'
+}
+
+@test "Codex: the no-finding summary from a User account, another bot or no author type still needs a disposition" {
+  _expect_nf_open '{"login":"chatgpt-codex-connector","__typename":"User"}' "$_CODEX_NF_BODY"
+  _expect_nf_open '{"login":"chatgpt-codex-connector"}' "$_CODEX_NF_BODY"
+  _expect_nf_open '{"login":"coderabbitai","__typename":"Bot"}' "$_CODEX_NF_BODY"
+  _expect_nf_open '{"login":"github-actions","__typename":"Bot"}' "$_CODEX_NF_BODY"
+}
+
+# ── CodeRabbit: final_review_risk_label / _coverage / pre-merge badges ──
+
+@test "CodeRabbit: the live PR 2467 (rate-limited) and PR 2456 Minimal summaries need no disposition" {
+  _expect_clear coderabbitai Bot "$_CR_2467_BODY"
+  _expect_clear 'coderabbitai[bot]' Bot "$_CR_2467_BODY"
+  _expect_clear coderabbitai Bot "$_CR_2456_BODY"
+  # Edited after its only disposition, still minimized RESOLVED.
+  _run_check "$(_edit_json coderabbitai "$_CR_2467_BODY" true "2026-10-01T20:35:00Z" "$(_disp 2026-10-01T19:23:54Z informational)" \
+    | jq -c '.comments[0].author.__typename = "Bot"')"
+  [ "$status" -eq 0 ]
+}
+
+@test "CodeRabbit: a Low, Moderate or High merge risk still needs a disposition" {
+  local bot='{"login":"coderabbitai","__typename":"Bot"}' level
+  for level in '🔵 Low' '🟡 Moderate' '🔴 High'; do
+    _expect_nf_open "$bot" "$(_sub "$_CR_2467_BODY" '\*\*⚪ Minimal\*\* · up to' "**$level** · up to")"
+  done
+}
+
+@test "CodeRabbit: a failed, warning or inconclusive pre-merge check still needs a disposition" {
+  local bot='{"login":"coderabbitai","__typename":"Bot"}' st
+  for st in failed warning inconclusive; do
+    _expect_nf_open "$bot" "$(_sub "$_CR_2467_BODY" 'pre-merge-checks-passed\.svg' "pre-merge-checks-$st.svg")"
+  done
+  _expect_nf_open "$bot" "$(_sub "$_CR_2467_BODY" 'pre-merge-checks-counter-passed-14' 'pre-merge-checks-counter-failed-14')"
+  # No pre-merge badge at all is not "all passed".
+  _expect_nf_open "$bot" "$(jq -rn --arg b "$_CR_2467_BODY" '$b | gsub("pre-merge-checks-[a-z0-9-]*\\.svg"; "x.svg")')"
+}
+
+@test "CodeRabbit: coverage that is not a review, or unreadable, still needs a disposition" {
+  local bot='{"login":"coderabbitai","__typename":"Bot"}'
+  _expect_nf_open "$bot" "$(_sub "$_CR_2467_BODY" '"kind":"reviewed"' '"kind":"target_branch_merge_carry_forward"')"
+  _expect_nf_open "$bot" "$(_sub "$_CR_2467_BODY" '"kind":"reviewed"\}' '"kind":"reviewed"')"
+  _expect_nf_open "$bot" "$(_sub "$_CR_2467_BODY" '<!-- final_review_risk_coverage:[^\n]*-->' '')"
+}
+
+@test "CodeRabbit: a second risk label, or one outside its field, still needs a disposition" {
+  local bot='{"login":"coderabbitai","__typename":"Bot"}'
+  _expect_nf_open "$bot" "$_CR_2467_BODY"$'\n<!-- final_review_risk_label\n**Merge Risk:** **🔴 High** · up to `11929`\n-->'
+  _expect_nf_open "$bot" "$(_sub "$_CR_2467_BODY" '<!-- final_review_risk_label\n' '<!-- risk\n')"
+  _expect_nf_open "$bot" $'Quoted:\n'"$_CR_2467_BODY"
+}
+
+@test "CodeRabbit: a Minimal summary carrying a finding-bearing section still needs a disposition" {
+  local bot='{"login":"coderabbitai","__typename":"Bot"}'
+  _expect_nf_open "$bot" "$(_sub "$_CR_2467_BODY" '<!-- walkthrough_end -->' "<!-- walkthrough_end -->$_CR_ARCH_FINDING")"
+  _expect_nf_open "$bot" "$_CR_2467_BODY"$'\n\nActionable comments posted: 1'
+}
+
+@test "CodeRabbit: the Minimal summary from a User account, another bot or no author type still needs a disposition" {
+  _expect_nf_open '{"login":"coderabbitai","__typename":"User"}' "$_CR_2467_BODY"
+  _expect_nf_open '{"login":"coderabbitai"}' "$_CR_2467_BODY"
+  _expect_nf_open '{"login":"chatgpt-codex-connector","__typename":"Bot"}' "$_CR_2467_BODY"
+}
+
+@test "CodeRabbit: the older fixtures without the structured risk label still need a disposition" {
+  local bot='{"login":"coderabbitai","__typename":"Bot"}'
+  _expect_nf_open "$bot" "$(cat "$CR_FIXTURES/summary-clean.md")"
+  _expect_nf_open "$bot" "$(cat "$CR_FIXTURES/pr2000-ratelimited-with-security-finding.md")"
+}
+
+# ── SonarQube Cloud: the fresh per-push quality-gate notice ──────────
+
+@test "Sonar: the live PR 2467 'Quality Gate passed' notice needs no disposition" {
+  _expect_clear sonarqubecloud Bot "$_SONAR_2467_BODY"
+}
+
+@test "Sonar: a passed gate reporting new issues, or a failed gate, still needs a disposition" {
+  local bot='{"login":"sonarqubecloud","__typename":"Bot"}'
+  _expect_nf_open "$bot" "$(_sub "$_SONAR_2467_BODY" '\[0 New issues\]' '[3 New issues]')"
+  _expect_nf_open "$bot" "$_SONAR_FAILED_BODY"
+  _expect_nf_open '{"login":"sonarqubecloud","__typename":"User"}' "$_SONAR_2467_BODY"
+}
