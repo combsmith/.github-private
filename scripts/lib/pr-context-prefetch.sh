@@ -15,14 +15,13 @@
 # This is PLUMBING ONLY (Story 2): it does not change any tier prompt. Consumers
 # in Story 5 verify the persisted PR_HEAD_SHA stamp for freshness before use.
 
-# Superset of every field the deep/audit/single prompts read
-# (headRepository, headRepositoryOwner) and the rubber-duck prompt reads
-# (repository) via `gh pr view`. Persisting the union — with the FULL, non-simplified
+# Superset of every field the deep/audit/single and rubber-duck prompts read via
+# `gh pr view`. Persisting the union — with the FULL, non-simplified
 # `files` array — means no tier loses a field it uses today. This is intentionally
 # richer than review-one-pr.sh's triage `_meta_fields`, which simplifies `files`
 # and omits headRepository/repository/reviews/comments/commits, so the triage
 # metadata copy is insufficient for the agentic tiers and one full fetch is done here.
-PR_CONTEXT_METADATA_FIELDS="number,title,body,author,isDraft,baseRefName,headRefName,headRefOid,url,headRepository,headRepositoryOwner,repository,labels,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviewRequests,reviews,comments,commits,closingIssuesReferences,additions,deletions,changedFiles,files"
+PR_CONTEXT_METADATA_FIELDS="number,title,body,author,isDraft,baseRefName,headRefName,headRefOid,url,headRepository,headRepositoryOwner,labels,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviewRequests,reviews,comments,commits,closingIssuesReferences,additions,deletions,changedFiles,files"
 
 # prefetch_pr_context <pr_url> <pr_head_sha> <full_diff_file> [out_dir]
 #
@@ -81,6 +80,7 @@ prefetch_pr_context() {
       return 100
     fi
     # Non-rate-limit failure: degrade to a no-op so the run continues.
+    echo "::warning::PR context prefetch failed for $pr_url: $(head -c 300 <<< "$err_content" | tr '\n' ' ')" >&2
     return 0
   fi
 
@@ -95,6 +95,50 @@ prefetch_pr_context() {
   export PR_CONTEXT_DIFF_FILE="$diff_file"
   [ "$meta_stamped" = true ] && export PR_CONTEXT_METADATA_FILE="$meta_file"
   return 0
+}
+
+# prefetch_review_extras <pr_url> <pr_head_sha> [prior_review_sha] [out_dir]
+#
+#   Everything the agentic tiers would otherwise fetch for themselves: the linked
+#   issues, and the commits and files since the prior review. Used when the tiers
+#   have no `gh` of their own (scripts/lib/model-sandbox.sh). A failed fetch leaves a
+#   note in the file, so the tier reports the gap instead of assuming nothing changed.
+prefetch_review_extras() {
+  local pr_url="${1:?prefetch_review_extras: pr_url required}"
+  local sha="${2:?prefetch_review_extras: pr_head_sha required}"
+  local prior_sha="${3:-}"
+  local out_dir="${4:-/tmp/cascade}"
+  local out="$out_dir/pr-context-extras.md"
+  local owner_repo number issues
+
+  owner_repo=$(echo "$pr_url" | sed -E 's|.*/([^/]+)/([^/]+)/pull/.*|\1/\2|')
+  number=$(echo "$pr_url" | sed -E 's|.*/([0-9]+)$|\1|')
+
+  mkdir -p "$out_dir" 2>/dev/null || true
+  {
+    printf '# Pre-fed review context for %s at %s\n\n## Linked issues\n\n' "$pr_url" "$sha"
+    if issues=$(gh pr view "$number" -R "$owner_repo" --json closingIssuesReferences \
+        --jq '.closingIssuesReferences[]? | "\(.repository.owner.login)/\(.repository.name) \(.number)"' 2>/dev/null); then
+      [ -n "$issues" ] || printf 'None linked.\n'
+      local repo issue
+      while read -r repo issue; do
+        [ -n "$issue" ] || continue
+        printf '### %s#%s\n\n' "$repo" "$issue"
+        gh issue view "$issue" -R "$repo" --json title,state,body \
+          --jq '"**\(.title)** (\(.state))\n\n\(.body)\n"' 2>/dev/null \
+          || printf 'Could not be fetched.\n\n'
+      done <<< "$issues"
+    else
+      printf 'Could not be fetched.\n'
+    fi
+    if [ -n "$prior_sha" ]; then
+      printf '\n## Since the prior review (%s)\n\n' "$prior_sha"
+      gh api "repos/$owner_repo/compare/$prior_sha...$sha" \
+        --jq '.commits[].commit.message, .files[].filename' 2>/dev/null \
+        || printf 'Could not be fetched.\n'
+    fi
+  } > "$out"
+  export PR_CONTEXT_EXTRAS_FILE="$out"
 }
 
 # assert_prefetch_context_fresh <pr_url> [out_dir]

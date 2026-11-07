@@ -58,6 +58,7 @@ else
 fi
 
 check_optional "GH_PAT_WORKFLOWS" "workflow file pushes and repository_dispatch"
+check_optional "GH_PAT_DON_PETRY_WRITER" "the dispatch job's narrower token (falling back to GH_PAT_DON_PETRY)"
 check_optional "GOOGLE_API_KEY" "Gemini engine fallback"
 check_optional "GH_PAT" "Copilot engine"
 

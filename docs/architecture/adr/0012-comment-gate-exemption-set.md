@@ -53,7 +53,9 @@ We will narrow #1813's "every PR issue comment" scope to every PR issue comment
    From any other author the marker does nothing.
 5. **A registered clean info-status bot comment** (#1918): a registered
    reviewer source whose body matches its `info_status_pattern` and carries no
-   finding-bearing section (#2008).
+   finding-bearing section (#2008). The author must be a GitHub App
+   (`author.__typename` is `Bot`), because a User account can hold a registered
+   bot's bare login.
 
 We will never exempt by author login alone, because `don-petry` is also the
 account dev-lead and the personas post from. A steering comment stays in scope

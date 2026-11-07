@@ -249,7 +249,9 @@ calling it a regression, and treat CI as authoritative.**
   Because this is a **gate** workflow whose `failure` conclusion is intentional enforcement (it blocks a
   bad PR), it is exempt from the Fleet Monitor's high-failure issue tracking via `FLEET_GATE_WORKFLOWS`
   in `scripts/fleet_report.sh` (#941) — otherwise a guard doing its job produces false-positive trackers.
-  `holdout-guard.yml` is exempt for the same reason. Add new gate workflows of this class to that list.
+  `holdout-guard.yml` and `sync-scope-guard.yml` (which fails closed on a sync PR with no declared-paths
+  manifest or an out-of-scope diff, #1700/#2373) are exempt for the same reason. Add new gate workflows of
+  this class to that list.
 - **Exception:** `pr-review-sweep.yml` (stuck-review sweep, #573/#898) is a documented repo-specific
   workflow with no corresponding org template in `standards/workflows/`. It re-dispatches reviews for PRs
   that went green after a ci-pending/ci-failing skip, via two triggers: a scheduled cron (the EVENTUAL
@@ -327,6 +329,27 @@ calling it a regression, and treat CI as authoritative.**
   `scripts/auto_rebase_health.sh`, tests in `tests/auto_rebase_health.bats`) and runs on `github.token`
   only — no cross-org PAT. It must not be removed by template syncs. If the org template gains an
   auto-rebase instrumentation equivalent, remove this exception and defer to the template instead.
+- **Exception:** `decision-brief.yml` (combsmith/incubator#3) is a documented repo-specific workflow with
+  no corresponding org template in `standards/workflows/`. It is org-private automation in the same class as
+  `initiative-planner.yml` / `idea-triage.yml`: the BMAD Analyst (Mary) drafts `ideas/<slug>/brief.md`
+  (+ `market-research.md`, `ost.md`) for ONE ripe Ideas Discussion of a `target_repo` from that repo's own
+  `ideas/_TEMPLATE/`, scored RICE/ICE with a riskiest-assumption + cheapest-test table and a go/no-go, and
+  opens the package as a PR there. Its `needs-brief` `discussion:[labeled]` trigger is bridged to
+  `workflow_dispatch` by a `redispatch` job (claude-code-action aborts on `discussion` contexts); its
+  `from_queue` sweep briefs every idea idea-triage ranked Ripe that has no brief yet. The **provenance
+  guard** (`scripts/decision-brief/validate-package.sh`, #1160) runs in a separate `land` job from a
+  clean checkout after the model job (the only job holding the org PAT; the model step gets the
+  read-scoped `GITHUB_TOKEN`): an
+  unsourced market figure, a missing score/Confidence, an empty assumptions table or a positionless
+  recommendation fails the run before any PR exists. It never applies `idea:approved`. Tooling in
+  `scripts/decision-brief/` (tests: `tests/test_decision_brief.bats`,
+  `tests/test_decision_brief_workflow.bats`). Its companion **`decision-brief-reusable.yml`** is a
+  first-party reusable HOSTED HERE (like `dev-lead-reusable.yml`): the fleet dispatch bridge that caller
+  stubs pin at `@decision-brief/v1-stable` (cut with `scripts/cut-release.sh decision-brief …`; the
+  `release-channel-tags` ruleset must gain the `decision-brief/**` namespace — an admin step). The thin
+  caller stub lives at `standards/workflows/decision-brief.yml` as a **staging copy** until it is promoted
+  to `combsmith/.github/standards/workflows/` (org standards belong there; this repo only hosts it so
+  the stub and the reusable ship in one reviewed change). Neither file must be removed by template syncs.
 - **Exception:** `initiative-planner-canary.yml` (#822, closes #655 item 3) is a documented repo-specific
   workflow with no corresponding org template in `standards/workflows/`. It is a daily (≤1/day) +
   `workflow_dispatch` post-merge canary that fires a **dry-run** dispatch of `initiative-planner.yml`
@@ -1018,12 +1041,13 @@ gated (with the one upstream exception above), and a test keeps it that way.
 |---|---|---|---|
 | `dev-lead-reusable.yml` | Job condition, no notice | `dispatch,ci-relay,resume` | The original gate (#1525). No notice job: a contract test requires every job of this reusable to carry the condition, and a notice job would start a runner for every event in every consumer repository during a pause. |
 | `pr-review.yml` | Job condition, no notice | `review` | Reusable. A job condition, because the AGENTS_PAUSED branch of validate-engines.sh is not enough: with Claude as the primary engine, review-batch.sh carries on. No notice job: the canary promotion gate counts a green run as a health sample, so a paused run must end skipped. |
-| `persona-runner-reusable.yml` | Job condition | `run` | Runs every persona advisory (qa-lead, the architects and the rest). |
+| `persona-runner-reusable.yml` | Job condition | `run` | Runs every persona advisory (qa-lead, the architects and the rest). The gate job makes no model call and carries the same condition; the post job needs run, so it is skipped with it. |
 | `ci-failure-analyst-reusable.yml` | Job condition, no notice | `analyze` | Reusable. No notice job, for the same reason as pr-review.yml: the canary promotion gate samples its runs. |
 | `gh-aw-cross-org.yml` | Job condition | `dispatch` |  |
 | `issue-triage-runner.yml` | Job condition | `triage` | The apply job needs triage, so it is skipped with it. |
 | `initiative-planner.yml` | Job condition | `plan` | The redispatch bridge makes no model call and still runs; the run it starts is the one that reports the pause. |
 | `idea-triage.yml` | Job condition | `triage` |  |
+| `decision-brief.yml` | Job condition | `brief` | The redispatch bridge and the queue sweep make no model call and still run; the brief run they start is the one that reports the pause. |
 | `spec-drift.yml` | Job condition, no notice | `spec-drift` | Opt-in and off by default. No notice job: its contract test requires every job to hold issues: write and the workflow to cost nothing when it does not run. |
 | `dependency-advisory.yml` | Job condition | `advisory` |  |
 | `docs-health-check.yml` | Job condition | `health-check` |  |
@@ -1728,7 +1752,7 @@ intentionally **mutable** and are an accepted, documented exception because they
 - Immutable `vX.Y.Z` tags are the real rollback targets; `scripts/cut-release.sh` refuses to overwrite
   an existing release tag.
 - Routine channel-tag moves are made by the health-gated Release Manager automation (#501/#993,
-  below), which is a ruleset bypass actor through the `petry-projects-release-manager` GitHub App.
+  below), which is a ruleset bypass actor through the `combsmith-release-manager` GitHub App.
   The only other sanctioned path is a maintainer running `cut-release.sh` as an org admin or with
   that App's token.
 
@@ -1738,7 +1762,7 @@ Release tags on this repo's agents (`pr-review`, `dev-lead`, `ci-failure-analyst
 `combsmith/.github`-hosted reusables are cut and moved by the **Release Manager**. That is the
 `Canary Rollout` workflow in **`combsmith/.github`**
 (`.github/workflows/canary-rollout.yml` + `scripts/canary-rollout.sh`, relocated there from this
-repo under #613), acting as the **`petry-projects-release-manager[bot]`** GitHub App. Its registry
+repo under #613), acting as the **`combsmith-release-manager[bot]`** GitHub App. Its registry
 (each agent's host, reusable path, rings and gate knobs) is **`standards/canary-rings.json` in
 `combsmith/.github`**, not in this repo. Each sweep (cron `33 */4 * * *`, every 4 hours;
 GitHub may delay scheduled runs) runs `autocut` → `promote-all` → `sync-issues`:
@@ -1772,7 +1796,7 @@ GitHub may delay scheduled runs) runs `autocut` → `promote-all` → `sync-issu
   `combsmith/.github` `standards/canary-rings.json`, or disarm `CANARY_AUTO_PROMOTE`, which is
   fleet-wide. An issue label such as `dev-lead:hands-off` stops dev-lead from acting on the issue,
   but **it does not stop the promotion gate**.
-- **Who did what:** releases tagged by `petry-projects-release-manager[bot]` came from the
+- **Who did what:** releases tagged by `combsmith-release-manager[bot]` came from the
   automation, and releases tagged by a person were cut by hand. The `Canary Rollout` run's job
   summary and the promotion Deployments record the gate evidence for every move.
 

@@ -1,5 +1,5 @@
 ---
-description: Shell script development standards for the Petry Projects organization
+description: Shell script development standards for the CombSmith organization
 applyTo: "**/*.sh,**/*.bash"
 ---
 

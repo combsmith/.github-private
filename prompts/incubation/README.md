@@ -20,6 +20,7 @@ The **authoritative contract** is `ideas/package-spec.json` in the incubator rep
 | Brainstorm | `brainstorm.md` | Mary (Analyst) | `producer-brainstorm.md` | `core-skills/bmad-brainstorming` |
 | Market research | `market-research.md` | Mary (Analyst) | `producer-market-research.md` | `bmm-skills/1-analysis/research/bmad-market-research` |
 | Decision brief | `brief.md` | Mary (Analyst) | `producer-brief.md` | `bmm-skills/1-analysis/bmad-product-brief` (already headless — preserve) |
+| Opportunity–solution tree | `ost.md` (supporting, not gate-required) | Mary (Analyst) | `producer-ost.md` | — (Teresa Torres OST; grounded in the brief) |
 | PRD | `prd.md` | John (PM) | `producer-prd.md` | `bmm-skills/2-plan-workflows/bmad-prd` (already headless — preserve) |
 
 Each artifact also has a `validate-<artifact>.md` overlay (Ask 2) that emits a
@@ -40,10 +41,16 @@ brief; the PRD is John's.
 Both are governed by [`shared.md`](shared.md) — the headless contract (inputs,
 output frontmatter, no-fabrication rule, JSON schemas). Read it first.
 
-## How these are invoked (Ask 3 — ships with the incubator wiring)
+## How these are invoked (Ask 3 — the decision-brief stage)
 
-A Discussion-mention/label-triggered workflow (redispatch bridge, since
-`claude-code-action` aborts on `discussion` contexts) runs the relevant overlay
-via `claude-code-action` and commits the artifact to the idea's incubation PR.
-That workflow's caller stub lives in `incubator`; it is added once incubator
-PR #8 (the gate) merges. These overlays are the reusable content it drives.
+`.github/workflows/decision-brief.yml` (the central run; Mary) and
+`decision-brief-reusable.yml` (the fleet dispatch bridge a thin caller stub
+pins) wire the brief-stage producers end to end: a `needs-brief` label on an
+Ideas Discussion — or an idea ranked **Ripe** by idea-triage — bridges through
+`workflow_dispatch` (claude-code-action aborts on `discussion` contexts), runs
+[`decision-brief-stage.md`](decision-brief-stage.md) → `producer-market-research.md`
+→ `producer-ost.md` → `producer-brief.md`, enforces the provenance guard with
+`scripts/decision-brief/validate-package.sh`, and opens the package as a PR on
+`incubate/<slug>` in the target repo (combsmith/incubator#3). The brainstorm and
+PRD producers are not wired by that stage: brainstorm stays human-facilitated,
+and the PRD is John's, after `idea:approved`.

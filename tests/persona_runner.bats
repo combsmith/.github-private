@@ -498,3 +498,306 @@ STUB
   [ "$status" -eq 0 ]
   [ ! -f "$BATS_TEST_TMPDIR/posted.txt" ]
 }
+
+# --- handoff from the agent job to the post job ------------------------------
+
+@test "pr_write_handoff keeps only the advisory: chatter stays out and tokens are redacted" {
+  raw="$BATS_TEST_TMPDIR/agent-out.txt"
+  fake="ghp_$(printf 'abcdefghij1234567890ABCDEFGHIJ')"
+  printf 'chatter %s\n===PERSONA-ADVISORY-BEGIN===\n## advisory\ntoken %s\n===PERSONA-ADVISORY-END===\nafter\n' "$fake" "$fake" > "$raw"
+  handoff="$BATS_TEST_TMPDIR/out/dir/advisory.txt"
+  run pr_write_handoff "$raw" "$handoff"
+  [ "$status" -eq 0 ]
+  run cat "$handoff"
+  [ "${lines[0]}" = "===PERSONA-ADVISORY-BEGIN===" ]
+  [ "${lines[1]}" = "## advisory" ]
+  [ "${lines[2]}" = "token ***REDACTED-GH-TOKEN***" ]
+  [ "${lines[3]}" = "===PERSONA-ADVISORY-END===" ]
+  [ "${#lines[@]}" -eq 4 ]
+  [[ "$output" != *"chatter"* ]]
+  [[ "$output" != *"after"* ]]
+  [[ "$output" != *"$fake"* ]]
+}
+
+@test "pr_write_handoff: no advisory writes an empty block that pr_run_post skips" {
+  raw="$BATS_TEST_TMPDIR/agent-out.txt"
+  printf 'no sentinels here\n' > "$raw"
+  handoff="$BATS_TEST_TMPDIR/advisory.txt"
+  pr_write_handoff "$raw" "$handoff"
+  _login_stub 0
+  run env PATH="$stub:$PATH" GH_TOKEN=fake bash -c '
+    source "'"$LIB"'"
+    pr_run_post qa-lead repo/x 5 don-petry CRED "'"$handoff"'" "'"$BATS_TEST_TMPDIR/body.md"'" /dev/null
+  '
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nothing to post"* ]]
+  [ ! -f "$BATS_TEST_TMPDIR/posted.txt" ]
+}
+
+@test "the handoff round-trips through pr_run_post: same advisory, marker guaranteed" {
+  raw="$BATS_TEST_TMPDIR/agent-out.txt"
+  printf 'chatter\n===PERSONA-ADVISORY-BEGIN===\n## advisory\nrisk: low\n===PERSONA-ADVISORY-END===\n' > "$raw"
+  dir="$BATS_TEST_TMPDIR/handoff"
+  pr_write_handoff "$raw" "$dir/$PR_HANDOFF_FILE"
+  run pr_validate_handoff "$dir"
+  [ "$status" -eq 0 ]
+  _login_stub 0
+  run env PATH="$stub:$PATH" GH_TOKEN=fake bash -c '
+    source "'"$LIB"'"
+    pr_run_post qa-lead repo/x 5 don-petry CRED "'"$dir/$PR_HANDOFF_FILE"'" "'"$BATS_TEST_TMPDIR/body.md"'" /dev/null
+  '
+  [ "$status" -eq 0 ]
+  run cat "$BATS_TEST_TMPDIR/posted.txt"
+  [ "${lines[0]}" = "<!-- persona:qa-lead -->" ]
+  [ "${lines[1]}" = "## advisory" ]
+  [ "${lines[2]}" = "risk: low" ]
+}
+
+@test "pr_run_post treats the handoff as data: shell syntax in it is posted, not run" {
+  canary="$BATS_TEST_TMPDIR/canary"
+  handoff="$BATS_TEST_TMPDIR/advisory.txt"
+  {
+    echo '===PERSONA-ADVISORY-BEGIN==='
+    echo "\$(touch $canary) \`touch $canary\` ; touch $canary"
+    echo '===PERSONA-ADVISORY-END==='
+  } > "$handoff"
+  _login_stub 0
+  run env PATH="$stub:$PATH" GH_TOKEN=fake bash -c '
+    set -euo pipefail
+    source "'"$LIB"'"
+    pr_run_post qa-lead repo/x 5 don-petry CRED "'"$handoff"'" "'"$BATS_TEST_TMPDIR/body.md"'" /dev/null
+  '
+  [ "$status" -eq 0 ]
+  [ ! -e "$canary" ]
+  run cat "$BATS_TEST_TMPDIR/posted.txt"
+  [ "${lines[1]}" = "\$(touch $canary) \`touch $canary\` ; touch $canary" ]
+}
+
+@test "pr_validate_handoff accepts one regular file within the cap" {
+  dir="$BATS_TEST_TMPDIR/handoff"
+  mkdir -p "$dir"
+  head -c "$PR_HANDOFF_MAX_BYTES" /dev/zero | tr '\0' 'x' > "$dir/$PR_HANDOFF_FILE"
+  run pr_validate_handoff "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "pr_validate_handoff refuses a file over the cap" {
+  dir="$BATS_TEST_TMPDIR/handoff"
+  mkdir -p "$dir"
+  head -c "$(( PR_HANDOFF_MAX_BYTES + 1 ))" /dev/zero | tr '\0' 'x' > "$dir/$PR_HANDOFF_FILE"
+  run pr_validate_handoff "$dir"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"over the"* ]]
+}
+
+@test "pr_validate_handoff refuses a missing directory and a missing file" {
+  run pr_validate_handoff "$BATS_TEST_TMPDIR/absent"
+  [ "$status" -ne 0 ]
+  dir="$BATS_TEST_TMPDIR/empty"
+  mkdir -p "$dir"
+  run pr_validate_handoff "$dir"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"found 0 entries"* ]]
+}
+
+@test "pr_validate_handoff refuses any extra entry, nested ones included" {
+  dir="$BATS_TEST_TMPDIR/extra"
+  mkdir -p "$dir"
+  echo ok > "$dir/$PR_HANDOFF_FILE"
+  echo extra > "$dir/other.sh"
+  run pr_validate_handoff "$dir"
+  [ "$status" -ne 0 ]
+  dir="$BATS_TEST_TMPDIR/nested"
+  mkdir -p "$dir/sub"
+  echo ok > "$dir/$PR_HANDOFF_FILE"
+  echo extra > "$dir/sub/inner"
+  run pr_validate_handoff "$dir"
+  [ "$status" -ne 0 ]
+}
+
+@test "pr_validate_handoff refuses a symlink, a wrong name and a symlinked directory" {
+  target="$BATS_TEST_TMPDIR/target"
+  echo secret > "$target"
+  dir="$BATS_TEST_TMPDIR/symlink"
+  mkdir -p "$dir"
+  ln -s "$target" "$dir/$PR_HANDOFF_FILE"
+  run pr_validate_handoff "$dir"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not a regular file"* ]]
+  [[ "$output" != *"secret"* ]]
+  dir="$BATS_TEST_TMPDIR/renamed"
+  mkdir -p "$dir"
+  echo ok > "$dir/renamed.txt"
+  run pr_validate_handoff "$dir"
+  [ "$status" -ne 0 ]
+  dir="$BATS_TEST_TMPDIR/real"
+  mkdir -p "$dir"
+  echo ok > "$dir/$PR_HANDOFF_FILE"
+  ln -s "$dir" "$BATS_TEST_TMPDIR/linked"
+  run pr_validate_handoff "$BATS_TEST_TMPDIR/linked"
+  [ "$status" -ne 0 ]
+}
+
+# --- the reusable's job layout -----------------------------------------------
+# What keeps the post job's inputs and credentials apart from the model's job.
+# A contract on the workflow file, because Actions does not run these jobs here.
+# Needs python3 + PyYAML.
+
+WORKFLOW="$SCRIPT_DIR/.github/workflows/persona-runner-reusable.yml"
+
+# _jobs <python-expression> — evaluate against the parsed `jobs` map, helpers
+# included; exits 0 when the expression is truthy.
+_jobs() {
+  WF="$WORKFLOW" EXPR="$1" python3 - <<'PY'
+import json, os, re, sys, yaml
+jobs = yaml.safe_load(open(os.environ["WF"]))["jobs"]
+def text(node):
+    return json.dumps(node, ensure_ascii=False)
+def steps(job):
+    return jobs[job]["steps"]
+def step(job, name_part):
+    found = [s for s in steps(job) if name_part in s.get("name", "")]
+    assert len(found) == 1, f"{name_part}: {len(found)} steps in {job}"
+    return found[0]
+def secrets_in(node):
+    return sorted(set(re.findall(r"secrets\.([A-Za-z0-9_]+)", text(node))))
+sys.exit(0 if eval(os.environ["EXPR"]) else 1)
+PY
+}
+
+# _step_field <job> <step-name-part> <with|run> [key] — print one field of a step.
+_step_field() {
+  WF="$WORKFLOW" JOB="$1" NAME="$2" FIELD="$3" KEY="${4:-}" python3 - <<'PY'
+import os, yaml
+job = yaml.safe_load(open(os.environ["WF"]))["jobs"][os.environ["JOB"]]
+found = [s for s in job["steps"] if os.environ["NAME"] in s.get("name", "")]
+assert len(found) == 1
+value = found[0][os.environ["FIELD"]]
+print(value[os.environ["KEY"]] if os.environ["KEY"] else value)
+PY
+}
+
+# _eval_token <job> <credential> <bot-secret> <owner-secret> — the value the
+# job's posting-token expression yields. Actions `&&`/`||` keep Python's
+# and/or truthiness for these string operands.
+_eval_token() {
+  WF="$WORKFLOW" JOB="$1" CRED="$2" BOT="$3" OWNER="$4" python3 - <<'PY'
+import os, re, yaml
+job = yaml.safe_load(open(os.environ["WF"]))["jobs"][os.environ["JOB"]]
+found = [s["env"]["GH_TOKEN"] for s in job["steps"]
+         if "secrets." in str(s.get("env", {}).get("GH_TOKEN", ""))]
+assert len(found) == 1
+e = found[0].strip()
+assert e.startswith("${{") and e.endswith("}}")
+e = re.sub(r"(steps\.identity|needs\.gate)\.outputs\.credential", "cred", e[3:-2])
+e = e.replace("secrets.DON_PETRY_BOT_GH_PAT", "bot").replace("secrets.GH_PAT_DON_PETRY", "owner")
+e = e.replace("&&", " and ").replace("||", " or ")
+print(eval(e, {}, {"cred": os.environ["CRED"], "bot": os.environ["BOT"], "owner": os.environ["OWNER"]}))
+PY
+}
+
+@test "workflow: the jobs are gate, run, post and the pause notice, in that dependency order" {
+  _jobs "sorted(jobs) == ['fleet-paused', 'gate', 'post', 'run']"
+  _jobs "jobs['run']['needs'] == 'gate'"
+  _jobs "jobs['post']['needs'] == ['gate', 'run']"
+}
+
+@test "workflow: the model's job references only the engine credential" {
+  _jobs "secrets_in(jobs['run']) == ['CLAUDE_CODE_OAUTH_TOKEN']"
+}
+
+@test "workflow: no job but the model's holds the engine credential or calls the CLI" {
+  for job in gate post; do
+    _jobs "'CLAUDE_CODE_OAUTH_TOKEN' not in text(jobs['$job'])"
+    _jobs "'claude --print' not in text(jobs['$job']) and 'claude-code' not in text(jobs['$job'])"
+  done
+  _jobs "'claude --print' in step('run', 'Produce the advisory')['run']"
+}
+
+@test "workflow: every job checks out the workflow SHA, without persisted credentials, as its first step" {
+  for job in gate run post; do
+    _jobs "steps('$job')[0]['uses'].startswith('actions/checkout@')"
+    _jobs "steps('$job')[0]['with']['ref'] == '\${{ github.workflow_sha }}'"
+    _jobs "steps('$job')[0]['with']['persist-credentials'] is False"
+  done
+}
+
+@test "workflow: PATs appear only in the single token value of the preflight and post steps" {
+  for job in gate post; do
+    _jobs "secrets_in(jobs['$job']) == ['DON_PETRY_BOT_GH_PAT', 'GH_PAT_DON_PETRY']"
+    _jobs "len([s for s in steps('$job') if secrets_in(s)]) == 1"
+    _jobs "[k for s in steps('$job') for k, v in s.get('env', {}).items() if 'secrets.' in v] == ['GH_TOKEN']"
+    _jobs "'secrets.' not in text({k: v for k, v in jobs['$job'].items() if k != 'steps'})"
+  done
+  _jobs "secrets_in(step('gate', 'Authorization preflight'))"
+  _jobs "secrets_in(step('post', 'Enforce marker'))"
+}
+
+@test "workflow: the posting token resolves to the manifest's PAT and never falls through" {
+  for job in gate post; do
+    [ "$(_eval_token "$job" DON_PETRY_BOT_GH_PAT bot-value owner-value)" = "bot-value" ]
+    [ "$(_eval_token "$job" GH_PAT_DON_PETRY bot-value owner-value)" = "owner-value" ]
+    [ "$(_eval_token "$job" DON_PETRY_BOT_GH_PAT '' owner-value)" = "" ]
+    [ "$(_eval_token "$job" GH_PAT_DON_PETRY bot-value '')" = "" ]
+    [ "$(_eval_token "$job" SOME_OTHER_PAT bot-value owner-value)" = "" ]
+    [ "$(_eval_token "$job" '' bot-value owner-value)" = "" ]
+  done
+}
+
+@test "workflow: the model's job exposes one output, used only by the post job's condition" {
+  _jobs "list(jobs['run']['outputs']) == ['skip_post']"
+  _jobs "'needs.run' not in text(steps('post'))"
+  _jobs "'needs.run.outputs.skip_post == ' in jobs['post']['if']"
+}
+
+@test "workflow: the post target comes from inputs, identity from the gate job" {
+  _jobs "step('post', 'Enforce marker')['env']['SOURCE_REPO'] == '\${{ inputs.source_repo }}'"
+  _jobs "step('post', 'Enforce marker')['env']['ITEM_NUMBER'] == '\${{ inputs.item_number }}'"
+  _jobs "step('post', 'Enforce marker')['env']['POSTING_ACCOUNT'] == '\${{ needs.gate.outputs.account }}'"
+  _jobs "step('post', 'Enforce marker')['env']['POSTING_CREDENTIAL'] == '\${{ needs.gate.outputs.credential }}'"
+}
+
+@test "workflow: the post step validates the handoff, then parses it, and runs nothing from it" {
+  _jobs "step('post', 'Download the advisory')['with']['path'] == '\${{ runner.temp }}/persona-handoff'"
+  _jobs "step('post', 'Enforce marker')['env']['HANDOFF_DIR'] == '\${{ runner.temp }}/persona-handoff'"
+  script="$(_step_field post 'Enforce marker' run)"
+  [ "$(grep -cE '^[[:space:]]*(source|\.|bash|sh|eval)[[:space:]]' <<<"$script")" -eq 1 ]
+  [[ "$script" == *'source scripts/lib/persona-runner.sh'* ]]
+  [[ "$script" != *'cd "$HANDOFF_DIR'* ]]
+  validate_line="$(grep -n 'pr_validate_handoff "\$HANDOFF_DIR"' <<<"$script" | cut -d: -f1)"
+  post_line="$(grep -n '^pr_run_post' <<<"$script" | cut -d: -f1)"
+  [ -n "$validate_line" ]
+  [ -n "$post_line" ]
+  [ "$validate_line" -lt "$post_line" ]
+  [[ "$script" == *'"$HANDOFF_DIR/$PR_HANDOFF_FILE"'* ]]
+}
+
+@test "workflow: the artifact carries the handoff file alone, briefly, under the name the post job reads" {
+  _jobs "step('run', 'Upload the advisory')['with']['name'] == step('post', 'Download the advisory')['with']['name']"
+  _jobs "step('run', 'Upload the advisory')['with']['retention-days'] == 1"
+  [ "$(_step_field run 'Upload the advisory' with path)" = "\${{ runner.temp }}/persona-handoff/$PR_HANDOFF_FILE" ]
+  _jobs "'pr_write_handoff \"\$_out\" \"\$RUNNER_TEMP/persona-handoff/\${PR_HANDOFF_FILE}\"' in step('run', 'Produce the advisory')['run']"
+}
+
+@test "workflow: the caller passes exactly the secrets the reusable declares" {
+  WF="$WORKFLOW" CALLER="$SCRIPT_DIR/.github/workflows/persona-runner.yml" python3 - <<'PY'
+import os, yaml
+caller = yaml.safe_load(open(os.environ["CALLER"]))["jobs"]["run"]["secrets"]
+# PyYAML reads the `on:` key as True.
+declared = yaml.safe_load(open(os.environ["WF"]))[True]["workflow_call"]["secrets"]
+assert isinstance(caller, dict), "secrets must be named, not inherited"
+assert sorted(caller) == sorted(declared), (sorted(caller), sorted(declared))
+PY
+}
+
+@test "workflow: a fleet pause skips the model's job and the writer" {
+  for job in gate run post; do
+    _jobs "jobs['$job']['if'].startswith(\"vars.AGENTS_PAUSED != 'true'\")"
+  done
+}
+
+@test "workflow: the gate's verdict guards every step of the model's job" {
+  _jobs "len(steps('run')) == 4"
+  _jobs "all(s['if'] == \"needs.gate.outputs.proceed == 'true'\" for s in steps('run')[:3])"
+  _jobs "step('run', 'Upload the advisory')['if'] == \"steps.advise.outputs.skip_post == 'false'\""
+}

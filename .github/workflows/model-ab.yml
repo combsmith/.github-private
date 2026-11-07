@@ -151,7 +151,7 @@ jobs:
             --runs "$RUNS"
 
       - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version: '20'
 
@@ -328,7 +328,7 @@ jobs:
         # or infra (rc=2) run still surfaces its evidence instead of discarding it;
         # the exit status is the gate, the artifact is the receipt (#1952).
         if: always() && hashFiles('model-ab-evidence.json') != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: model-ab-evidence-${{ github.run_id }}
           path: model-ab-evidence.json
@@ -339,7 +339,7 @@ jobs:
         # (and, once duration_ms lands, latency) evidence. always() so it uploads
         # even when the A/B step exited non-zero (regression/infra).
         if: always() && hashFiles('model-ab-tokens.jsonl') != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: model-ab-tokens-${{ github.run_id }}
           path: model-ab-tokens.jsonl

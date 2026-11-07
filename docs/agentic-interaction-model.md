@@ -198,6 +198,7 @@ keeps its own file) carries **no** job qualifier and remains exactly one row.
 | `.github/workflows/gh-aw-cross-org.yml` | 1 | — | `repository_dispatch:[gh-aw-issue-triage, gh-aw-ci-failure]` — PAT-backed cross-org dispatch receiver; no schedule. |
 | `.github/workflows/persona-runner.yml` | 1 | — | `repository_dispatch:[persona-mention]` — PAT-backed dispatch receiver for persona invocations; no schedule. |
 | `.github/workflows/initiative-planner.yml` | 1 | — | `workflow_dispatch` only — human-explicit bridge for the `discussion:[labeled]` signal that cannot be subscribed to inline; §2 Class 1 by declaration (no schedule, no `timer_role`). |
+| `.github/workflows/decision-brief.yml` | 1 | — | `workflow_dispatch` only — human-explicit bridge for the `discussion:[labeled]` (`needs-brief`) signal that cannot be subscribed to inline, plus the `from_queue` sweep a caller's own timer dispatches; §2 Class 1 by declaration (no schedule, no `timer_role`). |
 | `.github/workflows/pr-auto-review.yml` | 1 | — | `workflow_run:[completed]`, `check_suite:[completed]`, `pull_request_review:[submitted, dismissed]`, `pull_request:[opened, reopened, synchronize, ready_for_review]` — multi-event readiness gate; no schedule. |
 | `.github/workflows/pr-review-delayed-retry.yml` | 1 | — | `workflow_dispatch` only — armed on demand by `pr-review-sweep.yml` to retry a rate-limited PR review near its `reset` without depending on the best-effort cron (#1994). §2 Class 1 by declaration (no schedule, no `timer_role`); the in-run sleep is a deterministic armed delay anchored to `not_before`, not a scheduled trigger — the fix for the convergence-clock pattern, not an instance of it. |
 | `.github/workflows/pr-review-sweep.yml` | 2 | backstop | `schedule: '2,17,32,47 * * * *'` backstop **plus** `workflow_run:[completed]` fast path (#898) scoped to the completing CI run's PR(s); idempotent, per-branch `cancel-in-progress`. |
@@ -249,6 +250,7 @@ keeps its own file) carries **no** job qualifier and remains exactly one row.
 > | `.github/workflows/dev-lead-reusable.yml` | Reusable workflow — invoked via `workflow_call`, not a direct entrypoint |
 > | `.github/workflows/ci-failure-analyst-reusable.yml` | Reusable workflow — invoked via `workflow_call`, not a direct entrypoint |
 > | `.github/workflows/persona-runner-reusable.yml` | Reusable workflow — invoked via `workflow_call`, not a direct entrypoint |
+> | `.github/workflows/decision-brief-reusable.yml` | Reusable workflow — invoked via `workflow_call`, not a direct entrypoint |
 > | `.github/workflows/pr-review.yml` | Reusable workflow — invoked via `workflow_call`, not a direct entrypoint |
 > | `.github/workflows/repair-pr-approvals.yml` | Manual admin tool — `workflow_dispatch` only, no automated agentic trigger |
 > | `.github/workflows/model-ab.yml` | Manual maintainer eval tool — `workflow_dispatch` only, no schedule/automated trigger, no agent→agent interaction (#1950) |
