@@ -162,6 +162,36 @@ spoof' 2026-10-01T23:30:00Z NONE)")"
   [ "$(jq 'length' <<< "$out")" = "0" ]
 }
 
+# combsmith/.github-private PRs 2456/2467: a no-finding Codex or CodeRabbit summary
+# needs no disposition (the gate clears it), so it never needs a fix-bot-comment
+# pass either, however often the bot edits it. A summary with findings still does.
+_NF_FIX="$SCRIPT_DIR/tests/fixtures"
+
+@test "bcr: a no-finding Codex or CodeRabbit summary is not a candidate, edited or not" {
+  local cx cr
+  cx="$(cat "$_NF_FIX/codex/pr2467-review-summary-no-findings.md")"
+  cr="$(cat "$_NF_FIX/coderabbit/pr2467-summary-minimal-ratelimited.md")"
+  out="$(_decide \
+    "$(_bot IC_cx chatgpt-codex-connector "$cx" 2026-10-01T22:00:00Z 2026-10-01T23:40:00Z RESOLVED)" \
+    "$(_bot IC_cr coderabbitai "$cr" 2026-10-01T22:00:00Z 2026-10-01T23:40:00Z)" \
+    "$(_ours '<!-- dev-lead:comment-disposition id=IC_cx disposition=informational -->
+Clean status.' 2026-10-01T23:00:00Z)")"
+  [ "$(jq 'length' <<< "$out")" = "0" ]
+}
+
+@test "bcr: a Codex summary reporting findings, or a Low-risk CodeRabbit summary, still dispatches" {
+  local cx cr
+  cx="$(sed 's/"has_any_findings":false,"has_unresolved_findings":false,"status":"completed"},"security/"has_any_findings":true,"has_unresolved_findings":true,"status":"completed"},"security/' \
+    "$_NF_FIX/codex/pr2467-review-summary-no-findings.md")"
+  cr="$(sed 's/\*\*⚪ Minimal\*\* · up to/**🔵 Low** · up to/' "$_NF_FIX/coderabbit/pr2467-summary-minimal-ratelimited.md")"
+  [[ "$cx" == *'"has_any_findings":true'* ]]
+  [[ "$cr" == *'**🔵 Low** · up to'* ]]
+  out="$(_decide "$(_bot IC_cx chatgpt-codex-connector "$cx" 2026-10-01T22:00:00Z)")"
+  [ "$(_dispatches "$out")" = "1" ]
+  out="$(_decide "$(_bot IC_cr coderabbitai "$cr" 2026-10-01T22:00:00Z)")"
+  [ "$(_dispatches "$out")" = "1" ]
+}
+
 @test "bcr: a comment already minimized RESOLVED is not a candidate" {
   out="$(_decide "$(_bot IC_cr coderabbitai 'Walkthrough' 2026-10-01T23:05:43Z '' RESOLVED)")"
   [ "$(jq 'length' <<< "$out")" = "0" ]
