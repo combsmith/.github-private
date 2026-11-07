@@ -358,19 +358,29 @@ post_dispatch_guard() {
 # lookup_check_run_details <repo> <head_sha> <check_name>
 # Returns JSON {id, details_url} for the most recent failed check matching
 # check_name on head_sha, so the retry dispatch has full failure context.
+# Without one it prints {"id":"","details_url":""} and a ::warning:: on stderr
+# naming the repo and check: a retry without them cannot fetch the run's logs.
 lookup_check_run_details() {
-  local repo="$1" head_sha="$2" check_name="$3" out
-  # On an API error gh prints the error body to stdout, so a `|| echo` fallback
-  # would be appended to it; replace the output instead.
-  if ! out=$(gh api "repos/${repo}/commits/${head_sha}/check-runs?per_page=100" \
-    --jq --arg name "$check_name" \
-    '.check_runs
-     | map(select(.name == $name and .conclusion == "failure"))
-     | sort_by(.completed_at)
-     | last
-     | {id: (.id // ""), details_url: (.details_url // "")}' \
-    2>/dev/null); then
+  local repo="$1" head_sha="$2" check_name="$3" raw out safe_name
+  # `gh api --jq` takes no `--arg`, so filter the raw pages with jq, which also
+  # keeps the check name out of the filter text. A commit can carry more than
+  # 100 check runs, so every page is read. On an API error gh prints the error
+  # body to stdout, so a `|| echo` fallback would be appended to it; replace the
+  # output instead (an error body has no .check_runs, so jq fails).
+  if ! raw=$(gh api --paginate "repos/${repo}/commits/${head_sha}/check-runs?per_page=100" 2>/dev/null) \
+     || ! out=$(jq -sc --arg name "$check_name" \
+       '[.[].check_runs[]]
+        | map(select(.name == $name and .conclusion == "failure"))
+        | sort_by(.completed_at)
+        | last
+        | {id: (.id // ""), details_url: (.details_url // "")}' \
+       <<< "$raw" 2>/dev/null); then
     out='{"id":"","details_url":""}'
+  fi
+  if [[ "$out" == '{"id":"","details_url":""}' ]]; then
+    # One line, bounded: the name lands inside a workflow command.
+    safe_name=$(printf '%s' "$check_name" | tr -c '[:alnum:] ._()/-' ' ' | cut -c1-120)
+    echo "::warning::dev-lead-retry: no failed check run '${safe_name}' found on ${repo}@${head_sha:0:8} (or check runs unreadable); the CI retry is sent without its id and details_url" >&2
   fi
   printf '%s\n' "$out"
 }
