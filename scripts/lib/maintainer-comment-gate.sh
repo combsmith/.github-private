@@ -41,7 +41,9 @@
 #     • from an OWNER/MEMBER/COLLABORATOR only: the explicit opt-out marker
 #       `<!-- maintainer:not-a-finding -->`;
 #     • a registered clean info-status bot comment (#1918), from a GitHub App
-#       author (`author.__typename` "Bot") only.
+#       author (`author.__typename` "Bot") only;
+#     • a Codex or CodeRabbit summary whose own structured state reports no
+#       finding (_MAINTAINER_GATE_NO_FINDING_JQ_DEFS), from a GitHub App author only.
 #   No author is exempt by login alone: don-petry is also the account dev-lead and
 #   the personas post from (ADR-0008). A steering comment stays in scope unless
 #   the maintainer opts it out. The definition is _MAINTAINER_GATE_SCOPE_JQ_DEFS,
@@ -146,6 +148,79 @@ readonly _MAINTAINER_GATE_INFO_JQ_DEFS='
          | ($p != null)
            and (($b | test($findre)) | not)
            and ($b | test($p)));
+'
+
+# The no-finding summary classifier as jq definitions. Codex and CodeRabbit each
+# keep ONE summary comment per PR and edit it on every push. Under #2008 each edit
+# needs a fresh dev-lead disposition, and on a `dev-lead:hands-off` PR dev-lead
+# posts none, so pr-review approved and then dismissed its own approval (combsmith/
+# .github-private PRs 2456 and 2467). A summary whose bot reports, in its own
+# structured state, that the review found nothing needs no disposition. The match
+# is on that state, never on prose. The caller binds $findre
+# (_maintainer_gate_finding_re).
+#   codex_no_finding     — the body opens with Codex's summary marker and carries
+#                    exactly one `codex-review-state:v1` JSON; that JSON says the
+#                    code review is `completed` with has_any_findings and
+#                    has_unresolved_findings both `false` for a 40-hex commit_sha,
+#                    and a security_review object carrying all four fields that
+#                    either never ran (every field null) or completed the same way
+#                    for that same commit. Any other state (failed, in progress,
+#                    findings, a null, partial or other-commit security review,
+#                    unparseable) is not cleared.
+#   coderabbit_no_finding — the body opens with CodeRabbit's summary marker (after
+#                    its optional `coderabbit-ai-generated:v1` marker) and
+#                    carries exactly one `final_review_risk_label` field reading
+#                    Merge Risk "⚪ Minimal" (a "🔵 Low" rating comes with
+#                    follow-ups, so it is not cleared), exactly one
+#                    `final_review_risk_coverage` JSON with kind "reviewed", and
+#                    pre-merge check badges that are all "passed" (at least one).
+#   no_finding_summary   — ALL of: a GitHub App author (author.__typename "Bot",
+#                    as info_status_clear requires); its bare login is the bot the
+#                    recognizer belongs to; the recognizer matches; and the body
+#                    carries no finding-bearing section (#2008). A missing
+#                    __typename is not "Bot" (fail closed).
+readonly _MAINTAINER_GATE_NO_FINDING_JQ_DEFS='
+  def nf_sha: (type == "string") and test("^[0-9a-f]{40}$");
+  def nf_json($re):
+    (first(capture($re) | .j) // null)
+    | if . == null then null else (try fromjson catch null) end;
+  def codex_no_finding:
+    ((.body // "") | tostring) as $b
+    | ([$b | scan("codex-review-state")] | length) == 1
+      and (($b | nf_json("\\A<!-- codex-pull-request-review-summary -->\\s*<!-- codex-review-state:v1 (?<j>\\{[^\\n]*\\}) -->")) as $s
+        | ($s | type) == "object"
+          and (($s.code_review // null) | type) == "object"
+          and $s.code_review.status == "completed"
+          and $s.code_review.has_any_findings == false
+          and $s.code_review.has_unresolved_findings == false
+          and ($s.code_review.commit_sha | nf_sha)
+          and ($s.code_review.commit_sha as $sha
+               | ($s.security_review // null) as $r
+               | (($r | type) == "object")
+                 and ($r | has("status") and has("has_any_findings")
+                           and has("has_unresolved_findings") and has("commit_sha"))
+                 and (([$r.status, $r.has_any_findings, $r.has_unresolved_findings, $r.commit_sha]
+                       | all(. == null))
+                      or ($r.status == "completed"
+                          and $r.has_any_findings == false
+                          and $r.has_unresolved_findings == false
+                          and $r.commit_sha == $sha))));
+  def coderabbit_no_finding:
+    ((.body // "") | tostring) as $b
+    | ($b | test("\\A(?:<!-- coderabbit-ai-generated:v1 -->\\s*)?<!-- This is an auto-generated comment: summarize by coderabbit\\.ai -->"))
+      and ([$b | scan("final_review_risk_label")] | length) == 1
+      and ($b | test("<!-- final_review_risk_label\\r?\\n\\*\\*Merge Risk:\\*\\* \\*\\*⚪ Minimal\\*\\* · up to `[0-9a-f]{5,40}`\\r?\\n-->"))
+      and ([$b | scan("final_review_risk_coverage")] | length) == 1
+      and ($b | nf_json("<!-- final_review_risk_coverage:(?<j>\\{[^\\n]*\\}) -->")
+           | (type == "object") and .kind == "reviewed"
+             and (.sourceCommitId | nf_sha) and (.coveredCommitId | nf_sha))
+      and ([$b | scan("pre-merge-checks-(?:counter-)?([a-z]+)[-.]") | .[0]] | unique) == ["passed"];
+  def no_finding_summary:
+    ((.author?.__typename // "") == "Bot")
+    and (((.body // "") | tostring | test($findre)) | not)
+    and ((.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $l
+         | ($l == "chatgpt-codex-connector" and codex_no_finding)
+           or ($l == "coderabbitai" and coderabbit_no_finding));
 '
 
 # This library's own directory, resolved ONCE at source time. dev-lead-fix-reviews.sh
@@ -420,13 +495,16 @@ maintainer_gate_reopen_candidates() {
   printf '%s' "$comments" | jq -c \
     --arg botuser "$bot_user" \
     --arg findre "$finding_re" \
-    --argjson registered "$registered" "$_MAINTAINER_GATE_DISP_JQ_DEFS"'
+    --argjson registered "$registered" "$_MAINTAINER_GATE_DISP_JQ_DEFS$_MAINTAINER_GATE_NO_FINDING_JQ_DEFS"'
     . as $all
     | if type != "array" then error("not an array") else . end
     | [ .[] | objects
         | (.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $lbare
         | select(((.author?.__typename // "") == "Bot")
                  or ($registered != null and ($registered | index($lbare)) != null))
+        # The gate clears a no-finding summary whatever its edit history, so
+        # there is nothing to re-open.
+        | select(no_finding_summary | not)
         | select(((.isMinimized // false) == true)
                  and (((.minimizedReason // "") | ascii_downcase) == "resolved"))
         | select((.id // "") != "")
@@ -452,17 +530,21 @@ maintainer_gate_reopen_candidates() {
 #   Unreadable input echoes nothing and returns 1, so a caller never dispatches on
 #   a guess. Pure apart from reading the registry.
 maintainer_gate_stale_dispositions() {
-  local comments="${1:-}" bot_user="${2:-donpetry-bot}" registered
+  local comments="${1:-}" bot_user="${2:-donpetry-bot}" registered finding_re
   registered="$(_maintainer_gate_registered_logins_json)"
+  finding_re="$(_maintainer_gate_finding_re)"
   printf '%s' "$comments" | jq -c \
     --arg botuser "$bot_user" \
-    --argjson registered "$registered" "$_MAINTAINER_GATE_DISP_JQ_DEFS"'
+    --arg findre "$finding_re" \
+    --argjson registered "$registered" "$_MAINTAINER_GATE_DISP_JQ_DEFS$_MAINTAINER_GATE_NO_FINDING_JQ_DEFS"'
     . as $all
     | if type != "array" then error("not an array") else . end
     | [ .[] | objects
         | (.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $lbare
         | select(((.author?.__typename // "") == "Bot")
                  or ($registered != null and ($registered | index($lbare)) != null))
+        # A no-finding summary needs no disposition, so a stale one is not chased.
+        | select(no_finding_summary | not)
         # RESOLVED (cleared but stale), or not minimized at all (already re-opened
         # by the harness and still awaiting a fresh disposition). A comment
         # minimized for any other reason (OUTDATED, …) is not ours to chase.
@@ -520,11 +602,11 @@ maintainer_gate_head_committer_date() {
 #   not minimized RESOLVED, so the harness never tries to disposition a comment the
 #   gate does not count. <comments_array_json> is the harness's issue-comment nodes,
 #   each {id, author{login,__typename}, authorAssociation, body, isMinimized,
-#   minimizedReason}. Filters out clean registered info-status comments with the same
-#   info_status_clear definition check_maintainer_comments uses, so the gate and
-#   candidate filter never disagree. A node without author.__typename "Bot" is never
-#   filtered as info-status. Unreadable input echoes nothing
-#   and returns non-zero.
+#   minimizedReason}. Filters out clean registered info-status comments and no-finding
+#   summaries with the same info_status_clear and no_finding_summary definitions
+#   check_maintainer_comments uses, so the gate and candidate filter never disagree.
+#   A node without author.__typename "Bot" is never filtered as either. Unreadable
+#   input echoes nothing and returns non-zero.
 maintainer_gate_open_comment_ids() {
   local comments="${1:-}" bot_user="${2:-donpetry-bot}" info_patterns finding_re
   info_patterns="$(_maintainer_gate_info_patterns_json)"
@@ -533,15 +615,32 @@ maintainer_gate_open_comment_ids() {
     --arg botuser "$bot_user" \
     --arg markers "$_MAINTAINER_GATE_AGENT_MARKERS" \
     --arg findre "$finding_re" \
-    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_SCOPE_JQ_DEFS$_MAINTAINER_GATE_INFO_JQ_DEFS"'
+    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_SCOPE_JQ_DEFS$_MAINTAINER_GATE_INFO_JQ_DEFS$_MAINTAINER_GATE_NO_FINDING_JQ_DEFS"'
       if type != "array" then error("not an array") else . end
       | [ .[] | objects
           | select(in_gate_scope)
           | select(info_status_clear | not)
+          | select(no_finding_summary | not)
           | select(((.isMinimized // false) == true)
                    and (((.minimizedReason // "") | ascii_downcase) == "resolved") | not)
           | .id ]
       | .[]
+    ' 2>/dev/null
+}
+
+# maintainer_gate_no_finding_ids <comments_array_json>
+#   Echoes one node id per line for every no-finding Codex or CodeRabbit summary
+#   (no_finding_summary). dev-lead's resolver skips these when it builds its
+#   re-verify list: the gate clears them whatever their edit history, so there is
+#   nothing to verify and nothing to unminimize. Unreadable input echoes nothing
+#   and returns non-zero.
+maintainer_gate_no_finding_ids() {
+  local comments="${1:-}" finding_re
+  finding_re="$(_maintainer_gate_finding_re)"
+  printf '%s' "$comments" | jq -r \
+    --arg findre "$finding_re" "$_MAINTAINER_GATE_NO_FINDING_JQ_DEFS"'
+      if type != "array" then error("not an array") else . end
+      | .[] | objects | select(no_finding_summary) | (.id // empty)
     ' 2>/dev/null
 }
 
@@ -596,7 +695,7 @@ check_maintainer_comments() {
     --arg botuser "$bot_user" \
     --arg findre "$finding_re" \
     --argjson registered "$registered" \
-    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_DISP_JQ_DEFS$_MAINTAINER_GATE_SCOPE_JQ_DEFS$_MAINTAINER_GATE_INFO_JQ_DEFS"'
+    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_DISP_JQ_DEFS$_MAINTAINER_GATE_SCOPE_JQ_DEFS$_MAINTAINER_GATE_INFO_JQ_DEFS$_MAINTAINER_GATE_NO_FINDING_JQ_DEFS"'
       (.comments // []) as $all
       | [ $all[] | objects
         | (.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $lbare
@@ -608,6 +707,11 @@ check_maintainer_comments() {
         # unrecognised body, a bot with no pattern, a human, a User account
         # holding a bot login) is still evaluated.
         | select(info_status_clear | not)
+        # Drop a no-finding Codex or CodeRabbit summary: the bot reports, in its
+        # own structured state, that its review found nothing. It clears whether
+        # or not it is minimized and however often the bot has edited it, so a
+        # hands-off PR (no dev-lead to re-disposition each edit) keeps approval.
+        | select(no_finding_summary | not)
         | if ((.isMinimized // false) == true)
              and (((.minimizedReason // "") | ascii_downcase) == "resolved") | not
           then "block"

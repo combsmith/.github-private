@@ -1999,8 +1999,12 @@ resolve_dispositioned_comments() {
       unminimize_failed=1
     fi
   done <<< "$reopen_ids"
-  reverify_ids=$(printf '%s' "$all_comments" | jq -r --arg reopen "$reopen_ids" '
-      ($reopen | split("\n")) as $skip
+  # A no-finding Codex or CodeRabbit summary is cleared by the gate whatever its
+  # edit history, so it is never re-verified (and so never unminimized).
+  local no_finding_ids
+  no_finding_ids=$(maintainer_gate_no_finding_ids "$all_comments" || true)
+  reverify_ids=$(printf '%s' "$all_comments" | jq -r --arg reopen "$reopen_ids" --arg nf "$no_finding_ids" '
+      (($reopen + "\n" + $nf) | split("\n")) as $skip
       | .[] | objects
       | select((.author?.__typename // "") == "Bot")
       | select(((.isMinimized // false) == true)

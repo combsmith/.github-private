@@ -19,8 +19,8 @@
 #   For each candidate comment — authored by a trusted registered reviewer bot,
 #   not agent-marked, not minimized RESOLVED (unless it was edited after its
 #   newest covering disposition, which the gate re-blocks: #2008, #2166), not
-#   cleared by its source's info_status_pattern (the same filters the gate
-#   applies) — whether to dispatch
+#   cleared by its source's info_status_pattern, not a no-finding Codex or
+#   CodeRabbit summary (the same filters the gate applies) — whether to dispatch
 #   a fix-bot-comment retry now. A comment's VERSION is lastEditedAt // createdAt;
 #   all coverage checks are against the current version, so an edit re-opens it.
 #     dispositioned            a `dev-lead:comment-disposition id=<id>` reply exists
@@ -180,6 +180,8 @@ _bcr_evaluate() {
   [[ "$skew" =~ ^[0-9]+$ ]] || skew=2
   local lost_backoff="${BOT_COMMENT_RETRY_LOST_BACKOFF_SEC:-$min_age}"
   [[ "$lost_backoff" =~ ^[0-9]+$ ]] || lost_backoff="$min_age"
+  local finding_re
+  finding_re="$(_maintainer_gate_finding_re)"
 
   printf '%s' "$comments" | jq -ce \
     --arg mode "$mode" \
@@ -197,7 +199,8 @@ _bcr_evaluate() {
     --argjson max_attempts "$max_attempts" \
     --argjson max_total "$max_total" \
     --argjson skew "$skew" \
-    --arg botuser "${BOT_USER:-donpetry-bot}" "$_MAINTAINER_GATE_DISP_JQ_DEFS"'
+    --arg findre "$finding_re" \
+    --arg botuser "${BOT_USER:-donpetry-bot}" "$_MAINTAINER_GATE_DISP_JQ_DEFS$_MAINTAINER_GATE_NO_FINDING_JQ_DEFS"'
     def bare: if endswith("[bot]") then .[0:-5] else . end;
     def epoch: (sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601);
     # A marker-supplied timestamp: its epoch, or null when absent/unparseable.
@@ -254,6 +257,9 @@ _bcr_evaluate() {
         | select((.author?.__typename // "") == "Bot")
         | select(((.body // "") | test($markers)) | not)
         | select(($info[$l] // null) as $p | ($p == null) or (((.body // "") | test($p)) | not))
+        # A no-finding Codex or CodeRabbit summary needs no disposition (the gate
+        # clears it), so it never needs a fix-bot-comment pass either.
+        | select(no_finding_summary | not)
         # A RESOLVED comment is done, unless it was edited after its newest
         # covering disposition (or has none): the gate re-blocks exactly that
         # (#2008), so it needs a fresh pass like an undispositioned one (#2166).
