@@ -149,7 +149,7 @@ authored by `don-petry`; the bot approves them.
    - **Email:** a dedicated alias works well (e.g. `you+donpetry-bot@gmail.com`)
 3. Verify the email address.
 4. Sign back in as `don-petry`.
-5. Go to **github.com/organizations/petry-projects/settings/members** →
+5. Go to **github.com/organizations/combsmith/settings/members** →
    **Invite member** → enter `donpetry-bot` → Role: **Member**.
 6. Accept the invite from the bot account.
 
@@ -171,7 +171,7 @@ and follow the principle of least privilege.
 3. Settings:
    - **Token name:** `pr-review-agent`
    - **Expiration:** 90 days (set a calendar reminder to rotate — fine-grained PATs do not auto-rotate)
-   - **Resource owner:** select your organization (e.g. `petry-projects`)
+   - **Resource owner:** select your organization (e.g. `combsmith`)
    - **Repository access:** All repositories (or specific repos if preferred)
    - **Repository permissions:**
      - `contents:read` — read files and diffs for analysis
@@ -180,7 +180,7 @@ and follow the principle of least privilege.
      - `members:read` — (optional) read org members for code owner routing at escalation time
 4. Generate and copy the token immediately.
 5. Sign back in as `don-petry` and store the token in the agent repo's secret
-   (the secret name is `DON_PETRY_BOT_GH_PAT` in `petry-projects/.github-private`).
+   (the secret name is `DON_PETRY_BOT_GH_PAT` in `combsmith/.github-private`).
 
 #### Option B: Classic PAT (legacy)
 
@@ -215,7 +215,7 @@ claude setup-token
 Store as a repo secret:
 
 ```
-gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo petry-projects/.github-private
+gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo combsmith/.github-private
 ```
 
 #### Copilot engine
@@ -223,30 +223,30 @@ gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo petry-projects/.github-private
 Create a GitHub PAT with Copilot scope. Store as a repo secret:
 
 ```
-gh secret set COPILOT_GITHUB_TOKEN --repo petry-projects/.github-private
+gh secret set COPILOT_GITHUB_TOKEN --repo combsmith/.github-private
 ```
 
 ### 4. Choose your engine
 
 ```
 # Use Copilot (GPT models):
-gh variable set REVIEW_ENGINE --body copilot --repo petry-projects/.github-private
+gh variable set REVIEW_ENGINE --body copilot --repo combsmith/.github-private
 
 # Use Claude (default — no variable needed, or set explicitly):
-gh variable set REVIEW_ENGINE --body claude --repo petry-projects/.github-private
+gh variable set REVIEW_ENGINE --body claude --repo combsmith/.github-private
 ```
 
 ### 5. Test with a dry run
 
 ```
-gh workflow run pr-review.yml --repo petry-projects/.github-private -f dry_run=true
-gh run watch --repo petry-projects/.github-private
+gh workflow run pr-review.yml --repo combsmith/.github-private -f dry_run=true
+gh run watch --repo combsmith/.github-private
 ```
 
 To review a single PR ad-hoc:
 
 ```
-gh workflow run pr-review.yml --repo petry-projects/.github-private \
+gh workflow run pr-review.yml --repo combsmith/.github-private \
   -f pr_url=https://github.com/owner/repo/pull/123 \
   -f dry_run=true
 ```
@@ -258,19 +258,19 @@ but never posts reviews, comments, labels, or reviewer requests. To enable
 live mode:
 
 ```
-gh variable set LIVE_MODE --body true --repo petry-projects/.github-private
+gh variable set LIVE_MODE --body true --repo combsmith/.github-private
 ```
 
 To go back to dry-run:
 
 ```
-gh variable delete LIVE_MODE --repo petry-projects/.github-private
+gh variable delete LIVE_MODE --repo combsmith/.github-private
 ```
 
 A specific run can always be forced either way via the `dry_run` workflow input:
 
 ```
-gh workflow run pr-review.yml --repo petry-projects/.github-private -f dry_run=false
+gh workflow run pr-review.yml --repo combsmith/.github-private -f dry_run=false
 ```
 
 ## Tuning
@@ -284,15 +284,15 @@ gh workflow run pr-review.yml --repo petry-projects/.github-private -f dry_run=f
   PRs from a specific org, or to exclude certain repos).
 - **AI delegation** — set `DELEGATION_ORGS` to a comma-separated list of
   GitHub orgs where AI-assisted fix delegation is enabled:
-  `gh variable set DELEGATION_ORGS --body "petry-projects,don-petry" --repo petry-projects/.github-private`
+  `gh variable set DELEGATION_ORGS --body "combsmith,don-petry" --repo combsmith/.github-private`
 - **Max review cycles** — how many times the agent delegates to AI before
   escalating to human (default 3):
-  `gh variable set MAX_REVIEW_CYCLES --body 5 --repo petry-projects/.github-private`
+  `gh variable set MAX_REVIEW_CYCLES --body 5 --repo combsmith/.github-private`
 - **Models** — change model IDs in `scripts/engine.sh`. The cascade tiers
   map to: triage → deep → audit → action.
 - **Max PRs per run** — defaults to 10 per cron tick to stay within the 60-min
   job timeout. Override:
-  `gh variable set MAX_PRS --body 15 --repo petry-projects/.github-private`
+  `gh variable set MAX_PRS --body 15 --repo combsmith/.github-private`
 - **MCP review (opt-in, off by default)** — the deep and rubber-duck tiers can
   load [MCP](https://modelcontextprotocol.io) servers via `REVIEW_MCP_CONFIG`
   (path to an MCP-servers JSON config) and `REVIEW_MCP_ALLOWED_TOOLS`
@@ -308,7 +308,7 @@ gh workflow run pr-review.yml --repo petry-projects/.github-private -f dry_run=f
   To turn it on, copy the no-auth Context7 sample into place and allow its tools:
   ```bash
   cp .github/review-mcp.json.sample .github/review-mcp.json
-  gh variable set REVIEW_MCP_ALLOWED_TOOLS --body 'mcp__context7__*' --repo petry-projects/.github-private
+  gh variable set REVIEW_MCP_ALLOWED_TOOLS --body 'mcp__context7__*' --repo combsmith/.github-private
   ```
   `.github/review-mcp.json.sample` is documentation-only and inert — the scripts
   only auto-discover the suffix-less `.github/review-mcp.json`. Context7 needs no
@@ -325,11 +325,11 @@ within seconds and the full cascade result appears in a few minutes.
 
 ```
 PR comment "@donpetry-bot please review"
-  → petry-projects/.github: pr-review-mention.yml (listens org-wide)
+  → combsmith/.github: pr-review-mention.yml (listens org-wide)
       → validates commenter trust (OWNER/MEMBER/COLLABORATOR only)
       → posts ack comment "I'm on it..."
       → gh workflow run pr-review.yml --field pr_url=<url> --field force_review=true
-          → petry-projects/.github-private: pr-review.yml (per-PR concurrency slot)
+          → combsmith/.github-private: pr-review.yml (per-PR concurrency slot)
               → scripts/review-one-pr.sh (FORCE_REVIEW=true bypasses idempotency)
                   → cascade as normal → posts review
 ```
@@ -344,17 +344,17 @@ PR comment "@donpetry-bot please review"
 **Setup (one-time):**
 
 1. Copy [`templates/mention-listener.yml`](templates/mention-listener.yml) to
-   `petry-projects/.github` as `.github/workflows/pr-review-mention.yml`.
+   `combsmith/.github` as `.github/workflows/pr-review-mention.yml`.
 
 2. Ensure the `GH_PAT_WORKFLOWS` org-level secret is available to
-   `petry-projects/.github`. This secret is already present in the org; no
+   `combsmith/.github`. This secret is already present in the org; no
    additional secret setup is required. The workflow template references
    `GH_PAT_WORKFLOWS` throughout — use the same PAT created above in
    [step 2](#2-create-a-pat-for-the-bot-classic-or-fine-grained) if you need to
    rotate or recreate it.
 
 3. Ensure `donpetry-bot` has at least **Read** collaborator access on
-   `petry-projects/.github-private`.
+   `combsmith/.github-private`.
 
 ## Architecture
 

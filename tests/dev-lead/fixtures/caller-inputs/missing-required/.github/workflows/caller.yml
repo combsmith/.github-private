@@ -10,7 +10,7 @@ permissions: {}
 
 jobs:
   call:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-test
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-test
     with:
       agent_ref: dev-lead/v1-test
     secrets: inherit

@@ -15,10 +15,10 @@
 #   * main() does the network I/O: repo discovery, artifact download, extraction.
 #
 # Usage:
-#   ORG=petry-projects LOOKBACK_DAYS=7 GH_TOKEN=<pat> bash scripts/token_report.sh > report.md
+#   ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN=<pat> bash scripts/token_report.sh > report.md
 #
 # Environment:
-#   ORG            — GitHub org to scan (default: petry-projects)
+#   ORG            — GitHub org to scan (default: combsmith)
 #   LOOKBACK_DAYS  — rolling window of artifact history to include (default: 7)
 #   GH_TOKEN       — PAT with actions:read across the org (artifacts are per-repo)
 #   TOKEN_REPORT_OUT — optional path; when set, the report is written there in addition
@@ -26,20 +26,55 @@
 #   ARTIFACT_OP_TIMEOUT — per-gh-call timeout in seconds (default 60) so one hung/slow
 #                      artifact download or listing cannot consume the whole job. 0
 #                      disables the wrapper.
-#   GEMINI_RECORDS_OUT — optional path; when set, every collected Gemini ledger record
+#   GEMINI_RECORDS_OUT — optional path; when set, the collected Gemini ledger records
 #                      (engine "gemini": token usage, rejected attempts, cooldowns,
-#                      rejection samples) is appended there for scripts/gemini_tier_report.sh
-#                      (#2041), which keeps the per-day history across fleet-monitor runs.
+#                      rejection samples) that are traceable to a TRUSTED run are appended
+#                      there for scripts/gemini_tier_report.sh (#2041), which keeps the
+#                      per-day history across fleet-monitor runs. Records from any other
+#                      artifact are ignored and counted (#2147, "Trusted runs" below).
+#   GEMINI_COLLECTION_OUT — optional path; when set, one JSON object describing this
+#                      collection (how many repositories and artifacts could not be
+#                      read, how many Gemini records were handed over and ignored) is
+#                      written there. gemini_tier_report.sh copies it into the snapshot,
+#                      so a reader can tell a complete, trusted-only snapshot from one
+#                      built on missing data.
 #   COLLECT_CONCURRENCY — max concurrent artifact listings/downloads (default 8). The
 #                      bulk of collection wall-clock is serial network I/O, so bounded
 #                      parallelism is what keeps the run inside the job timeout.
+#
+# Trusted runs (#2147). A token-usage artifact is untrusted input: a pull request
+# from a fork of a public repository runs the fork's copy of a workflow and can
+# upload an artifact of any name and content. Nothing INSIDE an artifact can vouch
+# for it (records carry a self-declared run_id and nothing else about their origin),
+# so trust is decided from what the Actions API says about the run that uploaded it:
+#   * the artifact listing's `workflow_run` (id, repository_id, head_repository_id,
+#     head_branch), and
+#   * for a run on any other branch than the default one, the run itself
+#     (`repos/<repo>/actions/runs/<id>`: head repository, actor).
+# An artifact is TRUSTED when its run's head repository is the repository itself
+# (not a fork) and either the run was on the default branch (merged, reviewed
+# workflow code), or the looked-up run confirms the head repository and was not
+# started by Dependabot. That is the set of runs GitHub hands the repository's
+# secrets to; whoever controls the code of such a run can already use the real
+# engine keys, so a forged ledger gains them nothing. A fork run and a Dependabot
+# run get no secrets, so they can make no real Gemini call and none of their
+# records can be genuine. Anything that cannot be established (no `workflow_run`
+# in the listing, a failed or mismatching run lookup) is untrusted.
+# A look-up that FAILED is not the same as one that answered "no": the run may well
+# be a trusted one whose real usage is now left out. It is stamped
+# `run-lookup-failed` and counted as a failed read, like an artifact that could not
+# be downloaded or a record file that could not be parsed, so the collection reads
+# as incomplete.
+# Every collected record is stamped `provenance: {run_id, trusted, basis}` from that
+# decision, replacing any `provenance` the artifact wrote. The cost report still
+# shows every record; only the Gemini hand-off (GEMINI_RECORDS_OUT) is filtered.
 #
 # ET formula (GitHub's framework): ET = m × (1.0×I + 0.1×C + 4.0×O)
 # The `et` field is precomputed per call by token-metrics.sh; this script only sums it.
 
 set -euo pipefail
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 LOOKBACK_DAYS="${LOOKBACK_DAYS:-7}"
 
 # ---------------------------------------------------------------------------
@@ -343,6 +378,67 @@ export_gemini_records() {
   done < <(jq -c 'select(type == "object" and .engine == "gemini")' "${files[@]}" 2>/dev/null || true)
 }
 
+# _TRUSTED_RECORD_JQ — jq `def trusted`: the record carries the collector's stamp for
+# a trusted run. Strict on purpose: `true` the boolean and a numeric run id, so a
+# record that never passed through _collect_one_artifact is not trusted.
+# shellcheck disable=SC2016  # jq program text
+_TRUSTED_RECORD_JQ='def trusted:
+  (.provenance | type) == "object" and .provenance.trusted == true
+  and (.provenance.run_id | type) == "number";'
+
+# trusted_records_dir <jsonl_dir> <out_dir>
+# Writes the collected records stamped as coming from a trusted run (see "Trusted
+# runs" in the header) to <out_dir>/trusted.jsonl. Pure: no network. Returns 1 when
+# the records cannot be read, so the caller hands nothing over instead of everything.
+trusted_records_dir() {
+  local files=("$1"/*.jsonl) out="$2/trusted.jsonl"
+  : > "$out" || return 1
+  [ -e "${files[0]}" ] || return 0
+  jq -c "$_TRUSTED_RECORD_JQ"' select(type == "object") | select(trusted)' "${files[@]}" > "$out" 2>/dev/null
+}
+
+# gemini_provenance_counts <jsonl_dir>
+# Prints "<kept>\t<ignored>\t<ignored_artifacts>": the Gemini records stamped
+# trusted, the Gemini records that are not, and the collected artifact files holding
+# at least one ignored Gemini record. Pure. Prints nothing and returns 1 when the
+# records cannot be read.
+gemini_provenance_counts() {
+  local files=("$1"/*.jsonl)
+  [ -e "${files[0]}" ] || { printf '0\t0\t0\n'; return 0; }
+  jq -n -r "$_TRUSTED_RECORD_JQ"'
+    reduce (inputs | select(type == "object" and .engine == "gemini")
+            | { f: input_filename, t: trusted }) as $r
+      ({ kept: 0, ignored: 0, files: {} };
+       if $r.t then .kept += 1 else .ignored += 1 | .files[$r.f] = 1 end)
+    | [ .kept, .ignored, (.files | length) ] | @tsv' "${files[@]}" 2>/dev/null
+}
+
+# gemini_unlisted_counts <jsonl_dir>
+# Prints "<records>\t<pairs>": the Gemini records in <jsonl_dir> that carry a key
+# index for which gemini-quota-caps.tsv has no row for their model, and those
+# (key index, model) pairs as "index:model", comma-separated. No production call
+# writes such a record while every configured model has a caps row, so they mark
+# a ledger that something else wrote to: today, engine tests run inside an agent
+# session, which inherit the job's TOKEN_LOG_FILE (#2147). The same sessions also
+# write records that look exactly like real calls, which nothing can tell apart;
+# this count is the visible part. Pure. Prints "0\t" when there is nothing to
+# count, nothing (return 1) when the records or the caps cannot be read.
+gemini_unlisted_counts() {
+  local files=("$1"/*.jsonl) pairs n idx model total=0 list=""
+  [ -e "${files[0]}" ] || { printf '0\t\n'; return 0; }
+  declare -F gq_caps_row_for >/dev/null 2>&1 || return 1
+  pairs="$(jq -r 'select(type == "object" and .engine == "gemini" and .key_index != null)
+      | [ (.key_index | tostring), ((.model // "") | tostring) ] | @tsv' "${files[@]}" 2>/dev/null \
+    | sort | uniq -c | awk '{ n = $1; sub(/^ *[0-9]+ /, ""); print n "\t" $0 }')" || return 1
+  while IFS=$'\t' read -r n idx model; do
+    [ -n "$n" ] || continue
+    [ -z "$(gq_caps_row_for "$idx" "$model")" ] || continue
+    total=$(( total + n ))
+    list="${list:+$list,}${idx}:${model}"
+  done <<< "$pairs"
+  printf '%s\t%s\n' "$total" "$list"
+}
+
 # render_token_report <jsonl_dir> <lookback_days> <repo_count> <artifact_count> [generated_at]
 # Writes the full Markdown report (with USD cost) to stdout. Pure: no network.
 # Optional: PR_TITLE_FILE (TSV "url<TAB>title") adds PR titles to the cost-per-PR table.
@@ -525,65 +621,184 @@ PY
   fi
 }
 
-# _list_repo_artifacts <repo>
+# _list_repo_artifacts <repo>[:<default_branch>]
 # Lists token-usage artifact IDs in one repo that fall inside the lookback window
-# and appends "<repo> <id>" lines to a unique file in COLLECT_LIST_DIR. Each
-# worker writes its own file (no shared-fd contention) so the listings can run in
-# parallel. Reads CUTOFF / COLLECT_LIST_DIR from the environment. Always exits 0:
-# a failed listing degrades to a WARN + a skipped repo, never an aborted run.
+# and appends "<repo> <id> <origin> <run_id>" lines to a unique file in
+# COLLECT_LIST_DIR. Each worker writes its own file (no shared-fd contention) so the
+# listings can run in parallel. Reads CUTOFF / COLLECT_LIST_DIR from the environment.
+# Always exits 0: a failed listing degrades to a WARN + a skipped repo, never an
+# aborted run (it is counted in COLLECT_FAILED_DIR, so the collection reads as
+# incomplete).
+#
+# <origin> is the first half of the trust decision (see "Trusted runs" in the
+# header), taken from the listing's `workflow_run`, which the uploader cannot set:
+#   default  the run's head repository is this repository and its head branch is
+#            the default branch: trusted as it stands
+#   branch   the same repository on another branch (or the default branch is not
+#            known): _collect_one_artifact looks the run up before trusting it
+#   foreign  a fork (the head repository is another repository): never trusted,
+#            and nothing is missing, because a fork's run gets no secrets
+#   unknown  `workflow_run` is missing or incomplete, so where the artifact came
+#            from cannot be told: not trusted, AND counted as a failed read, since
+#            it may hold real usage
+# <run_id> is `workflow_run.id`, or `-`.
 _list_repo_artifacts() {
-  local repo="$1" arts out
+  local repo="${1%%:*}" default_branch="" arts out
+  [[ "$1" == *:* ]] && default_branch="${1#*:}"
   arts="$(_gh_timeout api "repos/${repo}/actions/artifacts" --paginate 2>/dev/null \
-    | jq -r --arg cutoff "$CUTOFF" \
-    '.artifacts[] | select(.name | startswith("token-usage-")) | select(.expired == false) | select(.created_at >= $cutoff) | .id | tostring')" || {
+    | jq -r --arg cutoff "$CUTOFF" --arg def "$default_branch" \
+    '.artifacts[] | select(.name | startswith("token-usage-")) | select(.expired == false) | select(.created_at >= $cutoff)
+     | (.workflow_run // {}) as $w
+     | (($w.id | type) == "number" and ($w.repository_id | type) == "number"
+        and ($w.head_repository_id | type) == "number") as $known
+     | ($known and $w.head_repository_id == $w.repository_id) as $same
+     | [ (.id | tostring),
+         (if ($known | not) then "unknown"
+          elif ($same | not) then "foreign"
+          elif $def != "" and $w.head_branch == $def then "default"
+          else "branch" end),
+         (if ($w.id | type) == "number" then ($w.id | tostring) else "-" end) ]
+     | join(" ")')" || {
     echo "WARN: could not fetch artifacts for ${repo} — skipping (check actions:read permission or timed out)" >&2
+    [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/list.${repo//\//_}" 2>/dev/null
     return 0
   }
   [ -n "$arts" ] || return 0
   out="$(mktemp "${COLLECT_LIST_DIR}/list.XXXXXX")" || {
     echo "WARN: failed to create temporary file in ${COLLECT_LIST_DIR} — skipping ${repo}" >&2
+    [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/list.${repo//\//_}" 2>/dev/null
     return 0
   }
-  local id
-  while IFS= read -r id; do
-    [ -n "$id" ] || continue
-    printf '%s %s\n' "$repo" "$id" >> "$out"
+  local entry
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    printf '%s %s\n' "$repo" "$entry" >> "$out"
   done <<< "$arts"
 }
 
-# _collect_one_artifact <repo> <id>
+# _artifact_run_trusted <repo> <run_id>
+# The second half of the trust decision, for a run that was not on the default
+# branch: asks the Actions API about the run and returns 0 only when the answer is
+# that run, its head repository is the repository itself, and neither its actor nor
+# its triggering actor is Dependabot (whose runs get no secrets, like a fork's).
+# One read-only call. Returns:
+#   0  the API answered and the run qualifies
+#   1  the API answered with a run object and it does not qualify (another run,
+#      another head repository, no actor, Dependabot)
+#   2  the API could not be asked or did not answer usably: a non-zero exit (403,
+#      404, rate limit, timeout, transport), an empty or unparseable body, or a body
+#      that is not a run object. Nothing is known about the run
+# Neither 1 nor 2 is trusted; only 2 means usage may have been lost.
+_artifact_run_trusted() {
+  local repo="$1" run_id="$2" run
+  [[ "$run_id" =~ ^[0-9]+$ ]] || return 1
+  run="$(_gh_timeout api "repos/${repo}/actions/runs/${run_id}" 2>/dev/null)" || return 2
+  jq -e 'type == "object" and (.id | type) == "number"' <<< "$run" >/dev/null 2>&1 || return 2
+  jq -e --arg id "$run_id" '
+    type == "object"
+    and (.id | type) == "number" and (.id | tostring) == $id
+    and (.repository.id | type) == "number"
+    and (.head_repository.id | type) == "number"
+    and .head_repository.id == .repository.id
+    and (.actor.login | type) == "string" and .actor.login != ""
+    and ([.actor.login, .triggering_actor.login] | map(strings | ascii_downcase)
+         | any(. == "dependabot[bot]") | not)' <<< "$run" >/dev/null 2>&1 || return 1
+}
+
+# _run_verdict_file <repo> <run_id> — where one collection keeps the verdict of a
+# run's look-up (COLLECT_LOOKUP_DIR), so a run is asked about once however many
+# artifacts it uploaded. Prints nothing when no such directory is set.
+_run_verdict_file() {
+  [ -n "${COLLECT_LOOKUP_DIR:-}" ] || return 0
+  printf '%s/%s.%s' "$COLLECT_LOOKUP_DIR" "${1//\//_}" "$2"
+}
+
+# _lookup_run <repo> <run_id> — looks one run up (_artifact_run_trusted) and stores
+# the verdict (0, 1 or 2) for _collect_one_artifact. Always exits 0.
+_lookup_run() {
+  local rc=0 vf
+  _artifact_run_trusted "$1" "$2" || rc=$?
+  vf="$(_run_verdict_file "$1" "$2")"
+  [ -z "$vf" ] || printf '%s\n' "$rc" > "$vf" 2>/dev/null || true
+  return 0
+}
+
+# _collect_one_artifact <repo> <id> [<origin> <run_id>]
 # Downloads + extracts one artifact and writes its repo-tagged JSONL records into
 # COLLECT_JSONL_DIR, touching a marker in COLLECT_MARKER_DIR when ≥1 record is
 # written (the caller counts markers for artifact_count). Bounded by _gh_timeout
 # so a single hung download is skipped, not waited out. Each worker writes only
 # id-scoped paths (artifact IDs are globally unique on GitHub) so parallel workers
 # never collide. Reads COLLECT_* from the environment. Always exits 0.
+#
+# <origin> and <run_id> come from _list_repo_artifacts and decide the `provenance`
+# stamped on every record (see "Trusted runs" in the header). Without them (a caller
+# that only wants the records, such as canary_report.sh) the stamp says untrusted.
 _collect_one_artifact() {
-  local repo="$1" id="$2"
+  local repo="$1" id="$2" origin="${3:-foreign}" run_id="${4:--}"
   local zip="$COLLECT_WORKDIR/a-$id.zip" ex="$COLLECT_WORKDIR/x-$id"
   mkdir -p "$ex"
   if ! _gh_timeout api "repos/${repo}/actions/artifacts/${id}/zip" > "$zip" 2>/dev/null; then
     echo "WARN: artifact ${id} from ${repo} — download failed or timed out; skipping (report may be incomplete)" >&2
+    [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/artifact.${id}" 2>/dev/null
     rm -rf "$zip" "$ex"
     return 0
   fi
   if ! _extract_zip "$zip" "$ex" 2>/dev/null; then
     echo "WARN: artifact ${id} from ${repo} — extraction failed; skipping (report may be incomplete)" >&2
+    [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/artifact.${id}" 2>/dev/null
     rm -rf "$zip" "$ex"
     return 0
   fi
 
-  local found=false f dest
+  # Trust comes from the Actions API alone, never from the artifact's content.
+  local trusted=false basis="not-this-repository" prov_run=null
+  [[ "$run_id" =~ ^[0-9]+$ ]] && prov_run="$run_id"
+  case "$origin" in
+    default)
+      [ "$prov_run" != null ] && { trusted=true; basis="default-branch"; } ;;
+    unknown)
+      # The listing does not say which run uploaded this. It may be real usage,
+      # so it is a failed read, counted with the look-ups that could not be made.
+      basis="run-unknown"
+      echo "WARN: artifact ${id} from ${repo} — the listing does not say which run uploaded it; its records are not trusted (report may be incomplete)" >&2
+      [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/lookup.${id}" 2>/dev/null ;;
+    branch)
+      # The verdict collect_org_jsonl stored for this run; asked here when there is
+      # none (a caller that runs no look-up pass).
+      local verdict="" vf
+      vf="$(_run_verdict_file "$repo" "$run_id")"
+      [ -z "$vf" ] || IFS= read -r verdict < "$vf" 2>/dev/null || verdict=""
+      if ! [[ "$verdict" =~ ^[012]$ ]]; then
+        verdict=0
+        _artifact_run_trusted "$repo" "$run_id" || verdict=$?
+      fi
+      case "$verdict" in
+        0) trusted=true; basis="same-repository-run" ;;
+        1) basis="run-not-verified" ;;
+        *) basis="run-lookup-failed"
+           echo "WARN: artifact ${id} from ${repo} — run ${run_id} could not be looked up; its records are not trusted (report may be incomplete)" >&2
+           [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/lookup.${id}" 2>/dev/null ;;
+      esac ;;
+  esac
+
+  local found=false f dest nfile=0
   while IFS= read -r f; do
-    # Tag each record with its source repo for the by-repo rollup.
+    nfile=$(( nfile + 1 ))
+    # Tag each record with its source repo for the by-repo rollup, and with where
+    # it came from. `+` replaces a `repo` or `provenance` the artifact wrote itself.
     dest="$COLLECT_JSONL_DIR/${id}-$(basename "$f")"
-    if jq -c --arg repo "$repo" 'select(type=="object") | . + {repo: $repo}' \
+    if jq -c --arg repo "$repo" --argjson run "$prov_run" --argjson trusted "$trusted" --arg basis "$basis" \
+        'select(type=="object") | . + {repo: $repo, provenance: {run_id: $run, trusted: $trusted, basis: $basis}}' \
         "$f" > "$dest" 2>/dev/null; then
       found=true
     else
       # jq creates the destination before it can fail on malformed input;
-      # remove it so annotate_records never sees a corrupt *.jsonl file.
+      # remove it so annotate_records never sees a corrupt *.jsonl file. The
+      # records in it are lost, so it is a failed read (#2147).
       rm -f "$dest" 2>/dev/null || true
+      echo "WARN: artifact ${id} from ${repo} — a record file is not valid JSONL; its records are dropped (report may be incomplete)" >&2
+      [ -n "${COLLECT_FAILED_DIR:-}" ] && : > "${COLLECT_FAILED_DIR}/file.${id}.${nfile}" 2>/dev/null
     fi
   done < <(find "$ex" -type f -name '*.jsonl' -print)
   [ "$found" = true ] && : > "$COLLECT_MARKER_DIR/$id"
@@ -595,15 +810,26 @@ _collect_one_artifact() {
 # collect_org_jsonl <jsonl_dir>  (stdout: "<repo_count> <artifact_count>")
 # Discovers non-archived repos, then — in two bounded-parallel passes — lists each
 # repo's in-window token-usage artifacts and downloads/extracts them, tagging every
-# record with its source repo. Per-call timeouts (_gh_timeout) bound any single
-# hung request; COLLECT_CONCURRENCY bounds the fan-out (#954).
+# record with its source repo and its provenance. Per-call timeouts (_gh_timeout)
+# bound any single hung request; COLLECT_CONCURRENCY bounds the fan-out (#954).
+# When COLLECT_STATS_FILE is set, writes "<artifacts_listed> <repo_listings_failed>
+# <artifacts_failed> <run_lookups_failed> <record_files_malformed>" there (artifacts
+# not downloaded or extracted; artifacts whose run look-up failed; record files that
+# were not valid JSONL): what could not be read is missing usage, and missing usage
+# makes Gemini look more available than it is (#2147).
 collect_org_jsonl() {
   local jsonl_dir="$1"
   mkdir -p "$jsonl_dir"
 
+  # Each line is "<full_name>" or "<full_name>:<default_branch>" (a colon is in
+  # neither a repository name nor a ref name). A default branch outside the plain
+  # ref characters is left out: its artifacts then take the run look-up, and xargs
+  # never sees a quote or a blank in the line.
   local repos_raw
   if ! repos_raw="$(_gh_timeout api "orgs/${ORG}/repos?per_page=100&type=all" --paginate \
-    --jq '.[] | select(.archived == false) | .full_name')"; then
+    --jq '.[] | select(.archived == false)
+          | .full_name + (if ((.default_branch // "") | test("^[A-Za-z0-9._/-]+$"))
+                          then ":" + .default_branch else "" end)')"; then
     echo "ERROR: org repo discovery for '${ORG}' failed — verify GH_TOKEN has org read access." >&2
     return 1
   fi
@@ -626,8 +852,10 @@ collect_org_jsonl() {
   export ARTIFACT_OP_TIMEOUT
   export CUTOFF COLLECT_JSONL_DIR="$jsonl_dir" COLLECT_WORKDIR="$workdir"
   export COLLECT_LIST_DIR="$workdir/list" COLLECT_MARKER_DIR="$workdir/markers"
-  mkdir -p "$COLLECT_LIST_DIR" "$COLLECT_MARKER_DIR"
-  export -f _list_repo_artifacts _collect_one_artifact _gh_timeout _extract_zip
+  export COLLECT_FAILED_DIR="$workdir/failed" COLLECT_LOOKUP_DIR="$workdir/lookups"
+  mkdir -p "$COLLECT_LIST_DIR" "$COLLECT_MARKER_DIR" "$COLLECT_FAILED_DIR" "$COLLECT_LOOKUP_DIR"
+  export -f _list_repo_artifacts _collect_one_artifact _artifact_run_trusted _gh_timeout _extract_zip
+  export -f _run_verdict_file _lookup_run
 
   # Pass 1 — list artifacts across all repos in parallel (one worker per repo).
   # pipefail in the worker so a failed `gh | jq` listing surfaces as the WARN path
@@ -637,17 +865,35 @@ collect_org_jsonl() {
         bash -c 'set -o pipefail; _list_repo_artifacts "$1"' _ {} \
     || true
 
-  # Pass 2 — download + extract each "<repo> <id>" pair in parallel.
+  # Pass 2 — download + extract each "<repo> <id> <origin> <run_id>" entry in
+  # parallel. Only whole four-field lines go to xargs, which reads them four words
+  # at a time: one short line would shift every entry after it.
   local worklist="$workdir/worklist"
-  find "$COLLECT_LIST_DIR" -type f -exec cat {} + > "$worklist" 2>/dev/null || true
+  find "$COLLECT_LIST_DIR" -type f -exec cat {} + 2>/dev/null | awk 'NF == 4' > "$worklist" || true
   if [ -s "$worklist" ]; then
-    xargs -P "$COLLECT_CONCURRENCY" -n 2 \
-      bash -c '_collect_one_artifact "$1" "$2"' _ < "$worklist" \
+    # First the run look-ups the `branch` entries need, one per run: a re-run
+    # attempt uploads another artifact under the same run id.
+    local lookups="$workdir/lookup-list"
+    awk '$3 == "branch" { print $1, $4 }' "$worklist" | sort -u > "$lookups" || true
+    if [ -s "$lookups" ]; then
+      xargs -P "$COLLECT_CONCURRENCY" -n 2 bash -c '_lookup_run "$1" "$2"' _ < "$lookups" \
+        || true
+    fi
+    xargs -P "$COLLECT_CONCURRENCY" -n 4 \
+      bash -c '_collect_one_artifact "$1" "$2" "$3" "$4"' _ < "$worklist" \
       || true
   fi
 
   local artifact_count
   artifact_count="$(find "$COLLECT_MARKER_DIR" -type f | wc -l | tr -d ' ')"
+  if [ -n "${COLLECT_STATS_FILE:-}" ]; then
+    printf '%s %s %s %s %s\n' "$(awk 'END { print NR }' "$worklist")" \
+      "$(find "$COLLECT_FAILED_DIR" -type f -name 'list.*' | wc -l | tr -d ' ')" \
+      "$(find "$COLLECT_FAILED_DIR" -type f -name 'artifact.*' | wc -l | tr -d ' ')" \
+      "$(find "$COLLECT_FAILED_DIR" -type f -name 'lookup.*' | wc -l | tr -d ' ')" \
+      "$(find "$COLLECT_FAILED_DIR" -type f -name 'file.*' | wc -l | tr -d ' ')" \
+      > "$COLLECT_STATS_FILE" 2>/dev/null || true
+  fi
 
   echo "${repo_count} ${artifact_count}"
 }
@@ -659,14 +905,73 @@ main() {
   trap "rm -rf '$jsonl_dir'" EXIT
 
   echo "Collecting token-usage artifacts across ${ORG} (last ${LOOKBACK_DAYS} days)..." >&2
+  export COLLECT_STATS_FILE="$jsonl_dir/collect-stats"
   counts="$(collect_org_jsonl "$jsonl_dir")"
   repo_count="${counts%% *}"
   artifact_count="${counts##* }"
 
-  # Hand the Gemini ledger records to the per-tier availability report (#2041).
+  # Hand the Gemini ledger records to the per-tier availability report (#2041):
+  # only those stamped as coming from a trusted run (#2147). If they cannot be
+  # selected, nothing is handed over; never everything.
+  local provenance_note=""
   if [ -n "${GEMINI_RECORDS_OUT:-}" ]; then
-    export_gemini_records "$jsonl_dir" >> "$GEMINI_RECORDS_OUT" 2>/dev/null \
-      || echo "WARN: could not write Gemini records to GEMINI_RECORDS_OUT" >&2
+    local trusted_dir prov="" kept=0 ignored=0 ignored_arts=0 handed=false
+    local listed="" list_failed="" art_failed="" lookup_failed="" files_bad=""
+    local unlisted="" unlisted_pairs=""
+    # Under jsonl_dir, so the EXIT trap above removes it on every way out. Nothing
+    # reads jsonl_dir recursively (every reader globs "$dir"/*.jsonl), so the copy
+    # is never taken for collected input.
+    trusted_dir="$jsonl_dir/trusted-records"
+    mkdir -p "$trusted_dir" 2>/dev/null || trusted_dir=""
+    if [ -n "$trusted_dir" ] && trusted_records_dir "$jsonl_dir" "$trusted_dir" \
+       && export_gemini_records "$trusted_dir" >> "$GEMINI_RECORDS_OUT" 2>/dev/null; then
+      handed=true
+      # Of what was handed over: records no production call writes (see the function).
+      if prov="$(gemini_unlisted_counts "$trusted_dir")" && [ -n "$prov" ]; then
+        IFS=$'\t' read -r unlisted unlisted_pairs <<< "$prov"
+      fi
+    else
+      echo "WARN: could not write Gemini records to GEMINI_RECORDS_OUT" >&2
+    fi
+    [ -n "$trusted_dir" ] && rm -rf "$trusted_dir"
+    if prov="$(gemini_provenance_counts "$jsonl_dir")" && [ -n "$prov" ]; then
+      IFS=$'\t' read -r kept ignored ignored_arts <<< "$prov"
+    else
+      handed=false
+      echo "WARN: could not count the Gemini records by provenance" >&2
+    fi
+    read -r listed list_failed art_failed lookup_failed files_bad < "$COLLECT_STATS_FILE" 2>/dev/null || true
+    provenance_note="Gemini ledger: ${kept} record(s) from trusted runs handed to the tier report; ${ignored} record(s) in ${ignored_arts} artifact(s) ignored as not traceable to a trusted run (a fork, a Dependabot run, or a run that could not be verified)."
+    if [ "${list_failed:-0}${art_failed:-0}${lookup_failed:-0}${files_bad:-0}" != "0000" ]; then
+      provenance_note="${provenance_note} Not read: ${list_failed:-?} repository listing(s), ${art_failed:-?} artifact(s), ${lookup_failed:-?} run look-up(s), ${files_bad:-?} record file(s). Usage may be missing, so the collection is incomplete."
+      echo "::warning::[gemini-ledger] the collection is incomplete: ${list_failed:-?} repository listing(s), ${art_failed:-?} artifact(s), ${lookup_failed:-?} run look-up(s) and ${files_bad:-?} record file(s) could not be read, so Gemini usage may be missing (#2147)" >&2
+    fi
+    if [ "${unlisted:-0}" != "0" ]; then
+      provenance_note="${provenance_note} Of the records handed over, ${unlisted:-an unknown number of} are for a key index and model the caps file does not list (${unlisted_pairs:-not counted}): no production call writes those, so this ledger was also written to by something else (engine tests run inside an agent session), and its other records cannot be told from real calls."
+    fi
+    echo "$provenance_note" >&2
+    if [ "${ignored:-0}" != "0" ]; then
+      echo "::warning::[gemini-ledger] ${ignored} Gemini record(s) in ${ignored_arts} token-usage artifact(s) were ignored: not traceable to a trusted run (#2147)" >&2
+    fi
+    if [ "${unlisted:-0}" != "0" ]; then
+      echo "::warning::[gemini-ledger] ${unlisted:-?} Gemini record(s) from trusted runs are for a key index and model the caps file does not list: test fixtures or an unlisted model are in the ledger, so the tier view is not a basis for a dispatch decision (#2147)" >&2
+    fi
+    if [ -n "${GEMINI_COLLECTION_OUT:-}" ]; then
+      jq -cn --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg epoch "$(date -u +%s)" \
+        --arg listed "$listed" --arg lf "$list_failed" --arg af "$art_failed" \
+        --arg rl "$lookup_failed" --arg fb "$files_bad" \
+        --arg kept "$kept" --arg ignored "$ignored" --arg ia "$ignored_arts" \
+        --arg unlisted "$unlisted" --argjson handed "$handed" '
+        def n: if test("^[0-9]+$") then tonumber else null end;
+        { collected_at: $at, collected_epoch: ($epoch | n), handed_over: $handed,
+          artifacts_listed: ($listed | n), repo_listings_failed: ($lf | n),
+          artifacts_failed: ($af | n), run_lookups_failed: ($rl | n),
+          record_files_malformed: ($fb | n), gemini_records_trusted: ($kept | n),
+          gemini_records_ignored: ($ignored | n), artifacts_ignored: ($ia | n),
+          gemini_records_unlisted: ($unlisted | n) }' \
+        > "$GEMINI_COLLECTION_OUT" 2>/dev/null \
+        || echo "WARN: could not write the collection report to GEMINI_COLLECTION_OUT" >&2
+    fi
   fi
   generated_at="$(date -u +%Y-%m-%d 2>/dev/null || echo '')"
 
@@ -689,6 +994,10 @@ main() {
   printf '%s\n' "$report"
   if [ -n "${TOKEN_REPORT_OUT:-}" ]; then
     printf '%s\n' "$report" > "$TOKEN_REPORT_OUT"
+  fi
+  # After the report, on stdout only (the job summary): what the tier report got.
+  if [ -n "$provenance_note" ]; then
+    printf '### Gemini ledger provenance\n\n%s\n\n' "$provenance_note"
   fi
 }
 

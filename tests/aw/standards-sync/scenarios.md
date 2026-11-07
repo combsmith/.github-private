@@ -14,7 +14,7 @@ required additions.
 
 ## Scenario 1: Repo missing AGENTS.md
 
-**Given** a repo in the `petry-projects` org does not have an `AGENTS.md` file
+**Given** a repo in the `combsmith` org does not have an `AGENTS.md` file
 **When** the monthly schedule fires
 **Then**
 - the workflow detects the missing file
@@ -95,7 +95,7 @@ required additions.
 - the issue shows: total repos scanned, compliant count, PRs opened count, security settings applied count
 
 **Assertions:**
-- A summary issue is created in `petry-projects/.github-private`
+- A summary issue is created in `combsmith/.github-private`
 - Issue body contains a compliance table or list
 - Issue is labelled `standards-sync` and `automated-report`
 
@@ -103,7 +103,7 @@ required additions.
 
 ## Scenario 7: Repo missing secret_scanning_ai_detection
 
-**Given** a repo in the `petry-projects` org has `secret_scanning_ai_detection` set to `null` (not enabled)
+**Given** a repo in the `combsmith` org has `secret_scanning_ai_detection` set to `null` (not enabled)
 **When** the monthly schedule fires
 **Then**
 - the workflow detects the missing security setting via the GitHub API

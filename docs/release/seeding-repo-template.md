@@ -1,7 +1,7 @@
 # Seeding `repo-template` — operator procedure
 
 `scripts/seed-repo-template.sh` writes the org baseline scaffold into
-`petry-projects/repo-template` and opens one pull request there. No workflow runs
+`combsmith/repo-template` and opens one pull request there. No workflow runs
 it. An operator runs it by hand, following this procedure, so the standards ref a
 seed is generated from is predictable (#1925).
 
@@ -16,14 +16,14 @@ For what the scaffold contains and why the template must track standards, see
 
 Do **not** seed when `template-drift` reports **AHEAD**. The template already
 carries newer standards content than the channel. Promote standards instead
-(`scripts/cut-standards-release.sh` in `petry-projects/.github`).
+(`scripts/cut-standards-release.sh` in `combsmith/.github`).
 
 ## Before you start
 
 - Run from a checkout of this repo at `main`.
 - Run on Linux, or on macOS with GNU bash 5 and coreutils first on `PATH`. Stock
   macOS bash 3.2 cannot run the script.
-- `gh` must be logged in with write access to `petry-projects/repo-template`.
+- `gh` must be logged in with write access to `combsmith/repo-template`.
 
 ## Which standards ref
 
@@ -48,7 +48,7 @@ be a downgrade, which the script refuses.
 1. **Dry run.** It reads only and prints one decision per file.
 
    ```bash
-   DRY_RUN=true bash scripts/seed-repo-template.sh --repo petry-projects/repo-template
+   DRY_RUN=true bash scripts/seed-repo-template.sh --repo combsmith/repo-template
    ```
 
 2. **Read the plan.** Check the `standards ref:` line names the ref and commit you
@@ -65,7 +65,7 @@ be a downgrade, which the script refuses.
 3. **Seed.**
 
    ```bash
-   bash scripts/seed-repo-template.sh --repo petry-projects/repo-template
+   bash scripts/seed-repo-template.sh --repo combsmith/repo-template
    ```
 
 4. **Review the pull request** it opens or updates on `repo-template`, then merge it

@@ -199,11 +199,13 @@ _run_check() {
 # #1918 — data-driven info-status classifier (SonarCloud clean passes)
 # ────────────────────────────────────────────────────────────────────
 
-# SonarCloud's real "Quality Gate passed" comment shape (trimmed): the headline plus
-# per-metric lines. `_sonar_body <new_issues> <hotspots>` renders it with the given
-# counts; `_sonar_json <login> <body> [reviews_json]` wraps it in a gate snapshot.
+# SonarCloud's real "Quality Gate passed" comment shape (trimmed): the badge
+# headline plus per-metric lines. `_sonar_body <new_issues> <hotspots>` renders it
+# with the given counts; `_sonar_json <login> <body> [reviews_json] [typename]` wraps
+# it in a gate snapshot whose author is a Bot unless [typename] says otherwise.
+_SONAR_BADGE='https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge'
 _sonar_body() {
-  printf '%s' "## [![Quality Gate Passed](https://sonarsource.github.io/qg-passed-20px.png 'Quality Gate Passed')](https://sonarcloud.io/dashboard) **Quality Gate passed**  
+  printf '%s' "## [![Quality Gate Passed]($_SONAR_BADGE/qg-passed-20px.png 'Quality Gate Passed')](https://sonarcloud.io/dashboard) **Quality Gate passed**  
 Issues  
 ![](https://sonarsource.github.io/passed-16px.png '') [$1 New issues](https://sonarcloud.io/project/issues)  
 ![](https://sonarsource.github.io/accepted-16px.png '') [0 Accepted issues](https://sonarcloud.io/project/issues)
@@ -213,8 +215,8 @@ Measures
 ![](https://sonarsource.github.io/passed-16px.png '') [0.0% Coverage on New Code](https://sonarcloud.io/component_measures)"
 }
 _sonar_json() {
-  jq -cn --arg l "$1" --arg b "$2" --argjson r "${3:-[]}" \
-    '{reviews:$r, comments:[{author:{login:$l}, body:$b, isMinimized:false, minimizedReason:""}]}'
+  jq -cn --arg l "$1" --arg b "$2" --argjson r "${3:-[]}" --arg t "${4:-Bot}" \
+    '{reviews:$r, comments:[{author:{login:$l, __typename:$t}, body:$b, isMinimized:false, minimizedReason:""}]}'
 }
 
 # AC1: a clean SonarCloud "Quality Gate passed" status comment (0 new issues, 0
@@ -257,7 +259,7 @@ _sonar_json() {
 
 # AC2: a SonarCloud "Quality Gate failed" comment still blocks — it carries findings.
 @test "AC2: SonarCloud 'Quality Gate failed' comment blocks → 1" {
-  local json='{"comments":[{"author":{"login":"sonarqubecloud"},"body":"## Quality Gate failed\n\n2 new issues.","isMinimized":false,"minimizedReason":""}]}'
+  local json='{"comments":[{"author":{"login":"sonarqubecloud","__typename":"Bot"},"body":"## Quality Gate failed\n\n2 new issues.","isMinimized":false,"minimizedReason":""}]}'
   _run_check "$json"
   [ "$status" -eq 1 ]
 }
@@ -265,7 +267,7 @@ _sonar_json() {
 # AC2: an unclassifiable SonarCloud comment (author registered, body does NOT match
 # its info-status pattern) fails closed and blocks.
 @test "AC2: unclassifiable SonarCloud comment blocks (fail closed) → 1" {
-  local json='{"comments":[{"author":{"login":"sonarqubecloud"},"body":"Analysis in progress…","isMinimized":false,"minimizedReason":""}]}'
+  local json='{"comments":[{"author":{"login":"sonarqubecloud","__typename":"Bot"},"body":"Analysis in progress…","isMinimized":false,"minimizedReason":""}]}'
   _run_check "$json"
   [ "$status" -eq 1 ]
 }
@@ -273,7 +275,7 @@ _sonar_json() {
 # AC2: the pattern is per-author — a DIFFERENT bot with no info-status pattern is
 # NOT cleared even if its body happens to contain "Quality Gate passed".
 @test "AC2: a bot with no info-status pattern is not cleared by matching text → 1" {
-  local json='{"comments":[{"author":{"login":"codeant-ai"},"body":"Quality Gate passed","isMinimized":false,"minimizedReason":""}]}'
+  local json='{"comments":[{"author":{"login":"codeant-ai","__typename":"Bot"},"body":"Quality Gate passed","isMinimized":false,"minimizedReason":""}]}'
   _run_check "$json"
   [ "$status" -eq 1 ]
 }
@@ -304,9 +306,10 @@ _sonar_json() {
 # ────────────────────────────────────────────────────────────────────
 
 _notice_json() {
-  # _notice_json <login> <body> — a one-comment, un-minimized gate snapshot.
-  jq -cn --arg l "$1" --arg b "$2" \
-    '{reviews:[], comments:[{author:{login:$l}, body:$b, isMinimized:false, minimizedReason:""}]}'
+  # _notice_json <login> <body> [typename] — a one-comment, un-minimized gate
+  # snapshot whose author is a Bot unless [typename] says otherwise.
+  jq -cn --arg l "$1" --arg b "$2" --arg t "${3:-Bot}" \
+    '{reviews:[], comments:[{author:{login:$l, __typename:$t}, body:$b, isMinimized:false, minimizedReason:""}]}'
 }
 
 @test "AC1(#1995): Codex usage-limit notice clears → 0" {
@@ -549,7 +552,7 @@ _disp() {
 # finding still blocks until it gets a real disposition.
 # ────────────────────────────────────────────────────────────────────
 
-# The live body of petry-projects/.github PR #1269, comment IC_kwDORyesfc8AAAABauHIXQ.
+# The live body of combsmith/.github PR #1269, comment IC_kwDORyesfc8AAAABauHIXQ.
 _codeant_low_risk_body() {
   printf '%s' '## CodeAnt PR Risk: Low Risk
 
@@ -775,8 +778,8 @@ _FOOTER=$'\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_'
 @test "#2209: maintainer_gate_open_comment_ids drops a clean info-status comment and keeps a finding-bearing one, as the gate does" {
   local json
   json=$(jq -cn --arg clean "$(_sonar_body 0 0)" --arg dirty "$(_sonar_body 2 0)" '{comments:[
-    {id:"IC_clean", author:{login:"sonarqubecloud"}, authorAssociation:"NONE", body:$clean, isMinimized:false, minimizedReason:""},
-    {id:"IC_dirty", author:{login:"sonarqubecloud"}, authorAssociation:"NONE", body:$dirty, isMinimized:false, minimizedReason:""},
+    {id:"IC_clean", author:{login:"sonarqubecloud", __typename:"Bot"}, authorAssociation:"NONE", body:$clean, isMinimized:false, minimizedReason:""},
+    {id:"IC_dirty", author:{login:"sonarqubecloud", __typename:"Bot"}, authorAssociation:"NONE", body:$dirty, isMinimized:false, minimizedReason:""},
     {id:"IC_h", author:{login:"don-petry"}, authorAssociation:"OWNER", body:"Fix X.", isMinimized:false, minimizedReason:""}]}')
   _open_ids "$json"
   [ "$status" -eq 0 ]
@@ -788,12 +791,128 @@ _FOOTER=$'\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_'
 
   # With only the clean status comment, the helper lists nothing and the gate is clear.
   json=$(jq -cn --arg clean "$(_sonar_body 0 0)" '{comments:[
-    {id:"IC_clean", author:{login:"sonarqubecloud"}, authorAssociation:"NONE", body:$clean, isMinimized:false, minimizedReason:""}]}')
+    {id:"IC_clean", author:{login:"sonarqubecloud", __typename:"Bot"}, authorAssociation:"NONE", body:$clean, isMinimized:false, minimizedReason:""}]}')
   _open_ids "$json"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   _run_check "$json"
   [ "$status" -eq 0 ]
+}
+
+# ────────────────────────────────────────────────────────────────────
+# Info-status notices are bound to the Bot author AND the body prefix. On
+# combsmith/.github PR 1421 the two no-finding notices below had to be minimized by
+# hand. Both must clear with no disposition, in the gate and in dev-lead's candidate
+# filter alike. The SAME text from a User account holding the bot's login (a User
+# named `sonarqubecloud` exists on GitHub), from a different bot, or with no author
+# type must still block.
+# ────────────────────────────────────────────────────────────────────
+
+# The live PR 1421 bodies, verbatim.
+_SONAR_1421_BODY=$'## [![Quality Gate Passed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-passed-20px.png \'Quality Gate Passed\')](https://sonarcloud.io/dashboard?id=combsmith_.github&pullRequest=1421) **Quality Gate passed**  \nIssues  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/passed-16px.png \'\') [0 New issues](https://sonarcloud.io/project/issues?id=combsmith_.github&pullRequest=1421&issueStatuses=OPEN,CONFIRMED&sinceLeakPeriod=true)  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/accepted-16px.png \'\') [0 Accepted issues](https://sonarcloud.io/project/issues?id=combsmith_.github&pullRequest=1421&issueStatuses=ACCEPTED)\n\nMeasures  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/passed-16px.png \'\') [0 Security Hotspots](https://sonarcloud.io/project/security_hotspots?id=combsmith_.github&pullRequest=1421&issueStatuses=OPEN,CONFIRMED&sinceLeakPeriod=true)  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/passed-16px.png \'\') [0.0% Coverage on New Code](https://sonarcloud.io/component_measures?id=combsmith_.github&pullRequest=1421&metric=new_coverage&view=list)  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/passed-16px.png \'\') [0.0% Duplication on New Code](https://sonarcloud.io/component_measures?id=combsmith_.github&pullRequest=1421&metric=new_duplicated_lines_density&view=list)  \n  \n<!-- sqra-placement-anchor -->\n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=combsmith_.github&pullRequest=1421)\n\n'
+_CODEX_1421_BODY=$'You have reached your Codex usage limits for code reviews. You can see your limits in the [Codex usage dashboard](https://chatgpt.com/codex/cloud/settings/usage).\nTo continue using code reviews, you can upgrade your account or add credits to your account and enable them for code reviews in your [settings](https://chatgpt.com/settings/code-review).'
+# SonarQube Cloud's failed-gate shape (live form, project id generalized).
+_SONAR_FAILED_BODY=$'## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png \'Quality Gate Failed\')](https://sonarcloud.io/dashboard?id=o_r&pullRequest=1) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png \'\') [2 Security Hotspots](https://sonarcloud.io/project/security_hotspots?id=o_r&pullRequest=1)  \n  \n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=o_r&pullRequest=1)\n'
+
+# _expect_clear <login> <typename> <body> — gate → 0 and no dev-lead candidate.
+_expect_clear() {
+  local json
+  json=$(jq -cn --arg l "$1" --arg t "$2" --arg b "$3" \
+    '{comments:[{id:"IC_n", author:{login:$l, __typename:$t}, authorAssociation:"NONE", body:$b, isMinimized:false, minimizedReason:""}]}')
+  _run_check "$json"
+  [ "$status" -eq 0 ]
+  _open_ids "$json"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# _expect_open <author_json> <body> — gate → 1 and the comment is a dev-lead candidate.
+_expect_open() {
+  local json
+  json=$(jq -cn --argjson a "$1" --arg b "$2" \
+    '{comments:[{id:"IC_n", author:$a, authorAssociation:"NONE", body:$b, isMinimized:false, minimizedReason:""}]}')
+  _run_check "$json"
+  [ "$status" -eq 1 ]
+  _open_ids "$json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "IC_n" ]
+}
+
+@test "PR 1421: the live SonarQube Cloud 'Quality Gate passed' summary from the Bot needs no disposition" {
+  _expect_clear sonarqubecloud Bot "$_SONAR_1421_BODY"
+  _expect_clear 'sonarqubecloud[bot]' Bot "$_SONAR_1421_BODY"
+}
+
+@test "PR 1421: the live Codex usage-limit notice from the Bot needs no disposition" {
+  _expect_clear chatgpt-codex-connector Bot "$_CODEX_1421_BODY"
+  _expect_clear 'chatgpt-codex-connector[bot]' Bot "$_CODEX_1421_BODY"
+}
+
+@test "PR 1421: a failed SonarQube Cloud quality gate from the Bot still needs a disposition" {
+  _expect_open '{"login":"sonarqubecloud","__typename":"Bot"}' "$_SONAR_FAILED_BODY"
+}
+
+@test "PR 1421: a Codex review summary (not the usage-limit notice) from the Bot still needs a disposition" {
+  _expect_open '{"login":"chatgpt-codex-connector","__typename":"Bot"}' $'<!-- codex-pull-request-review-summary -->\n### 💡 Codex Review\n\n**P1** The merge gate trusts an unchecked author — guard it before approving.'
+}
+
+@test "PR 1421: a User account holding the Sonar login posting the passed summary still needs a disposition" {
+  _expect_open '{"login":"sonarqubecloud","__typename":"User"}' "$_SONAR_1421_BODY"
+}
+
+@test "PR 1421: a User account holding the Codex login posting the usage-limit notice still needs a disposition" {
+  _expect_open '{"login":"chatgpt-codex-connector","__typename":"User"}' "$_CODEX_1421_BODY"
+}
+
+@test "PR 1421: a different bot posting either notice still needs a disposition" {
+  _expect_open '{"login":"github-actions","__typename":"Bot"}' "$_SONAR_1421_BODY"
+  _expect_open '{"login":"sonarqubecloud","__typename":"Bot"}' "$_CODEX_1421_BODY"
+  _expect_open '{"login":"chatgpt-codex-connector","__typename":"Bot"}' "$_SONAR_1421_BODY"
+}
+
+@test "PR 1421: a notice with no author type still needs a disposition (fail closed)" {
+  _expect_open '{"login":"sonarqubecloud"}' "$_SONAR_1421_BODY"
+  _expect_open '{"login":"chatgpt-codex-connector"}' "$_CODEX_1421_BODY"
+}
+
+@test "PR 1421: a registered notice with no author type logs why it was not cleared" {
+  local json
+  json=$(jq -cn --arg b "$_SONAR_1421_BODY" \
+    '{comments:[{id:"IC_n", author:{login:"sonarqubecloud"}, authorAssociation:"NONE", body:$b, isMinimized:false, minimizedReason:""}]}')
+  _run_check "$json"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"1 comment(s) from a registered info-status login carry no author type"* ]]
+  # A typed Bot notice logs nothing of the sort.
+  _run_check "$(_sonar_json sonarqubecloud "$_SONAR_1421_BODY")"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"carry no author type"* ]]
+}
+
+@test "Wiring: dev-lead's issue-comment fetch selects the author type info_status_clear needs" {
+  grep -q 'nodes{ id author{login __typename} authorAssociation body' "$SCRIPT_DIR/dev-lead-fix-reviews.sh"
+}
+
+@test "PR 1421: the Sonar passed summary that does not open the body still needs a disposition" {
+  _expect_open '{"login":"sonarqubecloud","__typename":"Bot"}' $'Re-posting the earlier status:\n\n'"$_SONAR_1421_BODY"
+}
+
+@test "maintainer_gate_merge_edit_times merges author.__typename by comment id" {
+  local bin="$BATS_TEST_TMPDIR/bin"; mkdir -p "$bin"
+  # The shim answers only a query that selects the author type, so dropping it
+  # from the lookup fails this test instead of silently stalling clean notices.
+  cat > "$bin/gh" <<'SHIM'
+#!/usr/bin/env bash
+[[ "$*" == *'author{__typename}'* ]] || exit 1
+printf '%s' '{"data":{"resource":{"comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"IC_b","lastEditedAt":null,"author":{"__typename":"Bot"}},{"id":"IC_u","lastEditedAt":null,"author":{"__typename":"User"}},{"id":"IC_g","lastEditedAt":null,"author":null}]}}}}'
+SHIM
+  chmod +x "$bin/gh"
+  run env PATH="$bin:$PATH" bash -c "source '$GATE'; maintainer_gate_merge_edit_times https://github.com/o/r/pull/1 \"\$1\"" _ \
+    '{"comments":[{"id":"IC_b","author":{"login":"sonarqubecloud"}},{"id":"IC_u","author":{"login":"sonarqubecloud"}},{"id":"IC_g","author":null},{"id":"IC_y","author":{"login":"x"}}]}'
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | jq -c '.comments[0].author')" = '{"login":"sonarqubecloud","__typename":"Bot"}' ]
+  [ "$(printf '%s' "$output" | jq -r '.comments[1].author.__typename')" = "User" ]
+  [ "$(printf '%s' "$output" | jq -c '.comments[2].author')" = 'null' ]
+  [ "$(printf '%s' "$output" | jq -r '.comments[3].author | has("__typename")')" = "false" ]
 }
 
 @test "#2209: maintainer_gate_open_comment_ids fails on unreadable input" {

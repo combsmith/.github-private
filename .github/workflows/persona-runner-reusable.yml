@@ -1,9 +1,9 @@
 # Persona Runtime — Reusable (dispatch side of the mention framework).
 # This file is the source of truth. Caller: .github/workflows/persona-runner.yml.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md (§4.1)
+# Standard: https://github.com/combsmith/.github/blob/main/standards/persona-standards.md (§4.1)
 #
-# The router (petry-projects/.github persona-mention-reusable.yml) resolves an
-# `@petry-projects/<role>` mention and fires a `persona-mention`
+# The router (combsmith/.github persona-mention-reusable.yml) resolves an
+# `@combsmith/<role>` mention and fires a `persona-mention`
 # repository_dispatch at this repo. This workflow receives it and runs the
 # addressed persona's advisory prompt (prompts/<id>/advisory.md), posting exactly
 # one advisory comment that carries the '<!-- persona:<id> -->' recursion marker.
@@ -19,6 +19,16 @@
 #   the marker cannot post an unmarked comment, because it cannot post at all.
 #   Prompt-only marker enforcement is how .github-private#860 happened (1,481 acks
 #   in 4.5h).
+#
+# Job layout (each job gets its own runner; tests/persona_runner.bats pins this):
+#   gate — pinned tooling only, no model. Resolves the persona, runs the event
+#          pre-gate, resolves the posting identity, and preflights its PAT.
+#   run  — the model. Holds the engine credential and the read-only github.token,
+#          and never references a posting PAT.
+#   post — pinned tooling only, no model. A fresh checkout at the workflow SHA;
+#          the one posting PAT the manifest names; the advisory arrives as one
+#          artifact file that is parsed as data. Target repo and item come from
+#          this workflow's inputs, never from `run`.
 #
 # Posting identity (per persona, from the manifest — NOT a repo-wide default):
 #   Which account a persona's advisory posts as is read from that persona's
@@ -122,16 +132,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  run:
+  gate:
     # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
-    # (neutral, not red) and `fleet-paused` below reports why.
+    # (neutral, not red), `run` and `post` are skipped with it, and `fleet-paused`
+    # below reports why.
     if: vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
+    outputs:
+      proceed: ${{ steps.resolve.outputs.skip == 'false' && steps.pregate.outputs.run == 'true' }}
+      prompt_path: ${{ steps.resolve.outputs.prompt_path }}
+      marker: ${{ steps.resolve.outputs.marker }}
+      account: ${{ steps.identity.outputs.account }}
+      credential: ${{ steps.identity.outputs.credential }}
     permissions:
-      # checkout THIS repo's tooling + prompts. The agent reads the public source
-      # repo with github.token; the comment is posted with the persona's manifest
-      # PAT.
+      # checkout THIS repo's tooling.
       contents: read
       # the event pre-gate (#1905) reads the PR's changed files, labels, and
       # reviews via github.token — with only contents:read those reads 403 on a
@@ -142,9 +157,10 @@ jobs:
       # already-advised marker / automation budget.
       issues: read
     steps:
-      - name: Checkout persona tooling + prompts
+      - name: Checkout persona tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.workflow_sha }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -277,21 +293,15 @@ jobs:
         id: authz_preflight
         if: steps.resolve.outputs.skip == 'false' && steps.pregate.outputs.run == 'true'
         env:
-          # Same manifest-driven PAT selection as the post step — the token that
-          # WILL post is the token we probe. The agent step never sees these.
-          BOT_PAT: ${{ secrets.DON_PETRY_BOT_GH_PAT }}
-          OWNER_PAT: ${{ secrets.GH_PAT_DON_PETRY }}
+          # Same manifest-driven PAT selection as the post job — the token that
+          # WILL post is the token we probe. An unset secret stays empty rather
+          # than falling through to the other PAT.
+          GH_TOKEN: ${{ steps.identity.outputs.credential == 'DON_PETRY_BOT_GH_PAT' && secrets.DON_PETRY_BOT_GH_PAT || (steps.identity.outputs.credential == 'GH_PAT_DON_PETRY' && secrets.GH_PAT_DON_PETRY || '') }}
           POSTING_ACCOUNT: ${{ steps.identity.outputs.account }}
           POSTING_CREDENTIAL: ${{ steps.identity.outputs.credential }}
           SOURCE_REPO: ${{ inputs.source_repo }}
         run: |
           set -euo pipefail
-          if [ "$POSTING_CREDENTIAL" = "DON_PETRY_BOT_GH_PAT" ]; then
-            GH_TOKEN="${BOT_PAT}"
-          else
-            GH_TOKEN="${OWNER_PAT}"
-          fi
-          export GH_TOKEN
 
           # Verify the token authenticates as the manifest identity BEFORE probing
           # write access — otherwise a writable token for the WRONG account passes
@@ -314,8 +324,35 @@ jobs:
 
           bash scripts/persona-authz-preflight.sh
 
+  run:
+    # The model's job. Its only credentials are the engine credential and the
+    # read-only github.token; a posting PAT must never be referenced here.
+    needs: gate
+    # AGENTS_PAUSED (#1525, #2249): the fleet-pause contract requires the model
+    # job's condition to mirror `fleet-paused`, so the gate's verdict is checked
+    # on each step below rather than here. A skipped or failed `gate` skips this.
+    if: vars.AGENTS_PAUSED != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      skip_post: ${{ steps.advise.outputs.skip_post }}
+    permissions:
+      # checkout THIS repo's prompts. The agent reads the public source repo with
+      # github.token; the comment is posted by the post job.
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - name: Checkout persona tooling + prompts
+        if: needs.gate.outputs.proceed == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Install Claude Code
-        if: steps.resolve.outputs.skip == 'false' && steps.pregate.outputs.run == 'true'
+        if: needs.gate.outputs.proceed == 'true'
         env:
           CLAUDE_CODE_VERSION: ${{ vars.CLAUDE_CODE_VERSION || 'latest' }}
         run: |
@@ -326,7 +363,7 @@ jobs:
           npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
       - name: Produce the advisory (agent — read only, no post)
-        if: steps.resolve.outputs.skip == 'false' && steps.pregate.outputs.run == 'true'
+        if: needs.gate.outputs.proceed == 'true'
         id: advise
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -341,8 +378,8 @@ jobs:
           ITEM_NUMBER: ${{ inputs.item_number }}
           COMMENT_URL: ${{ inputs.comment_url }}
           REQUESTED_BY: ${{ inputs.requested_by }}
-          AGENT_MARKER: ${{ steps.resolve.outputs.marker }}
-          PROMPT_PATH: ${{ steps.resolve.outputs.prompt_path }}
+          AGENT_MARKER: ${{ needs.gate.outputs.marker }}
+          PROMPT_PATH: ${{ needs.gate.outputs.prompt_path }}
         run: |
           set -euo pipefail
           export PATH="$HOME/.npm-global/bin:$PATH"
@@ -353,6 +390,8 @@ jobs:
           # bad AI_MODELS_* entry is named, not silently ignored.
           # shellcheck source=scripts/lib/engine-models.sh
           source scripts/lib/engine-models.sh
+          # shellcheck source=scripts/lib/persona-runner.sh
+          source scripts/lib/persona-runner.sh
           while IFS= read -r _models_line; do
             [ -n "$_models_line" ] && echo "::warning::$_models_line"
           done <<< "$(ai_models_problems)"
@@ -396,27 +435,61 @@ jobs:
             exit "$_rc"
           fi
 
-          # Stash raw agent output for the post step to parse (multi-line, so a
-          # file, not a step output).
-          cp "$_out" "$RUNNER_TEMP/agent-out.txt"
+          # Hand only the advisory to the post job, redacted: run artifacts of this
+          # public repository are readable by anyone, so the raw output stays here.
+          pr_write_handoff "$_out" "$RUNNER_TEMP/persona-handoff/${PR_HANDOFF_FILE}"
           echo "skip_post=false" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the advisory for the post job
+        if: steps.advise.outputs.skip_post == 'false'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: persona-agent-handoff
+          path: ${{ runner.temp }}/persona-handoff/advisory.txt
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+  post:
+    # The only writer. Runs pinned tooling on its own runner; `run` reaches it
+    # through the handoff file and the skip_post flag and nothing else.
+    needs: [gate, run]
+    # Also paused: a fleet pause stops the writes as well as the model calls.
+    if: vars.AGENTS_PAUSED != 'true' && needs.run.outputs.skip_post == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # checkout THIS repo's tooling. The comment is posted with the manifest PAT.
+      contents: read
+    steps:
+      - name: Checkout persona tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download the advisory from the agent job
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: persona-agent-handoff
+          # Outside the workspace: this directory is read as data, never run.
+          path: ${{ runner.temp }}/persona-handoff
 
       - name: Enforce marker and post the comment (workflow — the only writer)
         id: post
-        if: steps.resolve.outputs.skip == 'false' && steps.pregate.outputs.run == 'true' && steps.advise.outputs.skip_post == 'false'
         env:
-          # The PAT lives ONLY here. The agent step above never had it. WHICH
-          # PAT is used is driven by the persona manifest
-          # (runtime.identity.credential), resolved in the "identity" step —
-          # never a repo-wide default. The resolve step already constrained
-          # credential to this known set.
-          BOT_PAT: ${{ secrets.DON_PETRY_BOT_GH_PAT }}
-          OWNER_PAT: ${{ secrets.GH_PAT_DON_PETRY }}
+          # The one PAT the persona manifest names (runtime.identity.credential,
+          # resolved in the gate job, which constrained it to this known set) —
+          # never a repo-wide default. An unset secret stays empty and fails
+          # closed in pr_run_post rather than falling through to the other PAT.
+          GH_TOKEN: ${{ needs.gate.outputs.credential == 'DON_PETRY_BOT_GH_PAT' && secrets.DON_PETRY_BOT_GH_PAT || (needs.gate.outputs.credential == 'GH_PAT_DON_PETRY' && secrets.GH_PAT_DON_PETRY || '') }}
           PERSONA: ${{ inputs.persona }}
-          POSTING_ACCOUNT: ${{ steps.identity.outputs.account }}
-          POSTING_CREDENTIAL: ${{ steps.identity.outputs.credential }}
+          POSTING_ACCOUNT: ${{ needs.gate.outputs.account }}
+          POSTING_CREDENTIAL: ${{ needs.gate.outputs.credential }}
           SOURCE_REPO: ${{ inputs.source_repo }}
           ITEM_NUMBER: ${{ inputs.item_number }}
+          HANDOFF_DIR: ${{ runner.temp }}/persona-handoff
         run: |
           set -euo pipefail
           # shellcheck source=scripts/lib/persona-runner.sh
@@ -434,13 +507,7 @@ jobs:
             echo "body_file=${body_file}"
           } >> "$GITHUB_OUTPUT"
 
-          # Select the appropriate PAT based on the persona's manifest identity
-          if [ "$POSTING_CREDENTIAL" = "DON_PETRY_BOT_GH_PAT" ]; then
-            GH_TOKEN="${BOT_PAT}"
-          else
-            GH_TOKEN="${OWNER_PAT}"
-          fi
-          export GH_TOKEN
+          pr_validate_handoff "$HANDOFF_DIR"
 
           # Extract the advisory, guarantee the recursion marker, and write the
           # redacted body to $body_file FIRST — so the upload step below has it
@@ -454,7 +521,7 @@ jobs:
           pr_run_post \
             "$PERSONA" "$SOURCE_REPO" "$ITEM_NUMBER" \
             "$POSTING_ACCOUNT" "$POSTING_CREDENTIAL" \
-            "$RUNNER_TEMP/agent-out.txt" "$body_file" "$GITHUB_STEP_SUMMARY"
+            "$HANDOFF_DIR/$PR_HANDOFF_FILE" "$body_file" "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve the advisory as a run artifact (post failed)
         # Failure-only, byte-for-byte re-postable copy of record. Named
@@ -464,15 +531,15 @@ jobs:
         # uploads it; if it never got that far, if-no-files-found:ignore keeps
         # this a clean no-op (#1775 AC #1/#2).
         if: failure() && steps.post.outputs.artifact_name != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.post.outputs.artifact_name }}
           path: ${{ steps.post.outputs.body_file }}
           if-no-files-found: ignore
           retention-days: 30
 
-  # Fleet pause notice (#2249). With AGENTS_PAUSED=true the `run` job above is
-  # skipped by its `if:`, and a skipped job cannot log. This job runs instead, on
+  # Fleet pause notice (#2249). With AGENTS_PAUSED=true the jobs above are
+  # skipped by their `if:`, and a skipped job cannot log. This job runs instead, on
   # the same events, and says why in one line. Inventory and rules: AGENTS.md
   # "Pausing the agent fleet" and scripts/lib/fleet-pause-registry.tsv.
   fleet-paused:

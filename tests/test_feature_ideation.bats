@@ -12,8 +12,8 @@
 FEATURE_IDEATION_YML=".github/workflows/feature-ideation.yml"
 
 # Canonical reusable + channel pin from
-# petry-projects/.github/standards/workflows/feature-ideation.yml
-REUSABLE="petry-projects/.github/.github/workflows/feature-ideation-reusable.yml"
+# combsmith/.github/standards/workflows/feature-ideation.yml
+REUSABLE="combsmith/.github/.github/workflows/feature-ideation-reusable.yml"
 # This repo pins the v1-next ring channel (major-scope repin #657).
 CHANNEL="feature-ideation/v1-next"
 
@@ -57,7 +57,7 @@ setup() {
 
 # ── #1827: tooling_ref must ride the same ring as the reusable ────────────────
 # The reusable checks out its Python tooling (requirements file, collect/validate
-# scripts) from petry-projects/.github at inputs.tooling_ref, which DEFAULTS to
+# scripts) from combsmith/.github at inputs.tooling_ref, which DEFAULTS to
 # the `v1` release tag. This repo rides the `next` ring (the reusable is pinned at
 # @feature-ideation/v1-next), but the stale `v1` tag predates
 # scripts/feature-ideation-requirements.txt — so "Install Python jsonschema" dies
@@ -103,10 +103,18 @@ setup() {
   grep -qE "github\.event\.discussion\.user\.type[[:space:]]*!=[[:space:]]*['\"]Bot['\"]" "$FEATURE_IDEATION_YML"
 }
 
-@test "feature-ideation.yml redispatch requires GH_PAT_WORKFLOWS (GITHUB_TOKEN won't start a run)" {
-  # A workflow_dispatch fired with GITHUB_TOKEN is accepted but never starts a
-  # run (loop prevention) — same constraint as the initiative-planner bridge.
-  grep -qF "secrets.GH_PAT_WORKFLOWS" "$FEATURE_IDEATION_YML"
+@test "feature-ideation.yml redispatch uses the job token, not GH_PAT_WORKFLOWS (#2444)" {
+  # workflow_dispatch and repository_dispatch are the two events the job token
+  # can start runs with, so the redispatch needs no personal token (#2444), and
+  # GH_PAT_WORKFLOWS is being retired (#1326).
+  local job
+  job=$(awk '/^  redispatch:/{f=1; print; next} f && /^  [A-Za-z0-9_-]+:/{f=0} f' "$FEATURE_IDEATION_YML")
+  [ -n "$job" ]
+  grep -qE 'GH_TOKEN:[[:space:]]*\$\{\{[[:space:]]*github\.token[[:space:]]*\}\}' <<<"$job"
+  if grep -qF "secrets.GH_PAT_WORKFLOWS" "$FEATURE_IDEATION_YML"; then
+    echo "feature-ideation.yml still references secrets.GH_PAT_WORKFLOWS" >&2
+    return 1
+  fi
 }
 
 @test "feature-ideation.yml redispatch forwards target_discussion via workflow_dispatch" {

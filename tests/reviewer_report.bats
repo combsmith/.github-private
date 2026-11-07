@@ -131,7 +131,7 @@ JSON
 # ---------------------------------------------------------------------------
 
 @test "normalize: emits one pr record and one bot_pr per participating bot; humans excluded" {
-  run jq -c --arg repo "petry-projects/markets" --argjson bots "$BOTS" \
+  run jq -c --arg repo "combsmith/markets" --argjson bots "$BOTS" \
     --arg rl "$RATE_LIMIT_RE" "[ $_NORMALIZE_JQ ]" "$PR_NODE"
   # 1 pr record + 4 bot records (copilot, gemini, coderabbit, codex — NOT human alice, NOT sonar)
   echo "$output" | jq -e 'map(select(.kind=="pr")) | length == 1'
@@ -512,13 +512,13 @@ JSON
   dir="$(mktemp -d "$BATS_TEST_TMPDIR/cerr.XXXXXX")"
   cat > "$dir/r.jsonl" <<'JSON'
 {"kind":"pr","repo":"o/r","pr":"o/r/1","created":"2026-09-23T10:00:00Z","merged":null,"draft":false,"author":"h"}
-{"kind":"collect_error","repo":"petry-projects/markets","reason":"page-1 resource-limit after retries"}
+{"kind":"collect_error","repo":"combsmith/markets","reason":"page-1 resource-limit after retries"}
 JSON
   run render_reviewer_report "$dir" 7 3 2026-09-23
   [ "$status" -eq 0 ]
   # Prominent, in-report (not a stderr WARN): names the count and the repo.
   echo "$output" | grep -q "could not be collected"
-  echo "$output" | grep -q "petry-projects/markets"
+  echo "$output" | grep -q "combsmith/markets"
 }
 
 @test "render: a truncated connection is reported explicitly, never silently (#1908)" {

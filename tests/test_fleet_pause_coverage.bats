@@ -33,6 +33,7 @@ REGISTRY_REL="scripts/lib/fleet-pause-registry.tsv"
 NEWLY_GATED=(
   persona-runner-reusable.yml
   gh-aw-cross-org.yml issue-triage-runner.yml initiative-planner.yml idea-triage.yml
+  decision-brief.yml
   dependency-advisory.yml docs-health-check.yml readme-refresh.yml
   release-notes.yml stale-manager.yml skill-eval-report.yml model-ab.yml
   dev-lead-retry.yml pr-review-sweep.yml
@@ -101,7 +102,7 @@ PY
   run python3 "$CHECK" --root "$REPO_ROOT"
   [ "$status" -eq 0 ]
   [ "$(grep -c '^NOT PAUSED: ' <<< "$output")" -eq 1 ]
-  [[ "$output" == *"NOT PAUSED: feature-ideation.yml (model call in petry-projects/.github/.github/workflows/feature-ideation-reusable.yml)"* ]]
+  [[ "$output" == *"NOT PAUSED: feature-ideation.yml (model call in combsmith/.github/.github/workflows/feature-ideation-reusable.yml)"* ]]
 }
 
 @test "registry: each workflow #2249 gated has a job-gate row" {
@@ -210,8 +211,8 @@ PY
   local wf jobs job n=0
   while IFS=$'\t' read -r wf jobs; do
     job="${jobs%%,*}"
-    # The first `vars.AGENTS_PAUSED != 'true'` in the file is that job's gate.
-    replace_in "$WF/$wf" "vars\.AGENTS_PAUSED != 'true'" "true"
+    # The first `vars.AGENTS_PAUSED != 'true'` after the job's key is its gate.
+    replace_in "$WF/$wf" "(?s)(\n  ${job}:\n.*?)vars\.AGENTS_PAUSED != 'true'" '\1true'
     check
     [ "$status" -eq 1 ] || { echo "$wf: a neutralised gate was not detected"; return 1; }
     [[ "$output" == *"$wf: job '$job' is not paused by AGENTS_PAUSED"* ]] || { echo "$wf: wrong message: $output"; return 1; }
@@ -918,7 +919,7 @@ YAML
   while IFS= read -r wf; do
     [[ "$section" == *"\`$wf\`"* ]] || { echo "the pause promise does not name $wf"; return 1; }
   done < <(awk -F'\t' '$2 == "upstream" { print $1 }' "$REPO_ROOT/$REGISTRY_REL")
-  [[ "$section" == *"petry-projects/.github#1295"* ]]
+  [[ "$section" == *"combsmith/.github#1295"* ]]
 }
 
 # ── mutation: the registry ───────────────────────────────────────────────────
@@ -962,13 +963,13 @@ YAML
 
 @test "mutation: an upstream row must name a reusable in another repository that the workflow calls" {
   drop_row feature-ideation.yml
-  add_row feature-ideation.yml upstream petry-projects/.github/.github/workflows/something-else.yml "Reason."
+  add_row feature-ideation.yml upstream combsmith/.github/.github/workflows/something-else.yml "Reason."
   check
   [ "$status" -eq 1 ]
   [[ "$output" == *"feature-ideation.yml: no job calls the reusable the registry names"* ]]
 
   drop_row feature-ideation.yml
-  add_row feature-ideation.yml upstream petry-projects/.github-private/.github/workflows/pr-review.yml "Reason."
+  add_row feature-ideation.yml upstream combsmith/.github-private/.github/workflows/pr-review.yml "Reason."
   check
   [ "$status" -eq 1 ]
   [[ "$output" == *"feature-ideation.yml: mode upstream needs"* ]]

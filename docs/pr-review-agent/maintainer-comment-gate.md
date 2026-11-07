@@ -1,7 +1,7 @@
 # Maintainer issue-comment gate (issues #1290, #1813, #1918, #2008)
 
-> **Redesigned in [#1813](https://github.com/petry-projects/.github-private/issues/1813)
-> and [#1918](https://github.com/petry-projects/.github-private/issues/1918).** The
+> **Redesigned in [#1813](https://github.com/combsmith/.github-private/issues/1813)
+> and [#1918](https://github.com/combsmith/.github-private/issues/1918).** The
 > original gate (#1290) judged a comment *addressed* by comparing timestamps — a push
 > at/after the comment cleared it. GitHub now always returns the head push timestamp as
 > `null`, so that model failed closed on every open PR (the #1813 outage), and a push
@@ -31,7 +31,7 @@ The same words, posted two ways, have opposite force. One is a blocking, actiona
 signal; the other was — before this gate — a diary entry. Worse, `gh pr comment` is
 the *ergonomic default*: the obvious verb an agent or human reaches for first. **The
 easy path was the silent one.** This shipped a regression to `main` (the incident in
-[#1290](https://github.com/petry-projects/.github-private/issues/1290)): a maintainer
+[#1290](https://github.com/combsmith/.github-private/issues/1290)): a maintainer
 posted a "fails open" finding as a PR comment, dev-lead never saw it, pr-review
 approved, and the PR auto-merged eight minutes later with the defect intact.
 
@@ -83,8 +83,14 @@ is minimized `RESOLVED`, **unless** it is in the exemption set recorded in
   reviewer source that declares an `info_status_pattern` in the reviewer-source
   registry (`scripts/lib/reviewer-sources.tsv`), and whose body matches that pattern,
   is a clean status report carrying no finding and is treated as **addressed**. The
+  author must be the GitHub App itself (`author.__typename` is `Bot`): an ordinary
+  User account can hold a registered bot's bare login (a User named `sonarqubecloud`
+  exists), so the same text from it still blocks, and a comment whose author type is
+  unknown still blocks. pr-review reads the author type in the same GraphQL pass that
+  reads edit times (`maintainer_gate_merge_edit_times`). The
   canonical case is SonarCloud's `Quality Gate passed` comment, which it **re-posts on
-  every push**; its pattern pins the `**Quality Gate passed**` headline **and** the
+  every push**; its pattern is anchored to the passed-badge image the comment opens
+  with and pins the `**Quality Gate passed**` headline **and** the
   `[0 New issues]` and `[0 Security Hotspots]` lines, so a `Quality Gate failed`
   comment, or one still reporting new issues or hotspots, does **not** match and still
   blocks. An unreadable registry degrades to "clear nothing", never to clearing
@@ -175,8 +181,8 @@ minimized with classifier `RESOLVED`. In practice:
 
 ### Fails closed
 
-The [#1290](https://github.com/petry-projects/.github-private/issues/1290) /
-[#1813](https://github.com/petry-projects/.github-private/issues/1813) acceptance
+The [#1290](https://github.com/combsmith/.github-private/issues/1290) /
+[#1813](https://github.com/combsmith/.github-private/issues/1813) acceptance
 criterion is that an inability to determine whether a finding was addressed must
 **not** read as "no findings" — that is exactly the bug that shipped the regression.
 So:
@@ -220,7 +226,7 @@ shared identity removes *both* of the owner's mechanically-blocking review paths
    can *resolve the maintainer's own threads*. Observed on PR #1413: four maintainer
    threads, all `resolvedBy: don-petry`, gate cleared, auto-merge enabled.
 
-This is [#860](https://github.com/petry-projects/.github-private/issues/860)
+This is [#860](https://github.com/combsmith/.github-private/issues/860)
 normative rule 2 applied to review gates: **a gate whose reset is reachable by the
 agent is not a gate** (`docs/agentic-interaction-model.md` §7 rule 2, extended in
 §12 to review/merge gates).

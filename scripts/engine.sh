@@ -35,10 +35,10 @@ set -euo pipefail
 #   Unset → zero overhead, zero behaviour change.
 #   The path stays in this shell: a model CLI is started without it (_engine_child).
 
-# Sidecar directory (#2271). The writer tier leaves one-value files here for the
+# Sidecar directory (#2271). The writer tier leaves small files here for the
 # dev-lead handlers that source this file to read back: the parsed rate-limit
-# reset, the failure-reason class and the timeout tier/budget/elapsed. Unset →
-# /tmp, where these files have always been. This is the only definition: every
+# reset, the failure-reason class, the timeout tier/budget/elapsed and the
+# redacted session output. Unset → /tmp, where these files have always been. This is the only definition: every
 # writer and reader names "$DEV_LEAD_SIDECAR_DIR/<file>", so the two sides cannot
 # resolve different paths. The test suites point it at a per-test directory so
 # concurrent runs do not read each other's values.
@@ -52,6 +52,9 @@ _ENGINE_CHAIN_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-chain.sh"
 # shellcheck source=lib/engine-chain.sh
 [ -f "$_ENGINE_CHAIN_LIB" ] && source "$_ENGINE_CHAIN_LIB"
 unset _ENGINE_CHAIN_LIB
+
+# shellcheck source=lib/model-sandbox.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/model-sandbox.sh"
 if declare -F ai_engine_primary >/dev/null 2>&1; then
   _requested_engine="${REVIEW_ENGINE:-}"
   REVIEW_ENGINE="$(ai_engine_primary "$_requested_engine")"
@@ -137,7 +140,7 @@ export COPILOT_API_MODEL
 # so the tiers can never silently exceed the job backstop. Raising a tier here
 # requires lowering another or raising the job cap, or the guardrail fails CI.
 #
-# Fleet note: petry-projects/.github leaves `vars.DEEP_TIMEOUT_SEC` (and
+# Fleet note: combsmith/.github leaves `vars.DEEP_TIMEOUT_SEC` (and
 # ACTION_TIMEOUT_SEC) UNSET, so the workflow passes an empty value through and
 # these engine defaults take effect. The raised DEEP default (was 600, now 2400)
 # therefore applies fleet-wide unless a repo overrides it via its own `vars`.
@@ -580,8 +583,9 @@ check_provider_headroom() {
       fi
       # Probe GitHub Models API rate-limit headers via a lightweight HEAD.
       local _resp _remaining _limit
-      _resp=$(curl -sI --max-time 5 https://models.github.ai/inference/chat/completions \
-        -H "Authorization: Bearer ${_tok}" \
+      # The token goes on stdin, so it never appears on a command line.
+      _resp=$(printf 'header = "Authorization: Bearer %s"\n' "$_tok" |
+        curl -sI --max-time 5 --config - https://models.github.ai/inference/chat/completions \
         -H "X-GitHub-Api-Version: 2022-11-28" 2>/dev/null || true)
       _remaining=$(printf '%s' "$_resp" | grep -i 'x-ratelimit-remaining-requests:' \
         | cut -d: -f2 | tr -d '[:space:]' || true)
@@ -822,8 +826,19 @@ is_transient_failure() {
 # GEMINI_LEDGER_FILE (gemini-quota.sh's override for the same file) and
 # _ENGINE_USAGE_OUT (this call's usage sidecar, which nested engine code would
 # overwrite). TOKEN_WORKFLOW stays: a label, it writes nothing without a path.
+#
+# In the review model sandbox the CLI starts as the unprivileged model user with a
+# reset environment instead (scripts/lib/model-sandbox.sh).
+#
+# CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD makes the Claude CLI read CLAUDE.md
+# from --add-dir, see _claude_chain_invoke; the other CLIs ignore it.
 _engine_child() {
-  env -u TOKEN_LOG_FILE -u GEMINI_LEDGER_FILE -u _ENGINE_USAGE_OUT "$@"
+  if model_sandbox_enabled; then
+    model_sandbox_exec "$@"
+    return
+  fi
+  env -u TOKEN_LOG_FILE -u GEMINI_LEDGER_FILE -u _ENGINE_USAGE_OUT \
+    CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 "$@"
 }
 
 # copilot_chat <prompt_file> [timeout_sec] [extra_flags...]
@@ -1266,6 +1281,11 @@ _claude_log_hop() {
 #
 # Sets _CLAUDE_CHAIN_MODEL_USED to the model that produced the final output
 # (success or last attempt) so callers can log which model actually ran.
+# Every hop runs with --setting-sources user: the working directory is often a PR
+# checkout, and settings stored in a repository (.claude/settings*.json, .mcp.json)
+# do not configure the engine. That source also carries CLAUDE.md, so --add-dir plus
+# CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD keep the repository's guidance loaded.
+# Project skills and CLAUDE.md files in subdirectories are no longer auto-loaded.
 _claude_chain_invoke() {
   local chain_csv="$1" prompt_file="$2" timeout_sec="$3"
   shift 3
@@ -1309,7 +1329,7 @@ _claude_chain_invoke() {
     rc=0
 
     if [ -n "$stdout_tmp" ] && [ -n "$stderr_tmp" ]; then
-      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
+      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --setting-sources user --add-dir "$PWD" --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
         < "$prompt_file" > "$stdout_tmp" 2> "$stderr_tmp" || rc=$?
     else
       # mktemp failure (one or both) — clean up the partial tmp before degrading
@@ -1318,7 +1338,7 @@ _claude_chain_invoke() {
       [ -n "$stderr_tmp" ] && rm -f "$stderr_tmp"
       [ -n "$final_stdout" ] && rm -f "$final_stdout"
       [ -n "$final_stderr" ] && rm -f "$final_stderr"
-      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --model "$model" "${extra_args[@]}" \
+      _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --setting-sources user --add-dir "$PWD" --model "$model" "${extra_args[@]}" \
         < "$prompt_file" || rc=$?
       _CLAUDE_CHAIN_MODEL_USED="$model"
       export _CLAUDE_CHAIN_MODEL_USED
@@ -1715,6 +1735,14 @@ run_triage() {
 # Per-tier timeout from DEEP_TIMEOUT_SEC (also applies to action/audit calls;
 # they're all the same agentic shape and similarly priced).
 run_agentic() {
+  if model_sandbox_enabled; then
+    model_sandbox_call _run_agentic_direct "$1" "$2" "${3:-deep}" "$MODEL_SANDBOX_TOOLS"
+    return
+  fi
+  _run_agentic_direct "$@"
+}
+
+_run_agentic_direct() {
   local prompt_file="$1"
   local model="$2"
   local tier="${3:-deep}"
@@ -1778,6 +1806,7 @@ run_agentic() {
         _claude_chain_invoke "$_agentic_chain" "$prompt_file" "$DEEP_TIMEOUT_SEC" \
           --permission-mode acceptEdits \
           --allowed-tools "$_MCP_ALLOWED_TOOLS" \
+          ${_ENGINE_TOOL_ARGS[@]+"${_ENGINE_TOOL_ARGS[@]}"} \
           ${_effort_args[@]+"${_effort_args[@]}"} \
           ${_MCP_FLAGS[@]+"${_MCP_FLAGS[@]}"} \
           | tee "$_tok_tmp" || rc=${PIPESTATUS[0]}
@@ -1785,6 +1814,7 @@ run_agentic() {
         _claude_chain_invoke "$_agentic_chain" "$prompt_file" "$DEEP_TIMEOUT_SEC" \
           --permission-mode acceptEdits \
           --allowed-tools "$_MCP_ALLOWED_TOOLS" \
+          ${_ENGINE_TOOL_ARGS[@]+"${_ENGINE_TOOL_ARGS[@]}"} \
           ${_effort_args[@]+"${_effort_args[@]}"} \
           ${_MCP_FLAGS[@]+"${_MCP_FLAGS[@]}"} \
           || rc=$?
@@ -1951,12 +1981,12 @@ run_writer() {
       fi
       if [ -n "$_tmp" ]; then
         _claude_chain_invoke "$_writer_chain" "$prompt_file" "$ACTION_TIMEOUT_SEC" \
-          --permission-mode acceptEdits \
+          --permission-mode acceptEdits --strict-mcp-config \
           --allowed-tools "Bash,Read,Write,Edit,Grep,Glob,WebFetch" \
           2>&1 | tee "$_tmp" || rc=${PIPESTATUS[0]}
       else
         _claude_chain_invoke "$_writer_chain" "$prompt_file" "$ACTION_TIMEOUT_SEC" \
-          --permission-mode acceptEdits \
+          --permission-mode acceptEdits --strict-mcp-config \
           --allowed-tools "Bash,Read,Write,Edit,Grep,Glob,WebFetch" \
           || rc=$?
       fi
@@ -2019,7 +2049,7 @@ run_writer() {
     # regardless of exit code. The rate-limit check further down reads the raw
     # capture ($_tmp), which redaction leaves intact (separate file), so
     # persisting first is safe.
-    rm -f /tmp/dev-lead-session-output.txt
+    rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
     if ! sed -E \
       -e 's/(gh[opsu]|ghr)_[A-Za-z0-9_]{20,}/***REDACTED-GH-TOKEN***/g' \
       -e 's/github_pat_[A-Za-z0-9_]{20,}/***REDACTED-GH-PAT***/g' \
@@ -2030,9 +2060,9 @@ run_writer() {
       -e 's/[Bb]earer [A-Za-z0-9._-]{20,}/Bearer ***REDACTED***/g' \
       -e '/-----BEGIN [A-Z ]*PRIVATE KEY-----/,/-----END [A-Z ]*PRIVATE KEY-----/c\
 ***REDACTED-PRIVATE-KEY***' \
-      "$_tmp" > /tmp/dev-lead-session-output.txt; then
-      : > /tmp/dev-lead-session-output.txt 2>/dev/null || true
-      echo "::warning::Failed to redact/persist /tmp/dev-lead-session-output.txt" >&2
+      "$_tmp" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"; then
+      : > "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" 2>/dev/null || true
+      echo "::warning::Failed to redact/persist $DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" >&2
     fi
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
       # HTML-escape the redacted log so literal </details> or </summary> in
@@ -2043,7 +2073,7 @@ run_writer() {
         echo "<details><summary>Click to expand session logs</summary>"
         echo ""
         echo "<pre>"
-        sed 's|&|\&amp;|g; s|<|\&lt;|g; s|>|\&gt;|g' /tmp/dev-lead-session-output.txt
+        sed 's|&|\&amp;|g; s|<|\&lt;|g; s|>|\&gt;|g' "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
         echo "</pre>"
         echo ""
         echo "</details>"
@@ -2110,6 +2140,27 @@ _mark_engine_exhausted() {
   echo "::warning::[engine-exhaustion] ${engine} marked exhausted for this run (${reason}) — it will not be re-invoked" >&2
 }
 
+# _engine_project_config_present <engine>
+# Prints the first path in the working directory that <engine> would load as project
+# configuration and returns 0; returns 1 when there is none. Claude is never listed:
+# _claude_chain_invoke tells it to ignore such files. The review bots' .gemini/
+# config.yaml and styleguide.md are not CLI configuration, so they do not count.
+_engine_project_config_present() {
+  local _path
+  local -a _paths=()
+  case "${1:-}" in
+    gemini)  _paths=(.gemini/settings.json .gemini/extensions .gemini/.env .env) ;;
+    copilot) _paths=(.github/hooks .github/mcp.json .mcp.json .vscode/mcp.json) ;;
+  esac
+  for _path in "${_paths[@]}"; do
+    if [ -e "$_path" ]; then
+      printf '%s\n' "$_path"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # run_writer_with_fallback <prompt_file> [intent_type]
 # Tries primary engine, falls back through claude → gemini → copilot on rate-limit.
 # intent_type is passed to model_for_intent() so each engine uses the appropriate
@@ -2172,6 +2223,14 @@ run_writer_with_fallback() {
   # distinct `unconfigured` so the caller escalates to a human instead of retrying.
   local any_unconfigured=0
   for engine in "${engines[@]}"; do
+    # Gemini and Copilot have no equivalent of Claude's --setting-sources, so one is
+    # not run as the writer in a checkout that carries its project configuration.
+    # Recorded as a config-gap: retrying the same checkout cannot change the answer.
+    if _engine_project_config="$(_engine_project_config_present "$engine")"; then
+      echo "::warning::Skipping $engine: this checkout carries $_engine_project_config, which the engine would load" >&2
+      any_unconfigured=1
+      continue
+    fi
     if [ "$engine" = "copilot" ] && [[ "${COPILOT_GITHUB_TOKEN:-}" == ghp_* ]]; then
       echo "::warning::Skipping copilot fallback: classic PAT in COPILOT_GITHUB_TOKEN is unsupported (configuration gap, not a rate limit)" >&2
       any_unconfigured=1
@@ -2449,6 +2508,14 @@ duck_skip_note() {
 # reachable. Output to stdout. Strips non-selected engine credentials to
 # prevent cross-engine leakage.
 run_duck() {
+  if model_sandbox_enabled; then
+    model_sandbox_call _run_duck_direct "$1" "$2"
+    return
+  fi
+  _run_duck_direct "$@"
+}
+
+_run_duck_direct() {
   local prompt_file="$1"
   local model="$2"
   local _tok_tmp="" rc=0
@@ -2469,13 +2536,14 @@ run_duck() {
       unset GOOGLE_API_KEY GOOGLE_API_KEY_2 GOOGLE_API_KEY_3 GOOGLE_API_KEY_4 2>/dev/null || true
       unset GEMINI_API_KEY 2>/dev/null || true
       # Thread the opt-in MCP config (no-op when REVIEW_MCP_CONFIG is unset).
-      _mcp_review_flags "Bash,Read,Grep,Glob"
+      _mcp_review_flags "${_ENGINE_REVIEW_TOOLS:-Bash,Read,Grep,Glob}"
       # Route through the chain helper so real token usage (incl. cache) is captured
       # when logging is on; a single-model "chain" preserves prior behaviour.
       if [ -n "$_tok_tmp" ]; then
         _claude_chain_invoke "$model" "$prompt_file" "$DUCK_TIMEOUT_SEC" \
           --permission-mode acceptEdits \
           --allowed-tools "$_MCP_ALLOWED_TOOLS" \
+          ${_ENGINE_TOOL_ARGS[@]+"${_ENGINE_TOOL_ARGS[@]}"} \
           --max-turns 25 \
           ${_MCP_FLAGS[@]+"${_MCP_FLAGS[@]}"} \
           | tee "$_tok_tmp" || rc=${PIPESTATUS[0]}
@@ -2483,6 +2551,7 @@ run_duck() {
         _claude_chain_invoke "$model" "$prompt_file" "$DUCK_TIMEOUT_SEC" \
           --permission-mode acceptEdits \
           --allowed-tools "$_MCP_ALLOWED_TOOLS" \
+          ${_ENGINE_TOOL_ARGS[@]+"${_ENGINE_TOOL_ARGS[@]}"} \
           --max-turns 25 \
           ${_MCP_FLAGS[@]+"${_MCP_FLAGS[@]}"} \
           || rc=$?

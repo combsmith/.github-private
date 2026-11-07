@@ -74,12 +74,13 @@
 # ── Agents and model-calling workflows, gated here ───────────────────────────
 dev-lead-reusable.yml	job-gate-silent	dispatch,ci-relay,resume	The original gate (#1525). No notice job: a contract test requires every job of this reusable to carry the condition, and a notice job would start a runner for every event in every consumer repository during a pause.
 pr-review.yml	job-gate-silent	review	Reusable. A job condition, because the AGENTS_PAUSED branch of validate-engines.sh is not enough: with Claude as the primary engine, review-batch.sh carries on. No notice job: the canary promotion gate counts a green run as a health sample, so a paused run must end skipped.
-persona-runner-reusable.yml	job-gate	run	Runs every persona advisory (qa-lead, the architects and the rest).
+persona-runner-reusable.yml	job-gate	run	Runs every persona advisory (qa-lead, the architects and the rest). The gate job makes no model call and carries the same condition; the post job needs run, so it is skipped with it.
 ci-failure-analyst-reusable.yml	job-gate-silent	analyze	Reusable. No notice job, for the same reason as pr-review.yml: the canary promotion gate samples its runs.
 gh-aw-cross-org.yml	job-gate	dispatch	-
 issue-triage-runner.yml	job-gate	triage	The apply job needs triage, so it is skipped with it.
 initiative-planner.yml	job-gate	plan	The redispatch bridge makes no model call and still runs; the run it starts is the one that reports the pause.
 idea-triage.yml	job-gate	triage	-
+decision-brief.yml	job-gate	brief	The redispatch bridge and the queue sweep make no model call and still run; the brief run they start is the one that reports the pause.
 spec-drift.yml	job-gate-silent	spec-drift	Opt-in and off by default. No notice job: its contract test requires every job to hold issues: write and the workflow to cost nothing when it does not run.
 dependency-advisory.yml	job-gate	advisory	-
 docs-health-check.yml	job-gate	health-check	-
@@ -98,20 +99,20 @@ pr-review-trigger.yml	caller	pr-review.yml	-
 persona-runner.yml	caller	persona-runner-reusable.yml	-
 ci-failure-analyst.lock.yml	caller	ci-failure-analyst-reusable.yml	-
 # ── Not paused: the model call lives in another repository ───────────────────
-feature-ideation.yml	upstream	petry-projects/.github/.github/workflows/feature-ideation-reusable.yml	That reusable does not read AGENTS_PAUSED, and this file is a frozen caller stub, so the fix belongs there: petry-projects/.github#1295.
+feature-ideation.yml	upstream	combsmith/.github/.github/workflows/feature-ideation-reusable.yml	That reusable does not read AGENTS_PAUSED, and this file is a frozen caller stub, so the fix belongs there: combsmith/.github#1295.
 # ── Exempt: control plane and monitors, which must run through a pause ───────
 budget-breaker.yml	exempt	-	Control plane: it sets and lifts the pause, so it has to run while paused. No model call.
 budget-poller.yml	exempt-credential	poll	Control plane. Holds the Claude credential only to read the usage windows (a dry run), and names the CLI package only to look up its version. No model call.
 actions-fleet-monitor.yml	exempt	-	Monitor. No model call.
 engine-token-liveness.yml	exempt	-	Monitor. No model call; it reads AGENTS_PAUSED itself to stay silent during a pause.
 # ── Exempt: no model call (several pass secrets on; what they start is gated) ─
-persona-mention.yml	exempt-credential	persona-mention	Mention router: hands its secrets to a reusable in petry-projects/.github that makes no model call (checked at persona-mention/v1-next, 2026-10-10). It dispatches persona-runner.yml, which is gated.
-auto-rebase.yml	exempt-credential	auto-rebase	Hands its secrets to a reusable in petry-projects/.github that makes no model call (checked at auto-rebase/v2-next, 2026-10-10); a conflict goes to dev-lead, which is gated.
-dependabot-automerge.yml	exempt-credential	dependabot-automerge	Hands its secrets to a reusable in petry-projects/.github that makes no model call (checked at dependabot-automerge/v2-next, 2026-10-10).
-pr-review-mention.yml	exempt-credential	pr-review-mention	Passes two GitHub tokens to a reusable in petry-projects/.github that makes no model call (checked at pr-review-mention/v2-next, 2026-10-10); it dispatches pr-review, which is gated.
-pr-auto-review.yml	exempt-credential	pr-auto-review	Passes a GitHub token to a reusable in petry-projects/.github that makes no model call (checked at pr-auto-review/v1-next, 2026-10-10); it dispatches pr-review, which is gated.
-dependabot-rebase.yml	exempt-credential	dependabot-rebase	Passes a GitHub App identity to a reusable in petry-projects/.github that makes no model call (checked at dependabot-rebase/v2-next, 2026-10-10).
-add-to-project.yml	exempt-credential	add-to-project	Passes a GitHub App identity to a reusable in petry-projects/.github that makes no model call (checked at add-to-project/v1-stable, 2026-10-10).
+persona-mention.yml	exempt-credential	persona-mention	Mention router: hands its secrets to a reusable in combsmith/.github that makes no model call (checked at persona-mention/v1-next, 2026-10-10). It dispatches persona-runner.yml, which is gated.
+auto-rebase.yml	exempt-credential	auto-rebase	Hands its secrets to a reusable in combsmith/.github that makes no model call (checked at auto-rebase/v2-next, 2026-10-10); a conflict goes to dev-lead, which is gated.
+dependabot-automerge.yml	exempt-credential	dependabot-automerge	Hands its secrets to a reusable in combsmith/.github that makes no model call (checked at dependabot-automerge/v2-next, 2026-10-10).
+pr-review-mention.yml	exempt-credential	pr-review-mention	Passes two GitHub tokens to a reusable in combsmith/.github that makes no model call (checked at pr-review-mention/v2-next, 2026-10-10); it dispatches pr-review, which is gated.
+pr-auto-review.yml	exempt-credential	pr-auto-review	Passes a GitHub token to a reusable in combsmith/.github that makes no model call (checked at pr-auto-review/v1-next, 2026-10-10); it dispatches pr-review, which is gated.
+dependabot-rebase.yml	exempt-credential	dependabot-rebase	Passes a GitHub App identity to a reusable in combsmith/.github that makes no model call (checked at dependabot-rebase/v2-next, 2026-10-10).
+add-to-project.yml	exempt-credential	add-to-project	Passes a GitHub App identity to a reusable in combsmith/.github that makes no model call (checked at add-to-project/v1-stable, 2026-10-10).
 pr-review-delayed-retry.yml	exempt	-	No model call: it re-dispatches through pr-review-sweep.yml, which is gated.
 auto-rebase-retry.yml	exempt	-	No model call: it re-runs failed Auto-rebase jobs or dispatches dev-lead's rebase intent, which is gated.
 initiative-driver.yml	exempt	-	No model call: it releases issues to dev-lead by label. Known gap: an issue it labels during a pause is not picked up, because dev-lead skips that event.

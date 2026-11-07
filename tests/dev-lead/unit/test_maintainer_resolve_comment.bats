@@ -76,7 +76,7 @@ teardown() {
 }
 
 @test "ref-kind: a PR comment URL is recognised as a url ref" {
-  run bash -c "source '$MRC'; mrc_ref_kind 'https://github.com/petry-projects/.github-private/pull/42#issuecomment-999'"
+  run bash -c "source '$MRC'; mrc_ref_kind 'https://github.com/combsmith/.github-private/pull/42#issuecomment-999'"
   [ "$status" -eq 0 ]
   [ "$output" = "url" ]
 }
@@ -89,7 +89,7 @@ teardown() {
 # PR-only: a bare /issues/ comment URL must NOT be accepted — this path may only
 # target a pull-request comment (#1910 self-scope hardening).
 @test "ref-kind: a non-PR /issues/ comment URL is rejected (fail closed)" {
-  run bash -c "source '$MRC'; mrc_ref_kind 'https://github.com/petry-projects/.github-private/issues/42#issuecomment-999'"
+  run bash -c "source '$MRC'; mrc_ref_kind 'https://github.com/combsmith/.github-private/issues/42#issuecomment-999'"
   [ "$status" -eq 1 ]
 }
 
@@ -111,9 +111,9 @@ teardown() {
 }
 
 @test "url-parse: owner/repo extracted from URL" {
-  run bash -c "source '$MRC'; mrc_repo_from_url 'https://github.com/petry-projects/.github-private/pull/42#issuecomment-1'"
+  run bash -c "source '$MRC'; mrc_repo_from_url 'https://github.com/combsmith/.github-private/pull/42#issuecomment-1'"
   [ "$status" -eq 0 ]
-  [ "$output" = "petry-projects/.github-private" ]
+  [ "$output" = "combsmith/.github-private" ]
 }
 
 # AC #1 / self-scope — only the invoking user's OWN comment may be resolved here.
@@ -299,8 +299,9 @@ _mrc_minimized_reason() {
 # #1918 review: the registered-bot path must require a GitHub App actor. A PERSON
 # whose login happens to equal a registered bot login (e.g. a user account named
 # `sonarqubecloud`) must be refused like any other human — never minimized.
-# A SonarCloud clean-status body that matches its registered info_status_pattern.
-SONAR_PASS_JSON_BODY='**Quality Gate passed**\n[0 New issues]\n[0 Security Hotspots]'
+# A SonarCloud clean-status body that matches its registered info_status_pattern,
+# which is anchored to the passed-badge image the body opens with.
+SONAR_PASS_JSON_BODY='## [![Quality Gate Passed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-passed-20px.png)](https://sonarcloud.io/dashboard) **Quality Gate passed**\n[0 New issues]\n[0 Security Hotspots]'
 
 _mrc_fake_gh() {
   # $1 = author __typename, $2 = author login (default sonarqubecloud), $3 = the

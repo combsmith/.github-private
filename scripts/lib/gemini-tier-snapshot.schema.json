@@ -29,6 +29,26 @@
       }
     },
     "key_indexes": { "type": "array", "items": { "$ref": "#/$defs/key_index" } },
+    "collection": {
+      "type": "object",
+      "description": "What the snapshot was built from (#2147), added by scripts/gemini_tier_report.sh from the token report's collection report. gq_tier_decision answers unknown unless records is trusted-runs-only and complete is true.",
+      "additionalProperties": false,
+      "required": ["complete", "records", "reason", "collected_at", "repo_listings_failed", "artifacts_failed", "run_lookups_failed", "record_files_malformed", "gemini_records_trusted", "gemini_records_ignored", "artifacts_ignored", "gemini_records_unlisted"],
+      "properties": {
+        "complete": { "type": "boolean", "description": "The filtered hand-off was written, every repository listing, listed artifact, needed run look-up and record file was read, and no handed-over record is unlisted." },
+        "records": { "enum": ["trusted-runs-only", "unverified"], "description": "trusted-runs-only: the records handed to this report were filtered to runs traceable to a trusted run." },
+        "reason": { "type": "string", "description": "Why complete is false; empty when it is true." },
+        "collected_at": { "type": ["string", "null"] },
+        "repo_listings_failed": { "$ref": "#/$defs/count_or_null" },
+        "artifacts_failed": { "$ref": "#/$defs/count_or_null" },
+        "run_lookups_failed": { "$ref": "#/$defs/count_or_null", "description": "Artifacts whose uploading run could not be looked up (timeout, 403, rate limit): possibly real usage, left out. Above 0, complete is false." },
+        "record_files_malformed": { "$ref": "#/$defs/count_or_null", "description": "Record files in downloaded artifacts that were not valid JSONL and were dropped. Above 0, complete is false." },
+        "gemini_records_trusted": { "$ref": "#/$defs/count_or_null" },
+        "gemini_records_ignored": { "$ref": "#/$defs/count_or_null" },
+        "artifacts_ignored": { "$ref": "#/$defs/count_or_null" },
+        "gemini_records_unlisted": { "$ref": "#/$defs/count_or_null", "description": "Handed-over records for a key index and model with no caps row: no production call writes them (test fixtures in the ledger). Above 0, complete is false." }
+      }
+    },
     "tiers": {
       "type": "array",
       "items": { "$ref": "#/$defs/tier" }

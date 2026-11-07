@@ -102,7 +102,7 @@ ADR-0005 position across the fleet:
      router run picked it up and returned `skipped` — the guard caught its own
      marker.
   3. A **third, weaker protection remains:** `prompts/<id>/advisory.md` forbids
-     writing a literal `@petry-projects/<role>` in the body, so an advisory
+     writing a literal `@combsmith/<role>` in the body, so an advisory
      should carry no routable handle at all.
 
 - **Residual risk (do not bury it):** the guard is now single-axis. If the marker

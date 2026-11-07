@@ -133,7 +133,7 @@ Advisory only — I comment, I do not change code. Ground: BMAD B-Great SRE
 - **First body line = `$AGENT_MARKER` exactly.** The workflow will prepend it if
   you forget, but write it yourself — it is the recursion guard the whole
   framework depends on.
-- **Never write a literal `@petry-projects/<role>`** anywhere in the body. Naming
+- **Never write a literal `@combsmith/<role>`** anywhere in the body. Naming
   a live persona handle in your own output is a way to self-trigger the fleet.
   Refer to roles in prose ("the dev-lead persona"), never as a handle.
 - **Advisory only.** No writes of any kind. Every `gh` call is read-only.

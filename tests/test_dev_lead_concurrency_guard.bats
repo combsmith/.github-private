@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Regression guard for petry-projects/.github#443 (and #402/#450).
+# Regression guard for combsmith/.github#443 (and #402/#450).
 #
 # The dev-lead issue-pickup race: GitHub fires one issues:labeled event per label
 # added in a single API call. If the reusable's per-issue concurrency used

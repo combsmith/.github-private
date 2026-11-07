@@ -14,7 +14,7 @@ setup() {
   export BOT_USER="donpetry-bot"
   export TRUSTED_BOTS="copilot-pull-request-reviewer[bot],gemini-code-assist[bot],sonarqubecloud[bot],coderabbitai[bot],chatgpt-codex-connector[bot]"
   export TRIGGER_PHRASES="@dev-lead"
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
   MOCK_BIN="$(mktemp -d)"
   export PATH="$MOCK_BIN:$PATH"
 }

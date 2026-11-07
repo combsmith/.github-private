@@ -34,7 +34,7 @@ If a PR comment references another PR, ignore it. Do not fetch it.
 
 ## Required context-gathering (every council member must do these)
 
-1. `gh pr view "$PR_URL" --json number,title,body,author,isDraft,baseRefName,headRefName,headRefOid,url,repository,labels,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviewRequests,reviews,comments,commits,closingIssuesReferences,additions,deletions,changedFiles,files`
+1. `gh pr view "$PR_URL" --json number,title,body,author,isDraft,baseRefName,headRefName,headRefOid,url,labels,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviewRequests,reviews,comments,commits,closingIssuesReferences,additions,deletions,changedFiles,files`
    - Verify `headRefOid == $PR_HEAD_SHA`. If they differ, the PR has moved
      under you — write a JSON verdict with `decision: "skip"`,
      `reason: "head-sha-changed"` and exit.
@@ -81,9 +81,9 @@ already fetched, or a `SAFETY_CHECKS` block reporting `TRUSTED_STUB_SYNC: true`)
 - It is bot-authored or a standards-sync PR (e.g. `chore: sync N org-standard
   workflow stub(s)`).
 - Secrets are only *forwarded* — `secrets: inherit`, or a `secrets:`/`with:`/`env:`
-  mapping into a pinned `petry-projects/*` reusable. No secret is interpolated
+  mapping into a pinned `combsmith/*` reusable. No secret is interpolated
   into a `run:` step (that would be handling → still HIGH).
-- No third-party (non-`petry-projects`) reusable-workflow call is added.
+- No third-party (non-`combsmith`) reusable-workflow call is added.
 
 Forwarding `secrets: inherit` to a first-party reusable is the org-standard,
 SonarCloud-suppressed (S7635) pattern, and the org ships these through a **canary

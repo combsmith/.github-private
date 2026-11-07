@@ -70,7 +70,7 @@ import yaml
 
 REGISTRY = "scripts/lib/fleet-pause-registry.tsv"
 WORKFLOW_DIR = ".github/workflows"
-THIS_REPO = "petry-projects/.github-private"
+THIS_REPO = "combsmith/.github-private"
 GATE = "vars.AGENTS_PAUSED != 'true'"
 PAUSED = "vars.AGENTS_PAUSED == 'true'"
 ALWAYS_PAUSED = "always() && " + PAUSED

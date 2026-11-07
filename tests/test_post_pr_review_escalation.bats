@@ -19,7 +19,7 @@ setup() {
   export POST_SCRIPT="$REPO_ROOT/scripts/post-pr-review.sh"
 
   export SHA="d53a7fc6b0718dd3d672fed4eec8394e5d372900"
-  export PR_URL="https://github.com/petry-projects/.github-private/pull/1703"
+  export PR_URL="https://github.com/combsmith/.github-private/pull/1703"
 
   export TEST_DIR="$BATS_TEST_TMPDIR"
   mkdir -p "$TEST_DIR/bin"
@@ -80,12 +80,21 @@ if [ "$sub1" = "api" ]; then
       cat "${LABEL_EVENTS_FILE:-/dev/null}"
       exit 0 ;;
     */pulls/*/reviews)
+      if [ "$method" = "POST" ]; then
+        input="$(cat)"
+        printf '%s' "$input" | jq -j '.body' > "${REVIEW_OUT:-/dev/null}"
+        printf '[{"id":1,"state":"APPROVED","user":{"login":"%s"},"commit_id":"%s","submitted_at":"2026-09-21T03:25:39Z","body":""}]' "${BOT_USER:-donpetry-bot}" "$SHA" > "${POSTED_REVIEWS_FILE:-/dev/null}"
+        printf '%s' "$input" | jq -c '{id: 1, state: "APPROVED", commit_id: .commit_id}'
+        exit 0
+      fi
       if [ "$slurp" = "true" ]; then
         jq -s '.' "${POSTED_REVIEWS_FILE:-/dev/null}"
       else
         cat "${POSTED_REVIEWS_FILE:-/dev/null}"
       fi
       exit 0 ;;
+    */pulls/[0-9]*)
+      case "$path" in */pulls/*/*) ;; *) printf '%s\n' "$SHA"; exit 0 ;; esac ;;
   esac
   if [ "$method" = "PATCH" ]; then
     case "$path" in
@@ -94,15 +103,6 @@ if [ "$sub1" = "api" ]; then
         cat > "${PATCH_OUT:-/dev/null}"; exit 0 ;;
     esac
   fi
-  exit 0
-fi
-
-if [ "$sub1" = "pr" ] && [ "$sub2" = "review" ]; then
-  prev=""; for a in "$@"; do
-    [ "$prev" = "--body" ] && printf '%s' "$a" > "${REVIEW_OUT:-/dev/null}"
-    [ "$a" = "--approve" ] && printf '[{"id":1,"state":"APPROVED","user":{"login":"%s"},"commit_id":"%s","submitted_at":"2026-09-21T03:25:39Z","body":""}]' "${BOT_USER:-donpetry-bot}" "$SHA" > "${POSTED_REVIEWS_FILE:-/dev/null}"
-    prev="$a"
-  done
   exit 0
 fi
 
@@ -304,7 +304,7 @@ write_approve_verdict() {
 
 @test "AC4: approve with a current-SHA fix-request marker fails closed (#1754)" {
   # sha matches head, but the decision is fix-requested (sha and decision in
-  # SEPARATE markers) — this must NOT reach gh pr review --approve.
+  # SEPARATE markers) — this must NOT reach the reviews API.
   local body="<!-- pr-review-agent v1 sha=${SHA} --> <!-- decision=fix-requested risk=LOW -->
 
 ## Review — fix requested"
@@ -339,7 +339,7 @@ write_approve_verdict() {
   [ "$(cat "$POSTED_REVIEWS_FILE")" = "[]" ]
 }
 
-@test "AC4: approve with a valid marker for a STALE sha fails closed before gh pr review" {
+@test "AC4: approve with a valid marker for a STALE sha fails closed before the reviews API" {
   local old="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   local body="<!-- pr-review-agent v1 sha=${old} decision=approved risk=LOW -->
 

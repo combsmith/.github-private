@@ -2,7 +2,7 @@
 # Channel-pin/comment same-file consistency guard (#1866 AC #3; regression of #1819).
 #
 # The workflow-stub sync generator (standards-deploy.yml, in the PUBLIC
-# petry-projects/.github repo) is meant to PRESERVE each destination repo's own
+# combsmith/.github repo) is meant to PRESERVE each destination repo's own
 # `uses:` channel pin. #1819 exposed the receiving-side hazard: a guard COMMENT
 # that names a channel can drift out of step with the actual pin in the same file
 # (it moved dev-lead's comment while leaving the pin, or vice versa). Nothing in

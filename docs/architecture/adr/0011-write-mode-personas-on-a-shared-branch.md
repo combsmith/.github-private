@@ -11,8 +11,8 @@ by the `dev-lead` label. It does not say how a write-mode persona should behave
 on a branch that **other actors are pushing to at the same time**, such as a
 maintainer, a Claude session, or the auto-rebase bot.
 
-petry-projects/.github#1220 showed what goes wrong
-([#2013](https://github.com/petry-projects/.github-private/issues/2013)). While
+combsmith/.github#1220 showed what goes wrong
+([#2013](https://github.com/combsmith/.github-private/issues/2013)). While
 a human session was driving the same branch:
 
 - dev-lead posted "Fixed in …" replies for changes that never reached the
@@ -41,7 +41,12 @@ per ADR-0004), not by prompt text alone:
 1. **Incorporate or stand down, never force.** Before pushing, the persona
    reconciles with the *true* remote head. It rebases a foreign commit in, or
    stops and escalates when that cannot be done cleanly. A foreign commit is
-   never discarded (`push_no_clobber`, `scripts/lib/git-push-guard.sh`).
+   never discarded (`push_no_clobber`, `scripts/lib/git-push-guard.sh`). A
+   commit is foreign unless the persona's own records say it wrote it: a SHA
+   it pushed, in this run or an earlier one (the `refs/notes/dev-lead-pushed`
+   ledger on the remote), or a `Dev-Lead-Stamp` trailer that matches the
+   commit's tree and parents. The committer identity is not a record, because
+   the owner commits as the same account (#2313).
 2. **"Pushed" is a verdict, not an assumption.** After the push, the harness
    compares the pre-pass head, the pushed SHA and the re-fetched remote head
    (`cl_push_landed_verdict`, `scripts/lib/claim-landing.sh`). Any result other
@@ -73,7 +78,7 @@ The boundary a check can assert: **no dev-lead claim reply survives a pass
 unless the claim's commit was produced by that pass and is on the remote
 head.**
 
-Follow-up ([#2032](https://github.com/petry-projects/.github-private/issues/2032)):
+Follow-up ([#2032](https://github.com/combsmith/.github-private/issues/2032)):
 
 - **Earlier passes are swept too.** A run that is cancelled or killed after its
   model replies never reaches its own sweep. So every pass, before it posts

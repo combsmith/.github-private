@@ -9,7 +9,7 @@
 # workflow that has completed runs, which is the path every scheduled run takes.
 
 MONITOR="${BATS_TEST_DIRNAME}/../scripts/fleet_monitor.sh"
-REPO="petry-projects/demo"
+REPO="combsmith/demo"
 
 setup() {
   WORK="$(mktemp -d "${BATS_TEST_TMPDIR}/work.XXXXXX")"
@@ -25,7 +25,7 @@ setup() {
   GRAPHQL_LOG="${WORK}/graphql.log"; export GRAPHQL_LOG
   : > "$GRAPHQL_LOG"
   unset FAKE_GRAPHQL_FAIL FAKE_GRAPHQL_NO_SUITE FLEET_PAUSE_BATCH
-  ORG="petry-projects"; export ORG
+  ORG="combsmith"; export ORG
   STUB_BIN="${WORK}/bin"
   mkdir -p "$FAKE_API" "$FAKE_ROOT" "$STUB_BIN"
   export PATH="$STUB_BIN:$PATH"

@@ -852,7 +852,9 @@ gq_tier_snapshot() {
 # gq_tier_can_run <snapshot_file> <tier> — the question a later actuation change asks
 # ("can tier T run on Gemini now?"), answered from a snapshot. Prints the status
 # (degraded: "degraded <model>") and returns 0 available/degraded, 1 unavailable,
-# 2 unknown or no readable snapshot. Reads only; gates nothing.
+# 2 unknown or no readable snapshot. Reads only; gates nothing. It reports what the
+# snapshot says, however old or incomplete: a dispatch decision must call
+# gq_tier_decision below instead.
 gq_tier_can_run() {
   local snap="$1" tier="$2" line st m
   line="$(jq -r --arg t "$tier" '.tiers[] | select(.tier == $t)
@@ -863,6 +865,67 @@ gq_tier_can_run() {
     degraded)    printf 'degraded %s\n' "$m"; return 0 ;;
     unavailable) printf 'unavailable\n'; return 1 ;;
     *)           printf 'unknown\n'; return 2 ;;
+  esac
+}
+
+# gq_tier_decision <snapshot_file> <tier> [max_age_sec]
+# The question a DISPATCH decision asks (#2147): "on this snapshot's word, may tier T
+# be started on Gemini now?". gq_tier_can_run above only reads the status; this also
+# asks whether the snapshot can vouch for itself, and answers `unknown` when it cannot.
+# The direction matters: a forged record can only make a tier look LESS available, and
+# those are filtered at collection (token_report.sh, "Trusted runs"); MISSING usage
+# makes it look MORE available, so everything that can hide usage is `unknown`:
+#   - the snapshot is unreadable, or not a schema_version 1 object;
+#   - it does not say its records come only from trusted runs, or the collection
+#     behind it was incomplete (`collection`, written by gemini_tier_report.sh: a
+#     repository listing or an artifact that could not be read is usage not counted);
+#   - it is older than <max_age_sec> (default GEMINI_DECISION_MAX_AGE_SEC, else 3600:
+#     usage since the snapshot is not in it), or claims to come from the future;
+#   - the quota day it describes has ended, or has not started.
+# Prints "<status>" or "<status> <detail>" (degraded: the model that would serve;
+# unknown: the reason) and returns 0 available/degraded, 1 unavailable, 2 unknown.
+# A caller must treat 2 exactly like 1: do not start the work. Pure: reads the file
+# and the clock (gq_now); no network. Gates nothing by itself.
+gq_tier_decision() {
+  local snap="$1" tier="$2" max_age="${3:-${GEMINI_DECISION_MAX_AGE_SEC:-3600}}" now out st detail
+  now="$(gq_now)"
+  if ! [[ "$max_age" =~ ^[0-9]{1,9}$ ]]; then
+    printf 'unknown the age limit is not a number of seconds\n'
+    return 2
+  fi
+  max_age=$(( 10#$max_age ))
+  out="$(jq -r --arg t "$tier" --argjson now "$now" --argjson max "$max_age" '
+      def int: type == "number" and . == floor;
+      if type != "object" or .schema_version != 1 then
+        "unknown\tthe snapshot is not a schema_version 1 object"
+      elif (.generated_epoch | int | not) or .generated_epoch > $now + 300 then
+        "unknown\tthe snapshot has no usable generation time, or one in the future"
+      elif ($now - .generated_epoch) > $max then
+        "unknown\tthe snapshot is \($now - .generated_epoch)s old (limit \($max)s): usage since then is not in it"
+      elif (.window.day_start | int | not) or $now < .window.day_start
+           or (.window.rolling != true
+               and ((.window.day_end | int | not) or $now >= .window.day_end)) then
+        "unknown\tthe quota day the snapshot describes is not the current one"
+      elif (.collection | type) != "object" or .collection.records != "trusted-runs-only" then
+        "unknown\tthe snapshot does not say its records come only from trusted runs"
+      elif .collection.complete != true then
+        "unknown\tthe collection behind the snapshot was incomplete: \(.collection.reason // "no reason given")"
+      else
+        ([ .tiers[]? | select(.tier == $t) ] | first) as $x
+        | if $x == null then "unknown\tthe snapshot has no tier \($t)"
+          elif $x.status == "available" then "available\t"
+          elif $x.status == "degraded" and ($x.degraded_to | type) == "string" then "degraded\t\($x.degraded_to)"
+          elif $x.status == "unavailable" then "unavailable\t"
+          else "unknown\tthe tier status is \($x.status // "missing")" end
+      end' "$snap" 2>/dev/null | head -1)" || out=""
+  [ -n "$out" ] || out=$'unknown\tthe snapshot could not be read'
+  st="${out%%$'\t'*}"
+  detail="${out#*$'\t'}"
+  case "$st" in
+    available)   printf 'available\n'; return 0 ;;
+    degraded)    printf 'degraded %s\n' "$detail"; return 0 ;;
+    unavailable) printf 'unavailable\n'; return 1 ;;
+    *)           printf 'unknown %s\n' "$detail"; return 2 ;;
   esac
 }
 

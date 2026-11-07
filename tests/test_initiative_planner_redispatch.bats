@@ -15,7 +15,7 @@ setup() {
   GH_LOG="$(mktemp)"
   export GH_LOG
   export PATH="$MOCK_BIN:$PATH"
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export DISCUSSION_NUMBER="572"
   export GH_TOKEN="pat"
 
@@ -48,7 +48,7 @@ teardown() {
 @test "targets the correct repo" {
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
-  grep -qF -- "--repo petry-projects/.github-private" "$GH_LOG"
+  grep -qF -- "--repo combsmith/.github-private" "$GH_LOG"
 }
 
 @test "fails when DISCUSSION_NUMBER is unset" {
@@ -95,7 +95,7 @@ teardown() {
   unset TARGET_REPO
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
-  grep -qF -- "-f target_repo=petry-projects/.github-private" "$GH_LOG"
+  grep -qF -- "-f target_repo=combsmith/.github-private" "$GH_LOG"
 }
 
 @test "honors a TARGET_REPO override (fleet host repo)" {
@@ -157,4 +157,24 @@ teardown() {
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   ! grep -qF -- "--ref" "$GH_LOG"
+}
+
+@test "omits discussion_repo by default (same-repo dispatch unchanged)" {
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  run grep -F -- "discussion_repo" "$GH_LOG"
+  [ "$status" -ne 0 ]
+}
+
+@test "forwards DISCUSSION_REPO as discussion_repo (graduation path)" {
+  DISCUSSION_REPO="combsmith/incubator" TARGET_REPO="combsmith/worldchest" run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "-f discussion_repo=combsmith/incubator" "$GH_LOG"
+  grep -qF -- "-f target_repo=combsmith/worldchest" "$GH_LOG"
+}
+
+@test "rejects a malformed DISCUSSION_REPO without dispatching" {
+  DISCUSSION_REPO="bad repo" run bash "$SCRIPT"
+  [ "$status" -ne 0 ]
+  [ ! -s "$GH_LOG" ]
 }

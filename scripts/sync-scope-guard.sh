@@ -10,7 +10,7 @@ set -euo pipefail
 #
 # Env vars consumed:
 #   GH_TOKEN   — repo read on REPO (PR view + files list)
-#   REPO       — target repo (default: petry-projects/.github-private)
+#   REPO       — target repo (default: combsmith/.github-private)
 #   PR_NUMBER  — the PR to check (required)
 #   SYNC_SCOPE_LABEL — automation marker label (default: standards-sync)
 
@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/sync-scope-check.sh
 source "${SCRIPT_DIR}/lib/sync-scope-check.sh"
 
-REPO="${REPO:-petry-projects/.github-private}"
+REPO="${REPO:-combsmith/.github-private}"
 PR_NUMBER="${PR_NUMBER:-}"
 
 if [ -z "$PR_NUMBER" ]; then

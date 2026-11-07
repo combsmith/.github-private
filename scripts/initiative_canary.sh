@@ -19,7 +19,7 @@
 #   * main() does the network I/O: dispatch, poll, log fetch, jobs read.
 #
 # Env vars consumed:
-#   REPO                 owner/repo hosting the planner (default petry-projects/.github-private)
+#   REPO                 owner/repo hosting the planner (default combsmith/.github-private)
 #   CANARY_DISCUSSION    Ideas Discussion number to dry-run plan (required; positive int)
 #   WORKFLOW_FILE        planner workflow to dispatch (default initiative-planner.yml)
 #   GH_TOKEN             a PAT with workflow scope (a workflow_dispatch fired with
@@ -35,7 +35,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/fleet-pause.sh
 source "${SCRIPT_DIR}/lib/fleet-pause.sh"
 
-REPO="${REPO:-petry-projects/.github-private}"
+REPO="${REPO:-combsmith/.github-private}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-initiative-planner.yml}"
 UNSUPPORTED_EVENT_MARKER="Unsupported event type: discussion"
 

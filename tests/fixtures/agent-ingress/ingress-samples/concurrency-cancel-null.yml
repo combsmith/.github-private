@@ -14,6 +14,6 @@ jobs:
     concurrency:
       group: "pr-auto-review-${{ github.event.pull_request.number }}"
       cancel-in-progress: null
-    uses: petry-projects/.github/.github/workflows/pr-auto-review-reusable.yml@pr-auto-review/v1-stable
+    uses: combsmith/.github/.github/workflows/pr-auto-review-reusable.yml@pr-auto-review/v1-stable
     permissions:
       pull-requests: read

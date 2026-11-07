@@ -63,6 +63,104 @@ _source_engine() {
   source "$ENGINE_SCRIPT"
 }
 
+# ── Repository-stored engine configuration ────────────────────────────────────
+
+@test "claude: every engine entry point limits setting sources to user" {
+  _source_engine "claude"
+  run run_writer "$TEST_PROMPT"
+  [ "$status" -eq 0 ]
+  grep -q -- "--setting-sources user" "$ARGS_RECORD"
+  grep -q -- "--strict-mcp-config" "$ARGS_RECORD"
+
+  : > "$ARGS_RECORD"
+  run run_agentic "$TEST_PROMPT" "claude-opus-5-5" "deep"
+  [ "$status" -eq 0 ]
+  grep -q -- "--setting-sources user" "$ARGS_RECORD"
+
+  : > "$ARGS_RECORD"
+  run run_triage "$TEST_PROMPT"
+  [ "$status" -eq 0 ]
+  grep -q -- "--setting-sources user" "$ARGS_RECORD"
+}
+
+@test "claude: repository CLAUDE.md stays loaded alongside the limited setting sources" {
+  _source_engine "claude"
+  cat > "$STUB_BIN_DIR/claude" <<'STUB'
+#!/usr/bin/env bash
+echo "env=${CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD:-unset} cwd=$PWD args=$*" >> "$STUB_ENGINE_RECORD_ARGS"
+echo ok
+STUB
+  chmod +x "$STUB_BIN_DIR/claude"
+  local wd
+  wd="$(mktemp -d)"
+  wd="$(cd "$wd" && pwd)"
+  pushd "$wd" >/dev/null
+  run run_writer "$TEST_PROMPT"
+  popd >/dev/null
+  [ "$status" -eq 0 ]
+  grep -q -- "env=1 " "$ARGS_RECORD"
+  grep -q -- "--setting-sources user --add-dir $wd " "$ARGS_RECORD"
+  rm -rf "$wd"
+}
+
+@test "claude: the degraded no-capture path also limits setting sources to user" {
+  _source_engine "claude"
+  # mktemp failing is what selects the passthrough branch of _claude_chain_invoke.
+  mktemp() { return 1; }
+  _claude_chain_invoke "stub-model" "$TEST_PROMPT" 30 --allowed-tools Read >/dev/null
+  unset -f mktemp
+  grep -q -- "--setting-sources user --add-dir $PWD " "$ARGS_RECORD"
+}
+
+@test "writer fallback: gemini does not run in a checkout carrying its project configuration" {
+  _source_engine "gemini"
+  export GEMINI_API_KEY=fake AI_ENGINES=gemini
+  local wd path
+  for path in .gemini/settings.json .gemini/.env .env; do
+    wd="$(mktemp -d)"
+    mkdir -p "$wd/.gemini"
+    touch "$wd/$path"
+    : > "$ARGS_RECORD"
+    pushd "$wd" >/dev/null
+    run run_writer_with_fallback "$TEST_PROMPT" fix-reviews
+    popd >/dev/null
+    rm -rf "$wd"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Skipping gemini"*"$path"* ]]
+    [ ! -s "$ARGS_RECORD" ]
+  done
+}
+
+@test "writer fallback: review-bot files under .gemini/ do not stop gemini" {
+  _source_engine "gemini"
+  export GEMINI_API_KEY=fake AI_ENGINES=gemini
+  local wd
+  wd="$(mktemp -d)"
+  mkdir -p "$wd/.gemini"
+  touch "$wd/.gemini/config.yaml" "$wd/.gemini/styleguide.md"
+  pushd "$wd" >/dev/null
+  run run_writer_with_fallback "$TEST_PROMPT" fix-reviews
+  popd >/dev/null
+  rm -rf "$wd"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Skipping gemini"* ]]
+}
+
+@test "writer fallback: claude still runs in a checkout carrying gemini or copilot configuration" {
+  _source_engine "claude"
+  export AI_ENGINES=claude
+  local wd
+  wd="$(mktemp -d)"
+  mkdir -p "$wd/.gemini" "$wd/.github/hooks"
+  touch "$wd/.gemini/settings.json" "$wd/.env" "$wd/.mcp.json"
+  pushd "$wd" >/dev/null
+  run run_writer_with_fallback "$TEST_PROMPT" fix-reviews
+  popd >/dev/null
+  rm -rf "$wd"
+  [ "$status" -eq 0 ]
+  grep -q -- "--setting-sources user" "$ARGS_RECORD"
+}
+
 # ── Default (knob unset): behavior unchanged ──────────────────────────────────
 
 @test "agentic: no MCP knob → no MCP flags, default allowed-tools unchanged" {

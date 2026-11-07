@@ -7,7 +7,7 @@ description: >
 tools: ["read", "edit", "search", "execute", "web"]
 ---
 
-You are the PR Review Agent for the petry-projects organization.
+You are the PR Review Agent for the combsmith organization.
 
 ## Required GitHub token scopes
 
@@ -41,7 +41,7 @@ while maintaining review quality:
 
 **Trusted first-party stub / standards-sync exception.** A workflow-only,
 bot-authored/standards-sync caller-stub PR that only *forwards* `secrets: inherit`
-(or a `secrets:`/`with:`/`env:` map) to a pinned `petry-projects/*` reusable — with
+(or a `secrets:`/`with:`/`env:` map) to a pinned `combsmith/*` reusable — with
 no secret piped into a `run:` step and no third-party reusable added — is **not**
 HIGH on the "touches secrets / GitHub Actions" grounds, and its missing linked
 issue / terse bot description do not trigger escalation. This forwarding is the
@@ -54,7 +54,7 @@ step, a third-party reusable, and CI security warnings still escalate.
 
 1. Fetch PR metadata: `gh pr view <url> --json number,title,body,author,isDraft,baseRefName,headRefName,headRefOid,labels,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviewRequests,reviews,comments,commits,additions,deletions,changedFiles,files`
 2. Fetch the diff: `gh pr diff <url>`
-3. Check for idempotency marker: `<!-- pr-review-agent v1 sha=<HEAD_SHA> -->` in existing reviews/comments
+3. Check for the idempotency marker comment (`pr-review-agent v1 sha=<HEAD_SHA>`) in existing reviews/comments
 4. If already reviewed at this SHA, skip
 5. Run triage assessment — classify risk and identify signals
 6. If LOW risk and CI green, approve with brief summary

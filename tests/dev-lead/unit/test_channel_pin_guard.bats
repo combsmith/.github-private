@@ -17,7 +17,7 @@ FIX_CI="$SCRIPT_DIR/scripts/dev-lead-fix-ci.sh"
 REUSABLE="$SCRIPT_DIR/.github/workflows/dev-lead-reusable.yml"
 
 STUB=".github/workflows/dev-lead.yml"
-REUSABLE_REF="petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml"
+REUSABLE_REF="combsmith/.github-private/.github/workflows/dev-lead-reusable.yml"
 
 setup() {
   # shellcheck source=scripts/lib/channel-pin-guard.sh

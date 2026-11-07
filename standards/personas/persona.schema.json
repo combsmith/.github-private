@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/petry-projects/.github/standards/personas/persona.schema.json",
+  "$id": "https://github.com/combsmith/.github/standards/personas/persona.schema.json",
   "title": "Agentic Persona Manifest",
-  "description": "The single index-of-record for one agentic persona. It ties together the persona's identity, the definition layer(s) that implement it, the skills it uses, its trigger surface, its trust/permission posture, its eval gate, and a pointer to its canary-rings entry. The manifest does NOT duplicate ring membership or gate knobs — those live in petry-projects/.github standards/canary-rings.json (the single source of truth). See standards/persona-standards.md.",
+  "description": "The single index-of-record for one agentic persona. It ties together the persona's identity, the definition layer(s) that implement it, the skills it uses, its trigger surface, its trust/permission posture, its eval gate, and a pointer to its canary-rings entry. The manifest does NOT duplicate ring membership or gate knobs — those live in combsmith/.github standards/canary-rings.json (the single source of truth). See standards/persona-standards.md.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "id", "name", "title", "summary", "status", "owner", "definition", "triggers", "trust"],
@@ -166,7 +166,7 @@
       "properties": {
         "handle": {
           "type": "string",
-          "pattern": "^petry-projects/[a-z0-9]+(-[a-z0-9]+)*$",
+          "pattern": "^combsmith/[a-z0-9]+(-[a-z0-9]+)*$",
           "description": "The addressing handle in 'org/team-slug' form, mentioned as '@org/team-slug'. MUST be an org TEAM, never a user account: GitHub's user namespace is global and first-come, so a bare '@qa-lead' resolves to an unrelated real account and notifies a stranger on every mention (verified: qa-lead, dev-lead, scrum-master are all live accounts). An org team slug cannot collide. The slug MUST equal `id`, so routing is a prefix-strip — which also makes handle uniqueness a theorem rather than a check (org is pinned, slug == id, id == the persona directory name, directory names are unique). Team must be privacy 'closed' (secret teams are unmentionable) with notification_setting 'notifications_disabled'; those are live properties CI verifies, not shape this schema can check."
         }
       }
@@ -336,7 +336,7 @@
       "properties": {
         "registry": {
           "type": "string",
-          "description": "Path to the canonical ring registry (petry-projects/.github standards/canary-rings.json)."
+          "description": "Path to the canonical ring registry (combsmith/.github standards/canary-rings.json)."
         },
         "agent": {
           "type": "string",

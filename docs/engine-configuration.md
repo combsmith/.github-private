@@ -101,7 +101,7 @@ example `deep: opus 5.5 [opus 4.8, sonnet 5.5]`.
 ## Model selection — name a family, never pin a version
 
 The org standard (#1979, companion
-[`petry-projects/.github#1199`](https://github.com/petry-projects/.github/issues/1199)):
+[`combsmith/.github#1199`](https://github.com/combsmith/.github/issues/1199)):
 callers name a model **family** — `opus`, `sonnet`, or `haiku` — and let the
 resolver return the current concrete id. A model swap is then one edit to the
 chains above, not a hunt for hard-coded ids across the tree.
@@ -191,3 +191,17 @@ table are allow-listed.
 - **Model chains inside a provider** (for example Claude's deep tier
   `claude-opus-5-5 → claude-opus-4-8 → claude-sonnet-5-5`) are walked before any
   cross-provider fallback. Set them with `AI_MODELS_*` (above).
+
+## Model isolation in PR review
+
+`pr-review.yml` runs every review model as the unprivileged `pr-review-model` user
+(`scripts/lib/model-sandbox.sh`). The orchestrator keeps the GitHub credentials. A
+model call gets its own engine key, read-only file tools, and the context the
+orchestrator pre-fetched. The orchestrator validates the verdict and adds the review
+marker before anything is posted. `scripts/model-sandbox-setup.sh` runs a self-test
+first, and a failed self-test fails the job.
+
+Only Claude runs here for now, and the setup step overrides `AI_ENGINES`,
+`AI_DUCK_ENGINE` and `REVIEW_ENGINE` to say so. Copilot authenticates with a user PAT,
+which cannot be withheld from it. Gemini stays off until its tool limits are shown to
+hold on a live run, with a control; `MODEL_SANDBOX_ALLOW_GEMINI=true` turns it back on.

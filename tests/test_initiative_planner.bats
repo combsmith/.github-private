@@ -116,7 +116,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "apply-plan (DRY_RUN) creates epic + stories + edges and posts comment" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -127,7 +127,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "apply-plan threads distinct issue numbers in dry-run" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     bash "$PLANNER_DIR/apply-plan.sh"
   # 4 distinct synthetic issue numbers (epic + 3 stories), not all the same
@@ -136,7 +136,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "apply-plan NEVER applies initiative:auto to any created issue" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     bash "$PLANNER_DIR/apply-plan.sh"
   created_labels="$(grep '"op":"create_issue"' "$LOG" | jq -r '.labels[]')"
@@ -144,7 +144,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "apply-plan marks hands_off story with hold + hands-off labels" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     bash "$PLANNER_DIR/apply-plan.sh"
   grep '"op":"create_issue"' "$LOG" | grep -q 'dev-lead:hands-off'
@@ -152,7 +152,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "existing-issue prerequisite edge references the real issue number" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     bash "$PLANNER_DIR/apply-plan.sh"
   grep '"op":"add_blocked_by"' "$LOG" | grep -q '"blocked_by":195'
@@ -160,7 +160,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "apply-plan gates on a blocking open question: creates zero issues and exits 0" {
   jq '.open_questions = [{"question":"Confirm scope X before planning","blocking":true}]' "$PLAN" >"$TMP/blocking.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/blocking.json" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -171,7 +171,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "apply-plan blocking gate posts the open questions back to the discussion" {
   jq '.open_questions = [{"question":"Confirm scope X before planning","blocking":true}]' "$PLAN" >"$TMP/blocking.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/blocking.json" \
     bash "$PLANNER_DIR/apply-plan.sh"
   grep -q '"op":"comment_on_discussion"' "$LOG"
@@ -183,7 +183,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "apply-plan does NOT gate on a non-blocking open question" {
   jq '.open_questions = [{"question":"Nice to confirm pricing later","blocking":false}]' "$PLAN" >"$TMP/nonblock.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/nonblock.json" \
     bash "$PLANNER_DIR/apply-plan.sh"
   [ "$(grep -c '"op":"create_issue"' "$LOG")" -eq 4 ]
@@ -193,7 +193,7 @@ teardown() { rm -rf "$TMP"; }
   # DRY_RUN_EXISTING_EPIC simulates find_existing_epic finding a prior epic
   # offline (the idempotency guard); no issues must be created.
   DRY_RUN=1 DRY_RUN_LOG="$LOG" DRY_RUN_EXISTING_EPIC=777 \
-    REPO="petry-projects/.github-private" \
+    REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -205,7 +205,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "apply-plan still creates the full DAG when no existing epic is found" {
   # No DRY_RUN_EXISTING_EPIC => find_existing_epic returns empty => normal path.
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -214,7 +214,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "epic body carries the Untracked prerequisites checklist when the array is present" {
   jq '.epic.untracked_prerequisites = ["Resolve the data-retention discussion", "Provision the staging cluster"]' "$PLAN" >"$TMP/prereqs.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/prereqs.json" \
     bash "$PLANNER_DIR/apply-plan.sh"
   epic_body="$(grep '"op":"create_issue"' "$LOG" | jq -r 'select(.title|startswith("Initiative:")) | .body')"
@@ -225,7 +225,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "Untracked prerequisites section appears before the idempotency footer in the epic body" {
   jq '.epic.untracked_prerequisites = ["Resolve the data-retention discussion"]' "$PLAN" >"$TMP/prereqs_order.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/prereqs_order.json" \
     bash "$PLANNER_DIR/apply-plan.sh"
   epic_body="$(grep '"op":"create_issue"' "$LOG" | jq -r 'select(.title|startswith("Initiative:")) | .body')"
@@ -237,7 +237,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "epic body omits the Untracked prerequisites section when the array is absent" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     bash "$PLANNER_DIR/apply-plan.sh"
   epic_body="$(grep '"op":"create_issue"' "$LOG" | jq -r 'select(.title|startswith("Initiative:")) | .body')"
@@ -245,7 +245,7 @@ teardown() { rm -rf "$TMP"; }
 }
 
 @test "story bodies are rendered in the BMAD create-story template" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     bash "$PLANNER_DIR/apply-plan.sh"
   # the rendered Phase-1 story body carries the canonical BMAD sections
@@ -261,7 +261,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "idempotency skip posts an 'already planned' discussion comment with a force_replan hint" {
   DRY_RUN_EXISTING_EPIC=727 \
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -276,7 +276,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "force_replan supersedes: creates the new plan AND closes the old epic + sub-issues" {
   DRY_RUN_EXISTING_EPIC=727 DRY_RUN_EXISTING_SUBISSUES="728 729 730" FORCE_REPLAN=1 \
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -292,7 +292,7 @@ teardown() { rm -rf "$TMP"; }
 
 @test "force_replan with no existing epic just plans normally (nothing to supersede)" {
   FORCE_REPLAN=1 \
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
@@ -361,7 +361,174 @@ EOF
     run bash "$PLANNER_DIR/apply-plan.sh"
   [ "$status" -eq 0 ]
   grep -qF -- "api repos/acme/widgets/issues" "$GH_LOG"
-  ! grep -qF -- "repos/petry-projects/.github-private/issues" "$GH_LOG"
+  ! grep -qF -- "repos/combsmith/.github-private/issues" "$GH_LOG"
+}
+
+# ── cross-repo Discussion + planning artifacts (graduation) ───────────────────
+# An incubator idea graduates into a product repo: the Discussion lives in
+# DISCUSSION_REPO (the incubator), the epic and planning artifacts in REPO. gh is
+# stubbed; the stub logs every call and serves the artifacts folder per test via
+# ART_MODE (present | empty | 404 | 500).
+
+_gather_mock() {
+  MOCK_BIN="$TMP/mock_bin_ctx"
+  mkdir -p "$MOCK_BIN"
+  GH_LOG="$TMP/gh.log"
+  export GH_LOG
+  export PATH="$MOCK_BIN:$PATH"
+  cat >"$MOCK_BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_LOG"
+case "$*" in
+  *graphql*) echo '{"data":{"repository":{"discussion":{"id":"D_incubator5","title":"WorldChest","body":"Builds on #12","url":"http://x","category":{"name":"Ideas"},"comments":{"nodes":[]}}}}}' ;;
+  *"issue list"*) echo '[]' ;;
+  *"/issues/12"*) echo '{"repo":"combsmith/incubator","number":12,"title":"Spike","state":"open"}' ;;
+  *"planning-artifacts/prd.md"*) printf 'PRD-START\nFR1: back up worlds\nSuccess metric: 100 weekly backups\n%s\nPRD-END\n' "$(printf 'p%.0s' $(seq 1 300))" ;;
+  *"planning-artifacts/brief.md"*) printf 'BRIEF-START %s BRIEF-END\n' "$(printf 'b%.0s' $(seq 1 300))" ;;
+  *"planning-artifacts"*)
+    case "${ART_MODE:-present}" in
+      present) echo '[{"name":"brief.md","path":"_bmad-output/planning-artifacts/brief.md","type":"file"},{"name":"prd.md","path":"_bmad-output/planning-artifacts/prd.md","type":"file"},{"name":"diagram.png","path":"_bmad-output/planning-artifacts/diagram.png","type":"file"},{"name":"research","path":"_bmad-output/planning-artifacts/research","type":"dir"}]' ;;
+      empty) echo '[]' ;;
+      404) echo '{"message":"Not Found","status":"404"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1 ;;
+      *) echo 'gh: Server Error (HTTP 500)' >&2; exit 1 ;;
+    esac ;;
+  *) echo '{}' ;;
+esac
+EOF
+  chmod +x "$MOCK_BIN/gh"
+  CTX="$TMP/context.json"
+}
+
+@test "gather-context reads the Discussion from DISCUSSION_REPO but plans INTO REPO (cross-repo)" {
+  _gather_mock
+  ART_MODE=empty GITHUB_ENV="$TMP/gh.env" REPO="combsmith/worldchest" DISCUSSION_REPO="combsmith/incubator" \
+    DISCUSSION_NUMBER=5 CONTEXT_PATH="$CTX" GH_TOKEN=x RECONCILE=1 \
+    run bash "$PLANNER_DIR/gather-context.sh"
+  [ "$status" -eq 0 ]
+  # The Discussion query (and the issues it references) hit the incubator ...
+  # (the GraphQL query is multi-line in the log, so match its -F args directly)
+  grep -qF -- "name=incubator" "$GH_LOG"
+  grep -qF -- "repos/combsmith/incubator/issues/12" "$GH_LOG"
+  # ... while open epics, the reconcile back-reference and artifacts hit the product repo.
+  grep -F -- "issue list" "$GH_LOG" | grep -qF -- "--repo combsmith/worldchest"
+  grep -qF -- 'Planned from idea discussion combsmith/incubator#5' "$GH_LOG"
+  grep -qF -- "repos/combsmith/worldchest/contents/_bmad-output/planning-artifacts" "$GH_LOG"
+  run grep -F -- "--repo combsmith/incubator" "$GH_LOG"
+  [ "$status" -ne 0 ]
+  [ "$(jq -r '.repo' "$CTX")" = "combsmith/worldchest" ]
+  [ "$(jq -r '.discussion_repo' "$CTX")" = "combsmith/incubator" ]
+  [ "$(jq -r '.referenced_issues[0].repo' "$CTX")" = "combsmith/incubator" ]
+  grep -qx 'DISCUSSION_NODE_ID=D_incubator5' "$TMP/gh.env"
+}
+
+@test "apply-plan (cross-repo) back-references the incubator Discussion and posts the reply there" {
+  jq '.source_discussion = 5' "$PLAN" >"$TMP/xrepo.json"
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/worldchest" DISCUSSION_REPO="combsmith/incubator" \
+    DISCUSSION_NUMBER=5 DISCUSSION_NODE_ID="D_incubator5" PLAN_PATH="$TMP/xrepo.json" \
+    run bash "$PLANNER_DIR/apply-plan.sh"
+  [ "$status" -eq 0 ]
+  epic_body="$(grep '"op":"create_issue"' "$LOG" | jq -r 'select(.title|startswith("Initiative:")) | .body')"
+  [[ "$epic_body" == *"Planned from idea discussion combsmith/incubator#5"* ]]
+  [ "$(grep '"op":"comment_on_discussion"' "$LOG" | jq -r '.discussion_repo')" = "combsmith/incubator" ]
+  [ "$(grep '"op":"comment_on_discussion"' "$LOG" | jq -r '.discussion_id')" = "D_incubator5" ]
+  # Issue links in the incubator-side comment are qualified with the product repo.
+  body="$(grep '"op":"comment_on_discussion"' "$LOG" | jq -r '.body')"
+  [[ "$body" == *"Epic **combsmith/worldchest#"* ]]
+  [[ "$body" == *"- combsmith/worldchest#"* ]]
+}
+
+@test "apply-plan (same-repo) keeps the bare #N back-reference and unqualified links" {
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
+    DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
+    run bash "$PLANNER_DIR/apply-plan.sh"
+  [ "$status" -eq 0 ]
+  epic_body="$(grep '"op":"create_issue"' "$LOG" | jq -r 'select(.title|startswith("Initiative:")) | .body')"
+  [[ "$epic_body" == *"Planned from idea discussion #413 by"* ]]
+  [ "$(grep '"op":"comment_on_discussion"' "$LOG" | jq -r '.discussion_repo')" = "combsmith/.github-private" ]
+  body="$(grep '"op":"comment_on_discussion"' "$LOG" | jq -r '.body')"
+  [[ "$body" == *"Epic **#"* ]]
+}
+
+@test "gather-context includes planning artifacts: prd.md in full, other markdown truncated" {
+  _gather_mock
+  ART_MODE=present PLANNING_ARTIFACT_MAX_CHARS=50 GITHUB_ENV="$TMP/gh.env" REPO="combsmith/worldchest" \
+    DISCUSSION_NUMBER=6 CONTEXT_PATH="$CTX" GH_TOKEN=x \
+    run bash "$PLANNER_DIR/gather-context.sh"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.planning_artifacts.dir' "$CTX")" = "_bmad-output/planning-artifacts" ]
+  [ "$(jq -r '.planning_artifacts.prd' "$CTX")" = "_bmad-output/planning-artifacts/prd.md" ]
+  # prd.md sorts first and is complete, well past the 50-char cap.
+  [ "$(jq -r '.planning_artifacts.files[0].name' "$CTX")" = "prd.md" ]
+  [ "$(jq -r '.planning_artifacts.files[0].truncated' "$CTX")" = "false" ]
+  prd="$(jq -r '.planning_artifacts.files[0].content' "$CTX")"
+  [[ "$prd" == *"FR1: back up worlds"* ]]
+  [[ "$prd" == *"PRD-END"* ]]
+  # brief.md is cut to the cap and flagged.
+  [ "$(jq -r '.planning_artifacts.files[1].name' "$CTX")" = "brief.md" ]
+  [ "$(jq -r '.planning_artifacts.files[1].truncated' "$CTX")" = "true" ]
+  [ "$(jq -r '.planning_artifacts.files[1].content | length' "$CTX")" -eq 50 ]
+  [ "$(jq '.planning_artifacts.files[1].chars > 50' "$CTX")" = "true" ]
+  # Non-markdown entries are listed as skipped, not read.
+  [ "$(jq -c '.planning_artifacts.skipped' "$CTX")" = '["diagram.png","research"]' ]
+  run grep -F -- "diagram.png" "$GH_LOG"
+  [ "$status" -ne 0 ]
+  [ "$(grep -c 'contents/_bmad-output/planning-artifacts/' "$GH_LOG")" -eq 2 ]
+  # Raw fetch, so content is never base64 and never rides on argv.
+  grep -F -- "planning-artifacts/prd.md" "$GH_LOG" | grep -qF -- "application/vnd.github.raw"
+}
+
+@test "gather-context without planning artifacts keeps the prior context unchanged (null)" {
+  _gather_mock
+  ART_MODE=empty GITHUB_ENV="$TMP/gh.env" REPO="acme/widgets" \
+    DISCUSSION_NUMBER=413 CONTEXT_PATH="$CTX" GH_TOKEN=x \
+    run bash "$PLANNER_DIR/gather-context.sh"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.planning_artifacts' "$CTX")" = "null" ]
+  # Same-repo default: the Discussion is read from REPO itself.
+  [ "$(jq -r '.discussion_repo' "$CTX")" = "acme/widgets" ]
+  grep -qF -- "name=widgets" "$GH_LOG"
+  [ "$(jq -c 'keys' "$CTX")" = '["discussion","discussion_repo","open_epics","planning_artifacts","reconcile","referenced_issues","repo"]' ]
+  [ "$(jq -r '.discussion.title' "$CTX")" = "WorldChest" ]
+}
+
+@test "gather-context treats a 404 on the planning-artifacts folder as no artifacts" {
+  _gather_mock
+  ART_MODE=404 GITHUB_ENV="$TMP/gh.env" REPO="acme/widgets" \
+    DISCUSSION_NUMBER=413 CONTEXT_PATH="$CTX" GH_TOKEN=x \
+    run bash "$PLANNER_DIR/gather-context.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"planning from the Discussion only"* ]]
+  [ "$(jq -r '.planning_artifacts' "$CTX")" = "null" ]
+  [ "$(jq -r '.discussion.title' "$CTX")" = "WorldChest" ]
+}
+
+@test "gather-context fails loud on a non-404 error listing planning artifacts" {
+  _gather_mock
+  ART_MODE=500 GITHUB_ENV="$TMP/gh.env" REPO="acme/widgets" \
+    DISCUSSION_NUMBER=413 CONTEXT_PATH="$CTX" GH_TOKEN=x \
+    run bash "$PLANNER_DIR/gather-context.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"failed to list _bmad-output/planning-artifacts in acme/widgets"* ]]
+}
+
+@test "gather-context rejects a malformed DISCUSSION_REPO before any API call" {
+  _gather_mock
+  GITHUB_ENV="$TMP/gh.env" REPO="acme/widgets" DISCUSSION_REPO="not a repo" \
+    DISCUSSION_NUMBER=413 CONTEXT_PATH="$CTX" GH_TOKEN=x \
+    run bash "$PLANNER_DIR/gather-context.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"DISCUSSION_REPO must be owner/repo"* ]]
+  [ ! -s "$GH_LOG" ]
+}
+
+@test "initiative-planner.yml exposes discussion_repo and threads it to DISCUSSION_REPO + apply-plan" {
+  PLANNER_YML="$ROOT/.github/workflows/initiative-planner.yml"
+  [ "$(yq '.on.workflow_dispatch.inputs.discussion_repo.required' "$PLANNER_YML")" = "false" ]
+  [ "$(yq '.on.workflow_dispatch.inputs.discussion_repo.default' "$PLANNER_YML")" = "" ]
+  [ "$(yq '.jobs.plan.env.DISCUSSION_REPO' "$PLANNER_YML")" = "\${{ github.event.inputs.discussion_repo || github.event.inputs.target_repo || github.repository }}" ]
+  yq '.jobs.plan.steps[] | select(.id == "bob") | .with.prompt' "$PLANNER_YML" | grep -qF 'DISCUSSION_REPO="$DISCUSSION_REPO"'
+  # A cross-repo Discussion must not fall back to the self-scoped GITHUB_TOKEN.
+  yq '.jobs.plan.env.TARGET_GH_TOKEN' "$PLANNER_YML" | grep -qF "github.event.inputs.discussion_repo == github.repository"
 }
 
 # ── reviewed-plan apply path (#604) ───────────────────────────────────────────
@@ -369,7 +536,7 @@ EOF
 # is validated then handed straight to apply-plan.sh — no LLM planning step runs.
 
 @test "apply-reviewed-plan validates then applies the supplied plan (DRY_RUN)" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -eq 0 ]
@@ -381,7 +548,7 @@ EOF
 
 @test "apply-reviewed-plan rejects an invalid supplied plan before applying anything" {
   jq '.stories[1].blocked_by = [3] | .stories[2].blocked_by = [2]' "$PLAN" >"$TMP/cycle.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/cycle.json" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -ne 0 ]
@@ -390,7 +557,7 @@ EOF
 }
 
 @test "apply-reviewed-plan errors on a missing supplied plan file" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/does-not-exist.json" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -ne 0 ]
@@ -398,7 +565,7 @@ EOF
 }
 
 @test "apply-reviewed-plan errors when PLAN_PATH is a directory, not a regular file" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -ne 0 ]
@@ -408,7 +575,7 @@ EOF
 
 @test "apply-reviewed-plan honors the blocking open-questions gate from apply-plan" {
   jq '.open_questions = [{"question":"Confirm scope X before planning","blocking":true}]' "$PLAN" >"$TMP/blocking.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/blocking.json" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -eq 0 ]
@@ -417,7 +584,7 @@ EOF
 
 @test "apply-reviewed-plan rejects a plan whose source_discussion mismatches DISCUSSION_NUMBER" {
   # plan.json carries source_discussion:413; dispatcher says 999 — must abort before creating anything.
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=999 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -ne 0 ]
@@ -428,7 +595,7 @@ EOF
 }
 
 @test "apply-reviewed-plan passes when source_discussion matches DISCUSSION_NUMBER" {
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$PLAN" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -eq 0 ]
@@ -439,7 +606,7 @@ EOF
   # Reviewed plans must have an explicit source_discussion — they are applied
   # out-of-band and must be self-contained about their origin.
   jq 'del(.source_discussion)' "$PLAN" >"$TMP/no_src.json"
-  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="petry-projects/.github-private" \
+  DRY_RUN=1 DRY_RUN_LOG="$LOG" REPO="combsmith/.github-private" \
     DISCUSSION_NUMBER=999 DISCUSSION_NODE_ID="D_test" PLAN_PATH="$TMP/no_src.json" \
     run bash "$PLANNER_DIR/apply-reviewed-plan.sh"
   [ "$status" -ne 0 ]

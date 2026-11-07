@@ -37,22 +37,5 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           ACK: ${{ contains(github.event.pull_request.labels.*.name, 'ack-test-deletion') }}
-        run: |
-          set -euo pipefail
-          deleted="$(git diff --diff-filter=D --name-only "$BASE_SHA" "$HEAD_SHA" -- 'tests/' || true)"
-          if [ -z "$deleted" ]; then
-            echo "No files deleted under tests/. OK."
-            exit 0
-          fi
-          echo "::warning title=Test files deleted::This PR deletes file(s) under tests/:"
-          printf '%s\n' "$deleted"
-          if [ "$ACK" = "true" ]; then
-            echo "::notice::Deletion acknowledged via the 'ack-test-deletion' label."
-            exit 0
-          fi
-          {
-            echo "::error title=Unacknowledged test deletion::This PR deletes test file(s) under tests/ without acknowledgement."
-            echo "A maintainer must add the 'ack-test-deletion' label to confirm the removal is intentional."
-            echo "Guard rationale (#655): a stale-base PR once reverted a shipped fix AND deleted its regression test in the same diff — CI stayed green because the guard was gone."
-          } >&2
-          exit 1
+        # Deletions are measured from the merge base, not the base tip (#2254).
+        run: bash scripts/test-deletion-guard.sh

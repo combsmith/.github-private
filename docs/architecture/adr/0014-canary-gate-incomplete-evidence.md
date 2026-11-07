@@ -6,7 +6,7 @@ proposed
 
 ## Context
 
-The canary-rollout gate (`petry-projects/.github`, `scripts/canary-rollout.sh`
+The canary-rollout gate (`combsmith/.github`, `scripts/canary-rollout.sh`
 with its pure core `scripts/lib/canary-rollout.sh`) decides promotions from
 GitHub run history: executed runs since a candidate's cut, failures since the
 cut, and a 14-day baseline that sizes the sample a promotion needs. Every one
@@ -16,7 +16,7 @@ a role costs one jobs API read per run, bounded by `CANARY_INGRESS_JOBS_MAX`
 (default 300).
 
 No recorded decision said what the gate does when a cap is hit. The
-Solution Architect advisory on `petry-projects/.github#1244` (2026-10-11)
+Solution Architect advisory on `combsmith/.github#1244` (2026-10-11)
 found each read had answered that question separately, and three answers were
 wrong:
 
@@ -67,7 +67,7 @@ not observed. The checkable boundaries:
 - **"Unknown baseline" is an explicit signal, never a count.** When a
   truncated baseline read observed nothing countable, the sample is sized at
   its clamp **minimum** and is never waived as "no caller". Maintainer
-  ruling, 2026-10-11, closing item 16 of `petry-projects/.github#1244`.
+  ruling, 2026-10-11, closing item 16 of `combsmith/.github#1244`.
 - **A verdict needs a comparison.** When the candidate commit is unresolvable
   the reusable was not compared, so the triage is `-` (indeterminate), not
   `PRE_EXISTING` and not `REGRESSION`. The pair stays BLOCKED.
@@ -136,11 +136,11 @@ above holds the gate only where evidence of a failure could be missing.
   `continue-on-error` out of the ingress, which the attribution rules rely
   on.
 - ADR-0002 (channel-tag releases and rings): the promotion this gate guards.
-- `petry-projects/.github#1244`: the tracker, the Solution Architect advisory
+- `combsmith/.github#1244`: the tracker, the Solution Architect advisory
   of 2026-10-11 and its measurements.
-- `petry-projects/.github#1312` (per-role list completeness),
-  `petry-projects/.github#1314` (indeterminate triage, issue #1249),
-  `petry-projects/.github#1315` (non-ingress roles, issue #1247): the
+- `combsmith/.github#1312` (per-role list completeness),
+  `combsmith/.github#1314` (indeterminate triage, issue #1249),
+  `combsmith/.github#1315` (non-ingress roles, issue #1247): the
   changes that implement every bullet except the read budget.
-- `petry-projects/.github#548`: the gate standard that the sample sizing
+- `combsmith/.github#548`: the gate standard that the sample sizing
   comes from.

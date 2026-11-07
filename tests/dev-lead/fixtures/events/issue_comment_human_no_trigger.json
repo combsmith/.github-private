@@ -7,7 +7,7 @@
     "state": "open",
     "author_association": "OWNER",
     "pull_request": {
-      "url": "https://api.github.com/repos/petry-projects/.github-private/pulls/64"
+      "url": "https://api.github.com/repos/combsmith/.github-private/pulls/64"
     }
   },
   "comment": {
@@ -18,6 +18,6 @@
       "type": "User"
     }
   },
-  "repository": { "full_name": "petry-projects/.github-private" },
+  "repository": { "full_name": "combsmith/.github-private" },
   "sender": { "login": "donpetry", "type": "User" }
 }

@@ -86,7 +86,7 @@ setup() {
   [[ "$output" == *"pull_request_review:"* ]]
   # Version-agnostic: assert the SHAPE (a dev-lead channel pin forwarded into
   # agent_ref), not a literal version.
-  [[ "$output" =~ uses:\ petry-projects/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/[A-Za-z0-9._-]+ ]]
+  [[ "$output" =~ uses:\ combsmith/\.github-private/\.github/workflows/dev-lead-reusable\.yml@dev-lead/[A-Za-z0-9._-]+ ]]
   [[ "$output" == *"with:"* ]]
   [[ "$output" =~ agent_ref:\ dev-lead/[A-Za-z0-9._-]+ ]]
   _uses_ref="$(printf '%s\n' "$output" | sed -n 's#.*dev-lead-reusable\.yml@\([^[:space:]]*\).*#\1#p' | head -1)"
@@ -102,7 +102,7 @@ setup() {
 @test "extract (legacy): pr-review-trigger review job keeps with-forwarding and the on-block separator comment" {
   run extract_forwarding_block "${REPO_ROOT}/.github/workflows/pr-review-trigger.yml" "review"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github-private/.github/workflows/pr-review.yml@pr-review/v1-next"* ]]
+  [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-next"* ]]
   [[ "$output" == *"force_review: \${{ inputs.force_review || '' }}"* ]]
   # Column-0 comments before the top-level permissions: key stay in the on: block
   # (anti-hidden-trigger). The permissions VALUES are top-level here (not job-level)
@@ -115,7 +115,7 @@ setup() {
   run extract_forwarding_block "${REPO_ROOT}/.github/workflows/ci-failure-analyst.lock.yml" "analyze"
   [ "$status" -eq 0 ]
   [[ "$output" == on:* ]]
-  [[ "$output" == *"uses: petry-projects/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable"* ]]
   [[ "$output" != *"with:"* ]]
   # if: and secrets: are excluded from the frozen region.
   [[ "$output" != *"CLAUDE_CODE_OAUTH_TOKEN"* ]]
@@ -131,7 +131,7 @@ setup() {
   run extract_forwarding_block "$INGRESS" "dev-lead"
   [ "$status" -eq 0 ]
   [[ "$output" == on:* ]]
-  [[ "$output" == *"uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable"* ]]
   [[ "$output" == *"agent_ref: dev-lead/v139-stable"* ]]
   [[ "$output" == *"contents: write"* ]]
   # It must NOT bleed into the sibling job's pin.
@@ -143,7 +143,7 @@ setup() {
   run extract_forwarding_block "$INGRESS" "pr-review-mention"
   [ "$status" -eq 0 ]
   [[ "$output" == on:* ]]
-  [[ "$output" == *"uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-next"* ]]
+  [[ "$output" == *"uses: combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-next"* ]]
   [[ "$output" == *"pull-requests: write"* ]]
   [[ "$output" != *"with:"* ]]
   # It must NOT bleed into the sibling dev-lead pin.
@@ -163,7 +163,7 @@ setup() {
 
 jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
     with:
       agent_ref: dev-lead/v1-stable
 YAML
@@ -188,7 +188,7 @@ YAML
 
 jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
     with:
       agent_ref: dev-lead/v1-stable
 YAML

@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/dependency-audit.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md#7-dependency-audit-dependency-audityml
-# Reusable:        petry-projects/.github/.github/workflows/dependency-audit-reusable.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/dependency-audit.yml
+# Standard:        combsmith/.github/standards/ci-standards.md#7-dependency-audit-dependency-audityml
+# Reusable:        combsmith/.github/.github/workflows/dependency-audit-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All ecosystem-detection and audit logic
@@ -31,4 +31,4 @@ permissions:
 
 jobs:
   dependency-audit:
-    uses: petry-projects/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/v2-next  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/v2-next  # NOSONAR(githubactions:S7637) first-party channel ref

@@ -1,7 +1,7 @@
 ---
 name: why-not-approved
 description: >
-  Explains why pr-review has not approved a petry-projects pull request, and what
+  Explains why pr-review has not approved a combsmith pull request, and what
   would change that, by running the real pr-review gate chain read-only. Invoke on
   "why isn't PR N approved?", "what is blocking this PR?", or a PR stuck at
   REVIEW_REQUIRED with green CI.
@@ -19,9 +19,9 @@ reading the PR and guessing.
 
 ## Run the diagnostic
 
-The script lives in `petry-projects/.github-private`. If it is not in your checkout,
+The script lives in `combsmith/.github-private`. If it is not in your checkout,
 make a shallow clone of that repo first, through `gh` so the private repo is
-authenticated: `gh repo clone petry-projects/.github-private -- --depth 1`. You need
+authenticated: `gh repo clone combsmith/.github-private -- --depth 1`. You need
 `gh` authenticated with repo read on the PR's repository.
 
 ```bash

@@ -178,7 +178,7 @@ WORKED_JOBS='[{"name":"redispatch","conclusion":"skipped"},{"name":"plan","concl
   run fleet_pause_workflow_has_notice "${names[@]}" < "${WORKFLOWS}/persona-runner.yml"
   [ "$status" -eq 0 ]
   # A consumer repo pins the same reusable by ref.
-  run fleet_pause_workflow_has_notice "${names[@]}" <<< $'jobs:\n  run:\n    uses: petry-projects/.github-private/.github/workflows/persona-runner-reusable.yml@persona-runner/v1-stable  # pinned\n'
+  run fleet_pause_workflow_has_notice "${names[@]}" <<< $'jobs:\n  run:\n    uses: combsmith/.github-private/.github/workflows/persona-runner-reusable.yml@persona-runner/v1-stable  # pinned\n'
   [ "$status" -eq 0 ]
   # Without the registry names the caller's own text says nothing.
   run fleet_pause_workflow_has_notice < "${WORKFLOWS}/persona-runner.yml"
@@ -256,7 +256,7 @@ WORKED_JOBS='[{"name":"redispatch","conclusion":"skipped"},{"name":"plan","concl
 
 @test "initiative canary: the PAUSED report says paused, not passed and not failed" {
   source "$INITIATIVE"
-  run canary_report "PAUSED" "petry-projects/.github-private" "42" "https://x/run/1" "2026-10-11"
+  run canary_report "PAUSED" "combsmith/.github-private" "42" "https://x/run/1" "2026-10-11"
   [ "$status" -eq 0 ]
   [[ "$output" == *"**Result:** PAUSED"* ]]
   [[ "$output" == *"AGENTS_PAUSED=true"* ]]
@@ -302,7 +302,7 @@ esac
 EOF
   chmod +x "$MOCK_BIN/gh"
 
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export CANARY_DISCUSSION="42"
   export GH_TOKEN="pat"
   export CANARY_POLL_TIMEOUT="5"
@@ -325,7 +325,7 @@ EOF
   grep -qF "**Result:** PAUSED" "$CANARY_OUT"
 
   # It read the run's jobs to find that out: exactly one extra call.
-  run grep -c -- "run view 555 --repo petry-projects/.github-private --json jobs" "$GH_LOG"
+  run grep -c -- "run view 555 --repo combsmith/.github-private --json jobs" "$GH_LOG"
   [ "$output" = "1" ]
 }
 
@@ -405,7 +405,7 @@ EOF
 
 @test "pr-review canary: the PAUSED report says paused, not passed and not FAILED" {
   source "$PR_REVIEW"
-  run canary_report "PAUSED" "petry-projects/.github-private" "https://x/run/1" "2026-10-11"
+  run canary_report "PAUSED" "combsmith/.github-private" "https://x/run/1" "2026-10-11"
   [ "$status" -eq 0 ]
   [[ "$output" == *"**Result:** PAUSED"* ]]
   [[ "$output" == *"AGENTS_PAUSED=true"* ]]
@@ -443,7 +443,7 @@ esac
 EOF
   chmod +x "$MOCK_BIN/gh"
 
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export GH_TOKEN="pat"
   export CANARY_POLL_TIMEOUT="5"
   export CANARY_POLL_INTERVAL="1"

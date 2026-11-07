@@ -1,6 +1,6 @@
 # GitHub Agentic Workflows — Cross-Org Deployment
 
-**Issue:** [#235](https://github.com/petry-projects/.github-private/issues/235)
+**Issue:** [#235](https://github.com/combsmith/.github-private/issues/235)
 **Phase:** 4 — Cross-org deployment of gh-aw workflows
 
 ---
@@ -32,14 +32,14 @@ Org repo (e.g. ContentTwin)
   │     • Trust gate: org-member check for issue events
   │     • Dispatches: repository_dispatch → .github-private
   │
-  └── gh api POST /repos/petry-projects/.github-private/dispatches
+  └── gh api POST /repos/combsmith/.github-private/dispatches
         event_type: gh-aw-issue-triage | gh-aw-ci-failure
         client_payload: { source_repo, issue_number | pr_number + head_sha + checks }
 
-petry-projects/.github-private
+combsmith/.github-private
   └── .github/workflows/gh-aw-cross-org.yml  ← dispatcher (lives here)
         • Listens for: repository_dispatch[gh-aw-issue-triage, gh-aw-ci-failure]
-        • Validates source_repo is within petry-projects org
+        • Validates source_repo is within combsmith org
         • Checks out .github-private (scripts + prompts) at dotgithub-private/
         • Checks out target repo at target-repo/
         • Runs dev-lead-fix-issue.sh or dev-lead-fix-ci.sh
@@ -52,7 +52,7 @@ petry-projects/.github-private
 - **Logic stays in `.github-private`** — org repos carry only a thin YAML stub. All handler scripts, prompts, and engine invocations live here and iterate independently.
 - **No new secrets required** — `GH_PAT_WORKFLOWS` (already an org secret) handles both the cross-repo dispatch and the checkout/push of branches in target repos.
 - **Anti-loop** — the listener excludes check runs whose name starts with `gh-aw /` to prevent self-triggering.
-- **Security** — the dispatcher validates that `source_repo` is within `petry-projects/` before any checkout or engine invocation.
+- **Security** — the dispatcher validates that `source_repo` is within `combsmith/` before any checkout or engine invocation.
 
 ---
 
@@ -75,7 +75,7 @@ The following capabilities are available cross-org via this pattern:
 {
   "event_type": "gh-aw-issue-triage",
   "client_payload": {
-    "source_repo": "petry-projects/ContentTwin",
+    "source_repo": "combsmith/ContentTwin",
     "issue_number": 42,
     "label": "bug"
   }
@@ -88,7 +88,7 @@ The following capabilities are available cross-org via this pattern:
 {
   "event_type": "gh-aw-ci-failure",
   "client_payload": {
-    "source_repo": "petry-projects/ContentTwin",
+    "source_repo": "combsmith/ContentTwin",
     "pr_number": 7,
     "head_sha": "abc123def456",
     "checks": [
@@ -96,7 +96,7 @@ The following capabilities are available cross-org via this pattern:
         "id": 12345678,
         "name": "test / unit",
         "conclusion": "failure",
-        "details_url": "https://github.com/petry-projects/ContentTwin/actions/runs/12345",
+        "details_url": "https://github.com/combsmith/ContentTwin/actions/runs/12345",
         "app_slug": "github-actions"
       }
     ]
@@ -132,7 +132,7 @@ Both groups use `cancel-in-progress: false` to queue rather than cancel, matchin
 
 | Repo | Issue Triage | CI Failure Analyst | Notes |
 |---|---|---|---|
-| `petry-projects/ContentTwin` | deployment target | deployment target | Primary test repo per issue #235 |
+| `combsmith/ContentTwin` | deployment target | deployment target | Primary test repo per issue #235 |
 
 Deploy `gh-aw-listener.yml` to each repo listed above using the template.
 
@@ -140,4 +140,4 @@ Deploy `gh-aw-listener.yml` to each repo listed above using the template.
 
 ## Future: Shared Workflow Path
 
-Once all three gh-aw workflows (Issue Triage, CI Failure Analyst, Stale Manager, Release Notes) have been live for 5+ days with no incidents, revisit the `gh aw package` / shared workflow approach. This would replace the per-repo listener stubs with a single reusable workflow reference from `petry-projects/.github`, eliminating the per-repo deployment step entirely.
+Once all three gh-aw workflows (Issue Triage, CI Failure Analyst, Stale Manager, Release Notes) have been live for 5+ days with no incidents, revisit the `gh aw package` / shared workflow approach. This would replace the per-repo listener stubs with a single reusable workflow reference from `combsmith/.github`, eliminating the per-repo deployment step entirely.

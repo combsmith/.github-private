@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/seed-repo-template.sh — the DRY_RUN-aware generator that
-# seeds petry-projects/repo-template with the org baseline file scaffold:
+# seeds combsmith/repo-template with the org baseline file scaffold:
 # the ~10 thin-caller workflow stubs (fetched byte-identically from the public
 # standards/ and repinned from local ./… dogfood refs to published channel tags)
 # plus the root/baseline files (issue #966, epic #964). Mirrors the cross-repo
@@ -85,7 +85,7 @@ echo "\$*" >> "$CALLS"
 case "\$*" in
   *"/commits/${exists}"*) echo "cafef00d00000000000000000000000000000000" ;;
   *"/commits/"*) exit 0 ;;
-  *"/contents/"*) printf '%s' "\$(printf '    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64 -w0 2>/dev/null || printf '    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64)" ;;
+  *"/contents/"*) printf '%s' "\$(printf '    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64 -w0 2>/dev/null || printf '    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n' | base64)" ;;
   *) echo '' ;;
 esac
 EOF
@@ -219,21 +219,22 @@ EOF
 }
 
 # ── manifest: baseline set (AC #3) ────────────────────────────────────────────
-@test "list-baseline: includes every required root/baseline file" {
+@test "list-baseline: includes every required root/baseline file and omits SECURITY.md (inherited org-wide)" {
   run bash "$SEED" --list-baseline
   [ "$status" -eq 0 ]
   for f in AGENTS.md CLAUDE.md .github/CODEOWNERS .github/dependabot.yml \
            .gitleaks.toml sonar-project.properties .gitignore LICENSE \
-           SECURITY.md README.md BOOTSTRAP.md; do
+           README.md BOOTSTRAP.md; do
     [[ "$output" == *"$f"* ]] || { echo "missing baseline: $f" >&2; false; }
   done
+  [[ "$output" != *"SECURITY.md"* ]]
 }
 
 # ── repin: caller stubs → published major-scoped channel tags (AC #1, #2) ──────
-@test "repin: public caller dogfood ref → major-scoped @<name>/v<MAJOR>-stable on petry-projects/.github" {
+@test "repin: public caller dogfood ref → major-scoped @<name>/v<MAJOR>-stable on combsmith/.github" {
   run bash -c 'printf "%s\n" "    uses: ./.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-next" | bash "$0" --repin auto-rebase' "$SEED"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-stable"* ]]
   [[ "$output" != *"./.github/workflows/auto-rebase-reusable.yml"* ]]
   [[ "$output" != *"auto-rebase/v2-next"* ]]
   # AC #1: never the pre-#1184 legacy non-major-scoped channel.
@@ -241,10 +242,10 @@ EOF
 }
 
 @test "repin: private dev-lead → @dev-lead/v<MAJOR>-stable on .github-private and agent_ref repinned" {
-  src=$'    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n    with:\n      agent_ref: dev-lead/v1-next'
+  src=$'    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-next\n    with:\n      agent_ref: dev-lead/v1-next'
   run bash -c 'printf "%s\n" "$1" | bash "$0" --repin dev-lead' "$SEED" "$src"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable"* ]]
   [[ "$output" == *"agent_ref: dev-lead/v1-stable"* ]]
   [[ "$output" != *"dev-lead/v1-next"* ]]
   [[ "$output" != *"@dev-lead/stable"* ]]
@@ -290,8 +291,8 @@ EOF
 @test "repin round-trip: a canonical @<name>/v<MAJOR>-stable stub is unchanged (#1493 AC 13)" {
   for name in "${CALLER_STUBS[@]}"; do
     # Multi-line stub so the round-trip covers surrounding context, not just the uses: line.
-    host="petry-projects/.github"
-    [ "$name" = "dev-lead" ] && host="petry-projects/.github-private"
+    host="combsmith/.github"
+    [ "$name" = "dev-lead" ] && host="combsmith/.github-private"
     src=$'jobs:\n  call:\n    uses: '"${host}/.github/workflows/${name}-reusable.yml@${name}/v1-stable"$'\n    with:\n      agent_ref: '"${name}/v1-stable"
     run bash -c 'printf "%s" "$1" | bash "$0" --repin "$2"' "$SEED" "$src" "$name"
     [ "$status" -eq 0 ]
@@ -326,7 +327,7 @@ EOF
     | _fixture_workflow dependency-audit.yml
   run bash "$SEED" --emit-workflow dependency-audit.yml
   [ "$status" -eq 0 ]
-  [[ "$output" == *"uses: petry-projects/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/v2-stable"* ]]
+  [[ "$output" == *"uses: combsmith/.github/.github/workflows/dependency-audit-reusable.yml@dependency-audit/v2-stable"* ]]
   [[ "$output" != *"./.github/workflows/dependency-audit-reusable.yml"* ]]
   [[ "$output" != *"@dependency-audit/stable"* ]]
 }
@@ -337,7 +338,7 @@ EOF
   # baseline contradicted standards/ and reported the correct template as DRIFTED.
   # The repin must reproduce the canonical major-scoped stable pin byte-for-byte.
   printf '%s\n' 'jobs:' '  run:' \
-    '    uses: petry-projects/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable' \
+    '    uses: combsmith/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable' \
     | _fixture_workflow agent-shield.yml
   run bash "$SEED" --emit-workflow agent-shield.yml
   [ "$status" -eq 0 ]
@@ -410,13 +411,13 @@ GHEOF
 @test "baseline: CODEOWNERS is the org default rule" {
   run bash "$SEED" --emit-baseline .github/CODEOWNERS
   [ "$status" -eq 0 ]
-  [[ "$output" == *"* @petry-projects/org-leads"* ]]
+  [[ "$output" == *"* @combsmith/org-leads"* ]]
 }
 
-@test "baseline: AGENTS.md is a consumer pointer to the org AGENTS.md" {
+@test "baseline: AGENTS.md points to the org AGENTS.md and carries the template-specific sections" {
   run bash "$SEED" --emit-baseline AGENTS.md
   [ "$status" -eq 0 ]
-  [[ "$output" == *"petry-projects/.github"* ]]
+  [[ "$output" == *"combsmith/.github"* ]]
   [[ "$output" == *"AGENTS.md"* ]]
 }
 
@@ -442,12 +443,12 @@ GHEOF
   [ "$status" -eq 0 ]
   # Q1: framework subtrees (frameworks/) are opt-in, NOT seeded by the template.
   [[ "$output" == *"frameworks/"* ]]
-  [[ "$output" == *"opt-in"* ]]
-  [[ "$output" == *"not"*"seed"* || "$output" == *"not seeded"* ]]
+  [[ "$output" == *"not seeded"* ]]
+  [[ "$output" == *"on demand"* ]]
   # Q2: app installs (Claude/CodeRabbit) are a manual org-admin step, not done by bootstrap.
   [[ "$output" == *"Claude"* ]]
   [[ "$output" == *"CodeRabbit"* ]]
-  [[ "$output" == *"manual"* ]]
+  [[ "$output" == *"org-level"* ]]
   [[ "$output" == *"auto-trigger"* ]]
 }
 
@@ -693,9 +694,9 @@ EOF
   # the same standards fixtures the live seed does — but still makes zero writes.
   _stub_gh
   _drop_all_standards_fixtures
-  run env DEPENDABOT_STACK=frontend DRY_RUN=true bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend DRY_RUN=true bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
-  [[ "$output" == *"petry-projects/repo-template"* ]]
+  [[ "$output" == *"combsmith/repo-template"* ]]
   [ ! -f "$CALLS" ]
 }
 
@@ -711,7 +712,7 @@ EOF
   done
   printf 'version: 2\n' > "$STANDARDS_DIR/standards/dependabot/frontend.yml"
   printf 'title = "gitleaks config"\n' > "$STANDARDS_DIR/standards/gitleaks.toml"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [ -f "$CALLS" ]
   grep -q "contents/.github/workflows/auto-rebase.yml" "$CALLS"
@@ -741,7 +742,7 @@ EOF
   done
   printf 'version: 2\n' > "$STANDARDS_DIR/standards/dependabot/frontend.yml"
   printf 'title = "gitleaks config"\n' > "$STANDARDS_DIR/standards/gitleaks.toml"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"PR #42 already open"* ]]
   [ ! -f "$CALLS" ] || ! grep -q "pr create" "$CALLS"
@@ -754,12 +755,12 @@ EOF
 _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   local f="$BATS_TEST_TMPDIR/existing_gitignore"
   {
-    echo '# >>> BEGIN petry-projects secrets baseline (managed by .github — do not edit) >>>'
+    echo '# >>> BEGIN combsmith secrets baseline (managed by .github — do not edit) >>>'
     echo '# First layer of defense in the Push Protection Standard.'
     echo '.env'
     echo '*.pem'
     echo 'id_rsa'
-    echo '# <<< END petry-projects secrets baseline <<<'
+    echo '# <<< END combsmith secrets baseline <<<'
   } > "$f"
   printf '%s' "$f"
 }
@@ -769,7 +770,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   _drop_all_standards_fixtures
   local gi; gi="$(_managed_gitignore_fixture)"
   _stub_gh_existing ".gitignore" "$gi"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   # The preservation is reported by name + reason (check $output before `run grep`).
   [[ "$output" == *".gitignore"* ]]
@@ -788,7 +789,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   local ci="$BATS_TEST_TMPDIR/existing_ci"
   printf 'name: CI\n# customized per stack by the consumer\njobs:\n  build:\n    runs-on: ubuntu-latest\n' > "$ci"
   _stub_gh_existing ".github/workflows/ci.yml" "$ci"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"ci.yml"* ]]
   [ -f "$CALLS" ]
@@ -817,7 +818,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   # Ownership-awareness must not degrade to deletion — a brand-new repo needs both.
   _drop_all_standards_fixtures
   _stub_gh   # every contents read returns {} → absent → create
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [ -f "$CALLS" ]
   grep -qF "contents/.gitignore" "$CALLS"
@@ -830,7 +831,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   local out="$BATS_TEST_TMPDIR/existing"; printf 'same-bytes\n' > "$out"
   _stub_gh_existing "docs/x.txt" "$out"
   # Unchanged: existing == new content → no write, reported as unchanged.
-  run _seed_file petry-projects/repo-template "docs/x.txt" "$(printf 'same-bytes\n')" seed-branch main
+  run _seed_file combsmith/repo-template "docs/x.txt" "$(printf 'same-bytes\n')" seed-branch main
   [ "$status" -eq 0 ]
   [[ "$output" == *"unchanged"* || "$output" == *"preserv"* ]]
   if [ -f "$CALLS" ]; then
@@ -838,7 +839,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
     [ "$status" -eq 1 ]
   fi
   # Differing: existing != new content → a write happens.
-  run _seed_file petry-projects/repo-template "docs/x.txt" "$(printf 'new-bytes\n')" seed-branch main
+  run _seed_file combsmith/repo-template "docs/x.txt" "$(printf 'new-bytes\n')" seed-branch main
   [ "$status" -eq 0 ]
   grep -qF "contents/docs/x.txt" "$CALLS"
 }
@@ -848,7 +849,7 @@ _managed_gitignore_fixture() { # -> path of a fixture file on stdout
   _drop_all_standards_fixtures
   local gi; gi="$(_managed_gitignore_fixture)"
   _stub_gh_existing ".gitignore" "$gi"
-  run env DRY_RUN=true DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DRY_RUN=true DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   # The destructive-avoidance is visible: named, with the managed reason.
   [[ "$output" == *".gitignore"* ]]
@@ -875,11 +876,11 @@ case "$args" in
 esac
 GHEOF
   chmod +x "$STUB_BIN/gh"
-  run _existing_file_content petry-projects/repo-template docs/x.txt main
+  run _existing_file_content combsmith/repo-template docs/x.txt main
   [ "$status" -ne 0 ]
   [[ "$output" == *"gh api failed"* ]]
   # _seed_file propagates the failure — no CREATE PUT for the unreadable file.
-  run _seed_file petry-projects/repo-template docs/x.txt "$(printf 'new\n')" seed-branch main
+  run _seed_file combsmith/repo-template docs/x.txt "$(printf 'new\n')" seed-branch main
   [ "$status" -ne 0 ]
   if [ -f "$CALLS" ]; then
     run grep -qF "contents/docs/x.txt" "$CALLS"
@@ -898,19 +899,20 @@ printf '{"message":"Not Found","documentation_url":"https://docs.github.com/rest
 exit 1
 GHEOF
   chmod +x "$STUB_BIN/gh"
-  run _existing_file_content petry-projects/repo-template docs/x.txt main
+  run _existing_file_content combsmith/repo-template docs/x.txt main
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 # ── #2233: commercial-support sections + one open seed PR per repo ─────────────
 # Fixtures: standards/commercial-support-standard.md at standards/v1.2.0, and
-# README.md / BOOTSTRAP.md from petry-projects/repo-template main at bb43b0db.
+# README.md / BOOTSTRAP.md / AGENTS.md from combsmith/repo-template main at 3e073f87 (#259).
 SEED_FIXTURES="$SCRIPT_DIR/tests/fixtures/seed-repo-template"
 # Git blob SHAs of those two repo-template files (guards the fixtures themselves
 # against an editor/hook adding a trailing newline).
-REPO_TEMPLATE_README_BLOB=b0b70720038659d7d303f8611fb54703e05df428
-REPO_TEMPLATE_BOOTSTRAP_BLOB=b0d2f01630b2c19437288dedd535c1c6b1ba8771
+REPO_TEMPLATE_README_BLOB=de0e2dfbed19a3391a0b2fcddf3a22ebad6e809e
+REPO_TEMPLATE_BOOTSTRAP_BLOB=758298548cb22893267585aea9ad4803beacf641
+REPO_TEMPLATE_AGENTS_BLOB=1c5e6cb3b131037b7a103ebf33c243fac9facd0c
 
 _fixture_commercial_standard() {
   cp "$SEED_FIXTURES/commercial-support-standard.md" \
@@ -927,12 +929,20 @@ _standard_readme_block() { # <standard-file>
 # newlines and _put_file encodes it with printf '%s'.
 _seeded_blob() { printf '%s' "$1" | git hash-object --stdin; }
 
-@test "#2233: BOOTSTRAP.md emission is blob-identical to repo-template main (bb43b0db)" {
+@test "#2233: BOOTSTRAP.md emission is blob-identical to repo-template main (3e073f87)" {
   [ "$(git hash-object "$SEED_FIXTURES/repo-template-BOOTSTRAP.md")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
   run bash "$SEED" --emit-baseline BOOTSTRAP.md
   [ "$status" -eq 0 ]
-  [[ "$output" == *"## 4. Contributing & Commercial Support"* ]]
+  [[ "$output" == *"## 10. Done criteria"* ]]
   [ "$(_seeded_blob "$output")" = "$REPO_TEMPLATE_BOOTSTRAP_BLOB" ]
+}
+
+@test "repo-template#253: AGENTS.md emission is blob-identical to repo-template main (3e073f87)" {
+  [ "$(git hash-object "$SEED_FIXTURES/repo-template-AGENTS.md")" = "$REPO_TEMPLATE_AGENTS_BLOB" ]
+  run bash "$SEED" --emit-baseline AGENTS.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"## Local Development Commands"* ]]
+  [ "$(_seeded_blob "$output")" = "$REPO_TEMPLATE_AGENTS_BLOB" ]
 }
 
 @test "#2233: README.md keeps repo-template's preamble and appends the standard's canonical section" {
@@ -983,7 +993,7 @@ _seeded_blob() { printf '%s' "$1" | git hash-object --stdin; }
 @test "#2233: a seed run whose commercial standard is unreadable leaves README.md untouched" {
   _stub_gh
   _drop_all_standards_fixtures
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"README.md"* ]]
   grep -qF "contents/BOOTSTRAP.md" "$CALLS"
@@ -1004,7 +1014,7 @@ _stub_gh_open_seed_pr() { # [<path>@<ref> <file> ...]
     echo "  *\"pr list\"*\"headRefName\"*) printf '17\\tseed-scaffold/2026-10-01\\n' ;;"
     echo '  *"pr list"*) ;;'
     echo "  *\"git/ref/heads/\"*) echo basesha ;;"
-    echo "  *\"repos/petry-projects/repo-template --jq\"*) echo main ;;"
+    echo "  *\"repos/combsmith/repo-template --jq\"*) echo main ;;"
     while [ $# -ge 2 ]; do
       local p="${1%@*}" r="${1##*@}" f="$2"; shift 2
       local b64; b64="$(base64 -w0 < "$f" 2>/dev/null || base64 < "$f")"
@@ -1020,7 +1030,7 @@ _stub_gh_open_seed_pr() { # [<path>@<ref> <file> ...]
   _drop_all_standards_fixtures
   _fixture_commercial_standard
   _stub_gh_open_seed_pr
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"#17"* ]]
   [ -f "$CALLS" ]
@@ -1050,7 +1060,7 @@ _stub_gh_open_seed_pr() { # [<path>@<ref> <file> ...]
     ".github/CODEOWNERS@seed-scaffold/2026-10-01" "$stale" \
     "AGENTS.md@main" "$agents" \
     "AGENTS.md@seed-scaffold/2026-10-01" "$agents"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   grep -F "contents/.github/CODEOWNERS --method PUT" "$CALLS" | grep -qF "branch=seed-scaffold/2026-10-01"
   run grep -F "contents/AGENTS.md --method PUT" "$CALLS"
@@ -1086,7 +1096,7 @@ case "$args" in
     [ "$2 $3" != "close $SEED_CLOSE_FAILS" ] || exit 1
     exit 0 ;;
   "pr edit "*) echo "$args" >> "$CALLS"; exit 0 ;;
-  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/petry-projects/repo-template/pull/$SEED_NEW_PR"; exit 0 ;;
+  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/combsmith/repo-template/pull/$SEED_NEW_PR"; exit 0 ;;
   *"--method DELETE"*|*"--method PUT"*|*"--method POST"*) echo "$args" >> "$CALLS"; echo '{}' ;;
   *"pr list"*"--head "*)
     # The open PR for one branch: its number, or nothing.
@@ -1094,7 +1104,7 @@ case "$args" in
     printf '%s\n' "$SEED_OPEN_PRS" | awk -F'\t' -v h="$head" '$2 == h { print $1 }' | tail -n 1 ;;
   *"pr list"*"headRefName"*) [ -z "$SEED_OPEN_PRS" ] || printf '%s\n' "$SEED_OPEN_PRS" ;;
   *"git/ref/heads/"*) echo basesha ;;
-  *"repos/petry-projects/repo-template --jq"*) echo main ;;
+  *"repos/combsmith/repo-template --jq"*) echo main ;;
   *) echo '{}' ;;
 esac
 GHSTUB
@@ -1135,10 +1145,10 @@ GHSTUB
   _drop_all_standards_fixtures
   _fixture_commercial_standard
   _stub_gh_seed_prs
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"opened seed PR #88"* ]]
-  grep -qF "pr create --repo petry-projects/repo-template" "$CALLS"
+  grep -qF "pr create --repo combsmith/repo-template" "$CALLS"
   grep -qF "Resolved ref:" "$CALLS"
   grep -qF "seed-repo-template standards_ref=STANDARDS_DIR" "$CALLS"
   grep -qF "source=local" "$CALLS"
@@ -1149,9 +1159,9 @@ GHSTUB
   _fixture_commercial_standard
   export SEED_OPEN_PRS="$(printf '17\tseed-scaffold/2026-10-01')"
   _stub_gh_seed_prs
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
-  grep -qF "pr edit 17 --repo petry-projects/repo-template --body" "$CALLS"
+  grep -qF "pr edit 17 --repo combsmith/repo-template --body" "$CALLS"
   grep -qF "Resolved ref:" "$CALLS"
   run grep -F "pr create" "$CALLS"
   [ "$status" -eq 1 ]
@@ -1162,12 +1172,12 @@ GHSTUB
   _fixture_commercial_standard
   export SEED_OPEN_PRS="$(printf '9\tseed-scaffold/2026-09-07\n12\tseed-scaffold/2026-09-20\n17\tseed-scaffold/2026-10-01')"
   _stub_gh_seed_prs
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"closed superseded seed PR #9"* ]]
   [[ "$output" == *"closed superseded seed PR #12"* ]]
-  grep -F "pr close 9 --repo petry-projects/repo-template --comment" "$CALLS" | grep -qF "Superseded by #17"
-  grep -F "pr close 12 --repo petry-projects/repo-template --comment" "$CALLS" | grep -qF "Superseded by #17"
+  grep -F "pr close 9 --repo combsmith/repo-template --comment" "$CALLS" | grep -qF "Superseded by #17"
+  grep -F "pr close 12 --repo combsmith/repo-template --comment" "$CALLS" | grep -qF "Superseded by #17"
   # The surviving PR is never closed, and no second PR is opened.
   run grep -F "pr close 17" "$CALLS"
   [ "$status" -eq 1 ]
@@ -1178,7 +1188,7 @@ GHSTUB
 @test "#1925 AC2: a PR on another branch is never closed as a superseded seed" {
   source "$SEED"
   _stub_gh_seed_prs
-  run _seed_close_superseded petry-projects/repo-template 17 "$(printf '5\tfeature/login\n17\tseed-scaffold/2026-10-01\nnot-a-number\tseed-scaffold/x')"
+  run _seed_close_superseded combsmith/repo-template 17 "$(printf '5\tfeature/login\n17\tseed-scaffold/2026-10-01\nnot-a-number\tseed-scaffold/x')"
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS" ]
 }
@@ -1188,7 +1198,7 @@ GHSTUB
   _fixture_commercial_standard
   export SEED_CLOSE_FAILS=9 SEED_OPEN_PRS="$(printf '9\tseed-scaffold/2026-09-07\n17\tseed-scaffold/2026-10-01')"
   _stub_gh_seed_prs
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -ne 0 ]
   [[ "$output" == *"could not close superseded seed PR #9"* ]]
   [[ "$output" == *"#17 carries the current seed"* ]]
@@ -1197,7 +1207,7 @@ GHSTUB
 @test "#1925 AC2: when this run's PR cannot be identified, no older seed PR is closed" {
   source "$SEED"
   _stub_gh_seed_prs
-  run _seed_close_superseded petry-projects/repo-template "" "$(printf '9\tseed-scaffold/2026-09-07')"
+  run _seed_close_superseded combsmith/repo-template "" "$(printf '9\tseed-scaffold/2026-09-07')"
   [ "$status" -ne 0 ]
   [[ "$output" == *"leaving older seed PR #9 open"* ]]
   [ ! -f "$CALLS" ]
@@ -1222,7 +1232,7 @@ _ahead_env() {
   _ahead_env
   local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
   _stub_gh_existing "docs/x.txt" "$existing"
-  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
   [ "$status" -eq 0 ]
   [[ "$output" == *"REFUSED docs/x.txt"* ]]
   [[ "$output" == *"the template is ahead of standards/v1-stable"* ]]
@@ -1234,7 +1244,7 @@ _ahead_env() {
   _ahead_env
   local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
   _stub_gh_existing "docs/x.txt" "$existing"
-  _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
   [ "${#_SEED_AHEAD[@]}" -eq 1 ]
   [ "${_SEED_AHEAD[0]}" = "docs/x.txt" ]
   run _seed_report_ahead
@@ -1246,7 +1256,7 @@ _ahead_env() {
   _ahead_env
   local existing="$BATS_TEST_TMPDIR/existing"; printf 'hand edited' > "$existing"
   _stub_gh_existing "docs/x.txt" "$existing"
-  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
   [ "$status" -eq 0 ]
   grep -qF "contents/docs/x.txt" "$CALLS"
 }
@@ -1255,7 +1265,7 @@ _ahead_env() {
   _ahead_env
   local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
   _stub_gh_existing "docs/x.txt" "$existing"
-  DRY_RUN=true run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  DRY_RUN=true run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
   [ "$status" -eq 0 ]
   [[ "$output" == *"would REFUSE docs/x.txt"* ]]
   [ ! -f "$CALLS" ]
@@ -1265,7 +1275,7 @@ _ahead_env() {
   _ahead_env
   local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@channel' > "$existing"
   _stub_gh_existing "docs/x.txt" "$existing"
-  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
   [ "$status" -eq 0 ]
   [ ! -s "$AHEAD_LOOKUPS" ]
 }
@@ -1275,7 +1285,7 @@ _ahead_env() {
   AHEAD_HEAD=""
   local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
   _stub_gh_existing "docs/x.txt" "$existing"
-  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot tell whether"*"newer than standards/v1-stable"* ]]
   [ ! -f "$CALLS" ]
@@ -1286,7 +1296,7 @@ _ahead_env() {
   AHEAD_RELATION=""
   local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
   _stub_gh_existing "docs/x.txt" "$existing"
-  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
   [ "$status" -ne 0 ]
   [ ! -f "$CALLS" ]
 }
@@ -1296,7 +1306,7 @@ _ahead_env() {
   AHEAD_EMIT_FAILS=1
   local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
   _stub_gh_existing "docs/x.txt" "$existing"
-  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot compute the standards HEAD"* ]]
   [ ! -f "$CALLS" ]
@@ -1310,7 +1320,7 @@ _ahead_env() {
     rm -f "$CALLS"
     local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
     _stub_gh_existing "docs/x.txt" "$existing"
-    run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+    run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
     [ "$status" -eq 0 ]
     grep -qF "contents/docs/x.txt" "$CALLS"
   done
@@ -1321,7 +1331,7 @@ _ahead_env() {
   _STD_SRC="local"
   local existing="$BATS_TEST_TMPDIR/existing"; printf 'docs/x.txt@HEAD' > "$existing"
   _stub_gh_existing "docs/x.txt" "$existing"
-  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-branch main 0 --emit-baseline "docs/x.txt"
   [ "$status" -eq 0 ]
   [ ! -s "$AHEAD_LOOKUPS" ]
   grep -qF "contents/docs/x.txt" "$CALLS"
@@ -1333,7 +1343,7 @@ _ahead_env() {
   printf 'docs/x.txt@HEAD' > "$base"       # the default branch is ahead of the channel
   printf 'docs/x.txt@channel' > "$stale"   # an older run downgraded it on the PR branch
   _stub_gh_open_seed_pr "docs/x.txt@main" "$base" "docs/x.txt@seed-scaffold/2026-10-01" "$stale"
-  run _seed_file petry-projects/repo-template "docs/x.txt" "docs/x.txt@channel" seed-scaffold/2026-10-01 main 1 --emit-baseline "docs/x.txt"
+  run _seed_file combsmith/repo-template "docs/x.txt" "docs/x.txt@channel" seed-scaffold/2026-10-01 main 1 --emit-baseline "docs/x.txt"
   [ "$status" -eq 0 ]
   grep -F "contents/docs/x.txt --method PUT" "$CALLS" | grep -qF "branch=seed-scaffold/2026-10-01"
   # What was written is the base (ahead) content, not this run's channel emission.
@@ -1345,10 +1355,10 @@ _ahead_env() {
   _stub_gh_seed_prs
   _seed_all_files() { _SEED_AHEAD+=(".github/workflows/agent-shield.yml"); }
   STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
-    run _seed_repo petry-projects/repo-template
+    run _seed_repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"standards channel is behind the template — promote standards"* ]]
-  [[ "$output" == *"no PR opened on petry-projects/repo-template: the only differing files are ahead of standards/v1-stable"* ]]
+  [[ "$output" == *"no PR opened on combsmith/repo-template: the only differing files are ahead of standards/v1-stable"* ]]
   run grep -F "pr create" "$CALLS"
   [ "$status" -eq 1 ]
   grep -qF "git/refs/heads/seed-scaffold/" "$CALLS"
@@ -1360,7 +1370,7 @@ _ahead_env() {
   _stub_gh_seed_prs
   _seed_all_files() { :; }
   STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
-    run _seed_repo petry-projects/repo-template
+    run _seed_repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"it already matches standards/v1-stable"* ]]
   run grep -F "pr create" "$CALLS"
@@ -1375,19 +1385,19 @@ _ahead_env() {
 args="$*"
 case "$args" in
   *"git/refs --method POST"*) exit 1 ;;
-  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/petry-projects/repo-template/pull/88" ;;
+  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/combsmith/repo-template/pull/88" ;;
   *"pr list"*) ;;
   *"git/ref/heads/"*) echo basesha ;;
-  *"repos/petry-projects/repo-template --jq"*) echo main ;;
+  *"repos/combsmith/repo-template --jq"*) echo main ;;
   *) echo '{}' ;;
 esac
 GHSTUB
   chmod +x "$STUB_BIN/gh"
   _seed_all_files() { echo "reuse=$4"; _SEED_WRITES=1; }
   STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
-    run _seed_repo petry-projects/repo-template
+    run _seed_repo combsmith/repo-template
   [ "$status" -eq 0 ]
-  [[ "$output" == *"already exists on petry-projects/repo-template"* ]]
+  [[ "$output" == *"already exists on combsmith/repo-template"* ]]
   # reuse=1 makes _seed_file restore skipped, preserved and refused files on the branch.
   [[ "$output" == *"reuse=1"* ]]
 }
@@ -1397,7 +1407,7 @@ GHSTUB
   _stub_gh_seed_prs
   _seed_all_files() { echo "reuse=$4"; _SEED_WRITES=1; }
   STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
-    run _seed_repo petry-projects/repo-template
+    run _seed_repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"reuse=0"* ]]
 }
@@ -1413,16 +1423,16 @@ case "$args" in
   *"--method PUT"*|*"--method POST"*|"pr create "*) echo "$args" >> "$CALLS"; echo '{}' ;;
   *"pr list"*"headRefName"*) echo '{"message":"API rate limit exceeded"}'; exit 1 ;;
   *"git/ref/heads/"*) echo basesha ;;
-  *"repos/petry-projects/repo-template --jq"*) echo main ;;
+  *"repos/combsmith/repo-template --jq"*) echo main ;;
   *) echo '{}' ;;
 esac
 GHSTUB
   chmod +x "$STUB_BIN/gh"
   _seed_all_files() { echo "seeded"; _SEED_WRITES=1; }
   STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
-    run _seed_repo petry-projects/repo-template
+    run _seed_repo combsmith/repo-template
   [ "$status" -ne 0 ]
-  [[ "$output" == *"cannot list open pull requests on petry-projects/repo-template"* ]]
+  [[ "$output" == *"cannot list open pull requests on combsmith/repo-template"* ]]
   [[ "$output" != *"seeded"* ]]
   # No branch, no file, no PR.
   [ ! -f "$CALLS" ]
@@ -1438,7 +1448,7 @@ GHSTUB
 args="$*"
 case "$args" in
   "pr edit "*) echo "$args" >> "$CALLS"; exit 0 ;;
-  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/petry-projects/repo-template/pull/999"; exit 0 ;;
+  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/combsmith/repo-template/pull/999"; exit 0 ;;
   *"--method PUT"*|*"--method POST"*) echo "$args" >> "$CALLS"; echo '{}' ;;
   *"pr list"*"--head seed-scaffold/2026-10-01"*) echo 150 ;;
   *"pr list"*"headRefName"*)
@@ -1447,12 +1457,12 @@ case "$args" in
       | head -n "$limit" | awk -F'\t' '$2 ~ /^seed-scaffold\//' ;;
   *"pr list"*) ;;
   *"git/ref/heads/"*) echo basesha ;;
-  *"repos/petry-projects/repo-template --jq"*) echo main ;;
+  *"repos/combsmith/repo-template --jq"*) echo main ;;
   *) echo '{}' ;;
 esac
 GHSTUB
   chmod +x "$STUB_BIN/gh"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"seed PR #150 is already open"* ]]
   run grep -F "pr create" "$CALLS"
@@ -1486,7 +1496,7 @@ GHSTUB
   _stub_gh_seed_prs
   _seed_all_files() { echo "pin=${_STD_PIN:-none}"; _SEED_WRITES=1; }
   STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
-    run _seed_repo petry-projects/repo-template
+    run _seed_repo combsmith/repo-template
   [ "$status" -eq 0 ]
   [[ "$output" == *"pin=1111111111111111111111111111111111111111"* ]]
 }
@@ -1498,25 +1508,25 @@ GHSTUB
 args="$*"
 case "$args" in
   *"git/refs --method POST"*) exit 1 ;;
-  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/petry-projects/repo-template/pull/88" ;;
+  "pr create "*) echo "$args" >> "$CALLS"; echo "https://github.com/combsmith/repo-template/pull/88" ;;
   *"/compare/main...seed-scaffold/"*) echo "${AHEAD_BY:-0}" ;;
   *"pr list"*) ;;
   *"git/ref/heads/"*) echo basesha ;;
-  *"repos/petry-projects/repo-template --jq"*) echo main ;;
+  *"repos/combsmith/repo-template --jq"*) echo main ;;
   *) echo '{}' ;;
 esac
 GHSTUB
   chmod +x "$STUB_BIN/gh"
   _seed_all_files() { :; }
   STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
-    run _seed_repo petry-projects/repo-template
+    run _seed_repo combsmith/repo-template
   [ "$status" -eq 0 ]
-  [[ "$output" == *"no PR opened on petry-projects/repo-template: branch seed-scaffold/"*"has nothing main lacks"* ]]
+  [[ "$output" == *"no PR opened on combsmith/repo-template: branch seed-scaffold/"*"has nothing main lacks"* ]]
   [ ! -f "$CALLS" ]
   # The same leftover branch, but still carrying a commit the base lacks → a PR is opened.
   export AHEAD_BY=2
   STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
-    run _seed_repo petry-projects/repo-template
+    run _seed_repo combsmith/repo-template
   [ "$status" -eq 0 ]
   grep -qF "pr create" "$CALLS"
 }
@@ -1528,7 +1538,7 @@ GHSTUB
   _stub_gh_seed_prs
   # Make `pr edit` fail.
   sed -i.bak 's|  "pr edit "\*) echo "$args" >> "$CALLS"; exit 0 ;;|  "pr edit "*) echo "$args" >> "$CALLS"; exit 1 ;;|' "$STUB_BIN/gh"
-  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo petry-projects/repo-template
+  run env DEPENDABOT_STACK=frontend bash "$SEED" --repo combsmith/repo-template
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot update the standards provenance on PR #17"* ]]
   run grep -F "pr close" "$CALLS"
@@ -1541,7 +1551,7 @@ GHSTUB
   export SEED_NEW_PR="not-a-number"
   _seed_all_files() { _SEED_WRITES=1; }
   STANDARDS_DIR="" _STD_REF="standards/v1-stable" _STD_SHA="1111111111111111111111111111111111111111" _STD_SRC="channel" \
-    run _seed_repo petry-projects/repo-template
+    run _seed_repo combsmith/repo-template
   [ "$status" -eq 0 ]
   grep -qF "pr create" "$CALLS"
   run grep -F "pr close" "$CALLS"
@@ -1577,7 +1587,7 @@ GHSTUB
   unset STANDARDS_DIR
   _stub_gh_real_ahead ahead
   _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
-  run _seed_file petry-projects/repo-template ".gitleaks.toml" "old" seed-branch main 0 --emit-baseline ".gitleaks.toml"
+  run _seed_file combsmith/repo-template ".gitleaks.toml" "old" seed-branch main 0 --emit-baseline ".gitleaks.toml"
   [ "$status" -eq 0 ]
   [[ "$output" == *"REFUSED .gitleaks.toml"* ]]
   [[ "$output" == *"standards HEAD 222222222222"* ]]
@@ -1589,7 +1599,7 @@ GHSTUB
   unset STANDARDS_DIR
   _stub_gh_real_ahead diverged
   _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
-  run _seed_file petry-projects/repo-template ".gitleaks.toml" "old" seed-branch main 0 --emit-baseline ".gitleaks.toml"
+  run _seed_file combsmith/repo-template ".gitleaks.toml" "old" seed-branch main 0 --emit-baseline ".gitleaks.toml"
   [ "$status" -eq 0 ]
   grep -qF "contents/.gitleaks.toml --method PUT" "$CALLS"
 }
@@ -1599,7 +1609,7 @@ GHSTUB
   unset STANDARDS_DIR
   _stub_gh_real_ahead '{"message":"Not Found"}'
   _STD_REF="standards/v1-stable"; _STD_SHA="1111111111111111111111111111111111111111"; _STD_SRC="channel"
-  run _seed_file petry-projects/repo-template ".gitleaks.toml" "old" seed-branch main 0 --emit-baseline ".gitleaks.toml"
+  run _seed_file combsmith/repo-template ".gitleaks.toml" "old" seed-branch main 0 --emit-baseline ".gitleaks.toml"
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot tell whether"* ]]
   [ ! -f "$CALLS" ]
