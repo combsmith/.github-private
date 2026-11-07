@@ -162,9 +162,11 @@ readonly _MAINTAINER_GATE_INFO_JQ_DEFS='
 #                    exactly one `codex-review-state:v1` JSON; that JSON says the
 #                    code review is `completed` with has_any_findings and
 #                    has_unresolved_findings both `false` for a 40-hex commit_sha,
-#                    and the security review either never ran (every field null)
-#                    or completed the same way. Any other state (failed, in
-#                    progress, findings, unparseable) is not cleared.
+#                    and a security_review object carrying all four fields that
+#                    either never ran (every field null) or completed the same way
+#                    for that same commit. Any other state (failed, in progress,
+#                    findings, a null, partial or other-commit security review,
+#                    unparseable) is not cleared.
 #   coderabbit_no_finding — the body opens with CodeRabbit's summary marker (after
 #                    its optional `coderabbit-ai-generated:v1` marker) and
 #                    carries exactly one `final_review_risk_label` field reading
@@ -192,15 +194,17 @@ readonly _MAINTAINER_GATE_NO_FINDING_JQ_DEFS='
           and $s.code_review.has_any_findings == false
           and $s.code_review.has_unresolved_findings == false
           and ($s.code_review.commit_sha | nf_sha)
-          and ($s | has("security_review"))
-          and ($s.security_review as $r
-               | ($r == null)
-                 or (($r | type) == "object"
-                     and (([$r.status, $r.has_any_findings, $r.has_unresolved_findings, $r.commit_sha]
-                           | all(. == null))
-                          or ($r.status == "completed"
-                              and $r.has_any_findings == false
-                              and $r.has_unresolved_findings == false)))));
+          and ($s.code_review.commit_sha as $sha
+               | ($s.security_review // null) as $r
+               | (($r | type) == "object")
+                 and ($r | has("status") and has("has_any_findings")
+                           and has("has_unresolved_findings") and has("commit_sha"))
+                 and (([$r.status, $r.has_any_findings, $r.has_unresolved_findings, $r.commit_sha]
+                       | all(. == null))
+                      or ($r.status == "completed"
+                          and $r.has_any_findings == false
+                          and $r.has_unresolved_findings == false
+                          and $r.commit_sha == $sha))));
   def coderabbit_no_finding:
     ((.body // "") | tostring) as $b
     | ($b | test("\\A(?:<!-- coderabbit-ai-generated:v1 -->\\s*)?<!-- This is an auto-generated comment: summarize by coderabbit\\.ai -->"))
@@ -621,6 +625,22 @@ maintainer_gate_open_comment_ids() {
                    and (((.minimizedReason // "") | ascii_downcase) == "resolved") | not)
           | .id ]
       | .[]
+    ' 2>/dev/null
+}
+
+# maintainer_gate_no_finding_ids <comments_array_json>
+#   Echoes one node id per line for every no-finding Codex or CodeRabbit summary
+#   (no_finding_summary). dev-lead's resolver skips these when it builds its
+#   re-verify list: the gate clears them whatever their edit history, so there is
+#   nothing to verify and nothing to unminimize. Unreadable input echoes nothing
+#   and returns non-zero.
+maintainer_gate_no_finding_ids() {
+  local comments="${1:-}" finding_re
+  finding_re="$(_maintainer_gate_finding_re)"
+  printf '%s' "$comments" | jq -r \
+    --arg findre "$finding_re" "$_MAINTAINER_GATE_NO_FINDING_JQ_DEFS"'
+      if type != "array" then error("not an array") else . end
+      | .[] | objects | select(no_finding_summary) | (.id // empty)
     ' 2>/dev/null
 }
 

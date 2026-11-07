@@ -1169,6 +1169,49 @@ _expect_nf_open() { _expect_open "$@"; }
   [ "$output" = "[]" ]
 }
 
+# Both summaries minimized RESOLVED and edited after their only disposition: the
+# #2008 re-open and stale lists would pick both up without the exemption.
+@test "hands-off: RESOLVED Codex and CodeRabbit summaries edited after their disposition are not re-opened or chased" {
+  local comments
+  comments=$(_hands_off_pr "$_CODEX_NF_BODY" "$_CR_2467_BODY" "$_SONAR_2467_BODY" | jq -c '
+    .comments |= map(if .id == "IC_cr" then .isMinimized = true | .minimizedReason = "resolved" else . end)
+    | .comments += [{id:"IC_disp_cr", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+        body:"Clean summary.\n<!-- dev-lead:comment-disposition id=IC_cr disposition=informational -->",
+        createdAt:"2026-11-06T21:50:30Z", lastEditedAt:null, isMinimized:false, minimizedReason:null}]
+    | .comments')
+  # Both summaries really are RESOLVED and edited after their disposition.
+  [ "$(jq '[.[] | select(.isMinimized and .lastEditedAt != null and .lastEditedAt > "2026-11-06T21:51:00Z")] | length' <<< "$comments")" = "2" ]
+  run bash -c "source '$GATE'; maintainer_gate_reopen_candidates \"\$1\" donpetry-bot" _ "$comments"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+  run bash -c "source '$GATE'; maintainer_gate_stale_dispositions \"\$1\" donpetry-bot" _ "$comments"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+  # dev-lead's resolver skips exactly these two when it builds its re-verify list.
+  run bash -c "source '$GATE'; maintainer_gate_no_finding_ids \"\$1\"" _ "$comments"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | sort | tr '\n' ' ')" = "IC_cr IC_cx " ]
+  _run_check "$(jq -c '{reviews:[], comments:.}' <<< "$comments")"
+  [ "$status" -eq 0 ]
+  # The same edited summaries WITH findings are still re-opened and chased.
+  local cx_find cr_low
+  cx_find="$(_codex_body "$(_cxs true true '"completed"')")"
+  cr_low="$(_sub "$_CR_2467_BODY" '\*\*⚪ Minimal\*\* · up to' '**🔵 Low** · up to')"
+  comments=$(jq -c --arg cx "$cx_find" --arg cr "$cr_low" \
+    'map(if .id == "IC_cx" then .body = $cx elif .id == "IC_cr" then .body = $cr else . end)' <<< "$comments")
+  run bash -c "source '$GATE'; maintainer_gate_reopen_candidates \"\$1\" donpetry-bot" _ "$comments"
+  [ "$(jq -c 'sort' <<< "$output")" = '["IC_cr","IC_cx"]' ]
+  run bash -c "source '$GATE'; maintainer_gate_stale_dispositions \"\$1\" donpetry-bot" _ "$comments"
+  [ "$(jq -c '[.[].id] | sort' <<< "$output")" = '["IC_cr","IC_cx"]' ]
+  run bash -c "source '$GATE'; maintainer_gate_no_finding_ids \"\$1\"" _ "$comments"
+  [ -z "$output" ]
+}
+
+@test "Wiring: dev-lead's re-verify list skips no-finding summaries" {
+  grep -q 'no_finding_ids=$(maintainer_gate_no_finding_ids "$all_comments"' "$SCRIPT_DIR/dev-lead-fix-reviews.sh"
+  grep -q '(($reopen + "\\n" + $nf) | split("\\n")) as $skip' "$SCRIPT_DIR/dev-lead-fix-reviews.sh"
+}
+
 @test "hands-off: the same snapshot with a failed Sonar gate still withholds approval → 1" {
   _run_check "$(_hands_off_pr "$_CODEX_NF_BODY" "$_CR_2467_BODY" "$_SONAR_FAILED_BODY")"
   [ "$status" -eq 1 ]
@@ -1234,6 +1277,24 @@ _expect_nf_open() { _expect_open "$@"; }
   _expect_nf_open "$bot" "$(_codex_body "$ok" "$(_cxs 'null' 'null' '"in_progress"')")"
   # The security_review key missing altogether is not "never ran".
   _expect_nf_open "$bot" "$(jq -rn --arg b "$_CODEX_NF_BODY" '$b | sub(",\"security_review\":\\{[^}]*\\}"; "")')"
+}
+
+@test "Codex: a null, empty or partial security review state still needs a disposition" {
+  local bot='{"login":"chatgpt-codex-connector","__typename":"Bot"}' ok
+  ok="$(_cxs false false '"completed"')"
+  _expect_nf_open "$bot" "$(_codex_body "$ok" 'null')"
+  _expect_nf_open "$bot" "$(_codex_body "$ok" '{}')"
+  _expect_nf_open "$bot" "$(_codex_body "$ok" '{"status":null,"has_any_findings":null,"has_unresolved_findings":null}')"
+  _expect_nf_open "$bot" "$(_codex_body "$ok" '{"status":"completed","has_any_findings":false,"has_unresolved_findings":false}')"
+}
+
+@test "Codex: a completed security review for another or an invalid commit still needs a disposition" {
+  local bot='{"login":"chatgpt-codex-connector","__typename":"Bot"}' ok
+  ok="$(_cxs false false '"completed"')"
+  _expect_nf_open "$bot" "$(_codex_body "$ok" "$(_cxs false false '"completed"' '"32c068e010e99f7e4bf1fe0c7223479e01d609a0"')")"
+  _expect_nf_open "$bot" "$(_codex_body "$ok" "$(_cxs false false '"completed"' '"1192966"')")"
+  _expect_nf_open "$bot" "$(_codex_body "$ok" "$(_cxs false false '"completed"' 'null')")"
+  _expect_nf_open "$bot" "$(_codex_body "$ok" "$(_cxs false false '"completed"' '"11929668FEDE1B15458100ABC4347BB494EFF259"')")"
 }
 
 @test "Codex: malformed, duplicated or misplaced state still needs a disposition" {
