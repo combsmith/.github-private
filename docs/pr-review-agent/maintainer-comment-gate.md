@@ -134,6 +134,19 @@ minimized with classifier `RESOLVED`. In practice:
   reaches the branch. The harness first edits the reply so its marker cites the
   rebased successor that landed (#2156), then judges that commit by the same
   rules.
+- **A no-finding Codex or CodeRabbit summary.** Codex and CodeRabbit each keep one
+  summary comment and edit it on every push. Under #2008 every edit needed a fresh
+  dev-lead disposition, so on a `dev-lead:hands-off` PR (no dev-lead) pr-review
+  approved and then dismissed its own approval (PRs 2456 and 2467). A summary whose
+  bot says, in its own structured state, that the review found nothing now needs no
+  disposition, edited or not. Codex: one `codex-review-state:v1` JSON with a
+  `completed` code review whose `has_any_findings` and `has_unresolved_findings` are
+  `false` (the security review never ran, or completed the same way). CodeRabbit:
+  one `final_review_risk_label` reading Merge Risk `⚪ Minimal` (a `🔵 Low` rating
+  comes with follow-ups and still blocks), one `final_review_risk_coverage` JSON with
+  kind `reviewed`, and only `passed` pre-merge check badges. The author must be the
+  GitHub App (`Bot`), and a finding-bearing section still blocks. Any other state —
+  failed, in progress, findings, unparseable, a second state block — still blocks.
 - **A maintainer clears it without dev-lead (#1910/#1918).** When dev-lead is
   suppressed, rate-limited, cancelled, or never dispatched, a maintainer can run
   [`scripts/maintainer-resolve-comment.sh`](../../scripts/maintainer-resolve-comment.sh)
