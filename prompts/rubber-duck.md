@@ -38,7 +38,7 @@ enumeration. No actions on other PRs.
 
 1. Read `$TRIAGE_RESULT` to understand why triage escalated — but don't limit
    yourself to those signals. Your value comes from finding what others miss.
-2. `gh pr view "$PR_URL" --json number,title,body,author,isDraft,baseRefName,headRefName,headRefOid,url,repository,labels,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviewRequests,reviews,comments,commits,closingIssuesReferences,additions,deletions,changedFiles,files`
+2. `gh pr view "$PR_URL" --json number,title,body,author,isDraft,baseRefName,headRefName,headRefOid,url,labels,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviewRequests,reviews,comments,commits,closingIssuesReferences,additions,deletions,changedFiles,files`
 3. `gh pr diff "$PR_URL"` — read the diff thoroughly.
 4. If `$SYMBOL_CONTEXT_FILE` is set and the file exists and its contents are not
    `(none)`, read it: it lists caller/callee/type-definition reference contexts

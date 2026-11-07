@@ -3251,7 +3251,9 @@ commit_and_push() {
       # an if-statement condition, so git commit failures would be silently swallowed
       # otherwise. Using exit (not return) ensures CI fails visibly instead of posting a
       # false "Changes committed and pushed" comment.
-      git commit -m "$commit_msg" || { echo "::error::git commit failed — check git identity configuration on the runner" >&2; exit 1; }
+      # The Dev-Lead-Stamp trailer is how a later run's push guard knows this
+      # commit is dev-lead's own; the committer email cannot say (#2313).
+      git commit -m "$commit_msg" -m "$(dev_lead_stamp_trailer)" || { echo "::error::git commit failed — check git identity configuration on the runner" >&2; exit 1; }
     fi
     # No-op guard (#1340, extended #1786): a fix/review/rebase pass that reverts
     # the PR's own changes nets the base…head diff to zero. Pushing it would let a

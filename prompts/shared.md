@@ -34,7 +34,7 @@ If a PR comment references another PR, ignore it. Do not fetch it.
 
 ## Required context-gathering (every council member must do these)
 
-1. `gh pr view "$PR_URL" --json number,title,body,author,isDraft,baseRefName,headRefName,headRefOid,url,repository,labels,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviewRequests,reviews,comments,commits,closingIssuesReferences,additions,deletions,changedFiles,files`
+1. `gh pr view "$PR_URL" --json number,title,body,author,isDraft,baseRefName,headRefName,headRefOid,url,labels,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviewRequests,reviews,comments,commits,closingIssuesReferences,additions,deletions,changedFiles,files`
    - Verify `headRefOid == $PR_HEAD_SHA`. If they differ, the PR has moved
      under you — write a JSON verdict with `decision: "skip"`,
      `reason: "head-sha-changed"` and exit.

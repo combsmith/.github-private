@@ -380,7 +380,10 @@ main() {
       # before committing or commit fails with "fatal: empty ident name".
       setup_git_identity
       git add -A
-      git commit -m "fix(ci): auto-fix for $(echo "$CHECKS_JSON" | jq -r '.[0].name // "CI failure"') [skip ci-relay]"
+      # Dev-Lead-Stamp: lets a later run's push guard recognise this commit as
+      # dev-lead's own (#2313).
+      git commit -m "fix(ci): auto-fix for $(echo "$CHECKS_JSON" | jq -r '.[0].name // "CI failure"') [skip ci-relay]" \
+        -m "$(dev_lead_stamp_trailer)"
     fi
     # Sync-stub guard (#2185/#2212): on a `standards-sync` PR a CI fix must not
     # change a stub copied verbatim from combsmith/.github/standards/ (e.g.

@@ -83,8 +83,14 @@ is minimized `RESOLVED`, **unless** it is in the exemption set recorded in
   reviewer source that declares an `info_status_pattern` in the reviewer-source
   registry (`scripts/lib/reviewer-sources.tsv`), and whose body matches that pattern,
   is a clean status report carrying no finding and is treated as **addressed**. The
+  author must be the GitHub App itself (`author.__typename` is `Bot`): an ordinary
+  User account can hold a registered bot's bare login (a User named `sonarqubecloud`
+  exists), so the same text from it still blocks, and a comment whose author type is
+  unknown still blocks. pr-review reads the author type in the same GraphQL pass that
+  reads edit times (`maintainer_gate_merge_edit_times`). The
   canonical case is SonarCloud's `Quality Gate passed` comment, which it **re-posts on
-  every push**; its pattern pins the `**Quality Gate passed**` headline **and** the
+  every push**; its pattern is anchored to the passed-badge image the comment opens
+  with and pins the `**Quality Gate passed**` headline **and** the
   `[0 New issues]` and `[0 Security Hotspots]` lines, so a `Quality Gate failed`
   comment, or one still reporting new issues or hotspots, does **not** match and still
   blocks. An unreadable registry degrades to "clear nothing", never to clearing

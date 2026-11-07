@@ -58,16 +58,6 @@ printf '%s\n' "$*" >> "$CALLS"
 
 _tick() { local n; n=$(cat "$CLOCK_FILE"); n=$((n + 1)); echo "$n" > "$CLOCK_FILE"; printf '2026-10-10T00:%02d:00Z' "$n"; }
 
-if [ "$1" = "pr" ] && [ "$2" = "review" ]; then
-  body=""; prev=""
-  for a in "$@"; do [ "$prev" = "--body" ] && body="$a"; prev="$a"; done
-  ts=$(_tick)
-  jq --arg u "$BOT_USER" --arg sha "$PR_HEAD_SHA" --arg b "$body" --arg ts "$ts" \
-    '. + [{id: (1000 + length), user: {login: $u}, state: "APPROVED", commit_id: $sha, body: $b, submitted_at: $ts}]' \
-    "$REVIEWS_FILE" > "$REVIEWS_FILE.tmp" && mv "$REVIEWS_FILE.tmp" "$REVIEWS_FILE"
-  exit 0
-fi
-
 if [ "$1" = "pr" ] && [ "$2" = "comment" ]; then
   body=""; prev=""
   for a in "$@"; do [ "$prev" = "--body" ] && body="$a"; prev="$a"; done
@@ -138,6 +128,14 @@ if [ "$1" = "api" ]; then
     prev="$a"
   done
   case "$method $path" in
+    "POST "*/pulls/*/reviews)
+      input=$(cat)
+      ts=$(_tick)
+      jq --arg u "$BOT_USER" --argjson in "$input" --arg ts "$ts" \
+        '. + [{id: (1000 + length), user: {login: $u}, state: "APPROVED", commit_id: $in.commit_id, body: $in.body, submitted_at: $ts}]' \
+        "$REVIEWS_FILE" > "$REVIEWS_FILE.tmp" && mv "$REVIEWS_FILE.tmp" "$REVIEWS_FILE"
+      jq -c 'last | {id, state, commit_id}' "$REVIEWS_FILE"
+      exit 0 ;;
     "PUT "*/reviews/*/dismissals)
       id=$(echo "$path" | sed -E 's|.*/reviews/([0-9]+)/dismissals|\1|')
       jq --argjson id "$id" 'map(if .id == $id then .state = "DISMISSED" else . end)' \
@@ -149,6 +147,9 @@ if [ "$1" = "api" ]; then
       exit 0 ;;
     "GET "*/pulls/*/reviews)
       if [ "$slurp" = true ]; then jq -s '.' "$REVIEWS_FILE"; else cat "$REVIEWS_FILE"; fi
+      exit 0 ;;
+    "GET "*/pulls/[0-9]*)
+      printf '%s\n' "$PR_HEAD_SHA"
       exit 0 ;;
     "GET "*/issues/*/comments)
       [ "${COMMENT_LIST_RC:-0}" = "0" ] || exit "$COMMENT_LIST_RC"

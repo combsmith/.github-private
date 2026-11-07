@@ -112,35 +112,38 @@ jobs:
   # combsmith/.github/standards/workflows/feature-ideation.yml — a copied
   # stub carries no scripts/ tree.
   redispatch:
+    # Only a new Idea by someone with write access starts a run. The event's
+    # author_association is not used: it does not mark private org members as
+    # maintainers. The reusable re-checks the author before the model runs.
     if: >-
       github.event_name == 'discussion' &&
       github.event.discussion.category.slug == 'ideas' &&
       github.event.discussion.user.type != 'Bot'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions: {}
+    # workflow_dispatch and repository_dispatch are the two events the job token
+    # can start runs with, so no personal token is needed here.
+    permissions:
+      actions: write
     steps:
-      - name: Guard — PAT present
-        # PAT required: a workflow_dispatch fired with GITHUB_TOKEN is accepted but
-        # NEVER starts a run (loop prevention) — the enhancement would silently
-        # no-op. Same constraint as scripts/initiative-planner/redispatch.sh.
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
-        run: |
-          if [ -z "${GH_TOKEN}" ]; then
-            echo "::error::GH_PAT_WORKFLOWS is required — a workflow_dispatch fired with GITHUB_TOKEN will not start a run."
-            exit 1
-          fi
-
       - name: Re-dispatch under workflow_dispatch
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS }}
+          GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          # Discussion numbers are always positive integers, so this is safe to
-          # forward directly to the dispatch input.
+          AUTHOR: ${{ github.event.discussion.user.login }}
           DISCUSSION_NUMBER: ${{ github.event.discussion.number }}
         run: |
-          echo "Discussion #${DISCUSSION_NUMBER} created → re-dispatching feature-ideation.yml for single-idea enhancement."
+          permission=none
+          if [[ "${AUTHOR}" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
+            permission=$(gh api "repos/${REPO}/collaborators/${AUTHOR}/permission" --jq '.permission')
+          fi
+          case "${permission}" in
+            admin | write) ;;
+            *)
+              echo "::notice title=Feature ideation::Discussion ${DISCUSSION_NUMBER} not enhanced: author does not have write access."
+              exit 0
+              ;;
+          esac
           gh workflow run feature-ideation.yml --repo "${REPO}" \
             -f target_discussion="${DISCUSSION_NUMBER}"
 
