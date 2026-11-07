@@ -123,13 +123,16 @@ add_blocked_by() {
     -X POST -F issue_id="${blocker_id}" >/dev/null
 }
 
-# comment_on_discussion <discussion_node_id> <body>
+# comment_on_discussion <discussion_node_id> <discussion_repo> <body>
+# The node id is global, so the comment lands on the Discussion in its OWN repo
+# (which may differ from the repo the epic is created in). discussion_repo is
+# recorded in the DRY_RUN log so that routing is auditable and testable.
 comment_on_discussion() {
-  local node_id="$1" body="$2"
+  local node_id="$1" disc_repo="$2" body="$3"
   if _is_dry_run; then
     _dry_log "$(jq -nc --arg op comment_on_discussion \
-      --arg id "$node_id" --arg body "$body" \
-      '{op:$op, discussion_id:$id, body:$body}')"
+      --arg id "$node_id" --arg repo "$disc_repo" --arg body "$body" \
+      '{op:$op, discussion_id:$id, discussion_repo:$repo, body:$body}')"
     return 0
   fi
   gh api graphql -f query='

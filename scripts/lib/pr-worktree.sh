@@ -60,14 +60,34 @@ checkout_pr_in_worktree() {
   local _pr_json=""
   local _pr_state=""
   local _pr_branch=""
-  _pr_json="$(gh pr view "$pr" --repo "$repo" --json state,headRefName 2>/dev/null || true)"
-  if [[ -n "$_pr_json" ]]; then
-    _pr_state="$(echo "$_pr_json" | jq -r '.state // empty' 2>/dev/null || true)"
-    _pr_branch="$(echo "$_pr_json" | jq -r '.headRefName // empty' 2>/dev/null || true)"
-  fi
+  local _pr_cross=""
+  local _attempt
+  for _attempt in 1 2 3; do
+    _pr_json="$(gh pr view "$pr" --repo "$repo" --json state,headRefName,isCrossRepository 2>/dev/null || true)"
+    if [[ -n "$_pr_json" ]]; then
+      _pr_state="$(echo "$_pr_json" | jq -r '.state // empty' 2>/dev/null || true)"
+      _pr_branch="$(echo "$_pr_json" | jq -r '.headRefName // empty' 2>/dev/null || true)"
+      _pr_cross="$(echo "$_pr_json" | jq -r '.isCrossRepository' 2>/dev/null || true)"
+    fi
+    case "$_pr_cross" in true|false) break ;; esac
+    if [ "$_attempt" -lt 3 ]; then sleep "$(( _attempt * ${DEV_LEAD_LOOKUP_RETRY_SEC:-2} ))"; fi
+  done
   if [[ -n "$_pr_state" && "$_pr_state" != "OPEN" ]]; then
     echo "::notice::PR #${pr} is ${_pr_state} — skipping checkout (nothing to modify on a merged/closed PR)"
     exit 0
+  fi
+
+  # Every dev-lead pass that edits a PR checks it out here, so this is where a head
+  # outside this repository is refused, whichever intent got here. Only an explicit
+  # `false` proceeds: a lookup still failing after the retries above fails the run.
+  # Before the EXIT trap for the same reason as the closed-PR exit above.
+  if [ "$_pr_cross" = "true" ]; then
+    echo "::notice::PR #${pr} has its head in another repository — dev-lead does not work on those"
+    exit 0
+  fi
+  if [ "$_pr_cross" != "false" ]; then
+    echo "::error::could not confirm that PR #${pr} has its head in ${repo} — not checking it out"
+    exit 1
   fi
 
   PR_WORKTREE_AGENT_DIR="$(pwd)"

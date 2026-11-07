@@ -87,6 +87,57 @@ verify_approval_landed() {
   echo "INDETERMINATE"
 }
 
+# read_live_head_sha <pr_url>
+#   Echo the PR's current head SHA from the REST API, retrying briefly. Non-zero
+#   with no output when it cannot be read; the caller decides what that means.
+read_live_head_sha() {
+  local pr_url="$1" owner_repo pr_num sha attempt
+  owner_repo=$(echo "$pr_url" | sed -E 's|.*/([^/]+)/([^/]+)/pull/.*|\1/\2|')
+  pr_num=$(echo "$pr_url" | sed -E 's|.*/([0-9]+)$|\1|')
+  for attempt in 1 2 3; do
+    sha=$(gh api "repos/$owner_repo/pulls/$pr_num" --jq '.head.sha' 2>/dev/null) || sha=""
+    if [[ "$sha" =~ ^[a-f0-9]{40}$ ]]; then
+      echo "$sha"; return 0
+    fi
+    [ "$attempt" -lt 3 ] && sleep 2
+  done
+  return 1
+}
+
+# submit_commit_bound_approval <pr_url> <body_file> <response_file>
+#   Create the APPROVED review through the REST reviews API with commit_id set to
+#   the commit the verdict was reached on, so the review attaches to that commit
+#   and never to whatever the head has become. The body travels as JSON on stdin,
+#   so its size and leading characters cannot be read as gh arguments.
+submit_commit_bound_approval() {
+  local pr_url="$1" body_file="$2" response_file="$3" owner_repo pr_num
+  owner_repo=$(echo "$pr_url" | sed -E 's|.*/([^/]+)/([^/]+)/pull/.*|\1/\2|')
+  pr_num=$(echo "$pr_url" | sed -E 's|.*/([0-9]+)$|\1|')
+  jq -n --arg sha "$PR_HEAD_SHA" --rawfile body "$body_file" \
+    '{event: "APPROVE", commit_id: $sha, body: ($body | rtrimstr("\n"))}' |
+    gh api -X POST "repos/$owner_repo/pulls/$pr_num/reviews" --input - >"$response_file"
+}
+
+# withdraw_unbound_approval <pr_url> <review_id> <why>
+#   Dismiss an approval that read-back found is not bound to the live head, then
+#   dequeue the PR if that was its last approval. Returns non-zero when the
+#   approval could not be confirmed withdrawn, so the caller fails loud.
+withdraw_unbound_approval() {
+  local pr_url="$1" review_id="$2" why="$3" owner_repo pr_num rc=0
+  owner_repo=$(echo "$pr_url" | sed -E 's|.*/([^/]+)/([^/]+)/pull/.*|\1/\2|')
+  pr_num=$(echo "$pr_url" | sed -E 's|.*/([0-9]+)$|\1|')
+  if [ -z "$review_id" ]; then
+    echo "::error::approval on $pr_url could not be withdrawn ($why): the review API returned no review id"
+    rc=1
+  elif ! gh api -X PUT "repos/$owner_repo/pulls/$pr_num/reviews/$review_id/dismissals" \
+    -f message="Automated approval withdrawn: $why" >/dev/null; then
+    echo "::error::approval $review_id on $pr_url could not be dismissed ($why) as '$BOT_USER'; a maintainer must dismiss it"
+    rc=1
+  fi
+  mq_dequeue_if_unapproved "$pr_url" || true
+  return "$rc"
+}
+
 # maybe_post_deferred_partial_evidence <pr_url>
 #   Post the partial-evidence announcement (#1596) that the advisory gate DEFERRED
 #   into PARTIAL_EVIDENCE_STATE_FILE — but only now, AFTER the approval has been
@@ -490,24 +541,40 @@ if [ "$DECISION" = "approve" ]; then
     exit 1
   fi
 
+  # The verdict is only about PR_HEAD_SHA. Re-read the head right before posting:
+  # a commit pushed during the review gets its own review, so this one is a no-op.
+  # An unreadable head fails closed, since nothing has been posted yet.
+  if ! LIVE_HEAD=$(read_live_head_sha "$PR_URL"); then
+    echo "::error::could not read the current head of $PR_URL — refusing to submit an approval it cannot compare against $PR_HEAD_SHA (fail closed)"
+    exit 1
+  fi
+  if [ "$LIVE_HEAD" != "$PR_HEAD_SHA" ]; then
+    echo "::warning::$PR_URL head moved from $PR_HEAD_SHA to $LIVE_HEAD during the review — not approving; the new head gets its own review (exit 100)"
+    exit 100
+  fi
+
   # Post an APPROVED review
   BODY_FILE="/tmp/pr-review-body-$$.txt"
   echo "$BODY" > "$BODY_FILE"
 
   echo "Posting APPROVED review..."
   REVIEW_ERR_FILE="/tmp/pr-review-err-$$.txt"
+  REVIEW_RESPONSE_FILE="/tmp/pr-review-response-$$.json"
   review_err=""
-  body_content=$(cat "$BODY_FILE")
-  # Use an explicit else branch (no `!`) so `rc=$?` captures the REAL exit code of
-  # `gh pr review`. With `if ! gh …; then rc=$?` the `!` inverts the status, so the
-  # failure branch always saw rc=0 and the #1874 diagnostic misreported a success.
-  if gh pr review "$PR_URL" --approve --body "$body_content" 2>"$REVIEW_ERR_FILE"; then
-    rm -f "$BODY_FILE" "$REVIEW_ERR_FILE"
+  # Use an explicit else branch (no `!`) so `rc=$?` captures the REAL exit code.
+  # With `if ! gh …; then rc=$?` the `!` inverts the status, so the failure branch
+  # always saw rc=0 and the #1874 diagnostic misreported a success.
+  if submit_commit_bound_approval "$PR_URL" "$BODY_FILE" "$REVIEW_RESPONSE_FILE" 2>"$REVIEW_ERR_FILE"; then
+    REVIEW_ID=$(jq -r '.id // empty' "$REVIEW_RESPONSE_FILE" 2>/dev/null || true)
+    POSTED_COMMIT=$(jq -r '.commit_id // empty' "$REVIEW_RESPONSE_FILE" 2>/dev/null || true)
+    rm -f "$BODY_FILE" "$REVIEW_ERR_FILE" "$REVIEW_RESPONSE_FILE"
   else
     rc=$?
-    review_err=$(cat "$REVIEW_ERR_FILE" 2>/dev/null || true)
+    # `gh api` prints the error response body on stdout and a short summary on
+    # stderr, so the reason can be in either.
+    review_err=$(cat "$REVIEW_ERR_FILE" "$REVIEW_RESPONSE_FILE" 2>/dev/null || true)
     cat "$REVIEW_ERR_FILE" >&2 2>/dev/null || true
-    rm -f "$BODY_FILE" "$REVIEW_ERR_FILE"
+    rm -f "$BODY_FILE" "$REVIEW_ERR_FILE" "$REVIEW_RESPONSE_FILE"
     # Self-approval is a permanent, PR-specific constraint — never the runner's
     # fault and never recoverable on retry. Exit 100 (no-op sentinel) so the
     # workflow loop skips this PR without aborting the rest of the session.
@@ -517,19 +584,36 @@ if [ "$DECISION" = "approve" ]; then
       echo "::warning::Cannot self-approve $PR_URL — skipping (exit 100)"
       exit 100
     fi
+    # A force-push between the re-read and the write can make the API refuse the
+    # commit_id. That is the same no-op as a head that moved before the re-read.
+    LIVE_HEAD=$(read_live_head_sha "$PR_URL" || true)
+    if [ -n "$LIVE_HEAD" ] && [ "$LIVE_HEAD" != "$PR_HEAD_SHA" ]; then
+      echo "::warning::$PR_URL head moved from $PR_HEAD_SHA to $LIVE_HEAD while the approval was being submitted — no approval created; the new head gets its own review (exit 100)"
+      exit 100
+    fi
     # The approval write FAILED (issue #1874). Fail loud and name every fact a
     # human needs — the PR, the account we acted as, the credential secret, and
     # the raw API error — then exit non-zero. Never treat a failed write as
     # success: doing so is exactly how a PR stranded behind an approval that
     # existed only in a comment (PRs #1788/#1858/#1860).
-    echo "::error::pr-review approval WRITE FAILED on $PR_URL as '$BOT_USER' (credential $POSTING_CREDENTIAL): gh pr review --approve exited $rc and created NO review object. API said: $(echo "$review_err" | head -3 | tr '\n' ' '). The PR is stranded at REVIEW_REQUIRED — do NOT announce an approval that did not land (#1874)."
+    echo "::error::pr-review approval WRITE FAILED on $PR_URL as '$BOT_USER' (credential $POSTING_CREDENTIAL): the reviews API call exited $rc and created NO review object. API said: $(echo "$review_err" | head -3 | tr '\n' ' '). The PR is stranded at REVIEW_REQUIRED — do NOT announce an approval that did not land (#1874)."
     exit 1
   fi
 
-  # #1874: `gh pr review --approve` can exit 0 while NO review object is created
-  # (a fine-grained PAT authenticates and returns success but cannot
-  # addPullRequestReview). Trusting the exit code is what let the strand go
-  # unreported. Verify the post-condition by reading the reviews back.
+  # A write can succeed and still not leave a usable approval, so check the
+  # post-condition by reading the review and the head back (#1874). Any approval
+  # that is not on the live head is withdrawn rather than left standing.
+  if [ "$POSTED_COMMIT" != "$PR_HEAD_SHA" ]; then
+    echo "::error::the reviews API attached the approval on $PR_URL to '${POSTED_COMMIT:-unknown}', not the reviewed commit $PR_HEAD_SHA — withdrawing it"
+    withdraw_unbound_approval "$PR_URL" "$REVIEW_ID" "not attached to the reviewed commit $PR_HEAD_SHA" || true
+    exit 1
+  fi
+  LIVE_HEAD=$(read_live_head_sha "$PR_URL" || true)
+  if [ -n "$LIVE_HEAD" ] && [ "$LIVE_HEAD" != "$PR_HEAD_SHA" ]; then
+    echo "::warning::$PR_URL head moved from $PR_HEAD_SHA to $LIVE_HEAD as the approval landed — withdrawing it; the new head gets its own review"
+    withdraw_unbound_approval "$PR_URL" "$REVIEW_ID" "the head moved to $LIVE_HEAD after commit $PR_HEAD_SHA was reviewed" || exit 1
+    exit 100
+  fi
   APPROVAL_STATE=$(verify_approval_landed "$PR_URL")
   APPROVAL_VERIFIED=false
   case "$APPROVAL_STATE" in
@@ -537,7 +621,8 @@ if [ "$DECISION" = "approve" ]; then
       APPROVAL_VERIFIED=true # verified — the review object exists at head
       ;;
     ABSENT)
-      echo "::error::pr-review approval WRITE reported success but NO review object exists on $PR_URL for '$BOT_USER' (credential $POSTING_CREDENTIAL). GET /pulls/.../reviews contains no APPROVED review by that account at $PR_HEAD_SHA — the write silently failed (a fine-grained PAT can comment but cannot addPullRequestReview). The PR is stranded at REVIEW_REQUIRED; failing the run rather than announcing a phantom approval (#1874)."
+      echo "::error::pr-review approval WRITE reported success but NO review object exists on $PR_URL for '$BOT_USER' (credential $POSTING_CREDENTIAL). GET /pulls/.../reviews contains no APPROVED review by that account at $PR_HEAD_SHA. The PR is stranded at REVIEW_REQUIRED; failing the run rather than announcing a phantom approval (#1874)."
+      withdraw_unbound_approval "$PR_URL" "$REVIEW_ID" "read-back found no approval at $PR_HEAD_SHA" || true
       exit 1
       ;;
     *)
