@@ -22,10 +22,11 @@ agents/                   # Copilot custom agent profiles (org-wide)
   compliance-auditor.md   # Org standards compliance checking
   feature-ideator.md      # Feature idea generation
   pr-reviewer.md          # Multi-tier cascading PR review
+  why-not-approved.md     # Explains why a PR has not been approved
 prompts/                  # Prompt libraries used by workflows
 scripts/                  # Shell orchestration for GitHub Actions
 frameworks/               # Installed agentic frameworks (git subtree)
-  bmad-bgreat-suite/      # bmad-bgreat-suite @ ae8914e84b87: SRE, DevOps, and Security agents
+  bmad-bgreat-suite/      # bmad-bgreat-suite @ ae8914e84b87: SRE and DevOps agents and workflows
   bmad-method/            # BMAD-METHOD v6.8.0: multi-agent development lifecycle
   bmad-test-architecture/ # bmad-method-test-architecture-enterprise v1.19.0
 .github/workflows/        # Scheduled automation (PR review, health checks)
@@ -35,10 +36,11 @@ frameworks/               # Installed agentic frameworks (git subtree)
 
 | Agent | Purpose | Invoke with |
 |-------|---------|-------------|
-| [`agentic-workflows`](agents/agentic-workflows.md) | Agentic workflow orchestration | `@agentic-workflows` in any org repo |
-| [`compliance-auditor`](agents/compliance-auditor.md) | Audit repo against org standards | `@compliance-auditor` in any org repo |
+| [`agentic-workflows`](agents/agentic-workflows.md) | Authoring, updating, debugging, and compiling gh-aw agentic workflow markdown files | `@agentic-workflows` in any org repo |
+| [`compliance-auditor`](agents/compliance-auditor.md) | Audit repo against org standards (CI, agent config, repo settings, dependabot, push protection) and auto-fix non-breaking gaps | `@compliance-auditor` in any org repo |
 | [`feature-ideator`](agents/feature-ideator.md) | Generate and prioritize feature ideas | `@feature-ideator` in any org repo |
 | [`pr-reviewer`](agents/pr-reviewer.md) | Cascading PR review (triage → deep → security audit) with cross-engine adversarial review (see also [`pr-review-trigger.yml`](.github/workflows/pr-review-trigger.yml) for scheduled automation) | `@pr-reviewer` in any org PR |
+| [`why-not-approved`](agents/why-not-approved.md) | Explains why pr-review has not approved a PR, and what would change that, by running the real pr-review gate chain read-only | `@why-not-approved` in any org PR |
 
 ## Automated Workflows
 
@@ -67,9 +69,12 @@ Scheduled workflows post reports and dashboards as issues or run summaries for m
 |----------|---------|
 | [`actions-fleet-monitor.yml`](.github/workflows/actions-fleet-monitor.yml) | Actions fleet monitor — org-wide workflow token usage and run anomalies |
 | [`auto-rebase-health.yml`](.github/workflows/auto-rebase-health.yml) | Daily auto-rebase health report (issue) — rebase success/failure trends |
+| [`budget-breaker.yml`](.github/workflows/budget-breaker.yml) | Budget breaker — pauses the agent fleet when the fleet reports quota refusals and lifts its own pause at the reported reset; default off, logs the write it would make until armed (#2153) |
+| [`budget-poller.yml`](.github/workflows/budget-poller.yml) | Dry-run Claude budget poller — reads the usage windows twice hourly, logs what the token-budget breaker would do (never sets a variable), and proves the feed is alive (#2029) |
 | [`daily-pr-review-health.yml`](.github/workflows/daily-pr-review-health.yml) | Daily PR-review health check — flags PR-review agent failures as an issue |
 | [`docs-health-check.yml`](.github/workflows/docs-health-check.yml) | Docs health check — flags stale/broken docs as an issue |
 | [`engine-token-liveness.yml`](.github/workflows/engine-token-liveness.yml) | Engine-token liveness monitor — asserts dev-lead/pr-review caller stubs are not failing at the "Engine token preflight" step, and escalates a sustained fleet-wide outage that would otherwise go unalerted (#1587) |
+| [`model-ab.yml`](.github/workflows/model-ab.yml) | Manually dispatched Opus 5.5 vs 4.8 held-out A/B + liveness/effort probe |
 | [`premature-closure-audit.yml`](.github/workflows/premature-closure-audit.yml) | Premature-closure audit — flags issues closed as completed with no merged closing PR, and OPEN issues carrying an unbacked completion claim (#1445) |
 | [`reviewer-report.yml`](.github/workflows/reviewer-report.yml) | Reviewer scorecard (per workflow-run summary) — per-reviewer PR-review activity |
 | [`skill-eval-report.yml`](.github/workflows/skill-eval-report.yml) | Skill-eval results report — agent skill pass/fail trends (self-improving-skills pipeline) |
@@ -96,6 +101,7 @@ Notable subtopics are listed below to aid discoverability; see the standards dir
 | [`agent-standards`](https://github.com/combsmith/.github/blob/main/standards/agent-standards.md) | Required files, compliance exemptions, AgentShield CI workflow, decision-making reusables, BMAD Method Workflows |
 | [`ci-standards`](https://github.com/combsmith/.github/blob/main/standards/ci-standards.md) | Staged promotion through concentric rings, reusable workflow versioning (`stable` channel), action pinning policy, permissions policy, Dev-Lead Agent |
 | [`codeowners-standard`](https://github.com/combsmith/.github/blob/main/standards/codeowners-standard.md) | Team composition, required setup for new bots, branch protection, verified end-to-end |
+| [`commercial-support-standard`](https://github.com/combsmith/.github/blob/main/standards/commercial-support-standard.md) | Purpose & scope, canonical README section, standard commercial offerings & rate card, repository adoption guidelines |
 | [`copilot-instructions-standard`](https://github.com/combsmith/.github/blob/main/standards/copilot-instructions-standard.md) | Canonical instruction files, adding a new language, required sections, content quality rules |
 | [`dependabot-policy`](https://github.com/combsmith/.github/blob/main/standards/dependabot-policy.md) | Configuration files, auto-merge workflow, vulnerability audit CI check, applying to a repository |
 | [`feature-ideation-sources`](https://github.com/combsmith/.github/blob/main/standards/feature-ideation-sources.md) | AI/ML vendor & lab sources, developer tooling changelogs, security & compliance sources, newsletters, podcasts |
