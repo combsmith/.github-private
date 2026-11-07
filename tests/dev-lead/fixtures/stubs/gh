@@ -5,6 +5,8 @@
 
 ARGS="$*"
 case "$ARGS" in
+  *"pr view"*"isCrossRepository"*)
+    echo "{\"state\":\"OPEN\",\"headRefName\":\"feature\",\"isCrossRepository\":${GH_STUB_PR_CROSS:-false}}" ;;
   *dispatches*)
     echo "true" > "${GH_STUB_DISPATCH_FILE:-${BATS_TEST_TMPDIR:-/tmp}/gh_stub_dispatch_called}"
     echo "{}" ;;

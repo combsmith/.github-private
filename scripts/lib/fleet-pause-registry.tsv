@@ -74,12 +74,13 @@
 # ── Agents and model-calling workflows, gated here ───────────────────────────
 dev-lead-reusable.yml	job-gate-silent	dispatch,ci-relay,resume	The original gate (#1525). No notice job: a contract test requires every job of this reusable to carry the condition, and a notice job would start a runner for every event in every consumer repository during a pause.
 pr-review.yml	job-gate-silent	review	Reusable. A job condition, because the AGENTS_PAUSED branch of validate-engines.sh is not enough: with Claude as the primary engine, review-batch.sh carries on. No notice job: the canary promotion gate counts a green run as a health sample, so a paused run must end skipped.
-persona-runner-reusable.yml	job-gate	run	Runs every persona advisory (qa-lead, the architects and the rest).
+persona-runner-reusable.yml	job-gate	run	Runs every persona advisory (qa-lead, the architects and the rest). The gate job makes no model call and carries the same condition; the post job needs run, so it is skipped with it.
 ci-failure-analyst-reusable.yml	job-gate-silent	analyze	Reusable. No notice job, for the same reason as pr-review.yml: the canary promotion gate samples its runs.
 gh-aw-cross-org.yml	job-gate	dispatch	-
 issue-triage-runner.yml	job-gate	triage	The apply job needs triage, so it is skipped with it.
 initiative-planner.yml	job-gate	plan	The redispatch bridge makes no model call and still runs; the run it starts is the one that reports the pause.
 idea-triage.yml	job-gate	triage	-
+decision-brief.yml	job-gate	brief	The redispatch bridge and the queue sweep make no model call and still run; the brief run they start is the one that reports the pause.
 spec-drift.yml	job-gate-silent	spec-drift	Opt-in and off by default. No notice job: its contract test requires every job to hold issues: write and the workflow to cost nothing when it does not run.
 dependency-advisory.yml	job-gate	advisory	-
 docs-health-check.yml	job-gate	health-check	-

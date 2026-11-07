@@ -41,7 +41,12 @@ per ADR-0004), not by prompt text alone:
 1. **Incorporate or stand down, never force.** Before pushing, the persona
    reconciles with the *true* remote head. It rebases a foreign commit in, or
    stops and escalates when that cannot be done cleanly. A foreign commit is
-   never discarded (`push_no_clobber`, `scripts/lib/git-push-guard.sh`).
+   never discarded (`push_no_clobber`, `scripts/lib/git-push-guard.sh`). A
+   commit is foreign unless the persona's own records say it wrote it: a SHA
+   it pushed, in this run or an earlier one (the `refs/notes/dev-lead-pushed`
+   ledger on the remote), or a `Dev-Lead-Stamp` trailer that matches the
+   commit's tree and parents. The committer identity is not a record, because
+   the owner commits as the same account (#2313).
 2. **"Pushed" is a verdict, not an assumption.** After the push, the harness
    compares the pre-pass head, the pushed SHA and the re-fetched remote head
    (`cl_push_landed_verdict`, `scripts/lib/claim-landing.sh`). Any result other

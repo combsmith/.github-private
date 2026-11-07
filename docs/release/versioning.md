@@ -20,10 +20,11 @@ together, so a version is a single repo commit that contains a known-good combin
 | `pr-review` | `.github/workflows/pr-review.yml` | `scripts/review-one-pr.sh`, `scripts/review-batch.sh`, `scripts/post-pr-review.sh`, `scripts/engine.sh`, `scripts/lib/*` |
 | `dev-lead` | `.github/workflows/dev-lead-reusable.yml` | `scripts/dev-lead-*.sh`, `scripts/engine.sh`, `scripts/lib/*` |
 | `ci-failure-analyst` | `.github/workflows/ci-failure-analyst-reusable.yml` | reusable-owned (inline `gh api` orchestration + the Claude Code action; no separate `scripts/`) |
+| `decision-brief` | `.github/workflows/decision-brief-reusable.yml` (the fleet dispatch bridge callers pin) + `.github/workflows/decision-brief.yml` (the central Mary run it dispatches) | `scripts/decision-brief/*`, `prompts/incubation/*` |
 | `feature-ideation` | `combsmith/.github` → `.github/workflows/feature-ideation-reusable.yml` (**cross-repo**) | reusable-owned (lives in the public repo; this repo holds only the thin caller `.github/workflows/feature-ideation.yml`) |
 | `agent-shield`, `auto-rebase`, `dependency-audit`, `dependabot-automerge`, `dependabot-rebase`, `pr-review-mention` (the six #482 reusables) | `combsmith/.github` → `.github/workflows/<name>-reusable.yml` (**cross-repo**) | reusable-owned (live in the public repo; this repo holds only the thin caller stubs) |
 
-`pr-review`, `dev-lead`, and `ci-failure-analyst` all live in this repo, so a release tag points at a
+`pr-review`, `dev-lead`, `ci-failure-analyst` and `decision-brief` all live in this repo, so a release tag points at a
 whole-repo commit; the tag *name* scopes it to one reusable so each can be released and promoted
 independently.
 
