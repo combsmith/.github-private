@@ -1,7 +1,7 @@
 # Compliance verification — `pr-quality` / `require_last_push_approval` (#1479)
 
 **Check:** `ruleset-drift-pr-quality-require_last_push_approval` (category `rulesets`, severity `error`)
-**Issue:** [#1479](https://github.com/petry-projects/.github-private/issues/1479)
+**Issue:** [#1479](https://github.com/combsmith/.github-private/issues/1479)
 **Author:** dev-lead / Claude Code
 **Date:** 2026-08-18
 **Outcome:** Already compliant — no in-repo change applies. Recommend closing #1479 as already remediated.
@@ -12,13 +12,13 @@
 
 The weekly compliance audit reported that ruleset `pr-quality` parameter `require_last_push_approval`
 had drifted from the codified standard: **expected `true`, actual `false`**. The codified source of
-truth is `standards/rulesets/pr-quality.json` in the public `petry-projects/.github` repo (#575/#580),
-and the audit's remediation is to run `scripts/apply-rulesets.sh --repo petry-projects/.github-private`
+truth is `standards/rulesets/pr-quality.json` in the public `combsmith/.github` repo (#575/#580),
+and the audit's remediation is to run `scripts/apply-rulesets.sh --repo combsmith/.github-private`
 to converge the **live** GitHub ruleset.
 
 ## 2. Why this is not an in-repo code change
 
-`pr-quality` is an **org-wide** ruleset applied to every repo from the **public** `petry-projects/.github`
+`pr-quality` is an **org-wide** ruleset applied to every repo from the **public** `combsmith/.github`
 repo. Both its codified JSON (`standards/rulesets/pr-quality.json`) and the tool that applies it
 (`scripts/apply-rulesets.sh`) live **there**, not in this repo. This repo (`.github-private`) is the
 *target* of the audit, not the home of the standard.
@@ -40,7 +40,7 @@ Authenticated read of the live `pr-quality` ruleset on this repo shows the param
 codified value** — the reported `true`→`false` drift is no longer present:
 
 ```console
-$ gh api repos/petry-projects/.github-private/rulesets/16142042 \
+$ gh api repos/combsmith/.github-private/rulesets/16142042 \
     --jq '{name, enforcement, rule:(.rules[]|select(.type=="pull_request").parameters)}'
 {
   "name": "pr-quality",
@@ -75,14 +75,14 @@ it `true` is the correct posture. The current live state already reflects that.
 - **Close #1479 as already remediated** — the live `pr-quality` ruleset matches the codified standard on
   the flagged parameter.
 - For belt-and-braces convergence, a maintainer may run
-  `scripts/apply-rulesets.sh --repo petry-projects/.github-private` from the public `petry-projects/.github`
+  `scripts/apply-rulesets.sh --repo combsmith/.github-private` from the public `combsmith/.github`
   tooling. Given the current live value it is an **idempotent no-op** for this parameter.
 
 ## 6. References
 
-- [#1479](https://github.com/petry-projects/.github-private/issues/1479) — this compliance finding.
+- [#1479](https://github.com/combsmith/.github-private/issues/1479) — this compliance finding.
 - `standards/rulesets/pr-quality.json`, `scripts/apply-rulesets.sh` — codified standard + apply tool, in
-  the public `petry-projects/.github` repo (#575/#580).
+  the public `combsmith/.github` repo (#575/#580).
 - [`.github/rulesets/release-channel-tags.json`](../../.github/rulesets/release-channel-tags.json) — the
   in-repo precedent for a *repo-specific* committed ruleset (vs. the org-wide, centrally-applied `pr-quality`).
 - [`docs/initiatives/auto-rebase-approval-survival-spike.md`](../initiatives/auto-rebase-approval-survival-spike.md)

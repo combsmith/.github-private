@@ -33,8 +33,8 @@ setup() {
   : >"$MOCK_BIN/calls"
   export DRY_RUN="false"
   export DISPATCH_DELAY_SEC="0"
-  export TARGET_ORG="petry-projects"
-  export DCG_HOST_REPO="petry-projects/.github-private"
+  export TARGET_ORG="combsmith"
+  export DCG_HOST_REPO="combsmith/.github-private"
   unset SWEEP_AGENT_REF DELEGATION_ORGS GITHUB_REPOSITORY
   # The per-sweep cache dcg_init would make.
   export DCG_CACHE_DIR="$BATS_TEST_TMPDIR/dcg"
@@ -99,7 +99,7 @@ _pin() {
   cat >"$MOCK_BIN/stubs/${1//\//__}" <<EOF
 jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@$2  # NOSONAR
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@$2  # NOSONAR
     with:
       agent_ref: $2
 EOF
@@ -170,33 +170,33 @@ _calls() { grep -c -- "$1" "$MOCK_BIN/calls" || true; }
 # ── dcg_target_pin ───────────────────────────────────────────────────────────
 
 @test "pin: returns the repo's agent_ref, read once per sweep" {
-  _pin petry-projects/markets dev-lead/v139-ring1
-  run dcg_target_pin petry-projects/markets
+  _pin combsmith/markets dev-lead/v139-ring1
+  run dcg_target_pin combsmith/markets
   [ "$status" -eq 0 ]
   [ "$output" = "dev-lead/v139-ring1" ]
-  dcg_target_pin petry-projects/markets >/dev/null
-  [ "$(dcg_target_pin petry-projects/markets)" = "dev-lead/v139-ring1" ]
-  [ "$(_calls 'repos/petry-projects/markets/contents')" -eq 1 ]
+  dcg_target_pin combsmith/markets >/dev/null
+  [ "$(dcg_target_pin combsmith/markets)" = "dev-lead/v139-ring1" ]
+  [ "$(_calls 'repos/combsmith/markets/contents')" -eq 1 ]
 }
 
 @test "pin: a 404 from a repo the token cannot read is unreadable (1), not absent" {
-  touch "$MOCK_BIN/unreadable/petry-projects__private"
-  run dcg_target_pin petry-projects/private
+  touch "$MOCK_BIN/unreadable/combsmith__private"
+  run dcg_target_pin combsmith/private
   [ "$status" -eq 1 ]
   DCG_SWEEP_REF=dev-lead/v139-ring0
-  run dcg_target_reads petry-projects/private pr_number
+  run dcg_target_reads combsmith/private pr_number
   [ "$status" -eq 1 ]
   [[ "$output" == *"::warning::"* ]]
 }
 
 @test "pin: no dev-lead.yml → 2; read error or unresolvable pin → 1" {
-  run dcg_target_pin petry-projects/no-stub
+  run dcg_target_pin combsmith/no-stub
   [ "$status" -eq 2 ]
-  echo ERROR >"$MOCK_BIN/stubs/petry-projects__flaky"
-  run dcg_target_pin petry-projects/flaky
+  echo ERROR >"$MOCK_BIN/stubs/combsmith__flaky"
+  run dcg_target_pin combsmith/flaky
   [ "$status" -eq 1 ]
-  _pin petry-projects/expr '${{ inputs.ref }}'
-  run dcg_target_pin petry-projects/expr
+  _pin combsmith/expr '${{ inputs.ref }}'
+  run dcg_target_pin combsmith/expr
   [ "$status" -eq 1 ]
 }
 
@@ -208,7 +208,7 @@ _calls() { grep -c -- "$1" "$MOCK_BIN/calls" || true; }
   [ "$status" -eq 0 ]
   [ "$output" = "$(printf '%s\n' "${V1_FIELDS[@]}" | sort -u)" ]
   # The ref is URL-encoded and read from the host repo.
-  grep -q 'repos/petry-projects/.github-private/contents/scripts/lib/helper.sh?ref=dev-lead%2Fv1-stable' "$MOCK_BIN/calls"
+  grep -q 'repos/combsmith/.github-private/contents/scripts/lib/helper.sh?ref=dev-lead%2Fv1-stable' "$MOCK_BIN/calls"
 }
 
 @test "fields: a lib that cannot be read fails closed" {
@@ -241,79 +241,79 @@ _calls() { grep -c -- "$1" "$MOCK_BIN/calls" || true; }
 }
 
 @test "reads: gate off → allowed with no API call" {
-  run dcg_target_reads petry-projects/broodly comment_node_id
+  run dcg_target_reads combsmith/broodly comment_node_id
   [ "$status" -eq 0 ]
   [ ! -s "$MOCK_BIN/calls" ]
 }
 
 @test "reads: pinned to the sweep's channel → allowed without reading its parser" {
   DCG_SWEEP_REF=dev-lead/v139-ring0
-  _pin petry-projects/x dev-lead/v139-ring0
-  run dcg_target_reads petry-projects/x comment_node_id
+  _pin combsmith/x dev-lead/v139-ring0
+  run dcg_target_reads combsmith/x comment_node_id
   [ "$status" -eq 0 ]
   [ "$(_calls 'dev-lead-intent.sh')" -eq 0 ]
 }
 
 @test "reads: an older pin whose parser reads every field → allowed" {
   DCG_SWEEP_REF=dev-lead/v139-ring0
-  _pin petry-projects/broodly dev-lead/v1-stable
+  _pin combsmith/broodly dev-lead/v1-stable
   _parser dev-lead/v1-stable "${V1_FIELDS[@]}"
-  run dcg_target_reads petry-projects/broodly pr_number head_sha repo intent_type
+  run dcg_target_reads combsmith/broodly pr_number head_sha repo intent_type
   [ "$status" -eq 0 ]
   [[ "$output" != *"::warning::"* ]]
 }
 
 @test "reads: informational fields (repo, attempt) need no reader" {
   DCG_SWEEP_REF=dev-lead/v139-ring0
-  _pin petry-projects/broodly dev-lead/v1-stable
+  _pin combsmith/broodly dev-lead/v1-stable
   _parser dev-lead/v1-stable issue_number
-  run dcg_target_reads petry-projects/broodly issue_number repo attempt
+  run dcg_target_reads combsmith/broodly issue_number repo attempt
   [ "$status" -eq 0 ]
 }
 
 @test "reads: a field the pinned parser does not read → held, one warning naming it" {
   DCG_SWEEP_REF=dev-lead/v139-ring0
-  _pin petry-projects/broodly dev-lead/v1-stable
+  _pin combsmith/broodly dev-lead/v1-stable
   _parser dev-lead/v1-stable "${V1_FIELDS[@]}"
   local err="$BATS_TEST_TMPDIR/err" rc=0
-  dcg_target_reads petry-projects/broodly pr_number comment_node_id 2>"$err" || rc=$?
+  dcg_target_reads combsmith/broodly pr_number comment_node_id 2>"$err" || rc=$?
   [ "$rc" -eq 1 ]
-  dcg_target_reads petry-projects/broodly pr_number comment_node_id 2>>"$err" || rc=$?
+  dcg_target_reads combsmith/broodly pr_number comment_node_id 2>>"$err" || rc=$?
   [ "$(grep -c '::warning::' "$err")" -eq 1 ]
-  grep -q '::warning::.*petry-projects/broodly.*dev-lead/v1-stable.*comment_node_id' "$err"
+  grep -q '::warning::.*combsmith/broodly.*dev-lead/v1-stable.*comment_node_id' "$err"
 }
 
 @test "reads: the cache survives the subshells the sweep calls it in" {
   DCG_SWEEP_REF=dev-lead/v139-ring0
-  _pin petry-projects/broodly dev-lead/v1-stable
+  _pin combsmith/broodly dev-lead/v1-stable
   _parser dev-lead/v1-stable "${V1_FIELDS[@]}"
   local i out
   for i in 1 2 3; do
-    out="$(dcg_target_reads petry-projects/broodly pr_number comment_node_id 2>&1 || true)"
+    out="$(dcg_target_reads combsmith/broodly pr_number comment_node_id 2>&1 || true)"
   done
-  [ "$(_calls 'repos/petry-projects/broodly/contents')" -eq 1 ]
+  [ "$(_calls 'repos/combsmith/broodly/contents')" -eq 1 ]
   [ "$(_calls 'dev-lead-intent.sh?ref=')" -eq 1 ]
   [ "$(_calls 'helper.sh?ref=')" -eq 1 ]
   # ...and so does warn-once: the later calls only log the hold.
   [[ "$out" != *"::warning::"* ]]
-  [[ "$out" == *"[hold] petry-projects/broodly"* ]]
+  [[ "$out" == *"[hold] combsmith/broodly"* ]]
 }
 
 @test "reads: no dev-lead.yml → held without a warning" {
   DCG_SWEEP_REF=dev-lead/v139-ring0
-  run dcg_target_reads petry-projects/no-stub pr_number
+  run dcg_target_reads combsmith/no-stub pr_number
   [ "$status" -eq 1 ]
   [[ "$output" != *"::warning::"* ]]
 }
 
 @test "reads: unreadable pin or parser → held with a warning (fail closed)" {
   DCG_SWEEP_REF=dev-lead/v139-ring0
-  echo ERROR >"$MOCK_BIN/stubs/petry-projects__flaky"
-  run dcg_target_reads petry-projects/flaky pr_number
+  echo ERROR >"$MOCK_BIN/stubs/combsmith__flaky"
+  run dcg_target_reads combsmith/flaky pr_number
   [ "$status" -eq 1 ]
   [[ "$output" == *"::warning::"* ]]
-  _pin petry-projects/old dev-lead/v1-ring1   # no parser source at that ref
-  run dcg_target_reads petry-projects/old pr_number
+  _pin combsmith/old dev-lead/v1-ring1   # no parser source at that ref
+  run dcg_target_reads combsmith/old pr_number
   [ "$status" -eq 1 ]
   [[ "$output" == *"::warning::"* ]]
 }
@@ -322,13 +322,13 @@ _calls() { grep -c -- "$1" "$MOCK_BIN/calls" || true; }
 
 _v1_target() {
   DCG_SWEEP_REF=dev-lead/v139-ring0
-  _pin petry-projects/broodly dev-lead/v1-stable
+  _pin combsmith/broodly dev-lead/v1-stable
   _parser dev-lead/v1-stable "${V1_FIELDS[@]}"
 }
 
 @test "dispatch: a bot-comment retry is held from a target that drops comment_node_id" {
   _v1_target
-  run dispatch_bot_comment_retry petry-projects/broodly 7 abc IC_x
+  run dispatch_bot_comment_retry combsmith/broodly 7 abc IC_x
   [ "$status" -eq 1 ]
   [ ! -s "$MOCK_BIN/dispatched" ]
 }
@@ -336,9 +336,9 @@ _v1_target() {
 @test "dispatch: reviews, CI and issue retries still reach a v1-pinned target" {
   _v1_target
   lookup_check_run_details() { echo '{"id":"","details_url":""}'; }
-  dispatch_reviews_retry petry-projects/broodly 7 abc fix-reviews
-  dispatch_ci_retry petry-projects/broodly 7 abc "CI"
-  dispatch_issue_retry petry-projects/broodly 9 1
+  dispatch_reviews_retry combsmith/broodly 7 abc fix-reviews
+  dispatch_ci_retry combsmith/broodly 7 abc "CI"
+  dispatch_issue_retry combsmith/broodly 9 1
   [ "$(grep -c 'client_payload' "$MOCK_BIN/dispatched")" -eq 3 ]
 }
 
@@ -354,7 +354,7 @@ _v1_target() {
 }
 
 @test "BOT_COMMENT_RETRY_FIELDS matches dispatch_bot_comment_retry's payload" {
-  dispatch_bot_comment_retry petry-projects/x 7 abc IC_x
+  dispatch_bot_comment_retry combsmith/x 7 abc IC_x
   [ "$(jq -r '.client_payload | keys[]' "$MOCK_BIN/dispatched" | sort)" \
     = "$(printf '%s\n' "${BOT_COMMENT_RETRY_FIELDS[@]}" | sort)" ]
 }
@@ -362,26 +362,26 @@ _v1_target() {
 # ── main() wiring ────────────────────────────────────────────────────────────
 
 @test "main: with the gate on, every repo is still scanned" {
-  export REPO_LIST_JSON='["petry-projects/.github-private","petry-projects/broodly"]'
+  export REPO_LIST_JSON='["combsmith/.github-private","combsmith/broodly"]'
   scan_repo() { echo "SCANNED $1"; }
   SWEEP_AGENT_REF=dev-lead/v139-ring0 run main
   [ "$status" -eq 0 ]
   [[ "$output" == *"sweep channel: dev-lead/v139-ring0"* ]]
-  [[ "$output" == *"SCANNED petry-projects/.github-private"* ]]
-  [[ "$output" == *"SCANNED petry-projects/broodly"* ]]
+  [[ "$output" == *"SCANNED combsmith/.github-private"* ]]
+  [[ "$output" == *"SCANNED combsmith/broodly"* ]]
 }
 
 @test "main: SWEEP_AGENT_REF unset → gate off, logged" {
-  export REPO_LIST_JSON='["petry-projects/a"]'
+  export REPO_LIST_JSON='["combsmith/a"]'
   scan_repo() { echo "SCANNED $1"; }
   run main
   [ "$status" -eq 0 ]
   [[ "$output" == *"gate off"* ]]
-  [[ "$output" == *"SCANNED petry-projects/a"* ]]
+  [[ "$output" == *"SCANNED combsmith/a"* ]]
 }
 
 @test "main: an invalid SWEEP_AGENT_REF fails the sweep before any scan" {
-  export REPO_LIST_JSON='["petry-projects/a"]'
+  export REPO_LIST_JSON='["combsmith/a"]'
   scan_repo() { echo "SCANNED $1"; }
   SWEEP_AGENT_REF='dev-lead/v139-canary' run main
   [ "$status" -ne 0 ]

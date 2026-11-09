@@ -5,8 +5,8 @@ the **empirical half** requires a human-operated live test PR this automated run
 lead to the same handoff — see [§4](#4-decision-tree-resolution). **No ruleset or workflow was changed.**
 **Author:** dev-lead / Claude Code
 **Date:** 2026-08-02
-**Tracks:** [#1437](https://github.com/petry-projects/.github-private/issues/1437) (AC2 of epic
-[#1416](https://github.com/petry-projects/.github-private/issues/1416))
+**Tracks:** [#1437](https://github.com/combsmith/.github-private/issues/1437) (AC2 of epic
+[#1416](https://github.com/combsmith/.github-private/issues/1416))
 
 ---
 
@@ -52,7 +52,7 @@ behind PR — a live, multi-actor, side-effectful experiment. The protocol, for 
 Even if the empirical half confirms stripping, the fix the issue names — "an actor-scoped bypass for the
 auto-rebase automation's identity … scoping bypass to just this rule" (`dismiss_stale_reviews_on_push` /
 `require_last_push_approval`) — **is not expressible in GitHub's ruleset model.** Verified against the live
-ruleset (`gh api repos/petry-projects/.github-private/rulesets/16142042`):
+ruleset (`gh api repos/combsmith/.github-private/rulesets/16142042`):
 
 - Those two settings are **not separate rules.** They are **parameters of a single `pull_request` rule**,
   bundled with the other review gates:

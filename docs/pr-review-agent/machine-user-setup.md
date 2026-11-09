@@ -8,7 +8,7 @@ the bot is in the team listed in `CODEOWNERS`.
 > [!IMPORTANT]
 > **Use a classic PAT. Fine-grained PATs do not work for this workflow.**
 >
-> After the migration to `petry-projects/.github-private`, fine-grained PATs
+> After the migration to `combsmith/.github-private`, fine-grained PATs
 > fail the GraphQL `addPullRequestReview` mutation with:
 >
 > ```
@@ -17,7 +17,7 @@ the bot is in the team listed in `CODEOWNERS`.
 >
 > The failure persists even when every obvious gate is satisfied: the org owner
 > has approved the token request, fine-grained PATs are allowed for
-> `petry-projects`, the bot has Write collaborator access on the target repo,
+> `combsmith`, the bot has Write collaborator access on the target repo,
 > and the PAT lists the right repository / permissions. Classic PATs with
 > `repo` scope work; fine-grained ones do not. If you ever see the error above
 > in a workflow log, the secret is holding a fine-grained token — generate a
@@ -54,11 +54,11 @@ so app-account approvals don't satisfy code-owner requirements. See the
 ## Step 2: Add the bot to the org and the CODEOWNERS team
 
 1. Sign in as your primary account (org owner).
-2. **github.com/organizations/petry-projects/settings/members** →
+2. **github.com/organizations/combsmith/settings/members** →
    **Invite member** → enter `donpetry-bot` → role: **Member**.
 3. Accept the invite from the bot account.
 4. Create or open the org team that's referenced in `CODEOWNERS`
-   (e.g. `petry-projects/pr-reviewers`).
+   (e.g. `combsmith/pr-reviewers`).
 5. Add `donpetry-bot` to that team.
 6. On every target repo, ensure the bot is a **Write** collaborator
    (org-level team membership grants the role; verify on
@@ -69,7 +69,7 @@ reference the team:
 
 ```
 # .github/CODEOWNERS
-* @petry-projects/pr-reviewers
+* @combsmith/pr-reviewers
 ```
 
 Or path-specific rules as needed.
@@ -94,11 +94,11 @@ Or path-specific rules as needed.
        resolution in CODEOWNERS escalations.
 4. **Generate token** and copy it immediately (you won't see it again).
 
-## Step 4: Store the PAT in `petry-projects/.github-private`
+## Step 4: Store the PAT in `combsmith/.github-private`
 
 Sign back in as your primary account, then either via the UI:
 
-**github.com/petry-projects/.github-private/settings/secrets/actions**
+**github.com/combsmith/.github-private/settings/secrets/actions**
 → **New repository secret** (or **Update**) → name `DON_PETRY_BOT_GH_PAT`,
 value = the token from Step 3.
 
@@ -106,14 +106,14 @@ Or via `gh`:
 
 ```bash
 gh secret set DON_PETRY_BOT_GH_PAT \
-  --repo petry-projects/.github-private \
+  --repo combsmith/.github-private \
   --body "<paste-token>"
 ```
 
 Verify:
 
 ```bash
-gh secret list --repo petry-projects/.github-private | grep DON_PETRY_BOT_GH_PAT
+gh secret list --repo combsmith/.github-private | grep DON_PETRY_BOT_GH_PAT
 ```
 
 ### Secret naming reference
@@ -121,7 +121,7 @@ gh secret list --repo petry-projects/.github-private | grep DON_PETRY_BOT_GH_PAT
 PAT secrets follow the schema **`GH_PAT_<ACCOUNT>[_<QUALIFIER>]`**, where `<ACCOUNT>`
 is the GitHub login upper-snake-cased (`don-petry` → `GH_PAT_DON_PETRY`). This makes
 the *owning account* obvious from the secret name, resolving the ambiguity that let dev-lead
-regress to committing as the bot ([#1316](https://github.com/petry-projects/.github-private/issues/1316)).
+regress to committing as the bot ([#1316](https://github.com/combsmith/.github-private/issues/1316)).
 Each persona declares which account/secret it acts as in `runtime.identity`
 (`personas/<id>/persona.yml`); see `standards/persona-standards.md` §5.1.
 
@@ -150,7 +150,7 @@ Trigger a one-shot dry-run of the PR review workflow:
 
 ```bash
 gh workflow run pr-review.yml \
-  --repo petry-projects/.github-private \
+  --repo combsmith/.github-private \
   -f dry_run=true
 ```
 
@@ -179,7 +179,7 @@ Classic PATs expire on the date set when generated (1 year recommended).
 3. Update the secret:
    ```bash
    gh secret set DON_PETRY_BOT_GH_PAT \
-     --repo petry-projects/.github-private \
+     --repo combsmith/.github-private \
      --body "<new-token>"
    ```
 4. Revoke the old token from the bot's

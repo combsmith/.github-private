@@ -24,7 +24,7 @@
 # Env vars consumed:
 #   GH_TOKEN        — must have repo read on REPO (PR list/detail, comments, threads)
 #   GH_PAT_FALLBACK — optional secondary token if the primary can't read REPO
-#   REPO / AGENT_REPO — target repo (default: petry-projects/.github-private)
+#   REPO / AGENT_REPO — target repo (default: combsmith/.github-private)
 #   TRUSTED_BOTS    — comma-separated trusted-bot logins (the #1425 trust set);
 #                     derived from the reviewer-source registry when unset
 #   GITHUB_ENV      — written by the Actions runner (HAS_MERGEREADY / MERGEREADY_COUNT)
@@ -51,7 +51,7 @@ source "${MR_SCRIPT_DIR}/lib/pr-mergeready-detect.sh"
 # shellcheck source=scripts/lib/reviewer-sources.sh
 source "${MR_SCRIPT_DIR}/lib/reviewer-sources.sh"
 
-REPO="${REPO:-${AGENT_REPO:-petry-projects/.github-private}}"
+REPO="${REPO:-${AGENT_REPO:-combsmith/.github-private}}"
 REPORT_FILE="${REPORT_FILE:-pr_mergeready_report.md}"
 TODAY=$(date -u +%Y-%m-%d)
 

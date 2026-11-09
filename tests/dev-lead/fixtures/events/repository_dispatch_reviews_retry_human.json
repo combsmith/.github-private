@@ -4,9 +4,9 @@
   "client_payload": {
     "pr_number": 54,
     "head_sha": "def456abc123",
-    "repo": "petry-projects/.github-private",
+    "repo": "combsmith/.github-private",
     "intent_type": "on-mention"
   },
-  "repository": { "full_name": "petry-projects/.github-private" },
+  "repository": { "full_name": "combsmith/.github-private" },
   "sender": { "login": "github-actions[bot]", "type": "Bot" }
 }

@@ -41,7 +41,7 @@ cross-repo epic needs the repo to be a property of each **story**, not a single 
 
 ### 1.1 Where `REPO` is load-bearing today
 
-`REPO` is read once (`initiative-driver.sh:54`, default `petry-projects/.github-private`), frozen
+`REPO` is read once (`initiative-driver.sh:54`, default `combsmith/.github-private`), frozen
 `readonly` (`:80`), and threaded into **every** GitHub API call. There is exactly one repo per process:
 
 | Concern | Code | Repo binding |

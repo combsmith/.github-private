@@ -21,7 +21,7 @@
 #   * main() does the network I/O: dispatch, poll.
 #
 # Env vars consumed:
-#   REPO                 owner/repo hosting the trigger (default petry-projects/.github-private)
+#   REPO                 owner/repo hosting the trigger (default combsmith/.github-private)
 #   WORKFLOW_FILE        trigger workflow to dispatch (default pr-review-trigger.yml)
 #   GH_TOKEN             a PAT with workflow scope (a workflow_dispatch fired with
 #                        GITHUB_TOKEN is accepted but never starts a run)
@@ -35,7 +35,7 @@
 
 set -euo pipefail
 
-REPO="${REPO:-petry-projects/.github-private}"
+REPO="${REPO:-combsmith/.github-private}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-pr-review-trigger.yml}"
 
 # ---------------------------------------------------------------------------

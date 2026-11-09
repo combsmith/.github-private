@@ -2,7 +2,7 @@
 # Role, not a person (§1.6): wraps the vendored BMAD analysis skills; the
 # upstream agent's person-name stays upstream, referenced only by skill id.
 #
-# Validate against: petry-projects/.github standards/personas/persona.schema.json
+# Validate against: combsmith/.github standards/personas/persona.schema.json
 
 schema_version: 1
 
@@ -18,10 +18,10 @@ summary: >-
 # persona (the Analyst→PM handoff is preserved — see README).
 status: draft
 
-owner: petry-projects/org-leads
+owner: combsmith/org-leads
 
 address:
-  handle: petry-projects/business-analyst
+  handle: combsmith/business-analyst
 
 definition:
   layers:
@@ -49,7 +49,7 @@ triggers:
       events: [created]
       enabled: true
       mode: advisory
-      notes: "'@petry-projects/business-analyst' — ideation/research/brief advice."
+      notes: "'@combsmith/business-analyst' — ideation/research/brief advice."
 
     - surface: issues
       events: [labeled, commented]
@@ -87,4 +87,4 @@ evals:
 references:
   - "prompts/incubation/producer-brainstorm.md, producer-market-research.md, producer-brief.md"
   - "frameworks/bmad-method/VENDOR.md (v6.8.0)"
-  - "petry-projects/.github standards/persona-standards.md"
+  - "combsmith/.github standards/persona-standards.md"

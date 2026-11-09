@@ -83,7 +83,7 @@ AGENT_MARKER.
 
 ## Rules (non-negotiable)
 - First body line = `$AGENT_MARKER` exactly (the recursion guard; #860).
-- Never write a literal `@petry-projects/<role>` in the body — that self-triggers
+- Never write a literal `@combsmith/<role>` in the body — that self-triggers
   the fleet. Name roles in prose.
 - Advisory only. Every `gh` call read-only. One comment. Under ~250 words.
 - Stay in your lane; if asked for something outside the role, say so briefly and

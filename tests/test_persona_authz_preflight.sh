@@ -119,11 +119,11 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "UNAUTHORIZED diagnostic names the account, the credential secret, and the missing capability" {
-  run authz_preflight_diagnostic UNAUTHORIZED don-petry GH_PAT_DON_PETRY petry-projects/.github-private
+  run authz_preflight_diagnostic UNAUTHORIZED don-petry GH_PAT_DON_PETRY combsmith/.github-private
   [ "$status" -eq 0 ]
   [[ "$output" == *"don-petry"* ]]
   [[ "$output" == *"GH_PAT_DON_PETRY"* ]]
-  [[ "$output" == *"petry-projects/.github-private"* ]]
+  [[ "$output" == *"combsmith/.github-private"* ]]
   # names the missing capability, not a bare "permission denied"
   [[ "$output" == *"write"* ]]
   # distinguishes authorization from a missing secret (the #1734 diagnosis gap)
@@ -131,19 +131,19 @@ setup() {
 }
 
 @test "UNAUTHORIZED diagnostic does not masquerade as a missing/invalid secret" {
-  run authz_preflight_diagnostic UNAUTHORIZED don-petry GH_PAT_DON_PETRY petry-projects/.github-private
+  run authz_preflight_diagnostic UNAUTHORIZED don-petry GH_PAT_DON_PETRY combsmith/.github-private
   [[ "$output" != *"missing or invalid secret"* ]]
 }
 
 @test "INDETERMINATE diagnostic says it is proceeding (fail open), not blocking" {
-  run authz_preflight_diagnostic INDETERMINATE don-petry GH_PAT_DON_PETRY petry-projects/.github-private
+  run authz_preflight_diagnostic INDETERMINATE don-petry GH_PAT_DON_PETRY combsmith/.github-private
   [[ "$output" == *"proceed"* ]]
   # an indeterminate result must never claim the credential cannot write
   [[ "$output" != *"cannot write"* ]]
 }
 
 @test "AUTHORIZED diagnostic names the account and confirms write" {
-  run authz_preflight_diagnostic AUTHORIZED don-petry GH_PAT_DON_PETRY petry-projects/.github-private
+  run authz_preflight_diagnostic AUTHORIZED don-petry GH_PAT_DON_PETRY combsmith/.github-private
   [[ "$output" == *"don-petry"* ]]
   [[ "$output" == *"write"* ]]
 }
@@ -202,13 +202,13 @@ wrapper_setup() {
   wrapper_setup
   _stub_gh 0 '{"permissions":{"admin":false,"maintain":false,"push":false,"pull":true}}'
   export GH_TOKEN="tok"
-  export SOURCE_REPO="petry-projects/.github-private"
+  export SOURCE_REPO="combsmith/.github-private"
   run WRAPPER
   [ "$status" -eq 1 ]
   [[ "$output" == *"::error::"* ]]
   [[ "$output" == *"don-petry"* ]]
   [[ "$output" == *"GH_PAT_DON_PETRY"* ]]
-  [[ "$output" == *"petry-projects/.github-private"* ]]
+  [[ "$output" == *"combsmith/.github-private"* ]]
 }
 
 @test "wrapper FAILS OPEN (warn + proceed) when the repo read errors (5xx/rate-limit)" {

@@ -10,7 +10,7 @@
 #
 # Environment variables:
 #   GH_TOKEN or GH_PAT     GitHub PAT for API calls (required for live scenarios).
-#   E2E_TARGET_REPO        Repository to test against (default: petry-projects/.github-private).
+#   E2E_TARGET_REPO        Repository to test against (default: combsmith/.github-private).
 #   E2E_CLEANUP            Set to "false" to keep test PRs/branches/issues (default: true).
 #   CLAUDE_CODE_OAUTH_TOKEN  Required for scenarios that exercise Claude-based handlers.
 #                           Scenarios needing it will be skipped if absent.
@@ -66,7 +66,7 @@ log() { echo "[$(date -u +%H:%M:%S)] $*"; }
 
 log "============================================================"
 log "Dev-Lead Agent E2E Test Suite"
-log "Target repo : ${E2E_TARGET_REPO:-petry-projects/.github-private}"
+log "Target repo : ${E2E_TARGET_REPO:-combsmith/.github-private}"
 log "Dry run     : ${DRY_RUN}"
 log "Scenario    : ${SINGLE_SCENARIO:-all}"
 log "Cleanup     : ${E2E_CLEANUP:-true}"
@@ -185,7 +185,7 @@ log "============================================================"
 # Write summary report
 {
   echo "Dev-Lead E2E Test Run — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "Repo: ${E2E_TARGET_REPO:-petry-projects/.github-private}"
+  echo "Repo: ${E2E_TARGET_REPO:-combsmith/.github-private}"
   echo "Passed: ${PASS_COUNT}  Failed: ${FAIL_COUNT}  Skipped: ${SKIP_COUNT}"
   echo ""
   echo "Per-scenario results:"

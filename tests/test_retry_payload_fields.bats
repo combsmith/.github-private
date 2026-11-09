@@ -26,7 +26,7 @@ write_stub() {
   cat > "$SANDBOX/.github/workflows/dev-lead.yml" <<EOF
 jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@$1
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@$1
     with:
       agent_ref: $1
 EOF

@@ -97,14 +97,14 @@ setup() {
 # ---------------------------------------------------------------------------
 
 @test "canary_report: OK report names the pr-review-trigger path" {
-  run canary_report "OK" "petry-projects/.github-private" "https://x/run/1" "2026-07-15"
+  run canary_report "OK" "combsmith/.github-private" "https://x/run/1" "2026-07-15"
   [ "$status" -eq 0 ]
   [[ "$output" == *"pr-review-trigger"* ]]
   [[ "$output" == *"2026-07-15"* ]]
 }
 
 @test "canary_report: the startup_failure status surfaces the channel-skew hint" {
-  run canary_report "STARTUP_FAILURE" "petry-projects/.github-private" "https://x/run/1" "2026-07-15"
+  run canary_report "STARTUP_FAILURE" "combsmith/.github-private" "https://x/run/1" "2026-07-15"
   [[ "$output" == *"startup_failure"* ]]
   [[ "$output" == *"https://x/run/1"* ]]
 }
@@ -113,7 +113,7 @@ setup() {
   # A cancelled/timed_out run (both classified FAILED) can end before the
   # reusable call reaches startup, so the report must not assert skew is ruled
   # out — only that FAILED is not the startup_failure fingerprint this canary gates on.
-  run canary_report "FAILED" "petry-projects/.github-private" "https://x/run/1" "2026-07-15"
+  run canary_report "FAILED" "combsmith/.github-private" "https://x/run/1" "2026-07-15"
   [ "$status" -eq 0 ]
   [[ "$output" == *"startup_failure"* ]]
   [[ "$output" != *"**ruled out**"* ]]
@@ -155,7 +155,7 @@ teardown() {
 
 @test "main: dispatches pr-review-trigger in DRY-RUN and exits OK on a clean run" {
   _install_gh_mock "success"
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export GH_TOKEN="pat"
   export CANARY_POLL_TIMEOUT="5"
   export CANARY_POLL_INTERVAL="1"
@@ -178,7 +178,7 @@ teardown() {
 
 @test "main: a startup_failure run sets CANARY_FAILED and exits non-zero" {
   _install_gh_mock "startup_failure"
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export GH_TOKEN="pat"
   export CANARY_POLL_TIMEOUT="5"
   export CANARY_POLL_INTERVAL="1"
@@ -199,7 +199,7 @@ teardown() {
   # PR. The canary must stay green so it does not raise a false Fleet Monitor
   # tracker (#1612) — only startup_failure fails it loud.
   _install_gh_mock "failure"
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export GH_TOKEN="pat"
   export CANARY_POLL_TIMEOUT="5"
   export CANARY_POLL_INTERVAL="1"
@@ -217,7 +217,7 @@ teardown() {
 
 @test "main: exits with error when GH_TOKEN is unset (dispatch would never start a run)" {
   _install_gh_mock "success"
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   unset GH_TOKEN
   export CANARY_POLL_TIMEOUT="5"
   export CANARY_POLL_INTERVAL="1"

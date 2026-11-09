@@ -1,9 +1,9 @@
 # Stale Manager
 
 A scheduled GitHub Action that automatically manages stale issues and PRs
-across the `petry-projects` org. Runs every Monday at 09:00 UTC.
+across the `combsmith` org. Runs every Monday at 09:00 UTC.
 
-Part of the [GitHub Agentic Workflows rollout](https://github.com/petry-projects/.github-private/discussions/228).
+Part of the [GitHub Agentic Workflows rollout](https://github.com/combsmith/.github-private/discussions/228).
 
 ## How it works
 
@@ -55,7 +55,7 @@ twice in the same week) is safe.
 
 | Variable | Default | Description |
 |---|---|---|
-| `TARGET_ORG` | `petry-projects` | GitHub org to scan |
+| `TARGET_ORG` | `combsmith` | GitHub org to scan |
 | `STALE_DAYS_ISSUE` | `60` | Days before issue is stale |
 | `STALE_DAYS_PR` | `30` | Days before PR is stale |
 | `GRACE_DAYS` | `7` | Days with `stale` label before closure |

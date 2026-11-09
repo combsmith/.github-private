@@ -1,6 +1,6 @@
 name: GitHub Agentic Workflows — Cross-Org Dispatcher
 
-# Handles gh-aw workflow triggers dispatched from other petry-projects repos.
+# Handles gh-aw workflow triggers dispatched from other combsmith repos.
 # Listener stubs (templates/gh-aw-org-listener.yml) in org repos dispatch here.
 #
 # Architecture: docs/aw/cross-org-deployment.md
@@ -58,8 +58,8 @@ jobs:
       - name: Validate source repo
         run: |
           set -euo pipefail
-          if [[ "$SOURCE_REPO" != "petry-projects/"* ]]; then
-            echo "::error::source_repo '${SOURCE_REPO}' must be within petry-projects org — rejecting dispatch"
+          if [[ "$SOURCE_REPO" != "combsmith/"* ]]; then
+            echo "::error::source_repo '${SOURCE_REPO}' must be within combsmith org — rejecting dispatch"
             exit 1
           fi
           echo "::notice::Cross-org event: ${{ github.event.action }} from ${SOURCE_REPO}"

@@ -105,7 +105,7 @@ GH_STUB
     PR_NUMBER="42" \
     HEAD_SHA="ccc333new-sha-not-in-markers" \
     CHECKS_JSON='[{"name":"test-check","conclusion":"failure","details_url":"https://github.com/fake/runs/99999","app_slug":"github-actions"}]' \
-    REPO="petry-projects/.github-private" \
+    REPO="combsmith/.github-private" \
     REVIEW_ENGINE="claude" \
     DEV_LEAD_DRY_RUN="false" \
     MAX_FAIL_ATTEMPTS="2" \
@@ -147,7 +147,7 @@ GH_STUB2
     PR_NUMBER="42" \
     HEAD_SHA="brand-new-sha-xyz" \
     CHECKS_JSON='[{"name":"test-check","conclusion":"failure","details_url":"","app_slug":"github-actions"}]' \
-    REPO="petry-projects/.github-private" \
+    REPO="combsmith/.github-private" \
     REVIEW_ENGINE="claude" \
     DEV_LEAD_DRY_RUN="false" \
     MAX_FAIL_ATTEMPTS="2" \

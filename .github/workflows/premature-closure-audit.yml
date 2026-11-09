@@ -22,7 +22,7 @@ on:
         default: "true"
         type: string
       target_repo:
-        description: "owner/repo to audit (default: petry-projects/.github-private)"
+        description: "owner/repo to audit (default: combsmith/.github-private)"
         required: false
         type: string
 
@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ secrets.DON_PETRY_BOT_GH_PAT }}
-      REPO: ${{ inputs.target_repo || vars.PC_AUDIT_REPO || 'petry-projects/.github-private' }}
+      REPO: ${{ inputs.target_repo || vars.PC_AUDIT_REPO || 'combsmith/.github-private' }}
       PC_LOOKBACK_DAYS: ${{ vars.PC_LOOKBACK_DAYS || '7' }}
       PC_MAX_OPEN_MINUTES: ${{ vars.PC_MAX_OPEN_MINUTES || '30' }}
       # Staged by default: set LIVE_MODE=true repo variable to enable writes.

@@ -22,7 +22,7 @@ setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   export REVIEW_SCRIPT="$REPO_ROOT/scripts/review-one-pr.sh"
   export SHA="cafebabecafebabecafebabecafebabecafebabe"
-  export PR_URL="https://github.com/petry-projects/.github-private/pull/1783"
+  export PR_URL="https://github.com/combsmith/.github-private/pull/1783"
   export TEST_DIR="$BATS_TEST_TMPDIR"
   mkdir -p "$TEST_DIR/bin"; cd "$TEST_DIR"
 
@@ -135,5 +135,5 @@ EOF
   write_nonrequired_red_snapshot
   run timeout 30 bash "$REVIEW_SCRIPT" "$PR_URL"
   # The ruleset endpoint must have been queried for the base branch.
-  grep -q 'api repos/petry-projects/.github-private/rules/branches/main' "$GH_LOG"
+  grep -q 'api repos/combsmith/.github-private/rules/branches/main' "$GH_LOG"
 }

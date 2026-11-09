@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Unit tests for scripts/lib/test-regression-guard.sh (#2013).
 #
-# The `15a919e` shape from petry-projects/.github#1220: a fix pass added a NEW test
+# The `15a919e` shape from combsmith/.github#1220: a fix pass added a NEW test
 # and broke an EXISTING one without editing it. The test-tamper guard is silent, the
 # claim names a real in-pass commit — only running the suite against the pre-pass
 # baseline catches it.

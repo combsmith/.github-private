@@ -47,7 +47,7 @@ surface — not about a caller stub that merely *forwards* secrets to trusted
 first-party plumbing. If the `SAFETY_CHECKS` block reports **`TRUSTED_STUB_SYNC:
 true`**, the diff is a workflow-only, bot-authored/standards-sync caller-stub change
 that forwards `secrets: inherit` (or maps a secret into a `secrets:`/`with:` block)
-to a pinned `petry-projects/*` reusable, adds no third-party reusable, and pipes no
+to a pinned `combsmith/*` reusable, adds no third-party reusable, and pipes no
 secret into a `run:` step. That forwarding is the org-standard, SonarCloud-suppressed
 (S7635) pattern — it is **not** secret handling. For such a PR:
 

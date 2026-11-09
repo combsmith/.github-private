@@ -115,14 +115,14 @@ main() {
       head: {
         sha: "human999sha",
         ref: "feat/human-branch",
-        repo: { full_name: "petry-projects/.github-private" }
+        repo: { full_name: "combsmith/.github-private" }
       },
       base: {
         ref: "main",
-        repo: { full_name: "petry-projects/.github-private" }
+        repo: { full_name: "combsmith/.github-private" }
       }
     },
-    repository: { full_name: "petry-projects/.github-private" },
+    repository: { full_name: "combsmith/.github-private" },
     sender: { login: "donpetry", type: "User" }
   }' > "${human_sync_fixture}"
 

@@ -1,4 +1,4 @@
-title = "gitleaks config for petry-projects/.github-private"
+title = "gitleaks config for combsmith/.github-private"
 
 [extend]
 useDefault = true

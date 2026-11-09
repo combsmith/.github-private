@@ -8,8 +8,8 @@ ring registry (combsmith/.github standards/canary-rings.json), the standards swe
 and the org audit — not by this test (#2625). A bare `@agent-shield/<tier>` pin
 (missing the major scope) is drift (#1393); a SHA or `@main` ref is also rejected.
 
-Standard: petry-projects/.github/standards/ci-standards.md#centralization-tiers
-Source of truth: petry-projects/.github/standards/workflows/agent-shield.yml
+Standard: combsmith/.github/standards/ci-standards.md#centralization-tiers
+Source of truth: combsmith/.github/standards/workflows/agent-shield.yml
 """
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github-private/.github/workflows/pr-review-canary.yml
+# SOURCE OF TRUTH: combsmith/.github-private/.github/workflows/pr-review-canary.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • Post-merge canary for the ring-0 pr-review-trigger caller stub (#1256,

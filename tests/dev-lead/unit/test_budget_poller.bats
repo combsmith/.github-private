@@ -488,7 +488,7 @@ _seed_degraded() {
 
 @test "static: the no-write assertion is not vacuous (it trips on a planted write)" {
   local planted="$BATS_TEST_TMPDIR/planted.sh"
-  printf 'gh variable set AGENTS_PAUSED --org petry-projects --body true\n' > "$planted"
+  printf 'gh variable set AGENTS_PAUSED --org combsmith --body true\n' > "$planted"
   run grep -nE 'AGENTS_PAUSED|AGENTS_PAUSE_SOURCE' "$planted"
   [ "$status" -eq 0 ]
   run grep -nE 'gh[[:space:]]+variable[[:space:]]+(set|delete)' "$planted"
@@ -596,7 +596,7 @@ _zip() {
 
 _download() {
   PATH="$BATS_TEST_TMPDIR/shim:$PATH" run bash -c \
-    'source "$1"; bp_download_latest_log petry-projects/.github-private "$2"' _ "$POLLER_LIB" "$DL_DEST"
+    'source "$1"; bp_download_latest_log combsmith/.github-private "$2"' _ "$POLLER_LIB" "$DL_DEST"
 }
 
 _chosen() { jq -r '.artifact' "$DL_DEST"; }
@@ -623,7 +623,7 @@ _chosen() { jq -r '.artifact' "$DL_DEST"; }
   [ "$status" -eq 0 ]
   [ "$(_chosen)" = "42" ]
   # The listing is scoped to the artifact name and paginated.
-  grep -q -- '--paginate repos/petry-projects/.github-private/actions/artifacts?name=budget-poller-log&per_page=100' \
+  grep -q -- '--paginate repos/combsmith/.github-private/actions/artifacts?name=budget-poller-log&per_page=100' \
     "$MOCK_GH_DIR/calls.log"
 }
 
@@ -661,7 +661,7 @@ _chosen() { jq -r '.artifact' "$DL_DEST"; }
     set -euo pipefail
     source "$1"
     rc=0
-    bp_download_latest_log petry-projects/.github-private "$2" || rc=$?
+    bp_download_latest_log combsmith/.github-private "$2" || rc=$?
     echo "rc=$rc"
     echo "caller continued"' _ "$POLLER_LIB" "$DL_DEST"
   [ "$status" -eq 0 ]

@@ -109,8 +109,8 @@ through its rings is how the change reaches production incrementally. The gate w
 `next → ring0 → ring1` under the dev-lead gate config. Authoritative knobs are in
 [`release/registry.yml`](../../release/registry.yml) (this repo, source of truth for
 the Release_Manager loop; `gate: { soak_window_days: 7 }`); ring-level dwell knobs in
-[`standards/canary-rings.json`](https://github.com/petry-projects/.github/blob/main/standards/canary-rings.json)
-in `petry-projects/.github`:
+[`standards/canary-rings.json`](https://github.com/combsmith/.github/blob/main/standards/canary-rings.json)
+in `combsmith/.github`:
 
 - gate soak window: **7 days** (`soak_window_days` in `release/registry.yml`)
 - baseline window: **14 days**; spike cap: **3×**
@@ -122,7 +122,7 @@ in `petry-projects/.github`:
 > bmad-bgreat-suite currently pin `@dev-lead/stable`, not `@dev-lead/ring1` (see
 > COORDINATION NOTE in [`release/registry.yml`](../../release/registry.yml)). The
 > Release_Manager gate cannot soak `ring1 → stable` until staged repin PRs land in
-> those repos. The `ring0 → ring1` row below can be filled once `petry-projects/.github`
+> those repos. The `ring0 → ring1` row below can be filled once `combsmith/.github`
 > is on ring0 and healthy; the `ring1` row must remain *hold* until the external repin
 > is complete. Do not record a ring1 pass against the 4h/8h rows above — the rollout
 > machinery cannot observe ring1 until those repos switch channels.

@@ -82,11 +82,11 @@
   "exempt_actors": [
     "dependabot[bot]",
     "OrganizationAdmin",
-    "@petry-projects/org-leads",
+    "@combsmith/org-leads",
     "dependabot-automerge-petry"
   ],
   "exempt_labels": [
     "security"
   ],
-  "_exempt_note": "Actors/labels whose agent runs must never be blocked or deferred by the rate limits — the SAME set as standards/pr-limits.json so one policy governs both gates. dependabot[bot] is already bounded per-ecosystem by its own open-pull-requests-limit; OrganizationAdmin / @petry-projects/org-leads are human break-glass and maintainer traffic; dependabot-automerge-petry operates on existing PRs; security-labeled work is urgent and bypasses any throttle."
+  "_exempt_note": "Actors/labels whose agent runs must never be blocked or deferred by the rate limits — the SAME set as standards/pr-limits.json so one policy governs both gates. dependabot[bot] is already bounded per-ecosystem by its own open-pull-requests-limit; OrganizationAdmin / @combsmith/org-leads are human break-glass and maintainer traffic; dependabot-automerge-petry operates on existing PRs; security-labeled work is urgent and bypasses any throttle."
 }

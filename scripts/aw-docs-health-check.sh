@@ -5,7 +5,7 @@
 # Env vars consumed:
 #   GH_TOKEN                  — PAT with repo scope (passed via gh CLI)
 #   CLAUDE_CODE_OAUTH_TOKEN   — Claude auth token
-#   ORG                       — GitHub org to scan (default: petry-projects)
+#   ORG                       — GitHub org to scan (default: combsmith)
 #   STALE_DAYS                — staleness threshold in days (default: 90)
 #   DOCS_STALENESS_IGNORE     — comma-separated path patterns to skip
 #   REPORT_REPO               — repo to open the issue on (default: ORG/.github-private)
@@ -17,7 +17,7 @@ set -euo pipefail
 # shellcheck source=scripts/lib/engine-models.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/engine-models.sh"
 
-ORG="${ORG:-petry-projects}"
+ORG="${ORG:-combsmith}"
 STALE_DAYS="${STALE_DAYS:-90}"
 REPORT_REPO="${REPORT_REPO:-${ORG}/.github-private}"
 TODAY=$(date -u +%Y-%m-%d)

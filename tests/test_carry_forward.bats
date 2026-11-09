@@ -15,7 +15,7 @@ setup() {
   # shellcheck source=../scripts/lib/carry-forward.sh
   source "$REPO_ROOT/scripts/lib/carry-forward.sh"
 
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export BASE_REF="main"
   export BASE_TIP="base000tip"
   export PRIOR_SHA="prior00sha"

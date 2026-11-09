@@ -126,7 +126,7 @@ initiative-driver.yml (stub) ──> initiative-driver-reusable.yml (@stable)
    │   issues:[closed] event to the central driver instead of running the
    │   gate/DAG logic inline (that logic lives only here)
    ▼
-petry-projects/.github-private  initiative-driver.yml  -f target_repo=<fleet repo>
+combsmith/.github-private  initiative-driver.yml  -f target_repo=<fleet repo>
    │   sweeps the fleet repo's initiative:auto epics, resolves each ready story's
    │   blocked_by DAG, applies the `dev-lead` label THERE
    │   (cross-repo writes use GH_PAT_WORKFLOWS; self path uses GITHUB_TOKEN)
@@ -141,7 +141,7 @@ dev-lead.yml (fleet repo) ──> PR ──> pr-review ──> merge ──> clo
 - **Enroll a fleet repo:** copy the `initiative-driver.yml` caller stub into the
   repo's `.github/workflows/` and provision the cross-repo PAT — the same
   enrollment step that adopts the planner/triage/enhancer stubs. The authoritative,
-  step-by-step enrollment runbook is **`petry-projects/.github` →
+  step-by-step enrollment runbook is **`combsmith/.github` →
   `standards/ci-standards.md` §10 (Idea → Initiative pipeline)**; it is not
   duplicated here.
 - **Arm an epic cross-repo:** identical to the self path — a human adds

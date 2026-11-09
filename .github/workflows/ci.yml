@@ -1,6 +1,6 @@
 # CI pipeline for the .github-private repository.
 # Lints markdown, YAML, GitHub Actions, and shell scripts; runs AgentShield; scans for secrets.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/ci-standards.md
+# Standard: https://github.com/combsmith/.github/blob/main/standards/ci-standards.md
 name: CI
 
 on:

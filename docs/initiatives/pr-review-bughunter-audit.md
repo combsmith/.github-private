@@ -223,7 +223,7 @@ The baseline is protected the same way the held-out eval set and the ET baseline
 are, so later prompt-tuning stories cannot move the goalposts:
 
 - **CODEOWNERS review-lock** — `/tests/fixtures/deep-review-baseline/` is owned by
-  `@petry-projects/org-leads` in [`.github/CODEOWNERS`](../../.github/CODEOWNERS),
+  `@combsmith/org-leads` in [`.github/CODEOWNERS`](../../.github/CODEOWNERS),
   so any edit requires an org-lead review (the control that actually gates the
   dev-lead-authored tuning PRs #1090–#1093).
 - **Silent-deletion guard** — `test-deletion-guard.yml` (#823) fails any PR that
@@ -244,8 +244,8 @@ dev-lead tuning PR; CODEOWNERS + the pin is the stronger control for this threat
 
 ## 7. References
 
-- Epic [#1088](https://github.com/petry-projects/.github-private/issues/1088) ·
-  Story [#1089](https://github.com/petry-projects/.github-private/issues/1089) ·
+- Epic [#1088](https://github.com/combsmith/.github-private/issues/1088) ·
+  Story [#1089](https://github.com/combsmith/.github-private/issues/1089) ·
   Idea Discussion #906
 - Downstream: #1090 (symbol context) · #1091 (specialist routing) · #1092
   (agentic validation) · #1093 (merged-PR few-shot) · #1094 (convergence gate)

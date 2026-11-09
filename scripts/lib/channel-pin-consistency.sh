@@ -3,7 +3,7 @@
 # (#1866 AC #3; regression guard for #1819).
 #
 # The workflow-stub sync generator (standards-deploy.yml, in the PUBLIC
-# petry-projects/.github repo) PRESERVES each destination repo's own per-repo
+# combsmith/.github repo) PRESERVES each destination repo's own per-repo
 # `uses:` channel pin. #1819 exposed the receiving-side hazard: a guard COMMENT
 # (or the `agent_ref:` input) that names a channel can drift out of step with the
 # actual `uses:` pin in the SAME file — moving one without the other. This library

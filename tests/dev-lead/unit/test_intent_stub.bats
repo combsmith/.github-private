@@ -65,7 +65,7 @@ _get_output() {
   # dev-lead — it emits skip, leaving the PR for the human to finish.
   export GITHUB_EVENT_NAME="pull_request"
   export GITHUB_EVENT_PATH="$FIXTURES_DIR/pr_opened_human.json"
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
 
   run bash "$INTENT_SCRIPT"
 
@@ -91,7 +91,7 @@ _get_output() {
   export GITHUB_EVENT_NAME="pull_request"
   export GITHUB_EVENT_PATH="$FIXTURES_DIR/pr_opened_human.json"
   export BOT_USER="donpetry-bot"
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
 
   run bash "$INTENT_SCRIPT"
 
@@ -116,7 +116,7 @@ _get_output() {
   export GITHUB_EVENT_PATH="$FIXTURES_DIR/issue_comment_human_trigger.json"
   export TRUSTED_BOTS="copilot-pull-request-reviewer[bot],gemini-code-assist[bot],sonarqubecloud[bot],coderabbitai[bot]"
   export TRIGGER_PHRASES="@dev-lead"
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
 
   run bash "$INTENT_SCRIPT"
 
@@ -127,7 +127,7 @@ _get_output() {
 @test "issues labeled dev-lead event emits issue intent" {
   export GITHUB_EVENT_NAME="issues"
   export GITHUB_EVENT_PATH="$FIXTURES_DIR/issues_labeled_dev_lead.json"
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
 
   run bash "$INTENT_SCRIPT"
 
@@ -138,7 +138,7 @@ _get_output() {
 @test "repository_dispatch ci-failure event emits fix-ci intent" {
   export GITHUB_EVENT_NAME="repository_dispatch"
   export GITHUB_EVENT_PATH="$FIXTURES_DIR/repository_dispatch_ci_failure.json"
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
 
   run bash "$INTENT_SCRIPT"
 

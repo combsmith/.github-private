@@ -3,7 +3,7 @@
 # an actual head-SHA change (#1609, slice 1 of 2).
 #
 # Third occurrence of the "threads resolved with no work" class, and the first to
-# defeat the shipped gate: on petry-projects/.github#1024 all 18 open threads —
+# defeat the shipped gate: on combsmith/.github#1024 all 18 open threads —
 # including a Critical unmatched-brace finding on scripts/apply-repo-settings.sh —
 # went to resolved between 14:00Z and 14:03Z with NO commit at all (head unchanged
 # at 30375c5c). The #1567/#1604 fix only put an evidence bar on the `status=applied`

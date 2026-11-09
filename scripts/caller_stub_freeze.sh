@@ -41,7 +41,7 @@ source "${CALLER_FREEZE_DIR}/fleet_stub_drift.sh"
 
 # ── Covered-stub manifest ─────────────────────────────────────────────────────
 # Each row: "stub_path|job|baseline_name" — the ring-0 / self-host caller stubs
-# whose reusable lives in petry-projects/.github-private and is pinned to a canary
+# whose reusable lives in combsmith/.github-private and is pinned to a canary
 # channel tag (docs/initiatives/agentic-release-strategy.md §5). These are the
 # stubs Part A can least afford to get wrong (a broken forwarding change here
 # breaks the source repo's own automation post-merge), so they are frozen.

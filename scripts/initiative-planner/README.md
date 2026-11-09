@@ -57,7 +57,7 @@ python3 scripts/initiative-planner/validate-plan.py plan.json
 
 # 2. Dry-run apply — logs intended mutations, touches nothing:
 DRY_RUN=1 DRY_RUN_LOG=/tmp/plan.jsonl \
-REPO=petry-projects/.github-private \
+REPO=combsmith/.github-private \
 DISCUSSION_NUMBER=413 DISCUSSION_NODE_ID=D_xxx \
 PLAN_PATH=plan.json \
 bash scripts/initiative-planner/apply-plan.sh
