@@ -41,7 +41,7 @@ IGNORE_PATTERNS=()
 for _p in "${_IGNORE_RAW[@]}"; do
   _p="${_p#"${_p%%[![:space:]]*}"}"  # ltrim
   _p="${_p%"${_p##*[![:space:]]}"}"  # rtrim
-  [ -n "$_p" ] && IGNORE_PATTERNS+=("$_p")
+  [[ -n "$_p" ]] && IGNORE_PATTERNS+=("$_p")
 done
 
 _is_ignored() {
@@ -61,7 +61,7 @@ echo "Enumerating repos in ${ORG}..."
 repos=$(gh api "orgs/${ORG}/repos?per_page=100&type=all" \
   --jq '[.[] | select(.archived == false)] | .[].full_name' 2>/dev/null || true)
 
-if [ -z "$repos" ]; then
+if [[ -z "$repos" ]]; then
   echo "::error::Could not enumerate repos for org ${ORG} — check GH_TOKEN scope."
   exit 1
 fi
@@ -88,7 +88,7 @@ while IFS= read -r repo; do
     exit 1
   fi
 
-  [ -z "$docs_listing" ] && continue
+  [[ -z "$docs_listing" ]] && continue
 
   while IFS= read -r doc_name; do
     full_path="${repo}/docs/${doc_name}"
@@ -103,7 +103,7 @@ while IFS= read -r repo; do
       exit 1
     fi
 
-    [ -z "$last_commit" ] && continue
+    [[ -z "$last_commit" ]] && continue
 
     commit_date="${last_commit:0:10}"  # YYYY-MM-DD
 
@@ -119,15 +119,15 @@ done <<< "$repos"
 # ---------------------------------------------------------------------------
 # 4. Early exit when no stale docs
 # ---------------------------------------------------------------------------
-if [ -z "$stale_entries" ]; then
+if [[ -z "$stale_entries" ]]; then
   echo "No stale docs found. Health check passed."
-  [ -n "${GITHUB_ENV:-}" ] && echo "HAS_STALE_DOCS=false" >> "$GITHUB_ENV"
+  [[ -n "${GITHUB_ENV:-}" ]] && echo "HAS_STALE_DOCS=false" >> "$GITHUB_ENV"
   exit 0
 fi
 
 stale_count=$(printf '%b' "$stale_entries" | wc -l | tr -d ' ')
 echo "Found ${stale_count} stale doc file(s)."
-[ -n "${GITHUB_ENV:-}" ] && echo "HAS_STALE_DOCS=true" >> "$GITHUB_ENV"
+[[ -n "${GITHUB_ENV:-}" ]] && echo "HAS_STALE_DOCS=true" >> "$GITHUB_ENV"
 
 # ---------------------------------------------------------------------------
 # 5. Build stale-files table for Claude

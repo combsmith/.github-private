@@ -37,7 +37,7 @@ main() {
   log "=== Scenario: ${SCENARIO_NAME} ==="
   log "Test: deep-tier validation repro is bounded by DEEP_TIMEOUT_SEC (cannot hang)"
 
-  if [ ! -f "${ENGINE_SCRIPT}" ]; then
+  if [[ ! -f "${ENGINE_SCRIPT}" ]]; then
     err "engine.sh not found at: ${ENGINE_SCRIPT}"
     record_result "${SCENARIO_NAME}" "FAIL" "engine.sh not found"
     exit 1
@@ -105,7 +105,7 @@ main() {
     all_pass=false
   fi
 
-  if [ "${all_pass}" = "true" ]; then
+  if [[ "${all_pass}" = "true" ]]; then
     log "[PASS] ${SCENARIO_NAME}: deep-tier validation cannot hang the review"
     record_result "${SCENARIO_NAME}" "PASS" "rc=${rc} elapsed=${elapsed}s budget=${budget}s"
     exit 0

@@ -188,7 +188,7 @@ btr_fetch_pr_threads() {
   }'
   local all='[]' has_next="true" cursor prior_cursor="" page nodes
   local cursor_args=()
-  while [ "$has_next" = "true" ]; do
+  while [[ "$has_next" = "true" ]]; do
     page=$(gh api graphql -f query="$query" -F owner="${repo%%/*}" -F repo="${repo##*/}" \
       -F pr="$pr" "${cursor_args[@]}" 2>/dev/null) || return 1
     printf '%s' "$page" | jq -e '(.errors // []) | length == 0' >/dev/null 2>&1 || return 1
@@ -199,10 +199,10 @@ btr_fetch_pr_threads() {
       | if type == "boolean" then tostring else "invalid" end' 2>/dev/null) || return 1
     case "$has_next" in true|false) ;; *) return 1 ;; esac
     cursor=$(printf '%s' "$page" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor // ""')
-    if [ "$has_next" = "true" ] && [ -z "$cursor" ]; then
+    if [[ "$has_next" = "true" ]] && [[ -z "$cursor" ]]; then
       return 1
     fi
-    if [ "$has_next" = "true" ] && [ "$cursor" = "$prior_cursor" ]; then
+    if [[ "$has_next" = "true" ]] && [[ "$cursor" = "$prior_cursor" ]]; then
       return 1
     fi
     prior_cursor="$cursor"

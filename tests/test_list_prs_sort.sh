@@ -64,7 +64,7 @@ keep_payload() { printf '%s' "$1" | sed -E 's/^KEEP\t//'; }
 INPUT="1|2026-01-01T00:00:00Z|https://github.com/org/myapp/pull/1
 0|2026-06-01T00:00:00Z|https://github.com/org/.github/pull/10"
 FIRST=$(sort_entries "$INPUT" | head -1)
-if [ "$FIRST" = "https://github.com/org/.github/pull/10" ]; then
+if [[ "$FIRST" = "https://github.com/org/.github/pull/10" ]]; then
   ok "sort: .github beats non-infra regardless of date"
 else
   fail "sort: .github beats non-infra regardless of date" "first was '$FIRST'"
@@ -74,7 +74,7 @@ fi
 INPUT="1|2026-01-01T00:00:00Z|https://github.com/org/myapp/pull/1
 0|2026-06-01T00:00:00Z|https://github.com/org/.github-private/pull/5"
 FIRST=$(sort_entries "$INPUT" | head -1)
-if [ "$FIRST" = "https://github.com/org/.github-private/pull/5" ]; then
+if [[ "$FIRST" = "https://github.com/org/.github-private/pull/5" ]]; then
   ok "sort: .github-private beats non-infra regardless of date"
 else
   fail "sort: .github-private beats non-infra regardless of date" "first was '$FIRST'"
@@ -87,12 +87,12 @@ INPUT="1|2026-03-01T00:00:00Z|https://github.com/org/app/pull/3
 RESULT=$(sort_entries "$INPUT")
 FIRST=$(printf '%s\n' "$RESULT" | sed -n '1p')
 LAST=$(printf '%s\n'  "$RESULT" | sed -n '3p')
-if [ "$FIRST" = "https://github.com/org/app/pull/1" ]; then
+if [[ "$FIRST" = "https://github.com/org/app/pull/1" ]]; then
   ok "sort: oldest PR first within non-infra tier"
 else
   fail "sort: oldest PR first within non-infra tier" "first was '$FIRST'"
 fi
-if [ "$LAST" = "https://github.com/org/app/pull/3" ]; then
+if [[ "$LAST" = "https://github.com/org/app/pull/3" ]]; then
   ok "sort: newest PR last within non-infra tier"
 else
   fail "sort: newest PR last within non-infra tier" "last was '$LAST'"
@@ -104,12 +104,12 @@ INPUT="0|2026-03-01T00:00:00Z|https://github.com/org/.github/pull/20
 RESULT=$(sort_entries "$INPUT")
 FIRST=$(printf '%s\n' "$RESULT" | sed -n '1p')
 SECOND=$(printf '%s\n' "$RESULT" | sed -n '2p')
-if [ "$FIRST" = "https://github.com/org/.github-private/pull/2" ]; then
+if [[ "$FIRST" = "https://github.com/org/.github-private/pull/2" ]]; then
   ok "sort: oldest infra PR first (.github-private before .github)"
 else
   fail "sort: oldest infra PR first" "first was '$FIRST'"
 fi
-if [ "$SECOND" = "https://github.com/org/.github/pull/20" ]; then
+if [[ "$SECOND" = "https://github.com/org/.github/pull/20" ]]; then
   ok "sort: newer infra PR second"
 else
   fail "sort: newer infra PR second" "second was '$SECOND'"
@@ -125,16 +125,16 @@ L1=$(printf '%s\n' "$RESULT" | sed -n '1p')
 L2=$(printf '%s\n' "$RESULT" | sed -n '2p')
 L3=$(printf '%s\n' "$RESULT" | sed -n '3p')
 L4=$(printf '%s\n' "$RESULT" | sed -n '4p')
-[ "$L1" = "https://github.com/org/.github-private/pull/2" ] \
+[[ "$L1" = "https://github.com/org/.github-private/pull/2" ]] \
   && ok "full sort: .github-private (oldest infra) first"  \
   || fail "full sort: .github-private first" "got '$L1'"
-[ "$L2" = "https://github.com/org/.github/pull/10" ] \
+[[ "$L2" = "https://github.com/org/.github/pull/10" ]] \
   && ok "full sort: .github (newer infra) second"  \
   || fail "full sort: .github second" "got '$L2'"
-[ "$L3" = "https://github.com/org/app/pull/1" ] \
+[[ "$L3" = "https://github.com/org/app/pull/1" ]] \
   && ok "full sort: oldest non-infra third"  \
   || fail "full sort: oldest non-infra third" "got '$L3'"
-[ "$L4" = "https://github.com/org/other/pull/5" ] \
+[[ "$L4" = "https://github.com/org/other/pull/5" ]] \
   && ok "full sort: newer non-infra fourth"  \
   || fail "full sort: newer non-infra fourth" "got '$L4'"
 
@@ -171,7 +171,7 @@ else
   JSON='[{"url":"https://github.com/org/.github/pull/1","author":{"login":"alice"},"createdAt":"2026-01-01T00:00:00Z","isDraft":false}]'
   ENTRY=$(keep_payload "$(classify "donpetry-bot" "$JSON")")
   PRIORITY=$(printf '%s' "$ENTRY" | cut -d'|' -f1)
-  if [ "$PRIORITY" = "0" ]; then
+  if [[ "$PRIORITY" = "0" ]]; then
     ok "jq: .github URL classified as priority 0"
   else
     fail "jq: .github URL classified as priority 0" "got '$PRIORITY'"
@@ -181,7 +181,7 @@ else
   JSON='[{"url":"https://github.com/org/.github-private/pull/1","author":{"login":"alice"},"createdAt":"2026-01-01T00:00:00Z","isDraft":false}]'
   ENTRY=$(keep_payload "$(classify "donpetry-bot" "$JSON")")
   PRIORITY=$(printf '%s' "$ENTRY" | cut -d'|' -f1)
-  if [ "$PRIORITY" = "0" ]; then
+  if [[ "$PRIORITY" = "0" ]]; then
     ok "jq: .github-private URL classified as priority 0"
   else
     fail "jq: .github-private URL classified as priority 0" "got '$PRIORITY'"
@@ -191,7 +191,7 @@ else
   JSON='[{"url":"https://github.com/org/myapp/pull/1","author":{"login":"alice"},"createdAt":"2026-01-01T00:00:00Z","isDraft":false}]'
   ENTRY=$(keep_payload "$(classify "donpetry-bot" "$JSON")")
   PRIORITY=$(printf '%s' "$ENTRY" | cut -d'|' -f1)
-  if [ "$PRIORITY" = "1" ]; then
+  if [[ "$PRIORITY" = "1" ]]; then
     ok "jq: regular repo URL classified as priority 1"
   else
     fail "jq: regular repo URL classified as priority 1" "got '$PRIORITY'"
@@ -233,7 +233,7 @@ else
   JSON='[{"url":"https://github.com/org/app/pull/42","author":{"login":"alice"},"createdAt":"2026-05-01T12:34:56Z","isDraft":false}]'
   ENTRY=$(keep_payload "$(classify "donpetry-bot" "$JSON")")
   DATE=$(printf '%s' "$ENTRY" | cut -d'|' -f2)
-  if [ "$DATE" = "2026-05-01T12:34:56Z" ]; then
+  if [[ "$DATE" = "2026-05-01T12:34:56Z" ]]; then
     ok "jq: createdAt preserved in KEEP payload field 2"
   else
     fail "jq: createdAt preserved in KEEP payload field 2" "got '$DATE'"

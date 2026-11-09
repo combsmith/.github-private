@@ -90,8 +90,8 @@ JQ_CLASSIFY='.[] |
 # all_entries accumulate across repos.
 process_repo_prs() {
   local raw="$1" line tag rest reason url
-  while IFS= read -r line || [ -n "$line" ]; do
-    [ -z "$line" ] && continue
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" ]] && continue
     tag="${line%%$'\t'*}"
     rest="${line#*$'\t'}"
     case "$tag" in
@@ -155,10 +155,10 @@ search_namespace() {
     echo "::error::list-prs: could not parse the repo list for $owner" >&2
     exit 1
   }
-  while IFS= read -r line || [ -n "$line" ]; do
-    [ -z "$line" ] && continue
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" ]] && continue
     repo="${line#*$'\t'}"
-    if [ "${line%%$'\t'*}" = "SKIP" ]; then
+    if [[ "${line%%$'\t'*}" = "SKIP" ]]; then
       echo "::notice::list-prs: skipped repo $repo (reason: ghsa-temporary-private-fork)" >&2
       continue
     fi
@@ -172,7 +172,7 @@ search_namespace() {
       echo "::warning::list-prs: 'gh pr list' failed for $repo — its open PRs are omitted from this sweep" >&2
       raw='[]'
     fi
-    [ -z "$raw" ] && raw='[]'
+    [[ -z "$raw" ]] && raw='[]'
     process_repo_prs "$raw"
   done <<< "$repo_lines"
 }
@@ -184,10 +184,10 @@ search_namespace "$BOT_USER"
 search_namespace "$TARGET_ORG"
 
 # Additional orgs from DELEGATION_ORGS (skip TARGET_ORG and BOT_USER — already covered above)
-if [ -n "$DELEGATION_ORGS" ]; then
+if [[ -n "$DELEGATION_ORGS" ]]; then
   IFS=',' read -ra _ORGS <<< "$DELEGATION_ORGS"
   for _org in "${_ORGS[@]}"; do
-    if [ "$_org" != "$TARGET_ORG" ] && [ "$_org" != "$BOT_USER" ]; then
+    if [[ "$_org" != "$TARGET_ORG" ]] && [[ "$_org" != "$BOT_USER" ]]; then
       search_namespace "$_org"
     fi
   done

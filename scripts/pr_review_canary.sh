@@ -60,7 +60,7 @@ WORKFLOW_FILE="${WORKFLOW_FILE:-pr-review-trigger.yml}"
 #                     including `skipped` while the fleet is not paused
 classify_canary_run() {
   local conclusion="${1:-}" fleet_paused="${2:-}"
-  if [ "$conclusion" = "skipped" ]; then
+  if [[ "$conclusion" = "skipped" ]]; then
     # GitHub compares the variable without regard to case, so `TRUE` pauses too.
     case "$fleet_paused" in
       [Tt][Rr][Uu][Ee]) echo "PAUSED"; return 0 ;;
@@ -83,14 +83,14 @@ classify_canary_run() {
 # observed) is NOT this canary's signal and must not turn it red, or unrelated
 # flakes raise false Fleet Monitor trackers (#1612). Exit 1 (no alert) otherwise.
 canary_is_failure() {
-  [ "${1:-}" = "STARTUP_FAILURE" ]
+  [[ "${1:-}" = "STARTUP_FAILURE" ]]
 }
 
 # canary_report <status> <repo> <run_url> [today]
 # Writes a Markdown alert/health body to stdout. Pure: no network.
 canary_report() {
   local st="${1:-}" repo="${2:-}" run_url="${3:-}" today="${4:-}"
-  [ -n "$today" ] || today="$(date -u +%Y-%m-%d)"
+  [[ -n "$today" ]] || today="$(date -u +%Y-%m-%d)"
 
   local icon headline
   case "$st" in
@@ -106,26 +106,26 @@ canary_report() {
   printf '_Repo `%s` · ring-0 self-host stub `pr-review-trigger.yml` → `pr-review.yml@pr-review/next`_\n\n' "$repo"
   printf -- '- **Result:** %s — %s\n' "$st" "$headline"
   printf -- '- **Mode:** dry-run dispatch (`dry_run=true`) — submits no reviews/comments\n'
-  [ -n "$run_url" ] && printf -- '- **Run:** %s\n' "$run_url"
+  [[ -n "$run_url" ]] && printf -- '- **Run:** %s\n' "$run_url"
   printf '\n'
 
-  if [ "$st" = "STARTUP_FAILURE" ]; then
+  if [[ "$st" = "STARTUP_FAILURE" ]]; then
     printf '> The dispatched run ended in `startup_failure`. This is the #1034 channel-skew defect: '
     printf 'the `pr-review-trigger.yml` caller stub forwards a `with:` input that its pinned channel '
     printf '(`pr-review/next`) does not declare, so GitHub rejects the reusable call at startup. '
     printf 'Nothing in PR CI exercises this — sequence the input per AGENTS.md '
     printf '("Caller-stub input forwarding across channel pins"): land it in the reusable, promote the '
     printf 'channel, then teach the stub to forward it.\n'
-  elif [ "$st" = "NO_RUN" ]; then
+  elif [[ "$st" = "NO_RUN" ]]; then
     printf '> No `workflow_dispatch` pr-review-trigger run completed within the poll window. '
     printf 'The dispatch may have been rejected (PAT missing/expired) or the run is still queued. '
     printf 'This is not the channel-skew signal (no `startup_failure` observed), so it does not fail the canary.\n'
-  elif [ "$st" = "PAUSED" ]; then
+  elif [[ "$st" = "PAUSED" ]]; then
     printf '> The dispatched run ended `skipped` (every job skipped) while the fleet pause switch '
     printf '(`AGENTS_PAUSED=true`) is set. `pr-review.yml` has no pause notice job, so that is all a paused '
     printf 'run records. This is neither a pass nor a failure of the review. The run did get past startup, '
     printf 'so it is not the `startup_failure` channel-skew signal either.\n'
-  elif [ "$st" != "OK" ]; then
+  elif [[ "$st" != "OK" ]]; then
     printf '> The dry-run pr-review-trigger dispatch concluded non-success, but NOT with `startup_failure` — '
     printf 'the sole fingerprint of the #1034 channel-skew defect. Because a `cancelled` or `timed_out` run '
     printf 'can end BEFORE the reusable call reaches startup, this result does not by itself confirm the '
@@ -140,7 +140,7 @@ canary_report() {
 # ---------------------------------------------------------------------------
 
 main() {
-  if [ -z "${GH_TOKEN:-}" ]; then
+  if [[ -z "${GH_TOKEN:-}" ]]; then
     echo "::error::GH_TOKEN is required — a workflow_dispatch fired with GITHUB_TOKEN will not start a run." >&2
     exit 1
   fi
@@ -177,7 +177,7 @@ main() {
             [(.databaseId // "" | tostring), (.status // ""), (.conclusion // "")] | @tsv' \
       2>/dev/null || true)"
     IFS=$'\t' read -r run_id run_status conclusion <<< "$row"
-    [ "$run_status" = "completed" ] && break
+    [[ "$run_status" = "completed" ]] && break
     sleep "$interval"
   done
 
@@ -185,38 +185,38 @@ main() {
   result="$(classify_canary_run "$conclusion" "${AGENTS_PAUSED:-}")"
 
   local run_url=""
-  [ -n "$run_id" ] && run_url="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs/${run_id}"
+  [[ -n "$run_id" ]] && run_url="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs/${run_id}"
 
   local report
   report="$(canary_report "$result" "$REPO" "$run_url" "$today")"
   printf '%s\n' "$report"
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     printf '%s\n' "$report" >> "$GITHUB_STEP_SUMMARY"
   fi
-  if [ -n "${CANARY_OUT:-}" ]; then
+  if [[ -n "${CANARY_OUT:-}" ]]; then
     printf '%s\n' "$report" > "$CANARY_OUT"
   fi
 
-  if [ -n "${GITHUB_ENV:-}" ]; then
+  if [[ -n "${GITHUB_ENV:-}" ]]; then
     echo "CANARY_STATUS=${result}" >> "$GITHUB_ENV"
   fi
 
   if canary_is_failure "$result"; then
-    [ -n "${GITHUB_ENV:-}" ] && echo "CANARY_FAILED=true" >> "$GITHUB_ENV"
+    [[ -n "${GITHUB_ENV:-}" ]] && echo "CANARY_FAILED=true" >> "$GITHUB_ENV"
     echo "::error::PR-review-trigger canary result: ${result}" >&2
     exit 1
   fi
   # Keep the green exit for OK/FAILED/NO_RUN/PAUSED (only startup_failure gates this
   # canary, per #1612), but do not announce non-OK results as a successful
   # dispatch — that would report a downstream failure or missing run as healthy.
-  if [ "$result" = "OK" ]; then
+  if [[ "$result" = "OK" ]]; then
     echo "::notice::PR-review-trigger canary passed (dry-run dispatch concluded success)." >&2
-  elif [ "$result" = "PAUSED" ]; then
+  elif [[ "$result" = "PAUSED" ]]; then
     echo "::notice title=Agent fleet paused::PR-review-trigger canary: the dispatched run skipped every job and the agent fleet is paused (AGENTS_PAUSED=true). Not a pass and not a failure." >&2
   fi
 }
 
 # Only run main when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

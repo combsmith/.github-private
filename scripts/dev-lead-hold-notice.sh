@@ -43,11 +43,11 @@ MODE="${MODE:-notice}"
 NOTICE_AUTHOR="${NOTICE_AUTHOR:-${BOT_USER:-}}"
 DRY_RUN="${DEV_LEAD_DRY_RUN:-${DRY_RUN:-false}}"
 
-if [ -z "$REPO" ]; then
+if [[ -z "$REPO" ]]; then
   echo "::warning::dev-lead-hold-notice: REPO/GITHUB_REPOSITORY not set — skipping"
   exit 0
 fi
-if [ -z "$SUBJECT_NUMBER" ]; then
+if [[ -z "$SUBJECT_NUMBER" ]]; then
   echo "::warning::dev-lead-hold-notice: SUBJECT_NUMBER not set — skipping"
   exit 0
 fi
@@ -83,17 +83,17 @@ collapse_stale_notices() {
   ' "$COMMENTS_FILE" 2>/dev/null || true)
 
   while IFS= read -r cid; do
-    [ -z "$cid" ] && continue
+    [[ -z "$cid" ]] && continue
     old_body=$(gh api "repos/$REPO/issues/comments/$cid" --jq '.body' 2>/dev/null) || {
       echo "::warning::dev-lead-hold-notice: failed to fetch comment $cid on $REPO#$SUBJECT_NUMBER — skipping collapse"
       continue
     }
     cur_label=$(hold_notice_label_from_body "$old_body") || continue
-    if [ -n "$keep_label" ] && [ "$cur_label" = "$keep_label" ]; then
+    if [[ -n "$keep_label" ]] && [[ "$cur_label" = "$keep_label" ]]; then
       continue
     fi
     new_body=$(hold_notice_supersede_body "$old_body" "$keep_label")
-    if [ "$DRY_RUN" = "true" ]; then
+    if [[ "$DRY_RUN" = "true" ]]; then
       echo "[dry-run] would collapse stale hold notice $cid (label=$cur_label) on $REPO#$SUBJECT_NUMBER"
       continue
     fi
@@ -113,7 +113,7 @@ case "$MODE" in
     ;;
 
   notice)
-    if [ -z "$HOLD_LABEL" ]; then
+    if [[ -z "$HOLD_LABEL" ]]; then
       echo "::warning::dev-lead-hold-notice: HOLD_LABEL not set in notice mode — skipping"
       exit 0
     fi
@@ -132,7 +132,7 @@ case "$MODE" in
     collapse_stale_notices "$HOLD_LABEL"
 
     body=$(hold_notice_body "$HOLD_LABEL")
-    if [ "$DRY_RUN" = "true" ]; then
+    if [[ "$DRY_RUN" = "true" ]]; then
       echo "[dry-run] would post hold notice on $REPO#$SUBJECT_NUMBER for label '$HOLD_LABEL':"
       printf '%s\n' "$body"
       exit 0
