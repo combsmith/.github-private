@@ -43,11 +43,6 @@ source "$(dirname "$0")/lib/test-job-handoff.sh"
 # Base-residue guard (#2216): uncommitted residue that restores PR files to base
 # content is dropped before the harness stages the pass.
 source "$(dirname "$0")/lib/base-residue-guard.sh"
-# PR issue-comment disposition verifier (#1813): the issue-comment sibling of
-# addressed-claim-verify.sh. Turns a dev-lead comment-disposition reply into a
-# machine-checkable claim the harness verifies before minimizing the original
-# comment RESOLVED.
-source "$(dirname "$0")/lib/comment-disposition-verify.sh"
 # Review-thread deferral verifier (#2045): the thread-side sibling of the
 # `out-of-scope` disposition. A bot thread deferred to an open tracking issue that
 # links it is resolved by resolve_deferred_bot_threads.
