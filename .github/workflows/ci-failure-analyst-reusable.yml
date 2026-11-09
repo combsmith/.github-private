@@ -41,16 +41,19 @@ jobs:
       # reusable's own commit, so a caller pinned to a channel always runs the
       # script that matches the workflow it pinned. .github-private is public,
       # so the caller's token can read it.
-      - name: Checkout analyst tooling
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          repository: combsmith/.github-private
-          ref: ${{ job.workflow_sha }}
-          path: .ci-analyst-tooling
-          sparse-checkout: scripts/ci-failure-analyst-resolve.sh
-          sparse-checkout-cone-mode: false
-          fetch-depth: 1
-          persist-credentials: false
+      # Downloaded through the contents API rather than actions/checkout: this
+      # is a single trusted file at the reusable's own commit, never PR code, and
+      # a checkout step here trips CodeQL's untrusted-checkout heuristic.
+      - name: Fetch analyst tooling
+        env:
+          TOOLING_REF: ${{ job.workflow_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-analyst-tooling/scripts
+          gh api -H "Accept: application/vnd.github.raw" \
+            "repos/combsmith/.github-private/contents/scripts/ci-failure-analyst-resolve.sh?ref=${TOOLING_REF}" \
+            > .ci-analyst-tooling/scripts/ci-failure-analyst-resolve.sh
+          test -s .ci-analyst-tooling/scripts/ci-failure-analyst-resolve.sh
 
       # Resolves the head SHA, the non-fork PR and the failing run from either a
       # check_run payload (third-party checks) or a workflow_run payload (failed
