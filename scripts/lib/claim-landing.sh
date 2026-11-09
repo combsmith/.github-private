@@ -5,7 +5,7 @@
 # WHAT IS WRONG WITHOUT THIS
 #   The fix-reviews / fix-bot-comment model posts its "Fixed in …" reply (with the
 #   addressed-marker + #1692 claim) from its OWN shell, BEFORE the harness commits
-#   and pushes. On petry-projects/.github#1220 that left false "Fixed" replies
+#   and pushes. On combsmith/.github#1220 that left false "Fixed" replies
 #   standing when the push never landed, and when the claim named the PR's FIRST
 #   commit (a stale pre-pass head). Separately, CodeRabbit marked a thread
 #   "✅ Confirmed as addressed" on a reply describing `15a919e`, which WAS pushed:

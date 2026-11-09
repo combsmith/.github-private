@@ -21,7 +21,7 @@ setup() {
   POSTED="$(mktemp)"; LABELS="$(mktemp)"; MERGE="$(mktemp)"
   export FIX POSTED LABELS MERGE
   export PATH="$MOCK_BIN:$PATH"
-  export REPO="petry-projects/.github-private"
+  export REPO="combsmith/.github-private"
   export DEV_LEAD_DRY_RUN=false
   echo '[]' > "$FIX/comments.json"
   echo '[]' > "$FIX/commits.json"

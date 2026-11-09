@@ -23,7 +23,7 @@ except ImportError:
     yaml = None
 
 WORKFLOW = ".github/workflows/pr-auto-review.yml"
-REUSABLE = "petry-projects/.github/.github/workflows/pr-auto-review-reusable.yml"
+REUSABLE = "combsmith/.github/.github/workflows/pr-auto-review-reusable.yml"
 EXPECTED_REF = "@pr-auto-review/v1-next"
 DEPENDABOT_ACTOR = "dependabot[bot]"
 

@@ -1,6 +1,6 @@
 # solution-architect — persona
 
-Formalized under the [Agentic Persona Standard](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).
+Formalized under the [Agentic Persona Standard](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
 Follows the **wrap-a-vendored-framework-agent, advisory-everywhere** path
 established by [`security-lead`](../security-lead/README.md) and
 [`qa-lead`](../qa-lead/README.md).
@@ -24,8 +24,8 @@ ratify drift by dressing preference up as policy.
 ## Why `solution-architect` and not the upstream agent's name
 
 The vendored agent has a person-name upstream ("Winston"). We do not use it. A
-persona is named for its **role** ([§1.6](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md)):
-`@petry-projects/solution-architect` tells a reader in a PR comment who is being
+persona is named for its **role** ([§1.6](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md)):
+`@combsmith/solution-architect` tells a reader in a PR comment who is being
 addressed and why; the upstream cast list does not. It also means swapping the
 agent underneath — or replacing it with a first-party layer — never changes how
 this persona is addressed. Upstream is referenced only by its technical skill id
@@ -34,15 +34,15 @@ this persona is addressed. Upstream is referenced only by its technical skill id
 ## How it is addressed
 
 ```text
-@petry-projects/solution-architect please measure this design against our ADRs
+@combsmith/solution-architect please measure this design against our ADRs
 ```
 
-The handle is the org **team** `petry-projects/solution-architect`, **never** the
+The handle is the org **team** `combsmith/solution-architect`, **never** the
 bare `@solution-architect` account — a bare role mention would notify a stranger
 on every use. The team is `privacy: closed` with
 `notification_setting: notifications_disabled`: it exists to route a webhook, not
 to page anyone. See
-[§4.1](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).
+[§4.1](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
 
 ## Overlap with existing review surfaces
 
@@ -86,7 +86,7 @@ Autocut cuts a new channel version only when a **reusable's blob** changes, but
 ([`prompts/solution-architect/advisory.md`](../../prompts/solution-architect/advisory.md))
 checked out at the pinned `agent_ref`, not a reusable of its own. A status/ring move
 on a prompt-only persona can therefore advance the scoreboard yet **propagate to
-nobody** — the [#1592](https://github.com/petry-projects/.github/issues/1592) hazard.
+nobody** — the [#1592](https://github.com/combsmith/.github/issues/1592) hazard.
 
 **Posture: route-around, not resolve.** Because `solution-architect` is
 mention-routed via the **shared** `persona-mention` channel
@@ -99,7 +99,7 @@ to reach consumers. Instead promotion is **verified against a real consumer** (b
 ### Verification: propagation must reach a consumer (routes-to ≠ promoted)
 
 A ring label moving is **not** evidence a promotion reached a consumer
-([Discussion #1360](https://github.com/petry-projects/.github/discussions/1360) §3b,
+([Discussion #1360](https://github.com/combsmith/.github/discussions/1360) §3b,
 learning 12). Two checks gate promotion:
 
 - **Hermetic guard, re-runnable at PR time** —
@@ -108,11 +108,11 @@ learning 12). Two checks gate promotion:
   persona's deployed surface stays a subset of the shared mention router's events (no
   new trigger surface) and separates *routes-to* from *promoted*: it **fails** only on
   the skew state — status past `draft` with **no** `agents.solution-architect`
-  registration — which is the [#1052](https://github.com/petry-projects/.github/issues/1052)
+  registration — which is the [#1052](https://github.com/combsmith/.github/issues/1052)
   hollow-green class. Run: `bash scripts/persona_reach_check.sh solution-architect`.
 - **Live smoke, operational** — mirror qa-lead's
-  [#1300](https://github.com/petry-projects/.github/issues/1300) mention smoke test:
-  post a real `@petry-projects/solution-architect` mention on a fixture item and
+  [#1300](https://github.com/combsmith/.github/issues/1300) mention smoke test:
+  post a real `@combsmith/solution-architect` mention on a fixture item and
   confirm the resulting `persona-runner` run **resolves to this persona** and posts its
   advisory. Trust the live mention, not the ring label.
 
@@ -121,14 +121,14 @@ learning 12). Two checks gate promotion:
 Advancing `status` past `draft` makes the `validate-personas` job
 ([`personas/validate-personas.py`](../validate-personas.py)) require an
 `agents.solution-architect` entry in the **cross-repo**
-`petry-projects/.github/standards/canary-rings.json` (persona-standards §6 step 2 —
+`combsmith/.github/standards/canary-rings.json` (persona-standards §6 step 2 —
 "register once", the single place ring membership is written). That entry is an
 **untracked cross-repo prerequisite** and cannot be authored from this repo; flipping
 `status` here **before** it lands turns `validate-personas` red post-merge — the exact
 skew this route-around exists to prevent. So the order is fixed:
 
 1. **Register first (cross-repo).** Add the one `agents.solution-architect` entry to
-   `petry-projects/.github/standards/canary-rings.json` (`host`, `run_workflow`,
+   `combsmith/.github/standards/canary-rings.json` (`host`, `run_workflow`,
    `rings[]`, `gate`) — served by the shared `persona-mention` router, not a dedicated
    reusable, so it registers on that channel the way the existing `persona-mention`
    entry does. This is the epic's untracked prerequisite.

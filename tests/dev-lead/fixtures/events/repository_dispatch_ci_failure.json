@@ -4,22 +4,22 @@
   "client_payload": {
     "pr_number": 42,
     "head_sha": "abc123def456",
-    "repo": "petry-projects/.github-private",
+    "repo": "combsmith/.github-private",
     "checks": [
       {
         "name": "lint / eslint",
         "conclusion": "failure",
-        "details_url": "https://github.com/petry-projects/.github-private/actions/runs/12345",
+        "details_url": "https://github.com/combsmith/.github-private/actions/runs/12345",
         "app_slug": "github-actions"
       },
       {
         "name": "test / unit",
         "conclusion": "failure",
-        "details_url": "https://github.com/petry-projects/.github-private/actions/runs/12346",
+        "details_url": "https://github.com/combsmith/.github-private/actions/runs/12346",
         "app_slug": "github-actions"
       }
     ]
   },
-  "repository": { "full_name": "petry-projects/.github-private" },
+  "repository": { "full_name": "combsmith/.github-private" },
   "sender": { "login": "github-actions[bot]", "type": "Bot" }
 }

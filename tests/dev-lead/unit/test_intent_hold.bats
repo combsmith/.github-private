@@ -19,7 +19,7 @@ setup() {
   export BOT_USER="donpetry-bot"
   export TRUSTED_BOTS="copilot-pull-request-reviewer[bot],gemini-code-assist[bot]"
   export TRIGGER_PHRASES="@dev-lead"
-  export GITHUB_REPOSITORY="petry-projects/.github-private"
+  export GITHUB_REPOSITORY="combsmith/.github-private"
   # $BATS_TEST_TMPDIR is per-test and auto-removed on teardown/failure — no
   # manual mktemp -d / rm -rf, which is safer under parallel execution.
   MOCK_BIN="$BATS_TEST_TMPDIR/bin"

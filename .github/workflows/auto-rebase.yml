@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/auto-rebase.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md
-# Reusable:        petry-projects/.github/.github/workflows/auto-rebase-reusable.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/auto-rebase.yml
+# Standard:        combsmith/.github/standards/ci-standards.md
+# Reusable:        combsmith/.github/.github/workflows/auto-rebase-reusable.yml
 #
 # AGENTS — READ BEFORE EDITING:
 #   • This file is a THIN CALLER STUB. All branch-update logic lives in the
@@ -48,5 +48,5 @@ jobs:
     permissions:
       contents: write      # update-branch via GITHUB_TOKEN (may touch .github/workflows/)
       pull-requests: write # post comments on PRs
-    uses: petry-projects/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-next  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/auto-rebase-reusable.yml@auto-rebase/v2-next  # NOSONAR(githubactions:S7637) first-party channel ref
     secrets: inherit  # NOSONAR(githubactions:S7635) first-party trusted reusable

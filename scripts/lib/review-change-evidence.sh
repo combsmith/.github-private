@@ -4,7 +4,7 @@
 #
 # The defect: dev-lead posted status=applied / "Changes committed and pushed"
 # whenever *a* commit existed, not when the requested change landed — so a
-# cosmetic or unrelated edit satisfied the bar (observed on petry-projects/.github#995:
+# cosmetic or unrelated edit satisfied the bar (observed on combsmith/.github#995:
 # a review asked for eight specific changes; three consecutive passes each
 # reported success while the net diff stayed +364/-0 and every requested change
 # scored zero occurrences).

@@ -1,6 +1,6 @@
 # DevOps Lead — infrastructure, CI/CD, and deployment advisor
 
-Formalized under the [Agentic Persona Standard](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).
+Formalized under the [Agentic Persona Standard](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
 `devops-lead` wraps the vendored [BMAD B-Great Suite](../../frameworks/bmad-bgreat-suite/VENDOR.md)
 DevOps agent (`bgr-agent-riley-devops`, pinned to commit `ae8914e84b87`), consumed
 **by path** as plain markdown.
@@ -17,8 +17,8 @@ configuration drift are treated as defects, not conveniences.
 ## Why `devops-lead` and not the upstream agent's name
 
 The vendored agent has a person-name upstream. We do not use it. A persona is
-named for its **role** ([§1.6](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md)):
-`@petry-projects/devops-lead` tells a reader in a PR comment who is being
+named for its **role** ([§1.6](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md)):
+`@combsmith/devops-lead` tells a reader in a PR comment who is being
 addressed and why; the upstream cast list does not. Swapping the agent
 underneath — or replacing it with a first-party layer — never changes how this
 persona is addressed. Upstream is referenced only by its technical skill id
@@ -27,15 +27,15 @@ persona is addressed. Upstream is referenced only by its technical skill id
 ## How it is addressed
 
 ```text
-@petry-projects/devops-lead please review the deployment strategy on this PR
+@combsmith/devops-lead please review the deployment strategy on this PR
 ```
 
-The handle is the org **team** `petry-projects/devops-lead`, not a user account —
+The handle is the org **team** `combsmith/devops-lead`, not a user account —
 `@devops-lead` is a real GitHub account owned by an unrelated person, so a bare
 role mention would notify a stranger on every use. The team is `privacy: closed`
 with `notification_setting: notifications_disabled`: it exists to route a
 webhook, not to page anyone. See
-[§4.1](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).
+[§4.1](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
 
 ## Relationship to the auto-rebase / CI tooling
 
@@ -78,7 +78,7 @@ The full gate is the Definition of Done in `persona-standards.md` §7.
 
 ## Contributing upstream
 
-This persona's behavior lives upstream in `petry-projects/bmad-bgreat-suite`. Do
+This persona's behavior lives upstream in `combsmith/bmad-bgreat-suite`. Do
 not hand-edit `frameworks/`. Org-specific behavior is layered via
 `definition.layers[].local_overrides`; anything general enough to help other BMAD
 users should be raised upstream (`upstream_candidate: true`) rather than kept as

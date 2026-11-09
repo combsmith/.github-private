@@ -20,13 +20,13 @@
       "sha": "hhh888iii999",
       "ref": "feat/utilities",
       "repo": {
-        "full_name": "petry-projects/.github-private"
+        "full_name": "combsmith/.github-private"
       }
     },
     "base": {
       "ref": "main",
       "repo": {
-        "full_name": "petry-projects/.github-private"
+        "full_name": "combsmith/.github-private"
       }
     },
     "labels": [
@@ -36,7 +36,7 @@
     ]
   },
   "repository": {
-    "full_name": "petry-projects/.github-private"
+    "full_name": "combsmith/.github-private"
   },
   "sender": {
     "login": "copilot-pull-request-reviewer[bot]",

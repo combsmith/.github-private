@@ -32,7 +32,7 @@ setup() {
 _stub_body() {
   local variant="${1:-sync}"
   cat <<EOF
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/persona-mention.yml
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/persona-mention.yml
 # Do not change the trigger events in a consumer repo.
 name: Persona Mention (${variant})
 on:
@@ -40,7 +40,7 @@ on:
     types: [created]
 jobs:
   route:
-    uses: petry-projects/.github/.github/workflows/persona-mention-reusable.yml@v1
+    uses: combsmith/.github/.github/workflows/persona-mention-reusable.yml@v1
 EOF
 }
 
@@ -50,7 +50,7 @@ _hl_body() {
 name: dev-lead (${variant})
 jobs:
   dispatch:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
 EOF
 }
 

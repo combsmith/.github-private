@@ -14,7 +14,7 @@ set -euo pipefail
 #   ! [remote rejected] ... (cannot lock ref 'refs/heads/...':
 #     unable to resolve reference 'refs/heads/...')
 #
-# (petry-projects/.github-private run 27078382804; issue #452.)
+# (combsmith/.github-private run 27078382804; issue #452.)
 #
 # Mitigation
 # ----------

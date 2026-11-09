@@ -1,9 +1,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# SOURCE OF TRUTH: petry-projects/.github/standards/workflows/sonarcloud.yml
-# Standard:        petry-projects/.github/standards/ci-standards.md#3-sonarcloud-analysis
+# SOURCE OF TRUTH: combsmith/.github/standards/workflows/sonarcloud.yml
+# Standard:        combsmith/.github/standards/ci-standards.md#3-sonarcloud-analysis
 #
 # ADOPTING THIS WORKFLOW:
-#   1. This ships verbatim into repos created from petry-projects/repo-template.
+#   1. This ships verbatim into repos created from combsmith/repo-template.
 #   2. Set sonar.projectKey / sonar.organization in sonar-project.properties to
 #      match your repo (see BOOTSTRAP.md), and add the SONAR_TOKEN repo secret.
 #   3. The job name `SonarCloud` is the required status check — keep it.

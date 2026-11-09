@@ -15,12 +15,12 @@ jobs:
   dev-lead:
     if: >-
       github.event_name == 'pull_request' || github.event_name == 'issue_comment'
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v1-stable
     secrets: inherit
 
   pr-review-mention:
     if: >-
       (github.event_name == 'pull_request' && github.event.action == 'review_requested')
       || github.event_name == 'issue_comment'
-    uses: petry-projects/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-stable
+    uses: combsmith/.github/.github/workflows/pr-review-mention-reusable.yml@pr-review-mention/v2-stable
     secrets: inherit

@@ -28,7 +28,7 @@ set -euo pipefail
 #      dedicated reusable, which produces unconsumed tags and an unattributable
 #      gate. That, or a widened trigger surface, is what this guard fails on.
 #
-# The truly-live confirmation (dispatch a real @petry-projects/solution-architect
+# The truly-live confirmation (dispatch a real @combsmith/solution-architect
 # mention and confirm the resulting persona-runner run resolves to this persona,
 # mirroring qa-lead's #1300 mention smoke test) is an operational step run against a
 # real consumer; this guard is the hermetic, offline core that gates the wiring and

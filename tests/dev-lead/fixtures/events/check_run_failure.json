@@ -5,18 +5,18 @@
     "name": "lint / eslint",
     "conclusion": "failure",
     "head_sha": "abc123def456",
-    "details_url": "https://github.com/petry-projects/.github-private/actions/runs/12345",
+    "details_url": "https://github.com/combsmith/.github-private/actions/runs/12345",
     "app": { "slug": "github-actions" },
     "pull_requests": [
       {
         "number": 42,
         "head": {
           "sha": "abc123def456",
-          "repo": { "full_name": "petry-projects/.github-private" }
+          "repo": { "full_name": "combsmith/.github-private" }
         }
       }
     ]
   },
-  "repository": { "full_name": "petry-projects/.github-private" },
+  "repository": { "full_name": "combsmith/.github-private" },
   "sender": { "login": "donpetry", "type": "User" }
 }

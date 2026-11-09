@@ -1,7 +1,7 @@
 # Third-Party Reviewer Scorecard — Weekly Report
 
 Org-wide, **deterministic** visibility into the agentic third-party code reviewers that
-participate in PR review across `petry-projects` — GitHub Copilot, Gemini Code Assist,
+participate in PR review across `combsmith` — GitHub Copilot, Gemini Code Assist,
 Codex, CodeRabbit, SonarCloud, Qodo Merge, CodeAnt, Graphite, and cubic. Every figure is computed with `jq`/`awk` from GitHub's
 own review data. **No LLM is involved** in this pipeline: a narrative / quality-scoring
 layer is a deliberately separate, human-approved add-on (see [Roadmap](#roadmap-v2--llm-optional-human-approved)).
@@ -18,7 +18,7 @@ matching the delivery pattern of the [Token Cost Observatory](./token-report.md)
 ## Reviewers tracked
 
 Identity comes from each bot's GraphQL App **login** — the single source of truth is the
-reviewer-source registry (`scripts/lib/reviewer-sources.tsv`, [#1425](https://github.com/petry-projects/.github-private/issues/1425)),
+reviewer-source registry (`scripts/lib/reviewer-sources.tsv`, [#1425](https://github.com/combsmith/.github-private/issues/1425)),
 which the advisory-review gate and this report both project from, so the report can never
 drift from the approval gate's notion of who these bots are.
 
@@ -49,7 +49,7 @@ entire history. This is far fewer API calls than per-PR REST fetches.
 Pages are deliberately **light** — `PR_PAGE_SIZE` PRs per page (default 10) with bounded
 nested connections — because a heavy page trips GitHub's GraphQL resource limit, which
 returns an HTTP-200 body carrying an `errors` array and **null `data`**. The old code read
-that as "no PRs" and silently dropped the whole repo (the ~8× Graphite undercount, [#1908](https://github.com/petry-projects/.github-private/issues/1908)).
+that as "no PRs" and silently dropped the whole repo (the ~8× Graphite undercount, [#1908](https://github.com/combsmith/.github-private/issues/1908)).
 A failed page is now **retried with a halved page size and backoff** (`PR_FETCH_MAX_ATTEMPTS`,
 default 4); a repo that still fails is recorded as a `{kind:"collect_error"}` record and
 surfaced prominently in the report — never a silent drop.
@@ -86,7 +86,7 @@ Each PR node is normalized (pure `jq`) into two record kinds:
   inline-comment count, thread resolution, and reactions. A check-run clean pass adds **0**
   to the review-event count but fills the `real_responses` / reviewed bucket.
 
-Three diagnostic record kinds keep collection gaps visible (never silent, [#1908](https://github.com/petry-projects/.github-private/issues/1908)):
+Three diagnostic record kinds keep collection gaps visible (never silent, [#1908](https://github.com/combsmith/.github-private/issues/1908)):
 
 - `{kind:"collect_error", repo, reason}` — a repo that could not be collected after retries.
 - `{kind:"truncation", repo, pr, connection}` — a nested connection (≥50), a review thread's
@@ -124,7 +124,7 @@ snapshot for downstream use — they're just kept out of the headline table to k
 ### Agent comment noise (our own automation)
 
 Distinct from the third-party scorecard above, the report also measures the **no-action share of
-our own automation's comments** — the net-new noise metric from [#1411](https://github.com/petry-projects/.github-private/issues/1411).
+our own automation's comments** — the net-new noise metric from [#1411](https://github.com/combsmith/.github-private/issues/1411).
 This is deterministic (`scripts/lib/comment-noise.sh`), computed from the automation markers each
 comment already carries — **no LLM**.
 
@@ -186,15 +186,15 @@ Runs automatically every Monday. To trigger manually:
 
 ```bash
 gh workflow run reviewer-report.yml \
-  --repo petry-projects/.github-private \
-  --field org=petry-projects \
+  --repo combsmith/.github-private \
+  --field org=combsmith \
   --field lookback_days=7
 ```
 
 To generate the report locally (requires a token with org-wide repo read):
 
 ```bash
-ORG=petry-projects LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
+ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
   bash scripts/reviewer_report.sh
 ```
 
@@ -202,7 +202,7 @@ ORG=petry-projects LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
 
 | File | Role |
 |---|---|
-| `scripts/lib/reviewer-sources.tsv` + `scripts/lib/reviewer-sources.sh` | The reviewer-source registry ([#1425](https://github.com/petry-projects/.github-private/issues/1425)) + its sourced lookup helpers — the single source of truth for bot logins and the `check_run_name` map, projected by the gate and this report. |
+| `scripts/lib/reviewer-sources.tsv` + `scripts/lib/reviewer-sources.sh` | The reviewer-source registry ([#1425](https://github.com/combsmith/.github-private/issues/1425)) + its sourced lookup helpers — the single source of truth for bot logins and the `check_run_name` map, projected by the gate and this report. |
 | `scripts/lib/advisory-review-gate.sh` | Advisory approval gate; rate-limit body patterns (reused, not forked). Its bot list is a registry projection. |
 | `scripts/lib/comment-noise.sh` | Pure no-action agent-comment classifier + `cn_render_noise_section` (the noise metric). Unit-tested in `tests/comment_noise.bats`. |
 | `scripts/reviewer_report.sh` | Org-wide GraphQL collection (`main` / `collect_org_reviews`) + pure normalization, aggregation, and rendering (`aggregate_snapshot`, `render_reviewer_report`). |
@@ -213,7 +213,7 @@ ORG=petry-projects LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
 
 | Variable | Description |
 |---|---|
-| `ORG` | Org to scan (default `petry-projects`). All non-archived repos discovered automatically. |
+| `ORG` | Org to scan (default `combsmith`). All non-archived repos discovered automatically. |
 | `LOOKBACK_DAYS` | Rolling window of PR activity to include (default `7`). |
 | `GH_TOKEN` | PAT with repo read across the org — PRs + reviews are per-repo. Uses `GH_PAT_WORKFLOWS` in CI. |
 | `REVIEWER_REPORT_OUT` | Optional path to also write the report to (used by the workflow to post the issue comment). |

@@ -6,7 +6,7 @@ on:
     branches: [main]
 jobs:
   dev-lead:
-    uses: petry-projects/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/stable  # NOSONAR(githubactions:S7637) first-party channel ref
     with:
       agent_ref: dev-lead/stable
     secrets: inherit
