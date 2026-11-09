@@ -102,7 +102,7 @@ if grep -Eq 'pip install' <<<"$normalized_run"; then
   if grep -Fq -- '--require-hashes' <<<"$normalized_run"; then
     while IFS= read -r req; do
       req_path="${SCRIPT_DIR}/../${req}"
-      if [ -f "$req_path" ]; then
+      if [[ -f "$req_path" ]]; then
         pin_source+=" $(cat "$req_path")"
       else
         echo "FAIL: requirements file \"$req\" referenced by \"$STEP_NAME\" does not exist (#1240)"
