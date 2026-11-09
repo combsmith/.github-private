@@ -1389,3 +1389,102 @@ _expect_nf_open() { _expect_open "$@"; }
   _expect_nf_open "$bot" "$_SONAR_FAILED_BODY"
   _expect_nf_open '{"login":"sonarqubecloud","__typename":"User"}' "$_SONAR_2467_BODY"
 }
+
+# ── CodeRabbit: the "Review skipped" notice (#2481) ──────────────────
+#
+# On a Dependabot PR CodeRabbit posts "Review skipped — Bot user detected" and
+# reviews nothing. dev-lead never dispositions comments on a Dependabot PR, so
+# the notice deadlocked the gate. It is cleared by structure only: the Bot
+# author, the `skip review by coderabbit.ai` marker, no finding-bearing section,
+# and no structured risk label (a reviewed summary is coderabbit_no_finding's).
+# The fixture is the live notice from combsmith/bmad-bgreat-suite#524.
+
+_CR_SKIP_BODY="$(cat "$_FIX/coderabbit/pr524-skip-review-bot-user.md")"
+_CR_SKIP_MARKER='<!-- This is an auto-generated comment: skip review by coderabbit.ai -->'
+
+@test "#2481: the fixture is the skip notice and carries the marker exactly once" {
+  [ "$(grep -cF -- "$_CR_SKIP_MARKER" <<< "$_CR_SKIP_BODY")" -eq 1 ]
+  [[ "$_CR_SKIP_BODY" == *"Review skipped"* ]]
+  [[ "$_CR_SKIP_BODY" != *"final_review_risk_label"* ]]
+}
+
+@test "#2481: CodeRabbit's live skip-review notice needs no disposition" {
+  _expect_clear coderabbitai Bot "$_CR_SKIP_BODY"
+  _expect_clear 'coderabbitai[bot]' Bot "$_CR_SKIP_BODY"
+}
+
+@test "#2481: the skip notice edited after its disposition is not re-opened, chased or retried" {
+  _run_check "$(_edit_json coderabbitai "$_CR_SKIP_BODY" true "2026-10-01T20:35:00Z" "$(_disp 2026-10-01T19:23:54Z informational)" \
+    | jq -c '.comments[0].author.__typename = "Bot"')"
+  [ "$status" -eq 0 ]
+  local comments
+  comments=$(_edit_json coderabbitai "$_CR_SKIP_BODY" true "2026-10-01T20:35:00Z" "$(_disp 2026-10-01T19:23:54Z informational)" \
+    | jq -c '.comments[0].author.__typename = "Bot" | .comments')
+  run bash -c "source '$GATE'; maintainer_gate_reopen_candidates \"\$1\" donpetry-bot" _ "$comments"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+  run bash -c "source '$GATE'; maintainer_gate_no_finding_ids \"\$1\"" _ "$comments"
+  [ "$status" -eq 0 ]
+  [ "$output" = "IC_cr" ]
+}
+
+@test "#2481: the skip-review marker from a User account or with no author type still needs a disposition" {
+  _expect_open '{"login":"coderabbitai","__typename":"User"}' "$_CR_SKIP_BODY"
+  _expect_open '{"login":"coderabbitai[bot]","__typename":"User"}' "$_CR_SKIP_BODY"
+  _expect_open '{"login":"coderabbitai"}' "$_CR_SKIP_BODY"
+  _expect_open '{"login":"coderabbitai","__typename":""}' "$_CR_SKIP_BODY"
+}
+
+@test "#2481: the skip-review marker from another bot still needs a disposition" {
+  _expect_open '{"login":"chatgpt-codex-connector","__typename":"Bot"}' "$_CR_SKIP_BODY"
+  _expect_open '{"login":"github-actions","__typename":"Bot"}' "$_CR_SKIP_BODY"
+  _expect_open '{"login":"coderabbitai-evil","__typename":"Bot"}' "$_CR_SKIP_BODY"
+  _expect_open '{"login":"xcoderabbitai","__typename":"Bot"}' "$_CR_SKIP_BODY"
+}
+
+@test "#2481: the skip notice beside a finding-bearing section still needs a disposition" {
+  local bot='{"login":"coderabbitai","__typename":"Bot"}'
+  _expect_open "$bot" "$_CR_SKIP_BODY"$'\n\nActionable comments posted: 1'
+  _expect_open "$bot" "$_CR_SKIP_BODY$_CR_ARCH_FINDING"
+  _expect_open "$bot" "$_CR_SKIP_BODY"$'\n\n**Suggestion:** guard the nil config.'
+}
+
+@test "#2481: a body carrying a structured risk label is not cleared as a skip notice" {
+  local bot='{"login":"coderabbitai","__typename":"Bot"}'
+  _expect_open "$bot" "$_CR_SKIP_BODY"$'\n<!-- final_review_risk_label\n**Merge Risk:** **🔵 Low** · up to `11929`\n-->'
+}
+
+@test "#2481: the notice without the exact marker still needs a disposition" {
+  local bot='{"login":"coderabbitai","__typename":"Bot"}'
+  # Marker removed: the prose alone ("Review skipped — Bot user detected") never clears.
+  _expect_open "$bot" "$(_sub "$_CR_SKIP_BODY" '<!-- This is an auto-generated comment: skip review by coderabbit\.ai -->' '')"
+  # Near-miss markers: another verb, another domain, the closing marker only.
+  _expect_open "$bot" "$(_sub "$_CR_SKIP_BODY" 'comment: skip review by coderabbit\.ai -->' 'comment: skip reviews by coderabbit.ai -->')"
+  _expect_open "$bot" "$(_sub "$_CR_SKIP_BODY" 'comment: skip review by coderabbit\.ai -->' 'comment: skip review by coderabbitxai -->')"
+  _expect_open "$bot" "$(_sub "$_CR_SKIP_BODY" '<!-- This is an auto-generated comment: skip review' '<!-- end of auto-generated comment: skip review')"
+  # The marker only quoted inside a code span is not the marker.
+  _expect_open "$bot" $'Review skipped.\n\n`'"$_CR_SKIP_MARKER"'`'
+}
+
+@test "#2481: a hands-off Dependabot PR whose only bot comment is the skip notice keeps approval → 0" {
+  _run_check "$(jq -cn --arg b "$_CR_SKIP_BODY" '{reviews:[], comments:[
+    {id:"IC_skip", author:{login:"coderabbitai", __typename:"Bot"}, authorAssociation:"NONE", body:$b,
+     createdAt:"2026-11-09T10:00:00Z", lastEditedAt:null, isMinimized:false, minimizedReason:null}]}')"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no undispositioned PR issue comments"* ]]
+}
+
+@test "#2481: the skip marker quoted below other text is not the notice" {
+  local bot='{"login":"coderabbitai","__typename":"Bot"}'
+  _expect_open "$bot" $'Quoted from an earlier run:\n\n'"$_CR_SKIP_BODY"
+  # A second notice block in one body is not the single notice CodeRabbit posts.
+  _expect_open "$bot" "$_CR_SKIP_BODY"$'\n'"$_CR_SKIP_MARKER"
+}
+
+@test "#2481: a notice whose closing marker is missing or repeated still needs a disposition" {
+  local bot='{"login":"coderabbitai","__typename":"Bot"}' end='<!-- end of auto-generated comment: skip review by coderabbit.ai -->'
+  # Missing: the notice block never closed, so anything after it is unbounded.
+  _expect_open "$bot" "$(_sub "$_CR_SKIP_BODY" '<!-- end of auto-generated comment: skip review by coderabbit\.ai -->' '')"
+  # Repeated: two notice blocks are not the single notice CodeRabbit posts.
+  _expect_open "$bot" "$_CR_SKIP_BODY"$'\n'"$end"
+}

@@ -187,6 +187,7 @@ jobs:
             tests/test_bootstrap_new_repo.bats \
             tests/test_seed_repo_template.bats \
             tests/test_sweep_stuck_reviews.bats \
+            tests/test_dependabot_provenance.bats \
             tests/test_delayed_rate_limit_retry.bats \
             tests/test_standing_approval.bats \
             tests/test_validate_cases.bats \
@@ -234,6 +235,7 @@ jobs:
             tests/test_pr_review_force_review_wiring.bats \
             tests/test_review_one_pr_nonrequired_gate.bats \
             tests/test_review_one_pr_force_re_review.bats \
+            tests/test_review_one_pr_dependabot_provenance.bats \
             tests/test_review_one_pr_escalation_hold.bats \
             tests/test_review_one_pr_self_dismissed_reeval.bats \
             tests/test_review_one_pr_metadata_rearm.bats \

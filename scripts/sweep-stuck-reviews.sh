@@ -65,6 +65,9 @@ source "$SCRIPT_DIR/lib/pr-automation-budget.sh"
 # approval, so it must never satisfy the stop condition.
 # shellcheck source=lib/standing-approval.sh
 source "$SCRIPT_DIR/lib/standing-approval.sh"
+# Dependabot provenance (#2481): dependabot_is_author / dependabot_provenance_check.
+# shellcheck source=lib/dependabot-provenance.sh
+source "$SCRIPT_DIR/lib/dependabot-provenance.sh"
 
 AGENT_REPO="${AGENT_REPO:-combsmith/.github-private}"
 TRIGGER_WORKFLOW="${TRIGGER_WORKFLOW:-pr-review-trigger.yml}"
@@ -178,6 +181,26 @@ stuck=0
 dispatched=0
 armed=0
 
+# dependabot_dispatchable <pr_url> <owner/repo> <head_sha>
+# Dependabot PRs (#2481) are dispatched only when every commit passes the
+# Dependabot provenance rule at this head: Dependabot's own commits, or the
+# automerge App's update-branch merges. A foreign commit (1) or an unreadable
+# commit list (2) is skipped and logged; review-one-pr.sh applies the same gate
+# again before it approves, so this check only saves a dispatch.
+dependabot_dispatchable() {
+  local _url="$1" _repo="$2" _sha="$3" _rc=0
+  dependabot_provenance_check "$_repo" "${_url##*/}" "$_sha" || _rc=$?
+  if [ "$_rc" -eq 0 ]; then
+    return 0
+  fi
+  if [ "$_rc" -eq 1 ]; then
+    echo "  skip $_url — Dependabot provenance: $DEPENDABOT_GATE_REASON (#2481)"
+  else
+    echo "  skip $_url — Dependabot provenance unreadable: $DEPENDABOT_GATE_REASON (#2481)"
+  fi
+  return 1
+}
+
 # dispatch_review <pr_url> <label> [force]
 # Re-dispatch a review through the normal trigger. Honours DRY_RUN and updates
 # the counters. A 3rd arg of "force" appends `-f force_review=true`, used ONLY
@@ -288,7 +311,7 @@ while IFS= read -r pr_url; do
   inspected=$((inspected + 1))
 
   if ! snapshot=$(gh pr view "$pr_url" \
-        --json headRefOid,baseRefName,statusCheckRollup,reviewDecision,reviews,comments,labels 2>/dev/null); then
+        --json headRefOid,baseRefName,statusCheckRollup,reviewDecision,reviews,comments,labels,author 2>/dev/null); then
     echo "  skip $pr_url — could not fetch PR (deleted, no access, or rate-limited)"
     continue
   fi
@@ -328,6 +351,20 @@ while IFS= read -r pr_url; do
       echo "  skip $pr_url — held ($hold_kind; $NEEDS_HUMAN_REVIEW_LABEL present); not re-reviewing (#946/#1550)"
       continue
     fi
+  fi
+
+  # Dependabot PRs (#2481). Nothing else reviews them: Dependabot-triggered
+  # events carry no secrets, and the consumer pr-auto-review stub skips
+  # Dependabot. So the cron owns a Dependabot PR even when every check is
+  # eventable (the #1408 narrowing below does not apply to it), and its
+  # provenance is checked before any dispatch.
+  is_dependabot=false
+  if dependabot_is_author "$(jq -r '.author.login // ""' <<< "$snapshot" 2>/dev/null || true)"; then
+    is_dependabot=true
+  fi
+  owner_repo=""
+  if [[ "$pr_url" =~ ^https?://[^/]+/([^/]+/[^/]+)/pull/[0-9]+ ]]; then
+    owner_repo="${BASH_REMATCH[1]}"
   fi
 
   review_decision=$(jq -r '.reviewDecision // ""' <<< "$snapshot")
@@ -409,12 +446,15 @@ while IFS= read -r pr_url; do
     # Dispatch once the reset has elapsed; an unparseable reset fails open to a
     # retry so a malformed marker can never strand the PR indefinitely.
     if [ -z "$reset_epoch" ] || [ "$now_epoch" -ge "$reset_epoch" ]; then
-      if [ "$SCHEDULED_SWEEP" = "true" ]; then
+      if [ "$SCHEDULED_SWEEP" = "true" ] && [ "$is_dependabot" != "true" ]; then
         eventability=$(classify_rollup_eventability "$(jq '.statusCheckRollup' <<< "$snapshot")")
         if [ "$eventability" = "eventable-only" ]; then
           echo "  skip $pr_url — rate-limited marker elapsed but all checks eventable; scheduled sweep is un-eventable-only (#1408)"
           continue
         fi
+      fi
+      if [ "$is_dependabot" = "true" ] && ! dependabot_dispatchable "$pr_url" "$owner_repo" "$head_sha"; then
+        continue
       fi
       dispatch_review "$pr_url" "rate-limited (reset $rl_reset elapsed, head ${head_sha:0:8})"
     else
@@ -431,10 +471,6 @@ while IFS= read -r pr_url; do
   # Fail closed: an unreadable set leaves it empty and compute_ci_status gates on all
   # failing checks.
   base_ref=$(jq -r '.baseRefName // ""' <<< "$snapshot")
-  owner_repo=""
-  if [[ "$pr_url" =~ ^https?://[^/]+/([^/]+/[^/]+)/pull/[0-9]+ ]]; then
-    owner_repo="${BASH_REMATCH[1]}"
-  fi
   required_checks=$(ruleset_required_checks "$owner_repo" "$base_ref" || true)
   ci_status=$(compute_ci_status "$(jq '.statusCheckRollup' <<< "$snapshot")" "$required_checks")
   if [ "$ci_status" != "passing" ]; then
@@ -458,6 +494,10 @@ while IFS= read -r pr_url; do
   # this sweep's snapshot re-blocks at execution time), as do the per-PR automation
   # budget (#926) and the needs-human-review escalation gate (handled above) — so
   # the rescue can neither bypass a quality gate nor re-ignite a runaway.
+  if [ "$is_dependabot" = "true" ] && ! dependabot_dispatchable "$pr_url" "$owner_repo" "$head_sha"; then
+    continue
+  fi
+
   if [ "${marker_at_head:-0}" -gt 0 ]; then
     dispatch_review "$pr_url" "orphaned-marker (head ${head_sha:0:8}, no verdict)" force
     continue
@@ -467,7 +507,8 @@ while IFS= read -r pr_url; do
   # un-eventable residue. A PR whose external checks are all eventable GitHub
   # Actions runs is owned by the workflow_run fast path, so re-dispatching it here
   # would be the redundant re-review this story removes.
-  if [ "$SCHEDULED_SWEEP" = "true" ]; then
+  # A Dependabot PR is exempt: no fast path exists for it (#2481, above).
+  if [ "$SCHEDULED_SWEEP" = "true" ] && [ "$is_dependabot" != "true" ]; then
     eventability=$(classify_rollup_eventability "$(jq '.statusCheckRollup? // []' <<< "$snapshot" 2>/dev/null || echo '[]')")
     if [ "$eventability" = "eventable-only" ]; then
       echo "  skip $pr_url — all checks eventable (workflow_run fast path owns it); scheduled sweep is un-eventable-only (#1408)"
@@ -475,7 +516,11 @@ while IFS= read -r pr_url; do
     fi
   fi
 
-  dispatch_review "$pr_url" "stuck-green (head ${head_sha:0:8})"
+  if [ "$is_dependabot" = "true" ]; then
+    dispatch_review "$pr_url" "dependabot stuck-green (head ${head_sha:0:8}, #2481)"
+  else
+    dispatch_review "$pr_url" "stuck-green (head ${head_sha:0:8})"
+  fi
 done < "$candidates_file"
 
 echo ""

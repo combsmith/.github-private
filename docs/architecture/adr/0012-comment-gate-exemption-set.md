@@ -68,6 +68,12 @@ We will narrow #1813's "every PR issue comment" scope to every PR issue comment
    pre-merge check badges. The author must be that GitHub App (`Bot`). The match
    is on the structured state, never on prose, so it holds however often the bot
    edits the comment (`_MAINTAINER_GATE_NO_FINDING_JQ_DEFS`).
+   CodeRabbit's **"Review skipped"** notice (#2481, e.g. "Bot user detected" on
+   a Dependabot PR) is cleared the same way: the body opens with the
+   `skip review by coderabbit.ai` marker, carries it and its closing marker
+   exactly once, and carries no `final_review_risk_label` and no
+   finding-bearing section. It reviews nothing, and dev-lead never dispositions
+   comments on a Dependabot PR, so without this the gate deadlocked there.
 
 We will never exempt by author login alone, because `don-petry` is also the
 account dev-lead and the personas post from. A steering comment stays in scope
