@@ -1,9 +1,9 @@
 # scrum-master — persona
 
-Formalized under the [Agentic Persona Standard](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).
+Formalized under the [Agentic Persona Standard](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
 Wraps the vendored BMAD sprint-planning skill (the org orchestration wrapper is
 `prompts/bmad/scrum-master.md`, already consumed by the initiative-planner during
-planning) and makes the role addressable as `@petry-projects/scrum-master` — an
+planning) and makes the role addressable as `@combsmith/scrum-master` — an
 org **team** handle, never a user account (§4.1; `@scrum-master` is a real
 account owned by an unrelated person).
 

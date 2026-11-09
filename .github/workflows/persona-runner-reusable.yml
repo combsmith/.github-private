@@ -1,9 +1,9 @@
 # Persona Runtime — Reusable (dispatch side of the mention framework).
 # This file is the source of truth. Caller: .github/workflows/persona-runner.yml.
-# Standard: https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md (§4.1)
+# Standard: https://github.com/combsmith/.github/blob/main/standards/persona-standards.md (§4.1)
 #
-# The router (petry-projects/.github persona-mention-reusable.yml) resolves an
-# `@petry-projects/<role>` mention and fires a `persona-mention`
+# The router (combsmith/.github persona-mention-reusable.yml) resolves an
+# `@combsmith/<role>` mention and fires a `persona-mention`
 # repository_dispatch at this repo. This workflow receives it and runs the
 # addressed persona's advisory prompt (prompts/<id>/advisory.md), posting exactly
 # one advisory comment that carries the '<!-- persona:<id> -->' recursion marker.

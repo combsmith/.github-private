@@ -2,7 +2,7 @@
 
 These overlays turn the vendored **BMAD analysis/planning skills** into
 **headless, CI-invocable producers and validators** for the incubation package
-(`petry-projects/incubator`, `ideas/<slug>/`). They are the automation layer
+(`combsmith/incubator`, `ideas/<slug>/`). They are the automation layer
 that wraps the skills — the skills themselves stay vendored and untouched under
 `frameworks/bmad-method/` (see each `VENDOR.md`; do not hand-edit them).
 

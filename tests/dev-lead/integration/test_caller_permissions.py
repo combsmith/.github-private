@@ -6,7 +6,7 @@ at `jobs.<id>.permissions`. If any reusable job requests MORE than the caller
 template grants, every consumer pinned to that reusable fails at startup
 ("startup_failure") — there is no runtime error, the run is simply invalid.
 
-This is exactly what happened in petry-projects/.github#402: #435 added
+This is exactly what happened in combsmith/.github#402: #435 added
 `statuses: read` to the reusable's job permissions but the caller template was
 never updated, so every @main consumer broke (.github was 15/15 startup_failure).
 
@@ -17,7 +17,7 @@ the reusable, in the reusable's own repo, where the breaking change is made.
 
 Reads:
   - reusable:  .github/workflows/dev-lead-reusable.yml   (this repo, local)
-  - template:  standards/workflows/dev-lead.yml          (petry-projects/.github, fetched)
+  - template:  standards/workflows/dev-lead.yml          (combsmith/.github, fetched)
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ except ImportError:  # pragma: no cover - CI installs it; clear message if not
 LEVELS = {"none": 0, "read": 1, "write": 2}
 INV = {v: k for k, v in LEVELS.items()}
 
-TEMPLATE_REPO = "petry-projects/.github"
+TEMPLATE_REPO = "combsmith/.github"
 TEMPLATE_PATH = "standards/workflows/dev-lead.yml"
 REUSABLE_PATH = ".github/workflows/dev-lead-reusable.yml"
 
@@ -52,7 +52,7 @@ def load_local(path: str) -> dict:
 
 
 def fetch_template() -> dict:
-    """Fetch the caller template from the public petry-projects/.github repo."""
+    """Fetch the caller template from the public combsmith/.github repo."""
     res = subprocess.run(
         ["gh", "api", f"repos/{TEMPLATE_REPO}/contents/{TEMPLATE_PATH}", "--jq", ".content"],
         capture_output=True, text=True,

@@ -6,7 +6,7 @@
 #   GH_TOKEN                  — token for gh CLI (PR comment + diff)
 #   CLAUDE_CODE_OAUTH_TOKEN   — Claude auth token
 #   PR_NUMBER                 — pull request number
-#   REPO                      — owner/repo (e.g. petry-projects/my-repo)
+#   REPO                      — owner/repo (e.g. combsmith/my-repo)
 #   SKIP_BOT_PRS              — "true" to skip Dependabot/Renovate PRs (default: true)
 #   GITHUB_ENV                — set by Actions runner
 

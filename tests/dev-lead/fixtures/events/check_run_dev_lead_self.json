@@ -5,18 +5,18 @@
     "name": "dev-lead / intent",
     "conclusion": "failure",
     "head_sha": "abc123def456",
-    "details_url": "https://github.com/petry-projects/.github-private/actions/runs/12349",
+    "details_url": "https://github.com/combsmith/.github-private/actions/runs/12349",
     "app": { "slug": "github-actions" },
     "pull_requests": [
       {
         "number": 45,
         "head": {
           "sha": "abc123def456",
-          "repo": { "full_name": "petry-projects/.github-private" }
+          "repo": { "full_name": "combsmith/.github-private" }
         }
       }
     ]
   },
-  "repository": { "full_name": "petry-projects/.github-private" },
+  "repository": { "full_name": "combsmith/.github-private" },
   "sender": { "login": "github-actions[bot]", "type": "Bot" }
 }

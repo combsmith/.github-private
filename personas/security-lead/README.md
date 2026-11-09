@@ -1,6 +1,6 @@
 # security-lead — persona
 
-Formalized under the [Agentic Persona Standard](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).
+Formalized under the [Agentic Persona Standard](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
 Follows the **wrap-a-vendored-framework-agent, advisory-everywhere** path
 established by [`qa-lead`](../qa-lead/README.md) and
 [`scrum-master`](../scrum-master/README.md).
@@ -19,8 +19,8 @@ persona. The advisory contract lives in
 ## Why `security-lead` and not the upstream agent's name
 
 The vendored agent has a person-name upstream ("Sam"). We do not use it. A
-persona is named for its **role** ([§1.6](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md)):
-`@petry-projects/security-lead` tells a reader in a PR comment who is being
+persona is named for its **role** ([§1.6](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md)):
+`@combsmith/security-lead` tells a reader in a PR comment who is being
 addressed and why; the upstream cast list does not. It also means swapping the
 agent underneath — or replacing it with a first-party layer — never changes how
 this persona is addressed. Upstream is referenced only by its technical skill id
@@ -29,15 +29,15 @@ this persona is addressed. Upstream is referenced only by its technical skill id
 ## How it is addressed
 
 ```text
-@petry-projects/security-lead please threat-model this design
+@combsmith/security-lead please threat-model this design
 ```
 
-The handle is the org **team** `petry-projects/security-lead`, **never** the bare
+The handle is the org **team** `combsmith/security-lead`, **never** the bare
 `@security-lead` account — that is a real GitHub account owned by an unrelated
 person, so a bare role mention would notify a stranger on every use. The team is
 `privacy: closed` with `notification_setting: notifications_disabled`: it exists
 to route a webhook, not to page anyone. See
-[§4.1](https://github.com/petry-projects/.github/blob/main/standards/persona-standards.md).
+[§4.1](https://github.com/combsmith/.github/blob/main/standards/persona-standards.md).
 
 ## Overlap with existing security surfaces
 
@@ -87,7 +87,7 @@ The full gate is the Definition of Done in `persona-standards.md` §7.
 ## Contributing upstream
 
 This persona's behavior lives upstream in
-`petry-projects/bmad-bgreat-suite`. Do not hand-edit `frameworks/`. Org-specific
+`combsmith/bmad-bgreat-suite`. Do not hand-edit `frameworks/`. Org-specific
 behavior is layered via `definition.layers[].local_overrides`; anything general
 enough to help other BMAD users should be raised upstream
 (`upstream_candidate: true`) rather than kept as private drift.

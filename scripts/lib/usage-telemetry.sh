@@ -5,7 +5,7 @@
 # This library owns exactly one thing: the HTTP call to
 #   GET https://api.anthropic.com/api/oauth/usage
 # and the normalized TRANSPORT ENVELOPE the shipped public token-budget breaker
-# (petry-projects/.github `scripts/lib/agent-rate-limit.sh`) already consumes via
+# (combsmith/.github `scripts/lib/agent-rate-limit.sh`) already consumes via
 # its adapter seam:
 #
 #   { "status": <http_status>, "retry_after": <int?>, "observed_at": <epoch?>, "body": <raw upstream> }
