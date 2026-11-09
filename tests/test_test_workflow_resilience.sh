@@ -24,7 +24,7 @@ if ! command -v yq >/dev/null 2>&1; then
   exit 2
 fi
 
-if [ ! -f "$WORKFLOW" ]; then
+if [[ ! -f "$WORKFLOW" ]]; then
   echo "FAIL: $WORKFLOW not found"
   exit 1
 fi
@@ -33,7 +33,7 @@ fi
 # parses as `.jobs.unit - tests` and fails with "tests/0 is not defined" (issue #1364).
 run=$(yq '.jobs["unit-tests"].steps[] | select(.name == "'"$STEP_NAME"'") | .run' "$WORKFLOW")
 
-if [ -z "$run" ] || [ "$run" = "null" ]; then
+if [[ -z "$run" ]] || [[ "$run" = "null" ]]; then
   echo "FAIL: could not find the \"$STEP_NAME\" step in $WORKFLOW"
   exit 1
 fi

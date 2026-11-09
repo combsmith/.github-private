@@ -36,7 +36,7 @@
 #           Absent/empty JSON → "0\t0\tn/a".
 pr_review_sweep_hit_rate() {
   local json="${1:-}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
   jq -r '
     (if type == "array" then . else [] end) as $r
     | ([$r[] | select(.event == "schedule")]) as $ticks
@@ -71,7 +71,7 @@ pr_review_sweep_dispatched_from_log() {
 #   truncation can never discard it (same guarantee as the outcome-mix section).
 pr_review_render_sweep_hit_rate() {
   local json="${1:-}" total_in_window="${2:-0}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
 
   local ticks hits rate
   IFS=$'\t' read -r ticks hits rate < <(pr_review_sweep_hit_rate "$json")

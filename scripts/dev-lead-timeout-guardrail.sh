@@ -32,15 +32,15 @@ OVERHEAD_MARGIN_SEC="${OVERHEAD_MARGIN_SEC:-900}"
 
 _die() { echo "guardrail: $*" >&2; exit 2; }
 
-[ -r "$ENGINE_SH" ]    || _die "cannot read engine.sh at $ENGINE_SH"
-[ -r "$WORKFLOW_YML" ] || _die "cannot read workflow at $WORKFLOW_YML"
+[[ -r "$ENGINE_SH" ]]    || _die "cannot read engine.sh at $ENGINE_SH"
+[[ -r "$WORKFLOW_YML" ]] || _die "cannot read workflow at $WORKFLOW_YML"
 
 # Extract a `VAR="${VAR:-N}"` default from engine.sh. Skips commented-out lines
 # and tolerates leading whitespace so a stray comment can't be mis-parsed.
 _tier_default() {
   local var="$1" val
   val="$(sed -n "/^[[:space:]]*#/d; s/^[[:space:]]*$var=\"\${$var:-\([0-9][0-9]*\)}\".*/\1/p" "$ENGINE_SH")"
-  [ -n "$val" ] || _die "could not parse default for $var in $ENGINE_SH"
+  [[ -n "$val" ]] || _die "could not parse default for $var in $ENGINE_SH"
   printf '%s' "$val"
 }
 
@@ -55,7 +55,7 @@ _job_timeout_min() {
     inblk==1 && /^  [A-Za-z]/  {inblk=0}
     inblk==1 && /^[[:space:]]*timeout-minutes:/ {print $2; exit}
   ' "$WORKFLOW_YML")"
-  [ -n "$val" ] || _die "could not parse dispatch timeout-minutes in $WORKFLOW_YML"
+  [[ -n "$val" ]] || _die "could not parse dispatch timeout-minutes in $WORKFLOW_YML"
   printf '%s' "$val"
 }
 

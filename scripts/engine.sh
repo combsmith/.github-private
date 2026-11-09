@@ -50,7 +50,7 @@ DEV_LEAD_SIDECAR_DIR="${DEV_LEAD_SIDECAR_DIR:-/tmp}"
 # a legacy REVIEW_ENGINE / DEV_LEAD_ENGINE variable still names it.
 _ENGINE_CHAIN_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-chain.sh"
 # shellcheck source=lib/engine-chain.sh
-[ -f "$_ENGINE_CHAIN_LIB" ] && source "$_ENGINE_CHAIN_LIB"
+[[ -f "$_ENGINE_CHAIN_LIB" ]] && source "$_ENGINE_CHAIN_LIB"
 unset _ENGINE_CHAIN_LIB
 
 # shellcheck source=lib/model-sandbox.sh
@@ -58,15 +58,15 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/model-sandbox.sh"
 if declare -F ai_engine_primary >/dev/null 2>&1; then
   _requested_engine="${REVIEW_ENGINE:-}"
   REVIEW_ENGINE="$(ai_engine_primary "$_requested_engine")"
-  if [ -n "$_requested_engine" ] && [ "$_requested_engine" != "$REVIEW_ENGINE" ]; then
+  if [[ -n "$_requested_engine" ]] && [[ "$_requested_engine" != "$REVIEW_ENGINE" ]]; then
     echo "::warning::REVIEW_ENGINE=$_requested_engine is not enabled in AI_ENGINES ($(ai_engine_chain)) — using $REVIEW_ENGINE" >&2
   fi
   unset _requested_engine
   # Report an unusable AI_ENGINES here too: dev-lead sources engine.sh without
   # running validate_engines. The exported flag keeps it to one warning per run.
-  if [ -z "${AI_ENGINES_PROBLEM_REPORTED:-}" ]; then
+  if [[ -z "${AI_ENGINES_PROBLEM_REPORTED:-}" ]]; then
     _chain_problem="$(ai_engine_chain_problem)"
-    if [ -n "$_chain_problem" ]; then
+    if [[ -n "$_chain_problem" ]]; then
       echo "::warning::$_chain_problem" >&2
       export AI_ENGINES_PROBLEM_REPORTED=1
     fi
@@ -81,16 +81,16 @@ export REVIEW_ENGINE
 # AI_MODELS_COPILOT) and its defaults live in lib/engine-models.sh, so a retired
 # or renamed model is an Actions-variable edit, not a code change.
 _ENGINE_MODELS_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-models.sh"
-if [ ! -f "$_ENGINE_MODELS_LIB" ]; then
+if [[ ! -f "$_ENGINE_MODELS_LIB" ]]; then
   echo "::error::engine.sh: missing $_ENGINE_MODELS_LIB (model lists and defaults)" >&2
   return 1 2>/dev/null || exit 1
 fi
 # shellcheck source=lib/engine-models.sh
 source "$_ENGINE_MODELS_LIB"
 unset _ENGINE_MODELS_LIB
-if [ -z "${AI_MODELS_PROBLEM_REPORTED:-}" ]; then
+if [[ -z "${AI_MODELS_PROBLEM_REPORTED:-}" ]]; then
   _models_problems="$(ai_models_problems)"
-  if [ -n "$_models_problems" ]; then
+  if [[ -n "$_models_problems" ]]; then
     while IFS= read -r _models_line; do
       echo "::warning::$_models_line" >&2
     done <<< "$_models_problems"
@@ -100,9 +100,9 @@ if [ -z "${AI_MODELS_PROBLEM_REPORTED:-}" ]; then
 fi
 # Fable 5 is deprecated (#1901): warn once per run when a configured chain still
 # names a claude-fable-* model, but still honour it (a stop-gap, not a rejection).
-if [ -z "${AI_MODELS_FABLE_WARNED:-}" ]; then
+if [[ -z "${AI_MODELS_FABLE_WARNED:-}" ]]; then
   _fable_warn="$(ai_models_fable_deprecation)"
-  if [ -n "$_fable_warn" ]; then
+  if [[ -n "$_fable_warn" ]]; then
     echo "::warning::$_fable_warn" >&2
     export AI_MODELS_FABLE_WARNED=1
   fi
@@ -119,7 +119,7 @@ fi
 # model of its own tier (ai_models_copilot_model); COPILOT_API_MODEL_DEFAULTED
 # records that this value is our default, not the caller's override.
 DEFAULT_COPILOT_API_MODEL="$(ai_models_copilot_model triage)"
-if [ -z "${COPILOT_API_MODEL:-}" ] || [ "$COPILOT_API_MODEL" = "${COPILOT_API_MODEL_DEFAULTED:-}" ]; then
+if [[ -z "${COPILOT_API_MODEL:-}" ]] || [[ "$COPILOT_API_MODEL" = "${COPILOT_API_MODEL_DEFAULTED:-}" ]]; then
   COPILOT_API_MODEL="$DEFAULT_COPILOT_API_MODEL"
   COPILOT_API_MODEL_DEFAULTED="$DEFAULT_COPILOT_API_MODEL"
   export COPILOT_API_MODEL_DEFAULTED
@@ -190,7 +190,7 @@ RETRY_BASE_DELAY_SEC="${RETRY_BASE_DELAY_SEC:-5}"
 # When neither is present, REVIEW_MCP_CONFIG stays empty and MCP is off, so
 # repos that don't opt in see no behavior change.
 REVIEW_MCP_CONFIG_DEFAULT_PATH="${REVIEW_MCP_CONFIG_DEFAULT_PATH:-.github/review-mcp.json}"
-if [ -z "${REVIEW_MCP_CONFIG+x}" ] && [ -f "$REVIEW_MCP_CONFIG_DEFAULT_PATH" ]; then
+if [[ -z "${REVIEW_MCP_CONFIG+x}" ]] && [[ -f "$REVIEW_MCP_CONFIG_DEFAULT_PATH" ]]; then
   REVIEW_MCP_CONFIG="$REVIEW_MCP_CONFIG_DEFAULT_PATH"
 fi
 REVIEW_MCP_CONFIG="${REVIEW_MCP_CONFIG:-}"
@@ -222,7 +222,7 @@ _ai_duck_first() {
 _duck_model_for() {
   local engine="$1" wanted
   wanted="$(_ai_duck_first)"
-  if [ -n "${AI_DUCK_MODEL:-}" ] && [ "$engine" = "$wanted" ]; then
+  if [[ -n "${AI_DUCK_MODEL:-}" ]] && [[ "$engine" = "$wanted" ]]; then
     printf '%s' "$AI_DUCK_MODEL"
     return 0
   fi
@@ -284,12 +284,12 @@ duck_engine_candidates() {
       [[ " $out " == *" $e "* ]] && continue
       # The primary is a duck only when AI_DUCK_ENGINE lists it (same vendor,
       # other model); the cross-engine default never names the primary.
-      [ "$e" = "${REVIEW_ENGINE:-}" ] && continue
+      [[ "$e" = "${REVIEW_ENGINE:-}" ]] && continue
       ai_engine_available "$e" && out="$out $e"
     done
   fi
   for e in $out; do
-    if [ "$e" = "${DUCK_ENGINE:-}" ] && [ -n "${DUCK_MODEL:-}" ]; then
+    if [[ "$e" = "${DUCK_ENGINE:-}" ]] && [[ -n "${DUCK_MODEL:-}" ]]; then
       m="$DUCK_MODEL"
     else
       m="$(_duck_model_for "$e")"
@@ -323,11 +323,11 @@ _duck_label() {
     return 0
   fi
   while read -r e m; do
-    [ -n "$e" ] || continue
-    [ "$e" = gemini ] && [ "${GEMINI_AVAILABLE:-}" != true ] && continue
+    [[ -n "$e" ]] || continue
+    [[ "$e" = gemini ]] && [[ "${GEMINI_AVAILABLE:-}" != true ]] && continue
     chain="${chain:+$chain,}${m:-$e}"
   done <<< "$(duck_engine_candidates 2>/dev/null)"
-  if [ -n "$chain" ]; then
+  if [[ -n "$chain" ]]; then
     ai_models_label_chain "$chain"
   else
     printf 'off'
@@ -522,7 +522,7 @@ check_provider_headroom() {
         | cut -d: -f2 | tr -d '[:space:]' || true)
       if [[ "$remaining_tokens" =~ ^[0-9]+$ ]] && [[ "$limit_tokens" =~ ^[0-9]+$ ]] && [ "$limit_tokens" -gt 0 ]; then
         used_pct=$(( 100 - (remaining_tokens * 100 / limit_tokens) ))
-      elif [ -n "${ANTHROPIC_API_KEY:-}" ] && [ -z "${_HEADROOM_PROBE_WARNED:-}" ]; then
+      elif [[ -n "${ANTHROPIC_API_KEY:-}" ]] && [[ -z "${_HEADROOM_PROBE_WARNED:-}" ]]; then
         # With an API key the probe should return rate-limit headers; none means
         # usage is unknown (e.g. the probe model is retired), not 0%.
         echo "::warning::[headroom] claude — no rate-limit headers from ${_hmodel}; usage unknown, proceeding" >&2
@@ -547,7 +547,7 @@ check_provider_headroom() {
         case " ${_gidxs[*]} " in *" $_gidx "*) continue ;; esac
         _gidxs+=("$_gidx")
       done < <(_gemini_api_key_names)
-      if [ "${#_gidxs[@]}" -eq 0 ]; then
+      if [[ "${#_gidxs[@]}" -eq 0 ]]; then
         echo "::warning::[headroom] gemini — no API key configured, nothing to meter; limits unknown — treating as constrained" >&2
         return 2
       fi
@@ -556,10 +556,10 @@ check_provider_headroom() {
         ok|over)
           used_pct="$_gpct" ;;   # the shared threshold check below logs ok / skipping
         *)
-          if [ -n "$_gwhy" ]; then
+          if [[ -n "$_gwhy" ]]; then
             echo "::warning::[headroom] gemini — ledger unreadable ($_gwhy); usage unknown — treating every key as constrained" >&2
           fi
-          if [ -n "$_gpct" ] || [ -z "$_gwhy" ]; then
+          if [[ -n "$_gpct" ]] || [[ -z "$_gwhy" ]]; then
             echo "::warning::[headroom] gemini — limits unknown for key index ${_gpct:-?} in $(basename "$GEMINI_QUOTA_CAPS"); treating as constrained until the caps are filled" >&2
           fi
           return 2 ;;
@@ -610,7 +610,7 @@ check_provider_headroom() {
 # emit_token_record and friends are no-ops when TOKEN_LOG_FILE is unset.
 _TOKEN_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/token-metrics.sh"
 # shellcheck source=lib/token-metrics.sh
-[ -f "$_TOKEN_LIB" ] && source "$_TOKEN_LIB" 2>/dev/null || true
+[[ -f "$_TOKEN_LIB" ]] && source "$_TOKEN_LIB" 2>/dev/null || true
 unset _TOKEN_LIB
 
 # Gemini quota self-metering + per-key cooldown memory (#2030). Non-fatal: when
@@ -618,14 +618,14 @@ unset _TOKEN_LIB
 # rotation falls back to the plain configured key order.
 _GQ_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/gemini-quota.sh"
 # shellcheck source=lib/gemini-quota.sh
-[ -f "$_GQ_LIB" ] && source "$_GQ_LIB" 2>/dev/null || true
+[[ -f "$_GQ_LIB" ]] && source "$_GQ_LIB" 2>/dev/null || true
 unset _GQ_LIB
 
 # Credential redaction (redact_secrets) for the Claude chain hop log. Non-fatal:
 # when the helper is missing, _claude_log_hop records only its header line.
 _REDACT_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/redact.sh"
 # shellcheck source=lib/redact.sh
-[ -f "$_REDACT_LIB" ] && source "$_REDACT_LIB" 2>/dev/null || true
+[[ -f "$_REDACT_LIB" ]] && source "$_REDACT_LIB" 2>/dev/null || true
 unset _REDACT_LIB
 
 # _rate_limit_pattern
@@ -678,9 +678,9 @@ is_rate_limited_files() {
   local files=()
   local f
   for f in "$@"; do
-    [ -n "$f" ] && [ -f "$f" ] && files+=("$f")
+    [[ -n "$f" ]] && [[ -f "$f" ]] && files+=("$f")
   done
-  [ "${#files[@]}" -eq 0 ] && return 1
+  [[ "${#files[@]}" -eq 0 ]] && return 1
   grep -qiE "$(_rate_limit_pattern)" "${files[@]}"
 }
 
@@ -734,9 +734,9 @@ is_license_denied_files() {
   local files=()
   local f
   for f in "$@"; do
-    [ -n "$f" ] && [ -f "$f" ] && files+=("$f")
+    [[ -n "$f" ]] && [[ -f "$f" ]] && files+=("$f")
   done
-  [ "${#files[@]}" -eq 0 ] && return 1
+  [[ "${#files[@]}" -eq 0 ]] && return 1
   grep -qiE "$(_license_denied_pattern)" "${files[@]}"
 }
 
@@ -768,18 +768,18 @@ _mcp_failure_pattern() {
 # MCP warnings appear for runs that never configured MCP.
 _emit_mcp_failure_warning() {
   # Guard: only meaningful when MCP was actually configured for this run.
-  [ -n "${REVIEW_MCP_CONFIG:-}" ] || return 0
+  [[ -n "${REVIEW_MCP_CONFIG:-}" ]] || return 0
   local files=() f
   for f in "$@"; do
-    [ -n "$f" ] && [ -f "$f" ] && files+=("$f")
+    [[ -n "$f" ]] && [[ -f "$f" ]] && files+=("$f")
   done
-  [ "${#files[@]}" -eq 0 ] && return 0
+  [[ "${#files[@]}" -eq 0 ]] && return 0
   # Opt-in affirmative diagnostics (REVIEW_MCP_DEBUG): surface the successful
   # handshake so a healthy MCP run is provable, not merely inferred from the
   # absence of the failure ::warning:: below. `--debug mcp` (added in
   # _mcp_review_flags) writes these "Successfully connected" lines to the
   # captured stderr. Never alters control flow.
-  if [ -n "${REVIEW_MCP_DEBUG:-}" ]; then
+  if [[ -n "${REVIEW_MCP_DEBUG:-}" ]]; then
     grep -hoiE 'mcp server "[^"]+": successfully connected.*' "${files[@]}" 2>/dev/null \
       | sort -u | while IFS= read -r _ln; do
         # printf (not echo): _ln is an arbitrary captured log line, so avoid
@@ -792,7 +792,7 @@ _emit_mcp_failure_warning() {
   local servers
   servers="$(grep -hoiE 'mcp server "[^"]+"' "${files[@]}" 2>/dev/null \
     | sed -E 's/.*"([^"]+)".*/\1/' | sort -u | paste -sd, - || true)"
-  if [ -n "$servers" ]; then
+  if [[ -n "$servers" ]]; then
     echo "::warning::[mcp] server(s) unavailable: ${servers} — review continues on the model's base capabilities (no MCP tool context)" >&2
   else
     echo "::warning::[mcp] an MCP server was unavailable — review continues on the model's base capabilities (no MCP tool context)" >&2
@@ -856,7 +856,7 @@ copilot_chat() {
 
   # Ensure GH_TOKEN is set for gh copilot. It falls back to COPILOT_GITHUB_TOKEN.
   export GH_TOKEN="${COPILOT_GITHUB_TOKEN:-${GH_TOKEN:-}}"
-  if [ -z "$GH_TOKEN" ]; then
+  if [[ -z "$GH_TOKEN" ]]; then
     echo "copilot_chat: GH_TOKEN or COPILOT_GITHUB_TOKEN is required for copilot engine" >&2
     return 1
   fi
@@ -903,7 +903,7 @@ _gemini_api_key_names() {
   local _name k seen="" _depleted="" _skip=", ${GEMINI_DEPLETED_KEYS:-}, "
   for _name in GEMINI_API_KEY GOOGLE_API_KEY GOOGLE_API_KEY_2 GOOGLE_API_KEY_3 GOOGLE_API_KEY_4; do
     k="${!_name:-}"
-    [ -z "$k" ] && continue
+    [[ -z "$k" ]] && continue
     case "$seen" in
       *"|${k}|"*) continue ;;
     esac
@@ -913,7 +913,7 @@ _gemini_api_key_names() {
     esac
     printf '%s\n' "$_name"
   done
-  [ -z "$_depleted" ] || printf '%s' "$_depleted"
+  [[ -z "$_depleted" ]] || printf '%s' "$_depleted"
 }
 
 # _gemini_note_key_index <index>
@@ -921,14 +921,14 @@ _gemini_api_key_names() {
 # usage sidecar, so _record_engine_tokens can attribute the token record to the key
 # (the call may run in a `| tee` subshell, hence a file). No-op without a ledger.
 _gemini_note_key_index() {
-  [ -n "${1:-}" ] || return 0
+  [[ -n "${1:-}" ]] || return 0
   declare -F _engine_usage_sidecar >/dev/null 2>&1 || return 0
   # Strictly call-unique: only the per-call _ENGINE_USAGE_OUT path qualifies. The
   # shared $$ fallback could be overwritten by a concurrent call and charge usage
   # to the wrong key, so without a unique path the record is left UNATTRIBUTED
   # (no key_index) — the metering never charges an unattributed record to any key.
-  [ -n "${TOKEN_LOG_FILE:-}" ] || return 0
-  if [ -z "${_ENGINE_USAGE_OUT:-}" ]; then
+  [[ -n "${TOKEN_LOG_FILE:-}" ]] || return 0
+  if [[ -z "${_ENGINE_USAGE_OUT:-}" ]]; then
     echo "[gemini] no call-unique usage sidecar — token record carries no key_index (unattributed)" >&2
     return 0
   fi
@@ -950,14 +950,14 @@ _gemini_invoke() {
   declare -f reset_engine_usage >/dev/null 2>&1 && reset_engine_usage
 
   local _usage_json=0
-  if [ -n "${TOKEN_LOG_FILE:-}" ] && [ "${ENGINE_USAGE_JSON:-1}" != "0" ] \
+  if [[ -n "${TOKEN_LOG_FILE:-}" ]] && [[ "${ENGINE_USAGE_JSON:-1}" != "0" ]] \
      && declare -f parse_engine_usage >/dev/null 2>&1; then
     _usage_json=1
   fi
 
   if [ "$_usage_json" -eq 1 ]; then
     local _json_tmp; _json_tmp="$(mktemp 2>/dev/null || true)"
-    if [ -n "$_json_tmp" ]; then
+    if [[ -n "$_json_tmp" ]]; then
       local rc=0
       # stderr intentionally NOT redirected — flows to caller for rate-limit checks.
       _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gemini --prompt "" --model "$model" "${extra_args[@]}" \
@@ -965,7 +965,7 @@ _gemini_invoke() {
       if [ "$rc" -eq 0 ]; then
         parse_engine_usage gemini "$_json_tmp" || true
         local _txt; _txt="$(extract_engine_text gemini "$_json_tmp")"
-        if [ -n "$_txt" ]; then printf '%s\n' "$_txt"; else cat "$_json_tmp"; fi
+        if [[ -n "$_txt" ]]; then printf '%s\n' "$_txt"; else cat "$_json_tmp"; fi
       else
         cat "$_json_tmp"   # emit raw payload so downstream/rate-limit logic sees it
       fi
@@ -997,7 +997,7 @@ _gemini_chain_invoke() {
   shift 3
   local extra_args=("$@")
 
-  if [ -z "$chain_csv" ]; then
+  if [[ -z "$chain_csv" ]]; then
     echo "::error::_gemini_chain_invoke called with empty chain" >&2
     return 1
   fi
@@ -1016,14 +1016,14 @@ _gemini_chain_invoke() {
     # Trim whitespace
     model="${model#"${model%%[![:space:]]*}"}"
     model="${model%"${model##*[![:space:]]}"}"
-    [ -z "$model" ] && continue
+    [[ -z "$model" ]] && continue
 
     attempted=$((attempted + 1))
     stdout_tmp="$(mktemp 2>/dev/null)" || stdout_tmp=""
     stderr_tmp="$(mktemp 2>/dev/null)" || stderr_tmp=""
     rc=0
 
-    if [ -n "$stdout_tmp" ] && [ -n "$stderr_tmp" ]; then
+    if [[ -n "$stdout_tmp" ]] && [[ -n "$stderr_tmp" ]]; then
       # Per-key rotation (#1777): try each configured API key in turn for THIS
       # model. A rate-limited key rotates to the next key before the model is
       # downgraded, so a per-key quota exhaustion no longer forces an immediate
@@ -1039,7 +1039,7 @@ _gemini_chain_invoke() {
       local -a _key_names=() _key_idxs=() _all_names=()
       local _pk _pn _pi _pu
       while IFS= read -r _pn; do _all_names+=("$_pn"); done < <(_gemini_api_key_names)
-      if [ "${#_all_names[@]}" -gt 0 ] && declare -F gq_rotation_plan >/dev/null 2>&1; then
+      if [[ "${#_all_names[@]}" -gt 0 ]] && declare -F gq_rotation_plan >/dev/null 2>&1; then
         while IFS=$'\t' read -r _pk _pn _pi _pu; do
           case "$_pk" in
             cool)
@@ -1055,11 +1055,11 @@ _gemini_chain_invoke() {
           _key_names+=("$_pn"); _key_idxs+=("")
         done
       fi
-      if [ "${#_all_names[@]}" -eq 0 ]; then
+      if [[ "${#_all_names[@]}" -eq 0 ]]; then
         # No key configured (e.g. env-inherited auth in tests) — single call.
         _gemini_invoke "$prompt_file" "$timeout_sec" "$model" "${extra_args[@]}" \
           > "$stdout_tmp" 2> "$stderr_tmp" || rc=$?
-      elif [ "${#_key_names[@]}" -eq 0 ]; then
+      elif [[ "${#_key_names[@]}" -eq 0 ]]; then
         # Every key is cooling down, or capped / exhausted (#2041), on this model: no
         # call. Classified as a rate limit (captured stderr only) so the chain moves to
         # the next model and, past the last one, signals the cross-provider fallback
@@ -1097,9 +1097,9 @@ _gemini_chain_invoke() {
           # doubled per consecutive rejection, capped at the next daily reset, and
           # straight to the reset at a daily cap (#2041). Record only genuine quota/rate-limit
           # rejections as attempts (Google counts those), plus a redacted sample.
-          if [ -n "${_key_idxs[$_key_i]}" ] && [ -n "$(gq_ledger_file)" ]; then
+          if [[ -n "${_key_idxs[$_key_i]}" ]] && [[ -n "$(gq_ledger_file)" ]]; then
             _cd="$(gq_retry_hint_sec "$stdout_tmp" "$stderr_tmp")"; _cd_src="retry hint"
-            [ -n "$_cd" ] || { _cd="$(gq_default_cooldown_sec)"; _cd_src="default"; }
+            [[ -n "$_cd" ]] || { _cd="$(gq_default_cooldown_sec)"; _cd_src="default"; }
             _cd_scope="$(gq_rejection_scope "$stdout_tmp" "$stderr_tmp")"
             IFS=$'\t' read -r _cd _cd_src <<< "$(gq_escalated_cooldown "${_key_idxs[$_key_i]}" "$model" \
               "$_cd" "$_cd_src" "$_cd_scope")"
@@ -1116,15 +1116,15 @@ _gemini_chain_invoke() {
           fi
         done
         # Restore the caller's original key env for subsequent models/engines.
-        if [ -n "$_had_gk" ]; then export GOOGLE_API_KEY="$_saved_gk"; else unset GOOGLE_API_KEY; fi
-        if [ -n "$_had_gmk" ]; then export GEMINI_API_KEY="$_saved_gmk"; else unset GEMINI_API_KEY; fi
+        if [[ -n "$_had_gk" ]]; then export GOOGLE_API_KEY="$_saved_gk"; else unset GOOGLE_API_KEY; fi
+        if [[ -n "$_had_gmk" ]]; then export GEMINI_API_KEY="$_saved_gmk"; else unset GEMINI_API_KEY; fi
       fi
     else
       # mktemp failure — clean up partial allocations and fall through without capture.
-      [ -n "$stdout_tmp" ] && rm -f "$stdout_tmp"
-      [ -n "$stderr_tmp" ] && rm -f "$stderr_tmp"
-      [ -n "$final_stdout" ] && rm -f "$final_stdout"
-      [ -n "$final_stderr" ] && rm -f "$final_stderr"
+      [[ -n "$stdout_tmp" ]] && rm -f "$stdout_tmp"
+      [[ -n "$stderr_tmp" ]] && rm -f "$stderr_tmp"
+      [[ -n "$final_stdout" ]] && rm -f "$final_stdout"
+      [[ -n "$final_stderr" ]] && rm -f "$final_stderr"
       _gemini_invoke "$prompt_file" "$timeout_sec" "$model" "${extra_args[@]}" || rc=$?
       _GEMINI_CHAIN_MODEL_USED="$model"
       export _GEMINI_CHAIN_MODEL_USED
@@ -1132,8 +1132,8 @@ _gemini_chain_invoke() {
     fi
 
     # Keep only the latest attempt's buffers
-    [ -n "$final_stdout" ] && rm -f "$final_stdout"
-    [ -n "$final_stderr" ] && rm -f "$final_stderr"
+    [[ -n "$final_stdout" ]] && rm -f "$final_stdout"
+    [[ -n "$final_stderr" ]] && rm -f "$final_stderr"
     final_stdout="$stdout_tmp"
     final_stderr="$stderr_tmp"
     final_model="$model"
@@ -1165,11 +1165,11 @@ _gemini_chain_invoke() {
     final_rc=2
   fi
 
-  if [ -n "$final_stdout" ]; then
+  if [[ -n "$final_stdout" ]]; then
     cat "$final_stdout"
     rm -f "$final_stdout"
   fi
-  if [ -n "$final_stderr" ]; then
+  if [[ -n "$final_stderr" ]]; then
     cat "$final_stderr" >&2
     rm -f "$final_stderr"
   fi
@@ -1195,7 +1195,7 @@ _gemini_chain_invoke() {
 # Claude error look like throttling (#1957). Plain-text output is scanned as-is.
 _claude_hop_failure_class() {
   local out="$1" err="$2" status="" result_tmp="" is_json=0 cls="error"
-  if [ -n "$out" ] && [ -s "$out" ] && command -v jq >/dev/null 2>&1 \
+  if [[ -n "$out" ]] && [[ -s "$out" ]] && command -v jq >/dev/null 2>&1 \
      && jq -es 'any(.[]; type == "object" and has("type"))' "$out" >/dev/null 2>&1; then
     is_json=1
     status="$(jq -rs '[.[] | select(type == "object" and .is_error == true)] | last
@@ -1210,7 +1210,7 @@ _claude_hop_failure_class() {
   esac
   if [ "$is_json" -eq 1 ]; then
     result_tmp="$(mktemp 2>/dev/null)" || result_tmp=""
-    if [ -n "$result_tmp" ]; then
+    if [[ -n "$result_tmp" ]]; then
       jq -rs '[.[] | select(type == "object")] | last | (.result // empty) | tostring' \
         "$out" > "$result_tmp" 2>/dev/null || true
       is_rate_limited_files "$result_tmp" "$err" && cls="rate_limit"
@@ -1239,16 +1239,16 @@ _claude_hop_failure_class() {
 # the caller.
 _claude_log_hop() {
   local log="${CLAUDE_CHAIN_HOP_LOG:-}" out="${4:-}" err="${5:-}"
-  if [ -z "$log" ] && [ -n "${RUNNER_TEMP:-}" ]; then
+  if [[ -z "$log" ]] && [[ -n "${RUNNER_TEMP:-}" ]]; then
     log="$RUNNER_TEMP/cascade/claude-chain-hops.log"
   fi
-  [ -n "$log" ] || return 0
+  [[ -n "$log" ]] || return 0
   mkdir -p "$(dirname "$log")" 2>/dev/null || return 0
   {
     printf '=== %s model=%s rc=%s class=%s\n' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" "$1" "$2" "$3"
     if declare -F redact_secrets >/dev/null 2>&1; then
-      if [ -f "$out" ]; then
+      if [[ -f "$out" ]]; then
         printf -- '--- error\n'
         { jq -cs '[.[] | select(type == "object")] | last
                   | {is_error, api_error_status, subtype, result}' "$out" 2>/dev/null \
@@ -1256,7 +1256,7 @@ _claude_log_hop() {
           | head -c 1000 | redact_secrets
         printf '\n'
       fi
-      if [ -f "$err" ] && [ -s "$err" ]; then
+      if [[ -f "$err" ]] && [[ -s "$err" ]]; then
         printf -- '--- stderr\n'
         head -c 1000 "$err" 2>/dev/null | redact_secrets
         printf '\n'
@@ -1291,7 +1291,7 @@ _claude_chain_invoke() {
   shift 3
   local extra_args=("$@")
 
-  if [ -z "$chain_csv" ]; then
+  if [[ -z "$chain_csv" ]]; then
     echo "::error::_claude_chain_invoke called with empty chain" >&2
     return 1
   fi
@@ -1302,7 +1302,7 @@ _claude_chain_invoke() {
   # change. Falls back to raw output if extraction yields nothing.
   declare -f reset_engine_usage >/dev/null 2>&1 && reset_engine_usage
   local _usage_json=0 fmt_args=()
-  if [ -n "${TOKEN_LOG_FILE:-}" ] && [ "${ENGINE_USAGE_JSON:-1}" != "0" ] \
+  if [[ -n "${TOKEN_LOG_FILE:-}" ]] && [[ "${ENGINE_USAGE_JSON:-1}" != "0" ]] \
      && declare -f parse_engine_usage >/dev/null 2>&1; then
     _usage_json=1
     fmt_args=(--output-format json)
@@ -1321,23 +1321,23 @@ _claude_chain_invoke() {
     # Trim whitespace
     model="${model#"${model%%[![:space:]]*}"}"
     model="${model%"${model##*[![:space:]]}"}"
-    [ -z "$model" ] && continue
+    [[ -z "$model" ]] && continue
 
     attempted=$((attempted + 1))
     stdout_tmp="$(mktemp 2>/dev/null)" || stdout_tmp=""
     stderr_tmp="$(mktemp 2>/dev/null)" || stderr_tmp=""
     rc=0
 
-    if [ -n "$stdout_tmp" ] && [ -n "$stderr_tmp" ]; then
+    if [[ -n "$stdout_tmp" ]] && [[ -n "$stderr_tmp" ]]; then
       _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --setting-sources user --add-dir "$PWD" --model "$model" "${fmt_args[@]}" "${extra_args[@]}" \
         < "$prompt_file" > "$stdout_tmp" 2> "$stderr_tmp" || rc=$?
     else
       # mktemp failure (one or both) — clean up the partial tmp before degrading
       # to direct stdout/stderr passthrough so we don't leak a half-allocated fd.
-      [ -n "$stdout_tmp" ] && rm -f "$stdout_tmp"
-      [ -n "$stderr_tmp" ] && rm -f "$stderr_tmp"
-      [ -n "$final_stdout" ] && rm -f "$final_stdout"
-      [ -n "$final_stderr" ] && rm -f "$final_stderr"
+      [[ -n "$stdout_tmp" ]] && rm -f "$stdout_tmp"
+      [[ -n "$stderr_tmp" ]] && rm -f "$stderr_tmp"
+      [[ -n "$final_stdout" ]] && rm -f "$final_stdout"
+      [[ -n "$final_stderr" ]] && rm -f "$final_stderr"
       _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" claude --print --setting-sources user --add-dir "$PWD" --model "$model" "${extra_args[@]}" \
         < "$prompt_file" || rc=$?
       _CLAUDE_CHAIN_MODEL_USED="$model"
@@ -1346,8 +1346,8 @@ _claude_chain_invoke() {
     fi
 
     # Drop any previous final-attempt buffers (we keep only the latest)
-    [ -n "$final_stdout" ] && rm -f "$final_stdout"
-    [ -n "$final_stderr" ] && rm -f "$final_stderr"
+    [[ -n "$final_stdout" ]] && rm -f "$final_stdout"
+    [[ -n "$final_stderr" ]] && rm -f "$final_stderr"
     final_stdout="$stdout_tmp"
     final_stderr="$stderr_tmp"
     final_model="$model"
@@ -1393,7 +1393,7 @@ _claude_chain_invoke() {
   # decide on the cross-provider fallback by scanning the final hop's output,
   # which only carries a rate-limit signal when that hop was throttled. A chain
   # ending on a 404/400/5xx returns that hop's own code: an honest failure.
-  if [ "$succeeded" -eq 0 ] && [ "$last_cls" = "rate_limit" ]; then
+  if [ "$succeeded" -eq 0 ] && [[ "$last_cls" = "rate_limit" ]]; then
     parse_reset_time_files "$final_stdout" "$final_stderr"
     final_rc=2
   fi
@@ -1409,12 +1409,12 @@ _claude_chain_invoke() {
   # parse the usage block and emit the extracted .result text (so consumers still
   # receive plain text); fall back to the raw payload if extraction is empty or
   # the call failed (preserves error/rate-limit text for downstream detection).
-  if [ -n "$final_stdout" ]; then
+  if [[ -n "$final_stdout" ]]; then
     if [ "$_usage_json" -eq 1 ] && [ "$final_rc" -eq 0 ]; then
       parse_engine_usage claude "$final_stdout" || true
       local _txt
       _txt="$(extract_engine_text claude "$final_stdout")"
-      if [ -n "$_txt" ]; then
+      if [[ -n "$_txt" ]]; then
         printf '%s\n' "$_txt"
       else
         cat "$final_stdout"
@@ -1424,7 +1424,7 @@ _claude_chain_invoke() {
     fi
     rm -f "$final_stdout"
   fi
-  if [ -n "$final_stderr" ]; then
+  if [[ -n "$final_stderr" ]]; then
     cat "$final_stderr" >&2
     rm -f "$final_stderr"
   fi
@@ -1442,7 +1442,7 @@ _claude_chain_invoke() {
 # BSD). If even that fails it prints nothing, so _elapsed_ms records null rather
 # than a fake 0 ms. Never aborts the caller.
 _now_ms() {
-  if [ -n "${EPOCHREALTIME:-}" ]; then
+  if [[ -n "${EPOCHREALTIME:-}" ]]; then
     local _sec="${EPOCHREALTIME%[.,]*}" _frac="${EPOCHREALTIME#*[.,]}000"
     printf '%s%s' "$_sec" "${_frac:0:3}"
     return 0
@@ -1478,7 +1478,7 @@ _elapsed_ms() {
 # duration_ms (#1949) is the caller-measured wall-clock latency of the engine
 # call; when empty it is forwarded as such so emit_token_record writes null.
 _record_engine_tokens() {
-  [ -n "${TOKEN_LOG_FILE:-}" ] || return 0
+  [[ -n "${TOKEN_LOG_FILE:-}" ]] || return 0
   declare -f emit_token_record >/dev/null 2>&1 || return 0
 
   local tier="$1" engine="$2" model="$3" prompt_file="$4" output_file="${5:-}" duration_ms="${6:-}"
@@ -1491,14 +1491,14 @@ _record_engine_tokens() {
   # globals are a secondary source for non-piped callers.
   local _uf=""
   declare -f _engine_usage_sidecar >/dev/null 2>&1 && _uf="$(_engine_usage_sidecar)"
-  if [ -n "$_uf" ] && [ -s "$_uf" ]; then
+  if [[ -n "$_uf" ]] && [[ -s "$_uf" ]]; then
     IFS=$'\t' read -r input_tokens cache_read_tokens cache_write_tokens output_tokens < "$_uf"
     rm -f "$_uf" 2>/dev/null || true
     case "${input_tokens}${cache_read_tokens}${cache_write_tokens}${output_tokens}" in
       ''|*[!0-9]*) _have_usage=0 ;;
       *)           _have_usage=1 ;;
     esac
-  elif [ "${LAST_USAGE_OK:-0}" = "1" ]; then
+  elif [[ "${LAST_USAGE_OK:-0}" = "1" ]]; then
     input_tokens="${LAST_INPUT_TOKENS:-0}"
     cache_read_tokens="${LAST_CACHE_READ_TOKENS:-0}"
     cache_write_tokens="${LAST_CACHE_WRITE_TOKENS:-0}"
@@ -1518,8 +1518,8 @@ _record_engine_tokens() {
   # Gemini key attribution (#2030): the key INDEX that served the call, noted by
   # _gemini_note_key_index, so the quota gate can meter each key from the ledger.
   local key_index=""
-  if [ -n "$_uf" ] && [ -f "${_uf}.key" ]; then
-    [ "$engine" = "gemini" ] && IFS= read -r key_index < "${_uf}.key"
+  if [[ -n "$_uf" ]] && [[ -f "${_uf}.key" ]]; then
+    [[ "$engine" = "gemini" ]] && IFS= read -r key_index < "${_uf}.key"
     rm -f "${_uf}.key" 2>/dev/null || true
   fi
 
@@ -1537,7 +1537,7 @@ _record_engine_tokens() {
 # (e.g. opus -> sonnet) surfaces as the observed model in the eval report instead of
 # being silently attributed to the tier's declared model (#1686 AC #1).
 _record_model_used() {
-  [ -n "${ENGINE_MODEL_USED_FILE:-}" ] || return 0
+  [[ -n "${ENGINE_MODEL_USED_FILE:-}" ]] || return 0
   printf '%s\n' "$1" >"$ENGINE_MODEL_USED_FILE" 2>/dev/null || true
 }
 
@@ -1559,18 +1559,18 @@ _mcp_review_flags() {
   local base="$1"
   _MCP_FLAGS=()
   _MCP_ALLOWED_TOOLS="$base"
-  if [ -n "${REVIEW_MCP_CONFIG:-}" ] && [ -f "${REVIEW_MCP_CONFIG}" ] && [ -r "${REVIEW_MCP_CONFIG}" ]; then
+  if [[ -n "${REVIEW_MCP_CONFIG:-}" ]] && [[ -f "${REVIEW_MCP_CONFIG}" ]] && [[ -r "${REVIEW_MCP_CONFIG}" ]]; then
     _MCP_FLAGS=(--mcp-config "$REVIEW_MCP_CONFIG" --strict-mcp-config)
-    if [ -n "${REVIEW_MCP_DEBUG:-}" ]; then
+    if [[ -n "${REVIEW_MCP_DEBUG:-}" ]]; then
       # Surface the MCP server handshake in the CLI's stderr (captured + scanned
       # by _emit_mcp_failure_warning). `--debug mcp` scopes debug to the MCP
       # subsystem only, so the log stays readable. Diagnostics-only opt-in.
       _MCP_FLAGS+=(--debug mcp)
     fi
-    if [ -n "${REVIEW_MCP_ALLOWED_TOOLS:-}" ]; then
+    if [[ -n "${REVIEW_MCP_ALLOWED_TOOLS:-}" ]]; then
       _MCP_ALLOWED_TOOLS="${base},${REVIEW_MCP_ALLOWED_TOOLS}"
     fi
-  elif [ -n "${REVIEW_MCP_CONFIG:-}" ]; then
+  elif [[ -n "${REVIEW_MCP_CONFIG:-}" ]]; then
     echo "  [mcp] REVIEW_MCP_CONFIG='$REVIEW_MCP_CONFIG' is not a readable file — skipping MCP flags" >&2
   fi
 }
@@ -1591,7 +1591,7 @@ run_triage() {
   local _t_start _t_end _dur=""
   # Capture output for token estimation when logging is enabled (tee is a no-op otherwise).
   local _tok_tmp=""
-  if [ -n "${TOKEN_LOG_FILE:-}" ]; then
+  if [[ -n "${TOKEN_LOG_FILE:-}" ]]; then
     unset _ENGINE_USAGE_OUT
     _tok_tmp="$(mktemp 2>/dev/null || true)"
     # Per-call usage-sidecar key: a unique mktemp path, exported so the engine's
@@ -1605,12 +1605,12 @@ run_triage() {
     # (reset per attempt). The gemini/copilot branches tee during the call, so they
     # leave this at 0 — only the claude redirect defers its emit (see below).
     local _tok_emit_pending=0
-    [ -n "$_tok_tmp" ] && : > "$_tok_tmp"
+    [[ -n "$_tok_tmp" ]] && : > "$_tok_tmp"
     _t_start="$(_now_ms)"
     case "$REVIEW_ENGINE" in
       claude)
         local _triage_chain="${CLAUDE_TRIAGE_MODEL_CHAIN:-$ENGINE_TRIAGE_MODEL}"
-        if [ -n "$_tok_tmp" ]; then
+        if [[ -n "$_tok_tmp" ]]; then
           # Redirect to the token sidecar and re-emit with `cat`, rather than piping
           # through `| tee`: a pipe runs _claude_chain_invoke in a SUBSHELL, so the
           # _CLAUDE_CHAIN_MODEL_USED it exports (the model that ACTUALLY produced the
@@ -1638,7 +1638,7 @@ run_triage() {
         local _triage_gemini_chain
         _triage_gemini_chain="$(ai_models_gemini_chain triage)"
         _triage_gemini_chain="${_triage_gemini_chain:-$ENGINE_TRIAGE_MODEL}"
-        if [ -n "$_tok_tmp" ]; then
+        if [[ -n "$_tok_tmp" ]]; then
           _GEMINI_CHAIN_MODEL_USED=""
           _gemini_chain_invoke "$_triage_gemini_chain" "$prompt_file" "$TRIAGE_TIMEOUT_SEC" \
             --approval-mode auto_edit > >(tee "$_tok_tmp") || rc=$?
@@ -1656,7 +1656,7 @@ run_triage() {
         local _copilot_tier_model
         _copilot_tier_model="$(ai_models_copilot_model triage)"
         local -x COPILOT_API_MODEL="$_copilot_tier_model"
-        if [ -n "$_tok_tmp" ]; then
+        if [[ -n "$_tok_tmp" ]]; then
           copilot_chat "$prompt_file" "$TRIAGE_TIMEOUT_SEC" --deny-tool shell --deny-tool write | tee "$_tok_tmp" || rc=${PIPESTATUS[0]}
         else
           copilot_chat "$prompt_file" "$TRIAGE_TIMEOUT_SEC" --deny-tool shell --deny-tool write || rc=$?
@@ -1669,9 +1669,9 @@ run_triage() {
       # Success: hand the buffered output to the caller now (claude redirect path).
       [ "$_tok_emit_pending" -eq 1 ] && cat "$_tok_tmp"
       local _triage_used
-      if [ "$REVIEW_ENGINE" = "claude" ] && [ -n "${_CLAUDE_CHAIN_MODEL_USED:-}" ]; then
+      if [[ "$REVIEW_ENGINE" = "claude" ]] && [[ -n "${_CLAUDE_CHAIN_MODEL_USED:-}" ]]; then
         _triage_used="$_CLAUDE_CHAIN_MODEL_USED"
-      elif [ "$REVIEW_ENGINE" = "gemini" ] && [ -n "${_GEMINI_CHAIN_MODEL_USED:-}" ]; then
+      elif [[ "$REVIEW_ENGINE" = "gemini" ]] && [[ -n "${_GEMINI_CHAIN_MODEL_USED:-}" ]]; then
         _triage_used="$_GEMINI_CHAIN_MODEL_USED"
       else
         # No chain published the final model (copilot, or an engine that does not set
@@ -1683,7 +1683,7 @@ run_triage() {
       fi
       _record_engine_tokens "triage" "$REVIEW_ENGINE" "$_triage_used" "$prompt_file" "$_tok_tmp" "$_dur"
       _record_model_used "$_triage_used"
-      [ -n "$_tok_tmp" ] && rm -f "$_tok_tmp"
+      [[ -n "$_tok_tmp" ]] && rm -f "$_tok_tmp"
       return 0
     fi
     # Distinguish a `timeout --kill-after` budget-exhaustion SIGKILL from a genuine
@@ -1696,7 +1696,7 @@ run_triage() {
     # early 137 (e.g. an OOM kill well under budget) keeps is_transient_failure's
     # retry. Collapse only the at-budget case to 124 so it takes the NON-retryable
     # timeout path, using the latency run_triage already measured (#1952 cubic P1).
-    if [ "$rc" -eq 137 ] && [ -n "$_dur" ] && [ "$_dur" -ge "$(( TRIAGE_TIMEOUT_SEC * 1000 ))" ]; then
+    if [ "$rc" -eq 137 ] && [[ -n "$_dur" ]] && [ "$_dur" -ge "$(( TRIAGE_TIMEOUT_SEC * 1000 ))" ]; then
       rc=124
     fi
     if [ "$attempt" -lt "$RETRY_MAX_ATTEMPTS" ] && is_transient_failure "$rc"; then
@@ -1712,10 +1712,10 @@ run_triage() {
     # Final (un-retried) failure: emit the last attempt's bytes so the caller's
     # rate-limit detection still sees them (#1952, cubic P2).
     [ "$_tok_emit_pending" -eq 1 ] && cat "$_tok_tmp"
-    [ -n "$_tok_tmp" ] && rm -f "$_tok_tmp"
+    [[ -n "$_tok_tmp" ]] && rm -f "$_tok_tmp"
     return "$rc"
   done
-  [ -n "$_tok_tmp" ] && rm -f "$_tok_tmp"
+  [[ -n "$_tok_tmp" ]] && rm -f "$_tok_tmp"
   return "$rc"
 }
 
@@ -1750,7 +1750,7 @@ _run_agentic_direct() {
   local _skip_mcp="${5:-}"
   local _tok_tmp="" rc=0
   local _t_start _t_end _dur=""
-  if [ -n "${TOKEN_LOG_FILE:-}" ]; then
+  if [[ -n "${TOKEN_LOG_FILE:-}" ]]; then
     unset _ENGINE_USAGE_OUT
     _tok_tmp="$(mktemp 2>/dev/null || true)"
     # Per-call usage-sidecar key: a unique mktemp path, exported so the engine's
@@ -1780,14 +1780,14 @@ _run_agentic_direct() {
                 _agentic_chain="${CLAUDE_SINGLE_MODEL_CHAIN:-$model}" ;;
         *)      _agentic_chain="$model" ;;
       esac
-      if [ -n "$_tier_default" ] && [ "$model" != "$_tier_default" ]; then
+      if [[ -n "$_tier_default" ]] && [[ "$model" != "$_tier_default" ]]; then
         _agentic_chain="$model"
       fi
       # Thread the opt-in MCP config (no-op when REVIEW_MCP_CONFIG is unset).
       # The persona parity path (skip_mcp) bypasses merging entirely so the
       # allowlist stays exactly the Bash-only posture the live persona runtime
       # ships — MCP knobs must never widen it to Bash,<MCP tools> (#1696).
-      if [ -n "$_skip_mcp" ]; then
+      if [[ -n "$_skip_mcp" ]]; then
         _MCP_FLAGS=()
         _MCP_ALLOWED_TOOLS="$_allowed_tools"
       else
@@ -1802,7 +1802,7 @@ _run_agentic_direct() {
       # (they run cheaper models where the extra thinking spend is not warranted).
       local _effort_args=()
       case "$tier" in deep|audit|single) _effort_args=(--effort high) ;; esac
-      if [ -n "$_tok_tmp" ]; then
+      if [[ -n "$_tok_tmp" ]]; then
         _claude_chain_invoke "$_agentic_chain" "$prompt_file" "$DEEP_TIMEOUT_SEC" \
           --permission-mode acceptEdits \
           --allowed-tools "$_MCP_ALLOWED_TOOLS" \
@@ -1833,10 +1833,10 @@ _run_agentic_direct() {
       case "$tier" in deep|audit|single) _gemini_tier="$tier" ;; *) _gemini_tier=action ;; esac
       _agentic_gemini_chain="$(ai_models_gemini_chain "$_gemini_tier")"
       _agentic_gemini_chain="${_agentic_gemini_chain:-$model}"
-      if [ -n "$_gemini_tier_default" ] && [ "$model" != "$_gemini_tier_default" ]; then
+      if [[ -n "$_gemini_tier_default" ]] && [[ "$model" != "$_gemini_tier_default" ]]; then
         _agentic_gemini_chain="$model"
       fi
-      if [ -n "$_tok_tmp" ]; then
+      if [[ -n "$_tok_tmp" ]]; then
         _GEMINI_CHAIN_MODEL_USED=""
         _gemini_chain_invoke "$_agentic_gemini_chain" "$prompt_file" "$DEEP_TIMEOUT_SEC" \
           --approval-mode auto_edit > >(tee "$_tok_tmp") || rc=$?
@@ -1857,7 +1857,7 @@ _run_agentic_direct() {
         *)                 _copilot_tier_model="$(ai_models_copilot_model action)" ;;
       esac
       local -x COPILOT_API_MODEL="$_copilot_tier_model"
-      if [ -n "$_tok_tmp" ]; then
+      if [[ -n "$_tok_tmp" ]]; then
         copilot_chat "$prompt_file" "$DEEP_TIMEOUT_SEC" --yolo | tee "$_tok_tmp" || rc=${PIPESTATUS[0]}
       else
         copilot_chat "$prompt_file" "$DEEP_TIMEOUT_SEC" --yolo || rc=$?
@@ -1868,15 +1868,15 @@ _run_agentic_direct() {
   _dur="$(_elapsed_ms "$_t_start" "$_t_end")"
   if [ "$rc" -eq 0 ]; then
     local _agentic_used="$model"
-    if [ "$REVIEW_ENGINE" = "claude" ] && [ -n "${_CLAUDE_CHAIN_MODEL_USED:-}" ]; then
+    if [[ "$REVIEW_ENGINE" = "claude" ]] && [[ -n "${_CLAUDE_CHAIN_MODEL_USED:-}" ]]; then
       _agentic_used="$_CLAUDE_CHAIN_MODEL_USED"
-    elif [ "$REVIEW_ENGINE" = "gemini" ] && [ -n "${_GEMINI_CHAIN_MODEL_USED:-}" ]; then
+    elif [[ "$REVIEW_ENGINE" = "gemini" ]] && [[ -n "${_GEMINI_CHAIN_MODEL_USED:-}" ]]; then
       _agentic_used="$_GEMINI_CHAIN_MODEL_USED"
     fi
     _record_engine_tokens "$tier" "$REVIEW_ENGINE" "$_agentic_used" "$prompt_file" "$_tok_tmp" "$_dur"
     _record_model_used "$_agentic_used"
   fi
-  [ -n "$_tok_tmp" ] && rm -f "$_tok_tmp"
+  [[ -n "$_tok_tmp" ]] && rm -f "$_tok_tmp"
   return "$rc"
 }
 
@@ -1902,7 +1902,7 @@ run_persona() {
   # tool-capable artifact than production ships. A persona parity score under a
   # non-claude engine is meaningless, so fail fast rather than silently gate the
   # wrong artifact (#1696).
-  if [ "$REVIEW_ENGINE" != "claude" ]; then
+  if [[ "$REVIEW_ENGINE" != "claude" ]]; then
     echo "::error::run_persona requires REVIEW_ENGINE=claude (persona parity is Claude Opus + Bash-only); got '$REVIEW_ENGINE'" >&2
     return 1
   fi
@@ -1943,7 +1943,7 @@ run_writer() {
   # Without it, <model> is mapped back to the tier whose ENGINE_*_MODEL it is
   # (action first); empty means an explicit pin that runs alone.
   local _writer_tier="${3:-}"
-  [ -n "$_writer_tier" ] || case "$model" in
+  [[ -n "$_writer_tier" ]] || case "$model" in
     "${ENGINE_ACTION_MODEL:-}") _writer_tier=action ;;
     "${ENGINE_DEEP_MODEL:-}")   _writer_tier=deep ;;
     "${ENGINE_TRIAGE_MODEL:-}") _writer_tier=triage ;;
@@ -1951,7 +1951,7 @@ run_writer() {
     "${ENGINE_SINGLE_MODEL:-}") _writer_tier=single ;;
   esac
 
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "  [dry-run] run_writer: would invoke $REVIEW_ENGINE with prompt $(wc -l < "$prompt_file") lines"
     return 0
   fi
@@ -1975,11 +1975,11 @@ run_writer() {
       # The selected tier's chain (CLAUDE_<TIER>_MODEL_CHAIN); an explicit
       # model pin that matches no tier runs alone.
       local _writer_chain="$model" _writer_chain_var
-      if [ -n "$_writer_tier" ]; then
+      if [[ -n "$_writer_tier" ]]; then
         _writer_chain_var="CLAUDE_$(printf '%s' "$_writer_tier" | tr '[:lower:]' '[:upper:]')_MODEL_CHAIN"
         _writer_chain="${!_writer_chain_var:-$model}"
       fi
-      if [ -n "$_tmp" ]; then
+      if [[ -n "$_tmp" ]]; then
         _claude_chain_invoke "$_writer_chain" "$prompt_file" "$ACTION_TIMEOUT_SEC" \
           --permission-mode acceptEdits --strict-mcp-config \
           --allowed-tools "Bash,Read,Write,Edit,Grep,Glob,WebFetch" \
@@ -1994,11 +1994,11 @@ run_writer() {
     gemini)
       # The selected tier's chain; an explicit model pin runs alone.
       local _writer_gemini_chain="$model"
-      if [ -n "$_writer_tier" ]; then
+      if [[ -n "$_writer_tier" ]]; then
         _writer_gemini_chain="$(ai_models_gemini_chain "$_writer_tier")"
         _writer_gemini_chain="${_writer_gemini_chain:-$model}"
       fi
-      if [ -n "$_tmp" ]; then
+      if [[ -n "$_tmp" ]]; then
         _GEMINI_CHAIN_MODEL_USED=""
         _gemini_chain_invoke "$_writer_gemini_chain" "$prompt_file" "$ACTION_TIMEOUT_SEC" \
           --approval-mode auto_edit > >(tee "$_tmp") 2>&1 || rc=$?
@@ -2018,7 +2018,7 @@ run_writer() {
         *)    _copilot_tier_model="$(ai_models_copilot_model "$_writer_tier")" ;;
       esac
       local -x COPILOT_API_MODEL="$_copilot_tier_model"
-      if [ -n "$_tmp" ]; then
+      if [[ -n "$_tmp" ]]; then
         copilot_chat "$prompt_file" "$ACTION_TIMEOUT_SEC" --yolo 2>&1 | tee "$_tmp" || rc=${PIPESTATUS[0]}
       else
         copilot_chat "$prompt_file" "$ACTION_TIMEOUT_SEC" --yolo || rc=$?
@@ -2030,14 +2030,14 @@ run_writer() {
   _dur="$(_elapsed_ms "$_t_start" "$_t_end")"
   if [ "$rc" -eq 0 ]; then
     local _writer_used="$model"
-    if [ "$REVIEW_ENGINE" = "claude" ] && [ -n "${_CLAUDE_CHAIN_MODEL_USED:-}" ]; then
+    if [[ "$REVIEW_ENGINE" = "claude" ]] && [[ -n "${_CLAUDE_CHAIN_MODEL_USED:-}" ]]; then
       _writer_used="$_CLAUDE_CHAIN_MODEL_USED"
-    elif [ "$REVIEW_ENGINE" = "gemini" ] && [ -n "${_GEMINI_CHAIN_MODEL_USED:-}" ]; then
+    elif [[ "$REVIEW_ENGINE" = "gemini" ]] && [[ -n "${_GEMINI_CHAIN_MODEL_USED:-}" ]]; then
       _writer_used="$_GEMINI_CHAIN_MODEL_USED"
     fi
     _record_engine_tokens "writer" "$REVIEW_ENGINE" "$_writer_used" "$prompt_file" "$_tmp" "$_dur"
   fi
-  if [ -n "$_tmp" ]; then
+  if [[ -n "$_tmp" ]]; then
     # Redact once: write secret-scrubbed content to the persisted path, then
     # use that redacted file as the source for the step summary so credentials
     # cannot leak via /tmp persistence or the public run summary. Patterns
@@ -2064,7 +2064,7 @@ run_writer() {
       : > "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" 2>/dev/null || true
       echo "::warning::Failed to redact/persist $DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt" >&2
     fi
-    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
       # HTML-escape the redacted log so literal </details> or </summary> in
       # the agent output cannot break the wrapping <details> block on the run
       # summary page.
@@ -2086,7 +2086,7 @@ run_writer() {
   # marker embedding. Use the file-based helpers to avoid OOM on large captures.
   # Runs AFTER the persist/summary block above so a rate-limited session is also
   # captured to the run summary; reads the raw capture ($_tmp) left intact above.
-  if [ "$rc" -ne 0 ] && [ -n "$_tmp" ] && is_rate_limited_files "$_tmp"; then
+  if [ "$rc" -ne 0 ] && [[ -n "$_tmp" ]] && is_rate_limited_files "$_tmp"; then
     parse_reset_time_files "$_tmp"
     rm -f "$_tmp"
     return 2
@@ -2096,12 +2096,12 @@ run_writer() {
   # settings". That is not a rate-limit phrase, so without this the raw exit
   # would be classified as engine-error and abort the chain before gemini. Map it
   # to exit 2 so run_writer_with_fallback warns and continues to the next engine.
-  if [ "$rc" -ne 0 ] && [ -n "$_tmp" ] && is_license_denied_files "$_tmp"; then
+  if [ "$rc" -ne 0 ] && [[ -n "$_tmp" ]] && is_license_denied_files "$_tmp"; then
     echo "::warning::$REVIEW_ENGINE licensing/policy denial — treating as unavailable, trying next engine" >&2
     rm -f "$_tmp"
     return 2
   fi
-  [ -n "$_tmp" ] && rm -f "$_tmp"
+  [[ -n "$_tmp" ]] && rm -f "$_tmp"
   return "$rc"
 }
 
@@ -2125,7 +2125,7 @@ reset_engine_exhaustion() {
 
 # _engine_is_exhausted <engine> — 0 if already marked exhausted this run.
 _engine_is_exhausted() {
-  [ -n "${1:-}" ] && [ -n "${_ENGINE_EXHAUSTED_REASON["$1"]:-}" ]
+  [[ -n "${1:-}" ]] && [[ -n "${_ENGINE_EXHAUSTED_REASON["$1"]:-}" ]]
 }
 
 # _mark_engine_exhausted <engine> <reason>
@@ -2134,8 +2134,8 @@ _engine_is_exhausted() {
 # multi-cycle caller cannot produce a notice storm.
 _mark_engine_exhausted() {
   local engine="${1:-}" reason="${2:-rate-limited}"
-  [ -z "$engine" ] && return 0
-  [ -n "${_ENGINE_EXHAUSTED_REASON["$engine"]:-}" ] && return 0
+  [[ -z "$engine" ]] && return 0
+  [[ -n "${_ENGINE_EXHAUSTED_REASON["$engine"]:-}" ]] && return 0
   _ENGINE_EXHAUSTED_REASON["$engine"]="$reason"
   echo "::warning::[engine-exhaustion] ${engine} marked exhausted for this run (${reason}) — it will not be re-invoked" >&2
 }
@@ -2153,7 +2153,7 @@ _engine_project_config_present() {
     copilot) _paths=(.github/hooks .github/mcp.json .mcp.json .vscode/mcp.json) ;;
   esac
   for _path in "${_paths[@]}"; do
-    if [ -e "$_path" ]; then
+    if [[ -e "$_path" ]]; then
       printf '%s\n' "$_path"
       return 0
     fi
@@ -2207,10 +2207,10 @@ run_writer_with_fallback() {
   local engines=()
   # Primary first when it is an enabled engine.
   for e in "${_enabled[@]}"; do
-    [ "$e" = "$REVIEW_ENGINE" ] && engines+=("$e")
+    [[ "$e" = "$REVIEW_ENGINE" ]] && engines+=("$e")
   done
   for e in "${_enabled[@]}"; do
-    [ "$e" != "$REVIEW_ENGINE" ] && engines+=("$e")
+    [[ "$e" != "$REVIEW_ENGINE" ]] && engines+=("$e")
   done
 
   local any_rate_limited=0
@@ -2231,7 +2231,7 @@ run_writer_with_fallback() {
       any_unconfigured=1
       continue
     fi
-    if [ "$engine" = "copilot" ] && [[ "${COPILOT_GITHUB_TOKEN:-}" == ghp_* ]]; then
+    if [[ "$engine" = "copilot" ]] && [[ "${COPILOT_GITHUB_TOKEN:-}" == ghp_* ]]; then
       echo "::warning::Skipping copilot fallback: classic PAT in COPILOT_GITHUB_TOKEN is unsupported (configuration gap, not a rate limit)" >&2
       any_unconfigured=1
       continue
@@ -2242,7 +2242,7 @@ run_writer_with_fallback() {
     # below — making callers retry a config error as though a later attempt could
     # succeed (#1546). Record it as a config-gap so the aggregate reason is the
     # distinct `unconfigured`, not the retryable `engine-error` (#1591).
-    if [ "$engine" = "copilot" ] && { [ -z "${COPILOT_GITHUB_TOKEN:-}" ] || [[ ! "${COPILOT_GITHUB_TOKEN:-}" =~ ^(github_pat_|ghp_|ghs_) ]]; }; then
+    if [[ "$engine" = "copilot" ]] && { [[ -z "${COPILOT_GITHUB_TOKEN:-}" ]] || [[ ! "${COPILOT_GITHUB_TOKEN:-}" =~ ^(github_pat_|ghp_|ghs_) ]]; }; then
       echo "::warning::Skipping copilot fallback: COPILOT_GITHUB_TOKEN missing or unsupported (configuration gap, not a rate limit)" >&2
       any_unconfigured=1
       continue
@@ -2253,7 +2253,7 @@ run_writer_with_fallback() {
     # than the retryable `engine-error`. Retrying cannot conjure an API key. The
     # extra resilience keys (GOOGLE_API_KEY_2/_3/_4, #1777) also count as configured,
     # so a run authenticated only by a secondary key is NOT treated as a config-gap.
-    if [ "$engine" = "gemini" ] && [ -z "$(_gemini_api_keys)" ]; then
+    if [[ "$engine" = "gemini" ]] && [[ -z "$(_gemini_api_keys)" ]]; then
       echo "::warning::Skipping gemini fallback: no Gemini API key configured (GEMINI_API_KEY / GOOGLE_API_KEY / GOOGLE_API_KEY_2 / GOOGLE_API_KEY_3 / GOOGLE_API_KEY_4) — configuration gap, not a rate limit" >&2
       any_unconfigured=1
       continue
@@ -2403,7 +2403,7 @@ sys.exit(1)
 # any case). Valid JSON without one (e.g. {} or an error object) is not a
 # verdict, so the duck chain moves on instead of synthesizing null values.
 duck_verdict_valid() {
-  [ -s "${1:-}" ] || return 1
+  [[ -s "${1:-}" ]] || return 1
   jq -e '(.decision | type == "string") and
          ((.decision | ascii_downcase) as $d | ["approve", "escalate"] | index($d) != null)' \
     "$1" >/dev/null 2>&1
@@ -2427,7 +2427,7 @@ duck_verdict_valid() {
 run_duck_chain() {
   local prompt_file="$1" candidates e m rc=1 n=0 total tried="" out_tmp err_tmp
   local _started="$SECONDS"
-  if [ "$#" -ge 2 ]; then
+  if [[ "$#" -ge 2 ]]; then
     candidates="$2"
   else
     candidates="$(duck_engine_candidates)"
@@ -2435,9 +2435,9 @@ run_duck_chain() {
   rm -f "${OUTPUT_FILE}.engine" "${OUTPUT_FILE}.skip"
   total="$(printf '%s\n' "$candidates" | grep -c '[^[:space:]]' || true)"
   while read -r e m; do
-    [ -n "$e" ] && [ "$e" != none ] || continue
+    [[ -n "$e" ]] && [[ "$e" != none ]] || continue
     n=$((n + 1))
-    if [ -n "$tried" ]; then
+    if [[ -n "$tried" ]]; then
       if [ $((SECONDS - _started)) -ge "${DUCK_TIMEOUT_SEC:-300}" ]; then
         echo "::notice::[duck] not trying $e ($m): the duck's ${DUCK_TIMEOUT_SEC:-300}s budget is spent" >&2
         break
@@ -2473,7 +2473,7 @@ run_duck_chain() {
     rm -f "$out_tmp" "$err_tmp"
     [ "$rc" -ne 0 ] || rc=1
   done <<< "$candidates"
-  if [ -n "$tried" ]; then
+  if [[ -n "$tried" ]]; then
     echo "::notice::[duck] no duck engine produced a verdict (tried: $tried) — continuing with the deep review only" >&2
     printf '%s\n' "no duck engine produced a verdict (tried: $tried)" > "${OUTPUT_FILE}.skip"
   fi
@@ -2488,13 +2488,13 @@ run_duck_chain() {
 # (the duck ran), the file is not a verdict with a body, or jq fails. Returns 0.
 duck_skip_note() {
   local verdict="$1" reason="$2" tmp
-  [ -n "$reason" ] && [ -s "$verdict" ] || return 0
+  [[ -n "$reason" ]] && [[ -s "$verdict" ]] || return 0
   tmp="$(mktemp)" || return 0
   if jq --arg line "_Second opinion skipped: no rubber-duck verdict — ${reason}._" '
       if ((.body // "") | type) == "string" and (.body // "") != "" then
         .body |= (if test("\n### Findings") then sub("\n### Findings"; "\n" + $line + "\n\n### Findings")
                   else . + "\n\n" + $line end)
-      else . end' "$verdict" > "$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+      else . end' "$verdict" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
     cat "$tmp" > "$verdict"
   fi
   rm -f "$tmp"
@@ -2520,7 +2520,7 @@ _run_duck_direct() {
   local model="$2"
   local _tok_tmp="" rc=0
   local _t_start _t_end _dur=""
-  if [ -n "${TOKEN_LOG_FILE:-}" ]; then
+  if [[ -n "${TOKEN_LOG_FILE:-}" ]]; then
     unset _ENGINE_USAGE_OUT
     _tok_tmp="$(mktemp 2>/dev/null || true)"
     # Per-call usage-sidecar key: a unique mktemp path, exported so the engine's
@@ -2539,7 +2539,7 @@ _run_duck_direct() {
       _mcp_review_flags "${_ENGINE_REVIEW_TOOLS:-Bash,Read,Grep,Glob}"
       # Route through the chain helper so real token usage (incl. cache) is captured
       # when logging is on; a single-model "chain" preserves prior behaviour.
-      if [ -n "$_tok_tmp" ]; then
+      if [[ -n "$_tok_tmp" ]]; then
         _claude_chain_invoke "$model" "$prompt_file" "$DUCK_TIMEOUT_SEC" \
           --permission-mode acceptEdits \
           --allowed-tools "$_MCP_ALLOWED_TOOLS" \
@@ -2563,7 +2563,7 @@ _run_duck_direct() {
       unset COPILOT_GITHUB_TOKEN 2>/dev/null || true
       # A single-model chain, so the duck gets the same per-key rotation (and
       # probe-depleted keys last) as the other Gemini tiers.
-      if [ -n "$_tok_tmp" ]; then
+      if [[ -n "$_tok_tmp" ]]; then
         _gemini_chain_invoke "$model" "$prompt_file" "$DUCK_TIMEOUT_SEC" \
           --approval-mode auto_edit | tee "$_tok_tmp" || rc=${PIPESTATUS[0]}
       else
@@ -2583,7 +2583,7 @@ _run_duck_direct() {
       # (ai_models_copilot_model duck).
       local _copilot_duck_model _copilot_duck_wanted
       _copilot_duck_wanted="$(_ai_duck_first)"
-      if [ "$_copilot_duck_wanted" = copilot ] && [ -n "${AI_DUCK_MODEL:-}" ] && [ "$model" = "$AI_DUCK_MODEL" ]; then
+      if [[ "$_copilot_duck_wanted" = copilot ]] && [[ -n "${AI_DUCK_MODEL:-}" ]] && [[ "$model" = "$AI_DUCK_MODEL" ]]; then
         _copilot_duck_model="$model"
       else
         _copilot_duck_model="$(ai_models_copilot_model duck)"
@@ -2591,7 +2591,7 @@ _run_duck_direct() {
       local -x COPILOT_API_MODEL="$_copilot_duck_model"
       # Do NOT tee stdout to OUTPUT_FILE — same rationale as run_agentic copilot
       # branch: the prompt writes verdict JSON directly via the Bash tool.
-      if [ -n "$_tok_tmp" ]; then
+      if [[ -n "$_tok_tmp" ]]; then
         copilot_chat "$prompt_file" "$DUCK_TIMEOUT_SEC" --yolo | tee "$_tok_tmp" || rc=${PIPESTATUS[0]}
       else
         copilot_chat "$prompt_file" "$DUCK_TIMEOUT_SEC" --yolo || rc=$?
@@ -2599,7 +2599,7 @@ _run_duck_direct() {
       ;;
     *)
       echo "::error::Unknown DUCK_ENGINE='$DUCK_ENGINE'" >&2
-      [ -n "$_tok_tmp" ] && rm -f "$_tok_tmp"
+      [[ -n "$_tok_tmp" ]] && rm -f "$_tok_tmp"
       return 1
       ;;
   esac
@@ -2608,7 +2608,7 @@ _run_duck_direct() {
   if [ "$rc" -eq 0 ]; then
     _record_engine_tokens "duck" "$DUCK_ENGINE" "$model" "$prompt_file" "$_tok_tmp" "$_dur"
   fi
-  [ -n "$_tok_tmp" ] && rm -f "$_tok_tmp"
+  [[ -n "$_tok_tmp" ]] && rm -f "$_tok_tmp"
   return "$rc"
 }
 
@@ -2618,14 +2618,14 @@ _run_duck_direct() {
 # computed time is already in the past for today.
 _emit_reset_iso() {
   local hhmm="$1"
-  if [ -z "$hhmm" ]; then
+  if [[ -z "$hhmm" ]]; then
     printf '' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
     return 0
   fi
   local today iso
   today=$(date -u +%Y-%m-%d)
   iso=$(date -u -d "${today} ${hhmm} UTC" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
-  if [ -n "$iso" ] && [ "$(date -u +%s)" -gt "$(date -u -d "$iso" +%s 2>/dev/null || echo 0)" ]; then
+  if [[ -n "$iso" ]] && [ "$(date -u +%s)" -gt "$(date -u -d "$iso" +%s 2>/dev/null || echo 0)" ]; then
     local tomorrow
     tomorrow=$(date -u -d "tomorrow" +%Y-%m-%d)
     iso=$(date -u -d "${tomorrow} ${hhmm} UTC" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
@@ -2649,7 +2649,7 @@ RATE_LIMIT_SAMPLE_MAX_BYTES="${RATE_LIMIT_SAMPLE_MAX_BYTES:-500}"
 # Records nothing without a ledger or without redact_secrets. Never changes what
 # the parser accepts or its sidecar; never fails the caller.
 _record_unparsed_rate_limit() {
-  if [ -z "${TOKEN_LOG_FILE:-}" ] \
+  if [[ -z "${TOKEN_LOG_FILE:-}" ]] \
     || ! declare -F emit_rate_limit_sample_record >/dev/null 2>&1 \
     || ! declare -F redact_secrets >/dev/null 2>&1; then
     return 0
@@ -2660,7 +2660,7 @@ _record_unparsed_rate_limit() {
       | if type == "object" and (.result | type) == "string" then .result else $l end' 2>/dev/null \
     | grep -iE "$(_rate_limit_pattern)" 2>/dev/null | head -n 3 \
     | head -c "$RATE_LIMIT_SAMPLE_MAX_BYTES" || true)
-  [ -n "$sample" ] || return 0
+  [[ -n "$sample" ]] || return 0
   shape=$(printf '%s' "$sample" | sed -E 's/[0-9]+/N/g' | cksum)
   shape=${shape%% *}
   emit_rate_limit_sample_record "${REVIEW_ENGINE:-}" "$shape" "$sample" || true
@@ -2680,7 +2680,7 @@ parse_reset_time() {
   # Match "resets 11:20pm (UTC)" or "resets 11:20pm UTC"
   local time_str
   time_str=$(printf '%s\n' "$text" | grep -oiE 'resets [0-9]{1,2}:[0-9]{2}(am|pm)' | head -1 || true)
-  if [ -z "$time_str" ]; then
+  if [[ -z "$time_str" ]]; then
     printf '' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
     printf '%s\n' "$text" | _record_unparsed_rate_limit || true
     return 0
@@ -2700,15 +2700,15 @@ parse_reset_time_files() {
   local files=()
   local f
   for f in "$@"; do
-    [ -n "$f" ] && [ -f "$f" ] && files+=("$f")
+    [[ -n "$f" ]] && [[ -f "$f" ]] && files+=("$f")
   done
-  if [ "${#files[@]}" -eq 0 ]; then
+  if [[ "${#files[@]}" -eq 0 ]]; then
     printf '' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
     return 0
   fi
   local time_str
   time_str=$(grep -hoiE 'resets [0-9]{1,2}:[0-9]{2}(am|pm)' "${files[@]}" 2>/dev/null | head -1 || true)
-  if [ -z "$time_str" ]; then
+  if [[ -z "$time_str" ]]; then
     printf '' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
     cat "${files[@]}" 2>/dev/null | _record_unparsed_rate_limit || true
     return 0

@@ -17,7 +17,7 @@ pass() { echo "PASS: $*"; }
 fail() { echo "FAIL: $*"; FAIL=$((FAIL + 1)); }
 
 # 1. File must exist.
-if [ ! -f "$WORKFLOW" ]; then
+if [[ ! -f "$WORKFLOW" ]]; then
   echo "ERROR: $WORKFLOW not found"
   exit 1
 fi

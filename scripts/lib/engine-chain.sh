@@ -56,7 +56,7 @@ _ai_engine_parse() {
 # Empty or invalid configuration → the default chain.
 ai_engine_chain() {
   local parsed
-  if parsed="$(_ai_engine_parse "$(_ai_engine_spec)")" && [ -n "$parsed" ]; then
+  if parsed="$(_ai_engine_parse "$(_ai_engine_spec)")" && [[ -n "$parsed" ]]; then
     printf '%s' "$parsed"
   else
     printf '%s' "$AI_ENGINES_DEFAULT"
@@ -69,11 +69,11 @@ ai_engine_chain() {
 ai_engine_chain_problem() {
   local spec parsed
   spec="$(_ai_engine_spec)"
-  [ -n "$spec" ] || return 0
-  if [ -z "${spec//[[:space:],]/}" ]; then
+  [[ -n "$spec" ]] || return 0
+  if [[ -z "${spec//[[:space:],]/}" ]]; then
     printf "AI_ENGINES='%s' lists no engine — using the default chain '%s'" \
       "$spec" "$AI_ENGINES_DEFAULT"
-  elif ! parsed="$(_ai_engine_parse "$spec")" || [ -z "$parsed" ]; then
+  elif ! parsed="$(_ai_engine_parse "$spec")" || [[ -z "$parsed" ]]; then
     printf "AI_ENGINES='%s' names an unknown engine (expected claude, gemini, copilot) — using the default chain '%s'" \
       "$spec" "$AI_ENGINES_DEFAULT"
   elif [[ "$spec" =~ ^[[:space:],] ]]; then
@@ -100,10 +100,10 @@ ai_engine_primary() {
   pref="$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
   chain="$(ai_engine_chain)"
   spec="$(_ai_engine_spec)"
-  if [ -n "${spec//[[:space:],]/}" ] && ! _ai_engine_parse "$spec" >/dev/null; then
+  if [[ -n "${spec//[[:space:],]/}" ]] && ! _ai_engine_parse "$spec" >/dev/null; then
     pref=""
   fi
-  if [ -n "$pref" ] && [[ " $chain " == *" $pref "* ]]; then
+  if [[ -n "$pref" ]] && [[ " $chain " == *" $pref "* ]]; then
     printf '%s' "$pref"
   else
     printf '%s' "${chain%% *}"
@@ -126,7 +126,7 @@ ai_engine_available() {
   esac
   ai_engine_enabled "$1" || return 1
   [[ " ${AI_ENGINES_RATE_LIMITED:-} " != *" $1 "* ]] || return 1
-  [ "$flag" != "false" ]
+  [[ "$flag" != "false" ]]
 }
 
 # ai_engine_next_available <current> — the first available engine AFTER
@@ -139,7 +139,7 @@ ai_engine_next_available() {
   [[ " $chain " == *" $current "* ]] || seen=1
   for e in $chain; do
     if [ "$seen" -eq 0 ]; then
-      [ "$e" = "$current" ] && seen=1
+      [[ "$e" = "$current" ]] && seen=1
       continue
     fi
     if ai_engine_available "$e"; then

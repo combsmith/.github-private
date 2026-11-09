@@ -23,7 +23,7 @@ VERDICT_JSON="${2:?}"
 DRY_RUN="${3:-false}"
 PR_HEAD_SHA="${PR_HEAD_SHA:?PR_HEAD_SHA must be set}"
 
-if [ ! -f "$VERDICT_JSON" ]; then
+if [[ ! -f "$VERDICT_JSON" ]]; then
   echo "ERROR: verdict JSON not found at $VERDICT_JSON"
   exit 1
 fi
@@ -73,7 +73,7 @@ verify_approval_landed() {
       gh api --paginate --slurp "repos/$owner_repo/pulls/$pr_num/reviews" 2>/dev/null |
         jq 'add'
     ) || rc=$?
-    if [ "$rc" -eq 0 ] && [ -n "$reviews" ]; then
+    if [ "$rc" -eq 0 ] && [[ -n "$reviews" ]]; then
       if approval_review_present "$reviews" "$BOT_USER" "$PR_HEAD_SHA"; then
         echo "PRESENT"; return 0
       fi
@@ -126,7 +126,7 @@ withdraw_unbound_approval() {
   local pr_url="$1" review_id="$2" why="$3" owner_repo pr_num rc=0
   owner_repo=$(echo "$pr_url" | sed -E 's|.*/([^/]+)/([^/]+)/pull/.*|\1/\2|')
   pr_num=$(echo "$pr_url" | sed -E 's|.*/([0-9]+)$|\1|')
-  if [ -z "$review_id" ]; then
+  if [[ -z "$review_id" ]]; then
     echo "::error::approval on $pr_url could not be withdrawn ($why): the review API returned no review id"
     rc=1
   elif ! gh api -X PUT "repos/$owner_repo/pulls/$pr_num/reviews/$review_id/dismissals" \
@@ -147,11 +147,11 @@ withdraw_unbound_approval() {
 maybe_post_deferred_partial_evidence() {
   local pr_url="$1"
   local statefile="${PARTIAL_EVIDENCE_STATE_FILE:-}"
-  [ -n "$statefile" ] && [ -s "$statefile" ] || return 0
+  [[ -n "$statefile" ]] && [[ -s "$statefile" ]] || return 0
 
   local submitted required reason
   read -r submitted required reason < "$statefile" || return 0
-  [ -n "$submitted" ] || return 0
+  [[ -n "$submitted" ]] || return 0
 
   # Compose the marker + gate log helpers, then dedup against existing comments.
   # shellcheck source=lib/advisory-review-gate.sh
@@ -188,7 +188,7 @@ METADATA_ONLY=$(jq -r '.metadata_only // false' "$VERDICT_JSON")
 # raw verdict word, so a valid approve verdict failed the guard on formatting
 # alone and nothing was posted. Normalize only the present-tense word inside the
 # head-SHA v1 marker; a missing or contradictory decision still fails closed.
-if [ "$DECISION" = "approve" ]; then
+if [[ "$DECISION" = "approve" ]]; then
   # -z treats the body as one record so a marker wrapped across lines still
   # matches. Detect changes without command substitution stripping newlines: write
   # to temp files and compare via cmp, so a trailing-newline-only difference
@@ -243,7 +243,7 @@ upsert_escalation_comment() {
   fi
   rm -f "$comments_file"
 
-  if [ -n "${existing_id:-}" ]; then
+  if [[ -n "${existing_id:-}" ]]; then
     echo "  updating human-escalation comment $existing_id in place"
     if ! jq -n --arg b "$body" '{body: $b}' \
          | gh api -X PATCH "repos/$owner_repo/issues/comments/$existing_id" --input - >/dev/null 2>&1; then
@@ -331,9 +331,9 @@ mark_prior_agent_items_obsolete() {
   ' "$reviews_file" 2>/dev/null || true)
 
   local dismiss_err current_state
-  if [ -n "$stale_review_ids" ]; then
+  if [[ -n "$stale_review_ids" ]]; then
     while IFS= read -r review_id; do
-      [ -z "$review_id" ] && continue
+      [[ -z "$review_id" ]] && continue
       # Re-check the review's current state to avoid 422s from race conditions
       # (state may have changed between enumeration and dismissal).
       current_state=$(gh api "repos/$owner_repo/pulls/$pr_num/reviews/$review_id" \
@@ -369,9 +369,9 @@ mark_prior_agent_items_obsolete() {
   ' "$comments_file" 2>/dev/null || true)
 
   local edit_err old_body new_body
-  if [ -n "$stale_comment_ids" ]; then
+  if [[ -n "$stale_comment_ids" ]]; then
     while IFS= read -r cid; do
-      [ -z "$cid" ] && continue
+      [[ -z "$cid" ]] && continue
       echo "  collapsing prior agent comment $cid (superseded by $PR_HEAD_SHA)"
       old_body=$(gh api "repos/$owner_repo/issues/comments/$cid" --jq '.body' 2>/dev/null) || {
         echo "::warning::cleanup: failed to fetch prior agent comment $cid on $pr_url — skipping collapse"
@@ -405,7 +405,7 @@ read_hold_label() {
   local pr_url="$1" out
   out=$(gh pr view "$pr_url" --json labels \
     --jq '[.labels[].name] | any(. == "needs-human-review")' 2>/dev/null) || return 1
-  [ -n "$out" ] || return 1
+  [[ -n "$out" ]] || return 1
   printf '%s' "$out"
 }
 
@@ -417,13 +417,13 @@ ensure_hold_label_present() {
   local pr_url="$1" attempt present
   for attempt in $(seq 1 "$LABEL_MAX_ATTEMPTS"); do
     present=$(read_hold_label "$pr_url") || present="unknown"
-    if [ "$present" = "true" ]; then
+    if [[ "$present" = "true" ]]; then
       [ "$attempt" -eq 1 ] && echo "  needs-human-review already present — leaving label unchanged (idempotent, #1754 AC3)"
       return 0
     fi
     gh pr edit "$pr_url" --add-label needs-human-review >/dev/null 2>&1 || true
     present=$(read_hold_label "$pr_url") || present="unknown"
-    [ "$present" = "true" ] && return 0
+    [[ "$present" = "true" ]] && return 0
     [ "$attempt" -lt "$LABEL_MAX_ATTEMPTS" ] && sleep "$LABEL_RETRY_DELAY"
   done
   return 1
@@ -437,12 +437,12 @@ ensure_hold_label_absent() {
   local pr_url="$1" attempt present
   for attempt in $(seq 1 "$LABEL_MAX_ATTEMPTS"); do
     present=$(read_hold_label "$pr_url") || present="unknown"
-    if [ "$present" = "false" ]; then
+    if [[ "$present" = "false" ]]; then
       return 0
     fi
     gh pr edit "$pr_url" --remove-label needs-human-review >/dev/null 2>&1 || true
     present=$(read_hold_label "$pr_url") || present="unknown"
-    [ "$present" = "false" ] && return 0
+    [[ "$present" = "false" ]] && return 0
     [ "$attempt" -lt "$LABEL_MAX_ATTEMPTS" ] && sleep "$LABEL_RETRY_DELAY"
   done
   return 1
@@ -462,7 +462,7 @@ hold_label_is_automated() {
     | jq -s -r 'flatten
         | map(select(.event == "labeled" and .label.name == "needs-human-review"))
         | (last.actor.login // "")' 2>/dev/null) || return 1
-  [ -n "$actor" ] || return 1
+  [[ -n "$actor" ]] || return 1
   bot_logins="${AUTOMATION_BOT_LOGINS:-donpetry-bot github-actions[bot] repair-pr-approvals} ${BOT_USER:-donpetry-bot}"
   case "$actor" in *"[bot]") return 0 ;; esac
   case " $bot_logins " in *" $actor "*) return 0 ;; esac
@@ -475,7 +475,7 @@ hold_label_is_automated() {
 clear_automated_hold_label() {
   local pr_url="$1" present
   present=$(read_hold_label "$pr_url") || present="unknown"
-  if [ "$present" = "false" ]; then
+  if [[ "$present" = "false" ]]; then
     return 0
   fi
   if ! hold_label_is_automated "$pr_url"; then
@@ -485,7 +485,7 @@ clear_automated_hold_label() {
   ensure_hold_label_absent "$pr_url"
 }
 
-if [ "$DRY_RUN" = "true" ]; then
+if [[ "$DRY_RUN" = "true" ]]; then
   echo "=== DRY RUN: Would post review ==="
   echo "Decision: $DECISION"
   echo "Risk: $RISK"
@@ -494,24 +494,24 @@ if [ "$DRY_RUN" = "true" ]; then
   exit 0
 fi
 
-if [ "$DECISION" = "skip" ]; then
+if [[ "$DECISION" = "skip" ]]; then
   REASON=$(jq -r '.reason // "unspecified"' "$VERDICT_JSON")
   echo "    reviewer returned skip ($REASON) — treating as no-op"
   exit 100
 fi
-if [ "$DECISION" != "approve" ] && [ "$DECISION" != "escalate" ]; then
+if [[ "$DECISION" != "approve" ]] && [[ "$DECISION" != "escalate" ]]; then
   echo "ERROR: invalid decision '$DECISION'"
   exit 1
 fi
 
 # Post the review/comment based on decision
-if [ "$DECISION" = "approve" ]; then
+if [[ "$DECISION" = "approve" ]]; then
   # Fail closed on an empty or marker-less body (issue #1754 AC4). A review with
   # `body=0chars`, or one lacking the `<!-- pr-review-agent v1 sha=… -->` marker,
   # is discarded on the next cycle ("prior review body missing valid marker") —
   # the PR looks unreviewed while the run claims success. Either the review
   # carries its marker AND a body, or it is not submitted.
-  if [ -z "${BODY//[[:space:]]/}" ] || [[ "$BODY" != *"pr-review-agent v1 sha="* ]]; then
+  if [[ -z "${BODY//[[:space:]]/}" ]] || [[ "$BODY" != *"pr-review-agent v1 sha="* ]]; then
     echo "::error::approve verdict has an empty or marker-less body — refusing to submit a bodyless review (fail closed, #1754 AC4)"
     exit 1
   fi
@@ -522,7 +522,7 @@ if [ "$DECISION" = "approve" ]; then
   else
     MARKER_SHA=""
   fi
-  if [ -z "$MARKER_SHA" ] || [ "$MARKER_SHA" != "$PR_HEAD_SHA" ]; then
+  if [[ -z "$MARKER_SHA" ]] || [[ "$MARKER_SHA" != "$PR_HEAD_SHA" ]]; then
     echo "::error::approve verdict marker SHA ($MARKER_SHA) does not match PR_HEAD_SHA ($PR_HEAD_SHA) — refusing to submit (fail closed)"
     exit 1
   fi
@@ -548,7 +548,7 @@ if [ "$DECISION" = "approve" ]; then
     echo "::error::could not read the current head of $PR_URL — refusing to submit an approval it cannot compare against $PR_HEAD_SHA (fail closed)"
     exit 1
   fi
-  if [ "$LIVE_HEAD" != "$PR_HEAD_SHA" ]; then
+  if [[ "$LIVE_HEAD" != "$PR_HEAD_SHA" ]]; then
     echo "::warning::$PR_URL head moved from $PR_HEAD_SHA to $LIVE_HEAD during the review — not approving; the new head gets its own review (exit 100)"
     exit 100
   fi
@@ -587,7 +587,7 @@ if [ "$DECISION" = "approve" ]; then
     # A force-push between the re-read and the write can make the API refuse the
     # commit_id. That is the same no-op as a head that moved before the re-read.
     LIVE_HEAD=$(read_live_head_sha "$PR_URL" || true)
-    if [ -n "$LIVE_HEAD" ] && [ "$LIVE_HEAD" != "$PR_HEAD_SHA" ]; then
+    if [[ -n "$LIVE_HEAD" ]] && [[ "$LIVE_HEAD" != "$PR_HEAD_SHA" ]]; then
       echo "::warning::$PR_URL head moved from $PR_HEAD_SHA to $LIVE_HEAD while the approval was being submitted — no approval created; the new head gets its own review (exit 100)"
       exit 100
     fi
@@ -603,13 +603,13 @@ if [ "$DECISION" = "approve" ]; then
   # A write can succeed and still not leave a usable approval, so check the
   # post-condition by reading the review and the head back (#1874). Any approval
   # that is not on the live head is withdrawn rather than left standing.
-  if [ "$POSTED_COMMIT" != "$PR_HEAD_SHA" ]; then
+  if [[ "$POSTED_COMMIT" != "$PR_HEAD_SHA" ]]; then
     echo "::error::the reviews API attached the approval on $PR_URL to '${POSTED_COMMIT:-unknown}', not the reviewed commit $PR_HEAD_SHA — withdrawing it"
     withdraw_unbound_approval "$PR_URL" "$REVIEW_ID" "not attached to the reviewed commit $PR_HEAD_SHA" || true
     exit 1
   fi
   LIVE_HEAD=$(read_live_head_sha "$PR_URL" || true)
-  if [ -n "$LIVE_HEAD" ] && [ "$LIVE_HEAD" != "$PR_HEAD_SHA" ]; then
+  if [[ -n "$LIVE_HEAD" ]] && [[ "$LIVE_HEAD" != "$PR_HEAD_SHA" ]]; then
     echo "::warning::$PR_URL head moved from $PR_HEAD_SHA to $LIVE_HEAD as the approval landed — withdrawing it; the new head gets its own review"
     withdraw_unbound_approval "$PR_URL" "$REVIEW_ID" "the head moved to $LIVE_HEAD after commit $PR_HEAD_SHA was reviewed" || exit 1
     exit 100
@@ -645,7 +645,7 @@ if [ "$DECISION" = "approve" ]; then
   # announcement (#1874 AC3). On INDETERMINATE we could not confirm the review
   # object exists, so announcing would claim approval evidence that was never
   # verified — leave the deferred state intact for a later sweep to re-verify (#1875).
-  if [ "$APPROVAL_VERIFIED" = "true" ]; then
+  if [[ "$APPROVAL_VERIFIED" = "true" ]]; then
     maybe_post_deferred_partial_evidence "$PR_URL"
   else
     echo "::warning::approval unverified on $PR_URL — NOT posting the deferred partial-evidence announcement; the state file is retained for a later sweep to re-verify (#1874 AC3 / #1875)"
@@ -656,7 +656,7 @@ if [ "$DECISION" = "approve" ]; then
   # rebase failure (403 permission, 504 timeout, etc.) must never abort the
   # batch session. Every command uses || to suppress set -e.
   MERGE_STATE=$(gh pr view "$PR_URL" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")
-  if [ "$MERGE_STATE" = "BEHIND" ]; then
+  if [[ "$MERGE_STATE" = "BEHIND" ]]; then
     OWNER_REPO=$(echo "$PR_URL" | sed -E 's|.*/([^/]+)/([^/]+)/pull/.*|\1/\2|')
     PR_NUM=$(echo "$PR_URL" | sed -E 's|.*/([0-9]+)$|\1|')
 
@@ -679,16 +679,16 @@ if [ "$DECISION" = "approve" ]; then
       fi
     done
 
-    if [ "$REBASE_OK" = "true" ]; then
+    if [[ "$REBASE_OK" = "true" ]]; then
       # Poll for rebase completion (up to 30s)
       for _i in 1 2 3 4 5 6; do
         MERGE_STATE=$(gh pr view "$PR_URL" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")
-        [ "$MERGE_STATE" != "BEHIND" ] && break
+        [[ "$MERGE_STATE" != "BEHIND" ]] && break
         sleep 5
       done
     fi
 
-    if [ "$MERGE_STATE" = "BEHIND" ]; then
+    if [[ "$MERGE_STATE" = "BEHIND" ]]; then
       echo "::warning::still BEHIND after rebase — skipping auto-merge for $PR_URL"
     fi
   fi
@@ -702,9 +702,9 @@ if [ "$DECISION" = "approve" ]; then
 
   echo "Review posted"
 
-elif [ "$DECISION" = "escalate" ]; then
+elif [[ "$DECISION" = "escalate" ]]; then
   # Check if AI delegation should be used
-  if [ "${AI_DELEGATION_ENABLED:-false}" = "true" ] && [ "${REVIEW_CYCLE:-0}" -lt "${MAX_REVIEW_CYCLES:-3}" ] && [ "$RISK" != "HIGH" ]; then
+  if [[ "${AI_DELEGATION_ENABLED:-false}" = "true" ]] && [ "${REVIEW_CYCLE:-0}" -lt "${MAX_REVIEW_CYCLES:-3}" ] && [[ "$RISK" != "HIGH" ]]; then
     # Post fix-request comment
     COMMENT_FILE="/tmp/pr-comment-$$.txt"
     NEXT_CYCLE=$((REVIEW_CYCLE + 1))
@@ -720,7 +720,7 @@ elif [ "$DECISION" = "escalate" ]; then
     # re-arms only on a new commit (AC3/AC4).
     META_ATTR=""
     REARM_FOOTER="_The review cascade will automatically re-review after new commits are pushed._"
-    if [ "$METADATA_ONLY" = "true" ]; then
+    if [[ "$METADATA_ONLY" = "true" ]]; then
       # Only stamp `meta=` when the metadata snapshot fetch actually succeeds. A
       # transient `gh pr view` failure that fell back to `{}` would record the
       # digest of EMPTY metadata; the next re-review would compare real metadata
@@ -729,7 +729,7 @@ elif [ "$DECISION" = "escalate" ]; then
       # commit-only footer — the metadata-only deadlock persists (safe, prior
       # behavior) rather than manufacturing false re-arm churn.
       META_SNAPSHOT=$(gh pr view "$PR_URL" --json body,closingIssuesReferences,labels 2>/dev/null || true)
-      if [ -n "$META_SNAPSHOT" ] && printf '%s' "$META_SNAPSHOT" | jq -e . >/dev/null 2>&1; then
+      if [[ -n "$META_SNAPSHOT" ]] && printf '%s' "$META_SNAPSHOT" | jq -e . >/dev/null 2>&1; then
         META_DIGEST=$(compute_pr_metadata_digest "$META_SNAPSHOT")
         META_ATTR=" meta=$META_DIGEST"
         REARM_FOOTER="_The review cascade will automatically re-review after new commits are pushed, or after a change to the PR body, labels, or linked issues._"
@@ -838,7 +838,7 @@ ESC_END
     # Only report an escalation when its visible artifact is confirmed. A bare
     # label with no comment leaves nothing for compute_review_cycle to reset on,
     # so downgrade to the no-op 100 rather than overstate the escalated count.
-    if [ "$ESC_ARTIFACT_OK" != "true" ]; then
+    if [[ "$ESC_ARTIFACT_OK" != "true" ]]; then
       echo "::error::escalation: no human-escalation comment could be confirmed on $PR_URL (label + CODEOWNERS request only) — exiting 100 (no-op) so the escalated count is not overstated (#1754)"
       exit 100
     fi

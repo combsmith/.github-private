@@ -29,7 +29,7 @@
 #   caller decides whether an unreadable surface is indeterminate.
 approval_review_present() {
   local reviews_json="${1:-}" bot="${2:-}" sha="${3:-}"
-  [ -z "$reviews_json" ] && return 1
+  [[ -z "$reviews_json" ]] && return 1
   # `gh api --paginate` can emit one JSON array per page as a concatenated stream
   # (`[...][...]`). Feeding that raw to a single array comprehension counts each
   # page separately, producing a multi-line count and hiding an approval that

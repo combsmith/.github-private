@@ -85,7 +85,7 @@ DEFAULT_BRANCH="${DEFAULT_BRANCH:-}"
 # Counts comment objects whose `.body` contains <substring>. Absent/empty JSON → 0.
 count_marker() {
   local json="${1:-}" needle="${2:-}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
   printf '%s' "$json" | jq --arg n "$needle" \
     '[.[] | select((.body // "") | contains($n))] | length'
 }
@@ -97,7 +97,7 @@ count_marker() {
 #   applied   — the resolved-and-pushed subset of responses
 summarize_sentinels() {
   local json="${1:-}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
   printf '%s' "$json" | jq -r \
     --arg sent "$SENTINEL_MARKER" \
     --arg resp "$REBASE_RESPONSE_MARKER" \
@@ -121,7 +121,7 @@ summarize_sentinels() {
 # Absent/empty JSON → "0\t0".
 summarize_merge_states() {
   local json="${1:-}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
   jq -r '
     [ .[]
       | select((.isDraft // false) | not)
@@ -142,7 +142,7 @@ summarize_merge_states() {
 # flips with no code change. Absent/empty/unparseable input → "false".
 strict_from_branch_rules() {
   local json="${1:-}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
   local r
   r="$(printf '%s' "$json" | jq -r '
     [ .[]?
@@ -171,7 +171,7 @@ strict_from_branch_rules() {
 # borrows the default branch's flag. A base absent from the map defaults to false.
 summarize_base_merges() {
   local json="${1:-}" strict="${2:-false}" label="${3:-$AUTO_REBASE_REQUEST_LABEL}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
   jq -r --arg strict "$strict" --arg label "$label" '
     ($strict | (fromjson? // false)) as $sp |
     [ .[]
@@ -193,7 +193,7 @@ summarize_base_merges() {
 # Emits TSV: total<TAB>success<TAB>failed over the auto-rebase run telemetry.
 summarize_runs() {
   local json="${1:-}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
   printf '%s' "$json" | jq -r '
     [
       length,
@@ -235,7 +235,7 @@ render_report() {
   local pr_list_truncated="${7:-false}" pr_list_limit="${8:-1000}"
   local strict_enabled="${9:-false}" request_label="${10:-$AUTO_REBASE_REQUEST_LABEL}"
   local strict_policy="${11:-$strict_enabled}"
-  [ -n "$today" ] || today="$(date -u +%Y-%m-%d)"
+  [[ -n "$today" ]] || today="$(date -u +%Y-%m-%d)"
 
   local sentinels responses applied
   IFS=$'\t' read -r sentinels responses applied < <(summarize_sentinels "$comments_json")
@@ -279,7 +279,7 @@ render_report() {
   printf '## Fleet merge-state observability (AC7)\n\n'
   printf -- '- **BEHIND** (open non-draft non-Dependabot PRs `mergeStateStatus: BEHIND`): %s\n' "$ms_behind"
   printf -- '- **DIRTY** (open non-draft non-Dependabot PRs `mergeStateStatus: DIRTY`): %s\n\n' "$ms_dirty"
-  if [ "$pr_list_truncated" = "true" ]; then
+  if [[ "$pr_list_truncated" = "true" ]]; then
     printf '> ⚠ **PR list capped at %s** — BEHIND/DIRTY counts cover only the first %s open PRs ' \
       "$pr_list_limit" "$pr_list_limit"
     printf 'and may undercount the true backlog. Set `PR_LIST_LIMIT` to raise the cap.\n\n'
@@ -320,7 +320,7 @@ main() {
   # Token selection — verify run-telemetry access; fall back to a PAT if needed.
   if ! gh api "repos/${WORKFLOW_REPO}/actions/workflows/${AUTO_REBASE_WORKFLOW}/runs?per_page=1" \
        >/dev/null 2>&1; then
-    if [ -n "${GH_PAT_FALLBACK:-}" ]; then
+    if [[ -n "${GH_PAT_FALLBACK:-}" ]]; then
       echo "::warning::GH_TOKEN cannot read ${AUTO_REBASE_WORKFLOW} runs — using GH_PAT_FALLBACK" >&2
       export GH_TOKEN="$GH_PAT_FALLBACK"
     else
@@ -373,7 +373,7 @@ main() {
       }
     }' --jq '.data.repository.pullRequests.nodes[]' 2>/dev/null \
     | jq -s 'map({number, isDraft, mergeStateStatus, baseRefName, author, labels: (.labels.nodes // []), mergeQueueEntry})' 2>/dev/null || echo '[]')"
-  [ -n "$prs_json" ] || prs_json='[]'
+  [[ -n "$prs_json" ]] || prs_json='[]'
   pr_count="$(printf '%s' "$prs_json" | jq 'length' 2>/dev/null || echo 0)"
   if [ "$pr_count" -ge "$PR_LIST_LIMIT" ]; then
     pr_list_truncated=true
@@ -399,9 +399,9 @@ main() {
   #    repo's ACTUAL default branch so an AGENT_REPO whose default is not `main` reads
   #    its rules from the right branch (#1887). Fall back to `main` if the lookup fails.
   local default_branch="${DEFAULT_BRANCH:-}"
-  if [ -z "$default_branch" ]; then
+  if [[ -z "$default_branch" ]]; then
     default_branch="$(gh api "repos/${WORKFLOW_REPO}" --jq '.default_branch' 2>/dev/null || echo main)"
-    [ -n "$default_branch" ] || default_branch=main
+    [[ -n "$default_branch" ]] || default_branch=main
   fi
 
   # Capture the command-substitution exit status into a variable first (rather than
@@ -409,7 +409,7 @@ main() {
   local rules_json strict_enabled api_status=0
   rules_json="$(gh api "repos/${WORKFLOW_REPO}/rules/branches/${default_branch}" 2>/dev/null)" || api_status=$?
   if [ "$api_status" -eq 0 ]; then
-    [ -n "$rules_json" ] || rules_json='[]'
+    [[ -n "$rules_json" ]] || rules_json='[]'
   else
     rules_json='[]'
     echo "::warning::Could not read branch rules for ${WORKFLOW_REPO}@${default_branch} — base-merge necessity assumes strict=false; skippable counts may be overstated." >&2
@@ -434,12 +434,12 @@ main() {
       | .baseRefName // empty
     ] | unique[]' 2>/dev/null || true)"
   while IFS= read -r base; do
-    [ -n "$base" ] || continue
-    [ "$base" = "$default_branch" ] && continue
+    [[ -n "$base" ]] || continue
+    [[ "$base" = "$default_branch" ]] && continue
     local b_rules b_status=0 b_strict
     b_rules="$(gh api "repos/${WORKFLOW_REPO}/rules/branches/${base}" 2>/dev/null)" || b_status=$?
     if [ "$b_status" -eq 0 ]; then
-      [ -n "$b_rules" ] || b_rules='[]'
+      [[ -n "$b_rules" ]] || b_rules='[]'
     else
       b_rules='[]'
       echo "::warning::Could not read branch rules for ${WORKFLOW_REPO}@${base} — base-merge necessity assumes strict=false for PRs targeting it; skippable counts may be overstated." >&2
@@ -452,15 +452,15 @@ main() {
   report="$(render_report "$comments_json" "$runs_json" "$LOOKBACK_DAYS" "$behind" "$today" "$prs_json" "$pr_list_truncated" "$PR_LIST_LIMIT" "$strict_enabled" "$AUTO_REBASE_REQUEST_LABEL" "$strict_policy")"
 
   printf '%s\n' "$report"
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     printf '%s\n' "$report" >> "$GITHUB_STEP_SUMMARY"
   fi
-  if [ -n "${AUTO_REBASE_HEALTH_OUT:-}" ]; then
+  if [[ -n "${AUTO_REBASE_HEALTH_OUT:-}" ]]; then
     printf '%s\n' "$report" > "$AUTO_REBASE_HEALTH_OUT"
   fi
 }
 
 # Only run main when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

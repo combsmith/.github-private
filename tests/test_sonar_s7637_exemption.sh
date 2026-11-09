@@ -45,7 +45,7 @@ FORBIDDEN_RESOURCEKEYS=(
   '**'
 )
 
-if [ ! -f "$PROPS" ]; then
+if [[ ! -f "$PROPS" ]]; then
   echo "FAIL: $PROPS not found"
   exit 1
 fi
@@ -57,7 +57,7 @@ while IFS= read -r line; do
   id="${line#sonar.issue.ignore.multicriteria.}"
   id="${id%%.ruleKey=*}"
   rk_line="$(grep -E "^sonar\.issue\.ignore\.multicriteria\.${id}\.resourceKey=" "$PROPS" || true)"
-  if [ -z "$rk_line" ]; then
+  if [[ -z "$rk_line" ]]; then
     echo "FAIL: S7637 criterion '${id}' has no matching resourceKey in $PROPS"
     fail=1
     continue
@@ -66,7 +66,7 @@ while IFS= read -r line; do
 done < <(grep -E "^sonar\.issue\.ignore\.multicriteria\.[^.]+\.ruleKey=${RULE}$" "$PROPS" || true)
 
 # 1) At least one S7637 exemption must exist (this is the sonar-s7637-exemption-missing check).
-if [ "${#s7637_resourcekeys[@]}" -eq 0 ]; then
+if [[ "${#s7637_resourcekeys[@]}" -eq 0 ]]; then
   echo "FAIL: $PROPS has no sonar.issue.ignore criterion for ${RULE}"
   echo "  Add a per-stub exemption — see standards/ci-standards.md#sonarcloud-exemption-first-party-reusable-ref-s7637"
   exit 1
@@ -76,7 +76,7 @@ fi
 has_resourcekey() {
   local needle="$1" rk
   for rk in "${s7637_resourcekeys[@]}"; do
-    [ "$rk" = "$needle" ] && return 0
+    [[ "$rk" = "$needle" ]] && return 0
   done
   return 1
 }
@@ -92,7 +92,7 @@ done
 
 # 3) Every canonical caller stub present in this repo must have its own per-file exemption.
 for stub in "${CANONICAL_STUBS[@]}"; do
-  if [ -f "${WORKFLOWS_DIR}/${stub}" ]; then
+  if [[ -f "${WORKFLOWS_DIR}/${stub}" ]]; then
     if ! has_resourcekey "**/${stub}"; then
       echo "FAIL: caller stub '${stub}' exists but $PROPS has no ${RULE} exemption with resourceKey '**/${stub}'"
       fail=1
@@ -105,12 +105,12 @@ for rk in "${s7637_resourcekeys[@]}"; do
   base="${rk##*/}"
   is_canonical=0
   for stub in "${CANONICAL_STUBS[@]}"; do
-    [ "$base" = "$stub" ] && is_canonical=1 && break
+    [[ "$base" = "$stub" ]] && is_canonical=1 && break
   done
   if [ "$is_canonical" -ne 1 ]; then
     echo "FAIL: $PROPS has an ${RULE} exemption for non-canonical resourceKey '${rk}'"
     fail=1
-  elif [ ! -f "${WORKFLOWS_DIR}/${base}" ]; then
+  elif [[ ! -f "${WORKFLOWS_DIR}/${base}" ]]; then
     echo "FAIL: $PROPS exempts '${rk}' for ${RULE} but workflow '${base}' does not exist"
     fail=1
   fi

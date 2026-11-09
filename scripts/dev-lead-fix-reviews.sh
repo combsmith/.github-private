@@ -85,15 +85,15 @@ source "$(dirname "$0")/lib/hold-label.sh"
 # intent dispatch (dlh_enter_push_phase).
 DEV_LEAD_PHASE="${DEV_LEAD_PHASE:-}"
 DLH_DIR=""
-if [ "$DEV_LEAD_PHASE" = "push" ]; then
+if [[ "$DEV_LEAD_PHASE" = "push" ]]; then
   DLH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/dev-lead-handoff.XXXXXX")" \
     || { echo "::error::failed to create temporary directory" >&2; exit 1; }
   # Registered at once so the dir is never orphaned; the restore_auto_merge trap
   # below chains this cleanup rather than replacing it.
   trap 'rm -rf "$DLH_DIR"' EXIT
   if tjh_restore "${DEV_LEAD_HANDOFF_FILE:-}" "${DEV_LEAD_HANDOFF_SHA256:-}" "$DLH_DIR" \
-     && [ "$(jq -r '.intent // ""' "$DLH_DIR/state.json" 2>/dev/null)" = "${INTENT_TYPE:-}" ] \
-     && [ "$(jq -r '.pr_number // ""' "$DLH_DIR/state.json" 2>/dev/null)" = "${PR_NUMBER:-}" ]; then
+     && [[ "$(jq -r '.intent // ""' "$DLH_DIR/state.json" 2>/dev/null)" = "${INTENT_TYPE:-}" ]] \
+     && [[ "$(jq -r '.pr_number // ""' "$DLH_DIR/state.json" 2>/dev/null)" = "${PR_NUMBER:-}" ]]; then
     _dlh() { jq -r --arg k "$1" '.[$k] // "" | tostring' "$DLH_DIR/state.json"; }
     HEAD_SHA="$(_dlh head_sha)"
     PASS_STARTED_AT="$(_dlh pass_started_at)"
@@ -103,7 +103,7 @@ if [ "$DEV_LEAD_PHASE" = "push" ]; then
     COMMENT_NODE_ID="$(_dlh comment_node_id)"
     COMMENT_VERSION="$(_dlh comment_version)"
     BASE_REF="$(_dlh base_ref)"
-    [ -n "$BASE_REF" ] || unset BASE_REF
+    [[ -n "$BASE_REF" ]] || unset BASE_REF
     export HEAD_SHA ACTOR TRIGGERING_REVIEWER COMMENT_BODY COMMENT_NODE_ID COMMENT_VERSION
   else
     echo "::error::push phase: the handoff from the dispatch job is missing, does not match its published digest, or names another pass — nothing will be pushed (#2143)"
@@ -136,7 +136,7 @@ NONCONVERGE_MARKER_PREFIX="<!-- dev-lead-review-nonconverge pr="
 # addresses none of the regions the review named.
 REVIEW_NONCONVERGENCE_LIMIT="${REVIEW_NONCONVERGENCE_LIMIT:-3}"
 
-if [ -z "$PR_NUMBER" ] && [ "$INTENT_TYPE" != "rebase" ]; then
+if [[ -z "$PR_NUMBER" ]] && [[ "$INTENT_TYPE" != "rebase" ]]; then
   echo "::error::PR_NUMBER is required"
   exit 1
 fi
@@ -152,8 +152,8 @@ trap hold_label_exit_guard EXIT
 # undone by the restore_auto_merge EXIT trap. Only a human interaction resets it.
 # The push phase (#2143) finishes a pass the work job already admitted: stopping
 # here would leave that pass's claim replies standing with nothing pushed.
-if [ -n "${PR_NUMBER:-}" ] && [ "${DEV_LEAD_DRY_RUN:-false}" != "true" ] \
-   && [ "$DEV_LEAD_PHASE" != "push" ] \
+if [[ -n "${PR_NUMBER:-}" ]] && [[ "${DEV_LEAD_DRY_RUN:-false}" != "true" ]] \
+   && [[ "$DEV_LEAD_PHASE" != "push" ]] \
    && enforce_pr_budget "$PR_NUMBER" "$REPO"; then
   echo "::warning::PR #${PR_NUMBER} automation budget exhausted — skipping ${INTENT_TYPE}"
   exit 0
@@ -202,30 +202,30 @@ sweep_fixed_dispositions() {
     echo "::warning::sweep_fixed_dispositions: could not parse the issue comments on PR #${PR_NUMBER} — its ${window} \`fixed\` disposition replies were NOT verified (#2156)"
     return 1
   }
-  [ -z "$rows" ] && return 0
+  [[ -z "$rows" ]] && return 0
 
   local id sha reason body new_body rebased known_rc deepened=false
   local retracted=0 remapped=0 failed=0
   while IFS=$'\t' read -r id sha; do
-    [ -z "$id" ] && continue
+    [[ -z "$id" ]] && continue
     reason="unverifiable"
-    if [ -n "$sha" ]; then
-      if [ "$window" = "earlier" ] && ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then
-        if [ "$deepened" = false ]; then
+    if [[ -n "$sha" ]]; then
+      if [[ "$window" = "earlier" ]] && ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then
+        if [[ "$deepened" = false ]]; then
           git_history_deepen "${BASE_REF:-main}"
           deepened=true
         fi
         if ! git cat-file -e "${sha}^{commit}" 2>/dev/null \
-           && [ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo true)" != "false" ]; then
+           && [[ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo true)" != "false" ]]; then
           echo "::notice::sweep_fixed_dispositions: commit ${sha} of reply ${id} is not in this shallow checkout — left as is (#2156)"
           continue
         fi
       fi
-      if [ -n "$ref" ] && git merge-base --is-ancestor "$sha" "$ref" 2>/dev/null; then
+      if [[ -n "$ref" ]] && git merge-base --is-ancestor "$sha" "$ref" 2>/dev/null; then
         continue
       fi
       reason="not-on-ref"
-      if [ "$window" = "earlier" ]; then
+      if [[ "$window" = "earlier" ]]; then
         known_rc=0
         github_knows_commit "$sha" || known_rc=$?
         if [ "$known_rc" -eq 0 ]; then
@@ -240,13 +240,13 @@ sweep_fixed_dispositions() {
 
     body=$(printf '%s' "$comments" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
     rebased=""
-    if [ "$window" = "pass" ] && [ "$reason" = "not-on-ref" ] && [ -n "$ref" ]; then
+    if [[ "$window" = "pass" ]] && [[ "$reason" = "not-on-ref" ]] && [[ -n "$ref" ]]; then
       rebased=$(cl_map_sha "$sha" "${_PUSH_GUARD_REWRITES:-}") || rebased=""
     fi
-    if [ -n "$rebased" ] && git merge-base --is-ancestor "$rebased" "$ref" 2>/dev/null \
+    if [[ -n "$rebased" ]] && git merge-base --is-ancestor "$rebased" "$ref" 2>/dev/null \
        && new_body=$(cl_rewrite_disposition_sha "$body" "$rebased"); then
       # #2261: a claim in the same reply citing the same commit moves with it.
-      if [ "$(acv_parse_claim "$body" 2>/dev/null | jq -r '.sha // ""' 2>/dev/null)" = "$sha" ]; then
+      if [[ "$(acv_parse_claim "$body" 2>/dev/null | jq -r '.sha // ""' 2>/dev/null)" = "$sha" ]]; then
         new_body=$(cl_rewrite_claim_sha "$new_body" "$rebased") || new_body=$(cl_rewrite_disposition_sha "$body" "$rebased")
       fi
       if gh api -X PATCH "repos/${REPO}/issues/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
@@ -287,21 +287,21 @@ sweep_fixed_dispositions() {
 # or a cited commit is missing from a checkout that is still shallow, it skips.
 # Best-effort: returns 1 on a listing/PATCH failure; the caller does not stop.
 sweep_earlier_claims() {
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would sweep earlier passes' claim replies on PR #${PR_NUMBER:-}"
     return 0
   fi
-  [ -z "${PR_NUMBER:-}" ] && return 0
-  [ -z "${PASS_START_ISO:-}" ] && return 0
+  [[ -z "${PR_NUMBER:-}" ]] && return 0
+  [[ -z "${PASS_START_ISO:-}" ]] && return 0
 
   # At pass start nothing has been committed, so with no upstream (rc 1) the
   # checked-out head IS the PR head. A failed fetch (rc 2) is indeterminate.
   local ref="" ref_rc=0
   ref=$(cl_remote_head) || ref_rc=$?
-  if [ -z "$ref" ] && [ "$ref_rc" -eq 1 ]; then
+  if [[ -z "$ref" ]] && [ "$ref_rc" -eq 1 ]; then
     ref="${RESOLUTION_BASE_SHA:-}"
   fi
-  if [ -z "$ref" ]; then
+  if [[ -z "$ref" ]]; then
     echo "::notice::sweep_earlier_claims: the remote head could not be read (rc ${ref_rc}) — earlier claim replies on PR #${PR_NUMBER} not checked (#2032)"
     return 0
   fi
@@ -319,26 +319,26 @@ sweep_earlier_claims() {
     echo "::warning::sweep_earlier_claims: could not parse the review comments on PR #${PR_NUMBER} — earlier claim replies were NOT verified (#2032)"
     return 1
   }
-  [ -z "$rows" ] && return "$failed"
+  [[ -z "$rows" ]] && return "$failed"
 
   local id state claim finding_at sha files facts on_ref touches commit_date own cumulative verdict
   local body new_body deepened=false retracted=0 restored=0 known_rc
   while IFS=$'\x1f' read -r id state claim finding_at; do
-    [ -z "$id" ] && continue
+    [[ -z "$id" ]] && continue
     sha=""
-    if [ -z "$claim" ]; then
+    if [[ -z "$claim" ]]; then
       verdict="unverifiable"
     else
       sha=$(printf '%s' "$claim" | jq -r '.sha // ""' 2>/dev/null || echo "")
       files=$(printf '%s' "$claim" | jq -c '.files // []' 2>/dev/null || echo "[]")
       # A commit missing from a shallow checkout is unknown, not "not landed".
       if ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then
-        if [ "$deepened" = false ]; then
+        if [[ "$deepened" = false ]]; then
           git_history_deepen "${BASE_REF:-main}"
           deepened=true
         fi
         if ! git cat-file -e "${sha}^{commit}" 2>/dev/null \
-           && [ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo true)" != "false" ]; then
+           && [[ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo true)" != "false" ]]; then
           echo "::notice::sweep_earlier_claims: commit ${sha} of reply ${id} is not in this shallow checkout — left as is (#2032)"
           continue
         fi
@@ -356,7 +356,7 @@ sweep_earlier_claims() {
       # not-on-ref has two causes: never pushed (a false claim) or pushed and then
       # rewritten by a rebase (a true claim under a new SHA). Ask GitHub; retract
       # only a commit it has never seen, and leave the claim when it cannot say.
-      if [ "$state" = "claimed" ] && [ "$verdict" = "not-on-ref" ]; then
+      if [[ "$state" = "claimed" ]] && [[ "$verdict" = "not-on-ref" ]]; then
         known_rc=0
         github_knows_commit "$sha" || known_rc=$?
         if [ "$known_rc" -eq 0 ]; then
@@ -370,7 +370,7 @@ sweep_earlier_claims() {
     fi
 
     body=$(printf '%s' "$comments" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
-    if [ "$state" = "claimed" ] && [ "$verdict" != "kept" ]; then
+    if [[ "$state" = "claimed" ]] && [[ "$verdict" != "kept" ]]; then
       new_body=$(cl_retract_body "$body" "$verdict")
       if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
         retracted=$((retracted + 1))
@@ -379,7 +379,7 @@ sweep_earlier_claims() {
         echo "::error::could not retract earlier claim reply ${id} on PR #${PR_NUMBER} (${verdict}) — a false 'Fixed' reply may remain (#2032)"
         failed=1
       fi
-    elif [ "$state" = "retracted" ] && [ "$verdict" = "kept" ]; then
+    elif [[ "$state" = "retracted" ]] && [[ "$verdict" = "kept" ]]; then
       new_body=$(cl_restore_body "$body" "$claim") || continue
       if gh api -X PATCH "repos/${REPO}/pulls/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
         restored=$((restored + 1))
@@ -397,7 +397,7 @@ sweep_earlier_claims() {
 # Checkout the PR branch for modification (Requirement 1).
 # Use an isolated worktree so switching to the PR branch never overwrites the
 # agent's own prompts/scripts in the working tree (issue #448).
-if [ "${DEV_LEAD_DRY_RUN:-false}" = "false" ] && [ -n "${PR_NUMBER:-}" ]; then
+if [[ "${DEV_LEAD_DRY_RUN:-false}" = "false" ]] && [[ -n "${PR_NUMBER:-}" ]]; then
   # Hold auto-merge OFF while we work so a review approval landing mid-run can't
   # merge (and delete) the branch out from under us. restore_auto_merge (EXIT
   # trap) puts it back however we exit; checkout_pr_in_worktree chains its own
@@ -410,7 +410,7 @@ if [ "${DEV_LEAD_DRY_RUN:-false}" = "false" ] && [ -n "${PR_NUMBER:-}" ]; then
   # Resolving here rather than before the hold closes the window where an
   # approval could satisfy branch protection during the API call and let
   # GitHub auto-merge the branch before the hold is installed.
-  if [ -z "${HEAD_SHA:-}" ]; then
+  if [[ -z "${HEAD_SHA:-}" ]]; then
     HEAD_SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha' 2>/dev/null || true)
   fi
   checkout_pr_in_worktree "$PR_NUMBER" "$REPO"
@@ -445,7 +445,7 @@ build_and_run() {
   local template_name="$1"
   # Push phase (#2143): the engine already ran in the work job, whose commits
   # dlh_enter_push_phase restored; the pass continues from its commit_and_push.
-  if [ "${DEV_LEAD_PHASE:-}" = "push" ]; then
+  if [[ "${DEV_LEAD_PHASE:-}" = "push" ]]; then
     echo "::notice::push phase: the ${template_name} engine pass ran in the dispatch job — continuing from its result (#2143)"
     return 0
   fi
@@ -464,12 +464,12 @@ build_and_run() {
   # "Argument list too long". envsubst sees a placeholder; the real payload is
   # spliced in with shell builtins afterwards.
   local ph="@@OPEN_THREADS_JSON_PLACEHOLDER@@"
-  if [ -n "$vars_spec" ]; then
+  if [[ -n "$vars_spec" ]]; then
     OPEN_THREADS_JSON="$ph" envsubst "$vars_spec" < "$template_path" > "$prompt_file"
   else
     OPEN_THREADS_JSON="$ph" envsubst < "$template_path" > "$prompt_file"
   fi
-  if [ -n "${OPEN_THREADS_JSON:-}" ] && grep -qF -- "$ph" "$prompt_file"; then
+  if [[ -n "${OPEN_THREADS_JSON:-}" ]] && grep -qF -- "$ph" "$prompt_file"; then
     local content out="" rest
     content=$(<"$prompt_file")
     rest="$content"
@@ -480,7 +480,7 @@ build_and_run() {
     printf '%s\n' "${out}${rest}" > "$prompt_file"
   fi
 
-  if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
+  if [[ "$DEV_LEAD_DRY_RUN" = "true" ]]; then
     echo "[dry-run] would run engine with prompt: $prompt_file ($(wc -l < "$prompt_file") lines)"
     rm -f "${prompt_file:-}"
     return 0
@@ -490,20 +490,20 @@ build_and_run() {
   # Run the model with a recording gh shim first on PATH so every review-thread reply it
   # posts is attributable by node id (#2079 AC4). No recorder => nothing is trusted.
   local shim_dir="" engine_path="$PATH"
-  if [ -n "${PASS_REPLY_RECORD:-}" ] && shim_dir=$(cl_install_reply_recorder "$PASS_REPLY_RECORD"); then
+  if [[ -n "${PASS_REPLY_RECORD:-}" ]] && shim_dir=$(cl_install_reply_recorder "$PASS_REPLY_RECORD"); then
     engine_path="${shim_dir}:${PATH}"
   else
     echo "::warning::could not install the reply recorder — no-change dispositions are disabled this pass (#2079)"
     # Any reply the engine posts now has an unknown id; stamp_pass_replies keeps that
     # on the PR until a human clears it (#2161).
-    if [ -n "${PASS_REPLY_RECORD:-}" ]; then
+    if [[ -n "${PASS_REPLY_RECORD:-}" ]]; then
       printf 'UNATTRIBUTED\n' > "$PASS_REPLY_RECORD" || PASS_REPLIES_UNKNOWN=1
     else
       PASS_REPLIES_UNKNOWN=1
     fi
   fi
   PATH="$engine_path" run_writer_with_fallback "$prompt_file" "${INTENT_TYPE:-}" || rc=$?
-  [ -n "$shim_dir" ] && rm -rf "$shim_dir"
+  [[ -n "$shim_dir" ]] && rm -rf "$shim_dir"
   rm -f "${prompt_file:-}"
   return "$rc"
 }
@@ -533,7 +533,7 @@ post_reviews_terminal() {
       applied|no-changes)
         status="partial"
         local msg="**Not complete:** a dispositioned PR comment could not be re-opened (unminimize failed), so it stays resolved without a verified disposition. It needs another dev-lead pass."
-        if [ -n "$summary" ]; then
+        if [[ -n "$summary" ]]; then
           summary="${summary}
 
 ${msg}"
@@ -544,8 +544,8 @@ ${msg}"
     esac
   fi
   local sha_part="" comment_part="" read_part=""
-  [ -n "${HEAD_SHA:-}" ] && sha_part=" sha=${HEAD_SHA}"
-  if [ "$intent" = "fix-bot-comment" ] && [[ "${COMMENT_NODE_ID:-}" =~ ^[-A-Za-z0-9_+/=]+$ ]]; then
+  [[ -n "${HEAD_SHA:-}" ]] && sha_part=" sha=${HEAD_SHA}"
+  if [[ "$intent" = "fix-bot-comment" ]] && [[ "${COMMENT_NODE_ID:-}" =~ ^[-A-Za-z0-9_+/=]+$ ]]; then
     comment_part=" comment=${COMMENT_NODE_ID}"
     if [[ "${COMMENT_VERSION:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]]; then
       comment_part="${comment_part} version=${COMMENT_VERSION}"
@@ -557,15 +557,15 @@ ${msg}"
   local marker="${REVIEWS_MARKER_PREFIX}${PR_NUMBER}${sha_part} intent=${intent} status=${status}${comment_part}${read_part} -->"
 
   local body="${marker}"
-  if [ -n "$summary" ]; then
+  if [[ -n "$summary" ]]; then
     body="${body}
 ## Dev-Lead — ${intent} (${status})
 ${summary}"
   fi
 
-  if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
+  if [[ "$DEV_LEAD_DRY_RUN" = "true" ]]; then
     echo "[dry-run] would post reviews terminal marker: intent=${intent} status=${status}"
-    [ -n "$summary" ] && echo "$body"
+    [[ -n "$summary" ]] && echo "$body"
     return 0
   fi
   # Best-effort: don't fail the overall script if the marker post fails
@@ -600,7 +600,7 @@ read_session_summary() {
   mark=$(printf '%s\n' "$redacted" | grep -nE \
     '^(Bot:|PR: #|Addressed [0-9]+ threads?:|Human review threads addressed:|Issues addressed:)' \
     | tail -1 | cut -d: -f1)
-  if [ -n "$mark" ]; then
+  if [[ -n "$mark" ]]; then
     printf '%s\n' "$redacted" | sed -n "${mark},\$p" | sed '/^[[:space:]]*$/d' | head -30
   else
     printf '%s\n' "$redacted" | tail -30 | sed '/^[[:space:]]*$/d' | tail -10
@@ -663,7 +663,7 @@ post_integrity_warning() {
 ${report}
 _Detected by \`scripts/lib/conflict-integrity.sh\` (#1482). If this repetition is intentional, disregard._"
 
-  if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
+  if [[ "$DEV_LEAD_DRY_RUN" = "true" ]]; then
     echo "[dry-run] would post conflict-integrity warning for PR ${PR_NUMBER}"
     echo "$body"
     return 0
@@ -687,24 +687,24 @@ _Detected by \`scripts/lib/conflict-integrity.sh\` (#1482). If this repetition i
 # unrelated downstream test to trip over the corruption.
 run_post_resolution_integrity_check() {
   local base_ref="$1" pre_ref="$2"
-  [ -n "$pre_ref" ] || return 0
+  [[ -n "$pre_ref" ]] || return 0
 
   local changed
   # Compare pre_ref to the working tree (not just HEAD) so that uncommitted
   # worktree edits left by the agent are also included in the scan (#1496).
   changed="$(git diff --name-only "$pre_ref" -- '*.sh' 2>/dev/null || true)"
-  [ -n "$changed" ] || return 0
+  [[ -n "$changed" ]] || return 0
 
   local report="" file findings pa pb
   while IFS= read -r file; do
-    [ -n "$file" ] || continue
-    [ -f "$file" ] || continue   # deleted by the resolution — nothing to check
+    [[ -n "$file" ]] || continue
+    [[ -f "$file" ]] || continue   # deleted by the resolution — nothing to check
     pa="$(mktemp)"; pb="$(mktemp)"
     git show "origin/${base_ref}:${file}" >"$pa" 2>/dev/null || : >"$pa"
     git show "${pre_ref}:${file}" >"$pb" 2>/dev/null || : >"$pb"
     findings="$(new_duplicate_symbols "$file" "$pa" "$pb")"
     rm -f "$pa" "$pb"
-    if [ -n "$findings" ]; then
+    if [[ -n "$findings" ]]; then
       report="${report}$(format_integrity_findings "$file" "$findings")
 "
     fi
@@ -712,7 +712,7 @@ run_post_resolution_integrity_check() {
 ${changed}
 EOF
 
-  [ -n "$report" ] || return 0
+  [[ -n "$report" ]] || return 0
   post_integrity_warning "$report"
 }
 
@@ -721,7 +721,7 @@ EOF
 # all reviews even on long-lived PRs, and checks only the latest review state
 # (not any historical one) to avoid noisy re-posts after a prior approval or dismissal.
 notify_coderabbit_resolve() {
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would check for coderabbitai CHANGES_REQUESTED and post @coderabbitai resolve"
     return 0
   fi
@@ -730,7 +730,7 @@ notify_coderabbit_resolve() {
   latest_cr_state=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
     --jq '.[] | select(.user.login == "coderabbitai[bot]") | .state' \
     2>/dev/null | tail -1)
-  if [ "${latest_cr_state:-}" = "CHANGES_REQUESTED" ]; then
+  if [[ "${latest_cr_state:-}" = "CHANGES_REQUESTED" ]]; then
     echo "::notice::coderabbitai[bot] latest review is CHANGES_REQUESTED — posting @coderabbitai resolve"
     gh pr comment "$PR_NUMBER" --repo "$REPO" --body "@coderabbitai resolve <!-- dev-lead -->" 2>/dev/null || true
   fi
@@ -765,11 +765,11 @@ notify_coderabbit_resolve() {
 # but full cursor pagination is overkill for a best-effort safety net.
 resolve_actor_outdated_threads() {
   local intent="$1"
-  if [ -z "${ACTOR:-}" ]; then
+  if [[ -z "${ACTOR:-}" ]]; then
     echo "::notice::resolve_actor_outdated_threads: ACTOR not set for intent=${intent} — skipping"
     return 0
   fi
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would resolve outdated review threads authored by ${ACTOR} on PR #${PR_NUMBER}"
     return 0
   fi
@@ -799,7 +799,7 @@ resolve_actor_outdated_threads() {
                             or .comments.nodes[0]?.author?.login == $actor_stripped)))
           | .[] | .id + "\t" + ((.comments.nodes[0]?.body // "") | @base64)' 2>/dev/null || true)
 
-  if [ -z "$pairs" ]; then
+  if [[ -z "$pairs" ]]; then
     echo "::notice::no outdated unresolved threads from ${ACTOR} on PR #${PR_NUMBER}"
     return 0
   fi
@@ -812,20 +812,20 @@ resolve_actor_outdated_threads() {
   # pre-#1415 safety-net behavior.
   local actor_is_maintainer_capable=true
   if review_thread_login_is_excluded_bot "$actor_stripped" \
-     || [ "$actor_stripped" = "${BOT_USER:-donpetry-bot}" ]; then
+     || [[ "$actor_stripped" = "${BOT_USER:-donpetry-bot}" ]]; then
     actor_is_maintainer_capable=false
   fi
 
   local resolved_count=0
   local id body_b64 body
   while IFS=$'\t' read -r id body_b64; do
-    [ -z "$id" ] && continue
+    [[ -z "$id" ]] && continue
     body=$(printf '%s' "$body_b64" | base64 --decode 2>/dev/null || printf '%s' "$body_b64" | base64 -d 2>/dev/null || echo "")
     # Resolve-guard (#1415): for a maintainer-capable ACTOR, only resolve a thread
     # whose originating comment carries one of our automation markers. A marker-less
     # thread authored as `don-petry` is a maintainer finding the agent must NOT clear
     # — fail closed and log the skip.
-    if [ "$actor_is_maintainer_capable" = true ] && ! review_thread_is_agent_authored "$body"; then
+    if [[ "$actor_is_maintainer_capable" = true ]] && ! review_thread_is_agent_authored "$body"; then
       echo "::warning::resolve-guard: skipping thread ${id} — originating comment carries no automation marker, treated as a maintainer finding (must not be agent-resolved, #1415)"
       continue
     fi
@@ -851,7 +851,7 @@ fetch_pr_context() {
   # `main` — otherwise the ruleset lookup applies the wrong required-check rules to
   # a PR targeting another branch. Intents that already export BASE_REF are left
   # untouched (guarded on empty), and `main` remains the final fallback.
-  if [ -z "${BASE_REF:-}" ] && [ -n "${PR_NUMBER:-}" ] && [ -n "${REPO:-}" ]; then
+  if [[ -z "${BASE_REF:-}" ]] && [[ -n "${PR_NUMBER:-}" ]] && [[ -n "${REPO:-}" ]]; then
     BASE_REF="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.base.ref // empty' 2>/dev/null || true)"
     export BASE_REF="${BASE_REF:-main}"
   fi
@@ -859,7 +859,7 @@ fetch_pr_context() {
   # CI check results: requires HEAD_SHA. Gracefully degrade to empty array when not set
   # (e.g., review-changes in dry-run where the PR API call is skipped).
   CI_STATUS_JSON="[]"
-  if [ -n "${HEAD_SHA:-}" ]; then
+  if [[ -n "${HEAD_SHA:-}" ]]; then
     # Two-stage check-run dedup:
     # Stage 1: group by (name, app.id, check_suite.id) and keep the highest-id
     #   run per suite. check_suite discriminates distinct workflow runs, so two
@@ -955,10 +955,10 @@ export_stale_dispositions() {
   local comments facts
   if comments=$(bcr_fetch_pr_comments "$REPO" "$PR_NUMBER" 2>/dev/null) \
      && facts=$(maintainer_gate_stale_disposition_facts "$comments" "${BOT_USER:-donpetry-bot}"); then
-    if [ -n "$facts" ]; then
+    if [[ -n "$facts" ]]; then
       # Linux caps one environment string at 128 KiB (MAX_ARG_STRLEN); an oversized
       # value would stop envsubst and the agent subprocess from starting.
-      if [ "${#facts}" -gt 30000 ]; then
+      if [[ "${#facts}" -gt 30000 ]]; then
         facts="${facts:0:30000}
 ... (list truncated; read the PR's comments and apply the edit rule to the rest)"
       fi
@@ -989,12 +989,12 @@ This is settled; do not re-derive it. For each comment listed, read its CURRENT 
 # bot author (__typename == "Bot", or login ends with [bot]).
 resolve_bot_outdated_threads() {
   local intent="$1"
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would resolve outdated review threads from bot reviewers on PR #${PR_NUMBER}"
     return 0
   fi
 
-  if [ -z "${PR_NUMBER:-}" ]; then
+  if [[ -z "${PR_NUMBER:-}" ]]; then
     echo "::notice::resolve_bot_outdated_threads: PR_NUMBER not set for intent=${intent} — skipping"
     return 0
   fi
@@ -1015,7 +1015,7 @@ resolve_bot_outdated_threads() {
       }
     }
   }'
-  while [ "$has_next_page" = "true" ]; do
+  while [[ "$has_next_page" = "true" ]]; do
     page_response=$(gh api graphql -f query="$bot_outdated_query" \
       -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F pr="$PR_NUMBER" \
       "${cursor_args[@]}" 2>/dev/null || echo "{}")
@@ -1026,27 +1026,27 @@ resolve_bot_outdated_threads() {
                     and (((.comments.nodes?[0]?.author?.login // "") | endswith("[bot]"))
                          or ((.comments.nodes?[0]?.author?.__typename // "") == "Bot"))))
        | .[].id' 2>/dev/null || true)
-    [ -n "$page_ids" ] && ids=$(printf '%s\n%s' "$ids" "$page_ids")
+    [[ -n "$page_ids" ]] && ids=$(printf '%s\n%s' "$ids" "$page_ids")
     has_next_page=$(printf '%s' "$page_response" | jq -r \
       '.data?.repository?.pullRequest?.reviewThreads?.pageInfo?.hasNextPage // false' \
       2>/dev/null || echo "false")
     cursor=$(printf '%s' "$page_response" | jq -r \
       '.data?.repository?.pullRequest?.reviewThreads?.pageInfo?.endCursor // ""' \
       2>/dev/null || echo "")
-    [ -z "$cursor" ] && has_next_page="false"
+    [[ -z "$cursor" ]] && has_next_page="false"
     cursor_args=("-f" "cursor=${cursor}")
   done
   # Strip leading/trailing blank lines from accumulated ids
   ids=$(printf '%s' "$ids" | sed '/^[[:space:]]*$/d')
 
-  if [ -z "$ids" ]; then
+  if [[ -z "$ids" ]]; then
     echo "::notice::no outdated unresolved threads from bot reviewers on PR #${PR_NUMBER}"
     return 0
   fi
 
   local resolved_count=0
   while IFS= read -r id; do
-    [ -z "$id" ] && continue
+    [[ -z "$id" ]] && continue
     if gh api graphql -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \
         -f id="$id" >/dev/null 2>&1; then
       resolved_count=$((resolved_count + 1))
@@ -1080,7 +1080,7 @@ list_unresolved_bot_thread_ids() {
       }
     }
   }'
-  while [ "$has_next_page" = "true" ]; do
+  while [[ "$has_next_page" = "true" ]]; do
     prev_cursor="$cursor"
     page_response=$(gh api graphql -f query="$bot_threads_query" \
       -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F pr="$PR_NUMBER" \
@@ -1105,16 +1105,16 @@ list_unresolved_bot_thread_ids() {
                     and (((.origin.nodes?[0]?.author?.login // "") | endswith("[bot]"))
                          or ((.origin.nodes?[0]?.author?.__typename // "") == "Bot"))))
        | .[] | .id' 2>/dev/null || true)
-    [ -n "$page_ids" ] && ids=$(printf '%s\n%s' "$ids" "$page_ids")
+    [[ -n "$page_ids" ]] && ids=$(printf '%s\n%s' "$ids" "$page_ids")
     has_next_page=$(printf '%s' "$page_response" | jq -r \
       '.data?.repository?.pullRequest?.reviewThreads?.pageInfo?.hasNextPage // false' \
       2>/dev/null || echo "false")
     cursor=$(printf '%s' "$page_response" | jq -r \
       '.data?.repository?.pullRequest?.reviewThreads?.pageInfo?.endCursor // ""' \
       2>/dev/null || echo "")
-    [ -z "$cursor" ] && has_next_page="false"
+    [[ -z "$cursor" ]] && has_next_page="false"
     # A cursor that does not advance would re-read the same page forever.
-    if [ "$has_next_page" = "true" ] && [ "$cursor" = "$prev_cursor" ]; then
+    if [[ "$has_next_page" = "true" ]] && [[ "$cursor" = "$prev_cursor" ]]; then
       echo "::error::review-thread pagination for PR #${PR_NUMBER} did not advance (endCursor unchanged)" >&2
       return 1
     fi
@@ -1170,12 +1170,12 @@ nochange_bot_newer_count() {
 
 resolve_addressed_bot_threads() {
   local intent="$1"
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would resolve addressed review threads from bot reviewers on PR #${PR_NUMBER}"
     return 0
   fi
 
-  if [ -z "${PR_NUMBER:-}" ]; then
+  if [[ -z "${PR_NUMBER:-}" ]]; then
     echo "::notice::resolve_addressed_bot_threads: PR_NUMBER not set for intent=${intent} — skipping"
     return 0
   fi
@@ -1210,7 +1210,7 @@ resolve_addressed_bot_threads() {
     return 1
   }
 
-  if [ -z "$(printf '%s' "$ids" | sed '/^[[:space:]]*$/d')" ]; then
+  if [[ -z "$(printf '%s' "$ids" | sed '/^[[:space:]]*$/d')" ]]; then
     echo "::notice::no addressed unresolved bot threads on PR #${PR_NUMBER}"
     return 0
   fi
@@ -1232,7 +1232,7 @@ resolve_addressed_bot_threads() {
   local resolved_count=0 failed_count=0
   local id node_json cur_resolved comments_json marker_idx marker_body
   while IFS= read -r id; do
-    [ -z "$id" ] && continue
+    [[ -z "$id" ]] && continue
     # Re-read the thread's CURRENT state immediately before resolving so a reply
     # that landed after enumeration is not resolved against a stale snapshot.
     node_json=$(gh api graphql -f query="$node_query" -f id="$id" 2>/dev/null || echo "{}")
@@ -1242,7 +1242,7 @@ resolve_addressed_bot_threads() {
     cur_resolved=$(printf '%s' "$node_json" | jq -r \
       'if .data.node.isResolved == null then "unknown"
        elif .data.node.isResolved then "true" else "false" end' 2>/dev/null || echo "unknown")
-    if [ "$cur_resolved" != "false" ]; then
+    if [[ "$cur_resolved" != "false" ]]; then
       echo "::notice::skipping thread ${id} — already resolved or state unknown at re-check (${cur_resolved})"
       continue
     fi
@@ -1260,12 +1260,12 @@ resolve_addressed_bot_threads() {
     local nochange_disposition nochange_rc
     # A truncated comment page may hide a later neutral maintainer comment that
     # supersedes the affirmation -> fail closed (skip this path) unless fully read.
-    if [ "$stamp_ok" -eq 1 ] && [ "$(printf '%s' "$node_json" | jq -r 'if .data.node.comments.pageInfo.hasNextPage == false then "false" else "true" end' 2>/dev/null || echo true)" = "false" ]; then
+    if [ "$stamp_ok" -eq 1 ] && [[ "$(printf '%s' "$node_json" | jq -r 'if .data.node.comments.pageInfo.hasNextPage == false then "false" else "true" end' 2>/dev/null || echo true)" = "false" ]]; then
       nochange_disposition=$(acv_latest_nochange_disposition "$comments_json" "$nochange_epoch") && nochange_rc=0 || nochange_rc=$?
     else
       nochange_disposition="" nochange_rc=1
     fi
-    if [ "${nochange_rc:-0}" -eq 0 ] && [ -n "$nochange_disposition" ]; then
+    if [ "${nochange_rc:-0}" -eq 0 ] && [[ -n "$nochange_disposition" ]]; then
       # A no-change disposition was found. Re-read the thread immediately before
       # resolution to ensure it hasn't changed (no new required disposition or bot finding).
       local fresh_json fresh_resolved
@@ -1273,7 +1273,7 @@ resolve_addressed_bot_threads() {
       fresh_resolved=$(printf '%s' "$fresh_json" | jq -r \
         'if .data.node.isResolved == null then "unknown"
          elif .data.node.isResolved then "true" else "false" end' 2>/dev/null || echo "unknown")
-      if [ "$fresh_resolved" != "false" ]; then
+      if [[ "$fresh_resolved" != "false" ]]; then
         echo "::notice::skipping thread ${id} — already resolved during no-change check"
         continue
       fi
@@ -1281,7 +1281,7 @@ resolve_addressed_bot_threads() {
       fresh_comments=$(printf '%s' "$fresh_json" | jq -c \
         'if .data.node.comments.pageInfo.hasNextPage == false then (.data.node.comments.nodes // []) else "changed" end' \
         2>/dev/null || echo '"changed"')
-      if [ "$fresh_comments" != "$comments_json" ]; then
+      if [[ "$fresh_comments" != "$comments_json" ]]; then
         echo "::notice::skipping thread ${id} — thread changed during no-change disposition check; leaving unresolved"
         continue
       fi
@@ -1298,7 +1298,7 @@ resolve_addressed_bot_threads() {
       # overrides it). A bot comment with no createdAt cannot be ordered -> fail closed.
       local newer_bot
       newer_bot=$(nochange_bot_newer_count "$fresh_comments" "$nochange_disposition")
-      if [ "$newer_bot" != "0" ]; then
+      if [[ "$newer_bot" != "0" ]]; then
         echo "::notice::skipping thread ${id} — a bot comment was created or edited after the no-change disposition; leaving unresolved (#2079)"
         continue
       fi
@@ -1307,7 +1307,7 @@ resolve_addressed_bot_threads() {
       local nochange_resp
       nochange_resp=$(gh api graphql -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \
           -f id="$id" 2>/dev/null) || nochange_resp=""
-      if [ "$(printf '%s' "$nochange_resp" | jq -r '.data.resolveReviewThread.thread.isResolved // false' 2>/dev/null)" = "true" ]; then
+      if [[ "$(printf '%s' "$nochange_resp" | jq -r '.data.resolveReviewThread.thread.isResolved // false' 2>/dev/null)" = "true" ]]; then
         resolved_count=$((resolved_count + 1))
         echo "::notice::resolved bot thread ${id} due to no-change disposition (${nochange_disposition})"
       else
@@ -1355,7 +1355,7 @@ resolve_addressed_bot_threads() {
     local facts on_head in_base in_pass own_files cumulative_files commit_date
     facts=$(acv_gather_commit_facts "$claim_sha" "${RESOLUTION_BASE_SHA:-}")
     on_head=$(printf '%s' "$facts" | jq -r '.on_head // false' 2>/dev/null || echo "false")
-    if [ "$on_head" != "true" ]; then
+    if [[ "$on_head" != "true" ]]; then
       echo "::notice::skipping thread ${id} — claimed commit ${claim_sha} is not on PR #${PR_NUMBER}'s head branch; leaving unresolved (#1692)"
       continue
     fi
@@ -1380,7 +1380,7 @@ resolve_addressed_bot_threads() {
       echo "::notice::skipping thread ${id} — claim ${claim_sha} not verified against the diff (${verify_range}); leaving unresolved (#1692)"
       continue
     fi
-    if [ "$verify_range" = "cumulative" ]; then
+    if [[ "$verify_range" = "cumulative" ]]; then
       echo "::notice::thread ${id} verified from the cumulative range ${claim_sha}^..HEAD (fix amended/split across commits) (#1692)"
     fi
 
@@ -1389,10 +1389,10 @@ resolve_addressed_bot_threads() {
     # mismatch so it is visible without producing a false block.
     local thread_path
     thread_path=$(printf '%s' "$node_json" | jq -r '.data.node.path // ""' 2>/dev/null || echo "")
-    if [ -n "$thread_path" ]; then
+    if [[ -n "$thread_path" ]]; then
       local path_in_claim
       path_in_claim=$(printf '%s' "$claim_json" | jq -r --arg p "$thread_path" 'if (.files | index($p)) != null then "yes" else "no" end' 2>/dev/null || echo "no")
-      if [ "$path_in_claim" != "yes" ]; then
+      if [[ "$path_in_claim" != "yes" ]]; then
         echo "::warning::thread ${id}: claimed files do not include the thread's path '${thread_path}' (claim: $(printf '%s' "$claim_files_json")) — resolving on the file-level gate, but the region mismatch is advisory (#1692 AC3)"
       fi
     fi
@@ -1407,17 +1407,17 @@ resolve_addressed_bot_threads() {
       echo "::notice::skipping thread ${id} — a maintainer disposition could not be parsed; leaving unresolved (fail closed) (#1692 AC4)"
       continue
     fi
-    if [ "${disp_rc:-0}" -eq 0 ] && [ -n "$disposition" ]; then
+    if [ "${disp_rc:-0}" -eq 0 ] && [[ -n "$disposition" ]]; then
       # Require the verified-commit date strictly after the disposition. Both are
       # Z-terminated UTC ISO-8601 instants of identical width (commit_date from
       # acv_gather_commit_facts, disposition from GitHub's createdAt), so a pure
       # Bash lexicographical compare orders them chronologically — no jq needed,
       # matching the same comparison acv_latest_maintainer_disposition uses.
       local newer="false"
-      if [ -n "$commit_date" ] && [[ "$commit_date" > "$disposition" ]]; then
+      if [[ -n "$commit_date" ]] && [[ "$commit_date" > "$disposition" ]]; then
         newer="true"
       fi
-      if [ "$newer" != "true" ]; then
+      if [[ "$newer" != "true" ]]; then
         echo "::notice::skipping thread ${id} — a maintainer disposition (${disposition}) is not postdated by the verified fix (${commit_date:-unknown}); leaving unresolved (#1692 AC4)"
         continue
       fi
@@ -1452,7 +1452,7 @@ resolve_addressed_bot_threads() {
 rdc_fixed_refs() {
   local ref_rc=0 baseref="origin/${BASE_REF:-main}"
   RDC_FIXED_REF=$(cl_remote_head) || ref_rc=$?
-  if [ -z "$RDC_FIXED_REF" ] && [ "$ref_rc" -eq 1 ]; then
+  if [[ -z "$RDC_FIXED_REF" ]] && [ "$ref_rc" -eq 1 ]; then
     RDC_FIXED_REF="$(git rev-parse HEAD 2>/dev/null || true)"
   fi
   local base_rc=0
@@ -1474,10 +1474,10 @@ rdc_fixed_verdict() {
   local sha="$1" body="$2" created="$3"
   local facts on_head="false" in_base="unknown" own_files=0 commit_date="" content this_pass="false"
   local own_list="" touches_named="false"
-  if [ -n "${RDC_FIXED_REF:-}" ]; then
+  if [[ -n "${RDC_FIXED_REF:-}" ]]; then
     facts=$(acv_gather_commit_facts "$sha" "${RDC_FIXED_BASE:-}" "$RDC_FIXED_REF")
     on_head=$(printf '%s' "$facts" | jq -r '.on_head // false' 2>/dev/null || echo "false")
-    if [ -n "${RDC_FIXED_BASE:-}" ]; then
+    if [[ -n "${RDC_FIXED_BASE:-}" ]]; then
       in_base=$(printf '%s' "$facts" | jq -r 'if .in_base == false then "false" else "true" end' 2>/dev/null || echo "true")
     fi
     own_files=$(printf '%s' "$facts" | jq -r '(.own_files // []) | length' 2>/dev/null || echo "0")
@@ -1491,7 +1491,7 @@ rdc_fixed_verdict() {
   # A tokenless finding, and a fix that touches no token the finding names
   # (#2269), verify only on a commit this pass produced: one not reachable from
   # the pre-pass head. No snapshot or an unreadable sha is "no".
-  if [ -n "${RESOLUTION_BASE_SHA:-}" ] \
+  if [[ -n "${RESOLUTION_BASE_SHA:-}" ]] \
      && git cat-file -e "${sha}^{commit}" 2>/dev/null \
      && ! git merge-base --is-ancestor "$sha" "$RESOLUTION_BASE_SHA" 2>/dev/null; then
     this_pass="true"
@@ -1506,7 +1506,7 @@ rdc_live_comment_body() {
   local out
   out=$(gh api graphql -f query='query($id:ID!){node(id:$id){... on IssueComment{body}}}' \
     -f id="$1" 2>/dev/null | jq -r '.data.node.body // empty' 2>/dev/null) || return 1
-  [ -n "$out" ] || return 1
+  [[ -n "$out" ]] || return 1
   printf '%s' "$out"
 }
 
@@ -1518,16 +1518,16 @@ rdc_live_comment_body() {
 rdc_find_fixing_commit() {
   local body="$1" created="$2" c reason tokens
   tokens=$(cdv_finding_tokens "$body") || true
-  [ -n "$tokens" ] || return 1
-  [ -n "${RDC_FIXED_REF:-}" ] && [ -n "${RDC_FIXED_BASE:-}" ] || return 1
+  [[ -n "$tokens" ]] || return 1
+  [[ -n "${RDC_FIXED_REF:-}" ]] && [[ -n "${RDC_FIXED_BASE:-}" ]] || return 1
   while IFS= read -r c; do
-    [ -z "$c" ] && continue
+    [[ -z "$c" ]] && continue
     reason=$(rdc_fixed_verdict "$c" "$body" "$created") || {
       # Newest-first: a newer commit that re-adds the token means it is still present.
-      [ "$reason" = "content-adds-token" ] && return 1
+      [[ "$reason" = "content-adds-token" ]] && return 1
       continue
     }
-    [ "$reason" = "content-removes-token" ] || continue
+    [[ "$reason" = "content-removes-token" ]] || continue
     echo "$c"
     return 0
   done < <(git rev-list --no-merges "${RDC_FIXED_BASE}..${RDC_FIXED_REF}" 2>/dev/null || true)
@@ -1571,17 +1571,17 @@ _dtv_fetch_and_verify_tracker() {
     # (`{"message":"Not Found"}`); arbitrary "Not Found" text must not downgrade.
     if ! { grep -qE '\(HTTP 404\)' "$issue_err" 2>/dev/null \
            || printf '%s' "$issue_json" | jq -e 'type == "object" and .message == "Not Found" and ((.status // "404") | tostring) == "404"' >/dev/null 2>&1; }; then
-      [ "$issue_err" != "/dev/null" ] && rm -f "$issue_err"
+      [[ "$issue_err" != "/dev/null" ]] && rm -f "$issue_err"
       echo "issue-unreadable"
       return 2
     fi
     issue_json=""
   fi
-  [ "$issue_err" != "/dev/null" ] && rm -f "$issue_err"
+  [[ "$issue_err" != "/dev/null" ]] && rm -f "$issue_err"
   # A failed page must not read as "no comments" (that would surface as no-mention
   # and skip the thread without counting a failure): fail closed as unreadable.
   local raw_comments
-  if [ -z "$issue_json" ]; then
+  if [[ -z "$issue_json" ]]; then
     # Confirmed nonexistent issue (404): the verifier reports `missing`; no comments to fetch.
     dtv_verify_tracking_issue "" "[]" "$thread_id" "$origin_db_id" "$REPO" "$PR_NUMBER"
     return
@@ -1601,11 +1601,11 @@ _dtv_fetch_and_verify_tracker() {
 #   Resolve deferred review threads from bot reviewers on the PR.
 resolve_deferred_bot_threads() {
   local intent="$1"
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would resolve deferred review threads from bot reviewers on PR #${PR_NUMBER}"
     return 0
   fi
-  if [ -z "${PR_NUMBER:-}" ]; then
+  if [[ -z "${PR_NUMBER:-}" ]]; then
     echo "::notice::resolve_deferred_bot_threads: PR_NUMBER not set for intent=${intent} — skipping"
     return 0
   fi
@@ -1622,7 +1622,7 @@ resolve_deferred_bot_threads() {
     echo "::error::resolve_deferred_bot_threads: could not enumerate review threads on PR #${PR_NUMBER}"
     return 1
   }
-  if [ -z "$ids" ]; then
+  if [[ -z "$ids" ]]; then
     echo "::notice::no unresolved bot threads to check for deferrals on PR #${PR_NUMBER}"
     return 0
   fi
@@ -1646,7 +1646,7 @@ resolve_deferred_bot_threads() {
   local ref parse_rc post_reason post_rc disp_rc origin_db_id
   local verdict
   while IFS= read -r id; do
-    [ -z "$id" ] && continue
+    [[ -z "$id" ]] && continue
     # An unreadable candidate snapshot is a resolver failure, not "not resolvable":
     # a verified deferral may remain merge-blocking and a terminal marker may already
     # suppress retry, so surface it via failed_count.
@@ -1654,25 +1654,25 @@ resolve_deferred_bot_threads() {
     cur_resolved=$(printf '%s' "$node_json" | jq -r \
       'if .data.node.isResolved == null then "unknown"
        elif .data.node.isResolved then "true" else "false" end' 2>/dev/null || echo "unknown")
-    if [ "$cur_resolved" = "unknown" ]; then
+    if [[ "$cur_resolved" = "unknown" ]]; then
       echo "::warning::could not read review thread ${id} while checking deferrals"
       failed_count=$((failed_count + 1))
       continue
     fi
-    [ "$cur_resolved" = "false" ] || continue
+    [[ "$cur_resolved" = "false" ]] || continue
     # A partial snapshot (GraphQL errors, or a comments connection without a nodes
     # array or boolean pagination) is unreadable, not "no deferral": counting it as
     # empty would let the caller post a terminal over an unevaluated thread.
     local page_state
     page_state=$(printf '%s' "$node_json" | jq -r "$snapshot_state_jq" 2>/dev/null || echo unknown)
-    if [ "$page_state" = "unknown" ]; then
+    if [[ "$page_state" = "unknown" ]]; then
       echo "::warning::partial snapshot of review thread ${id} while checking deferrals"
       failed_count=$((failed_count + 1))
       continue
     fi
     # Fail closed on a thread longer than one page: later replies could supersede
     # the deferral and we would not see them.
-    if [ "$page_state" = "more" ]; then
+    if [[ "$page_state" = "more" ]]; then
       echo "::notice::skipping thread ${id} — more than 100 comments; leaving unresolved (#2045)"
       continue
     fi
@@ -1683,7 +1683,7 @@ resolve_deferred_bot_threads() {
     origin_bot=$(printf '%s' "$comments_json" | jq -r \
       '.[0].author as $a | if (($a.__typename // "") == "Bot") or (($a.login // "") | endswith("[bot]"))
        then "yes" else "no" end' 2>/dev/null || echo "no")
-    [ "$origin_bot" = "yes" ] || continue
+    [[ "$origin_bot" = "yes" ]] || continue
 
     # A maintainer's "no change needed" verdict can resolve the thread without a
     # deferral (#2079 AC1). It is checked BEFORE our own reply, the deferral parse and
@@ -1696,26 +1696,26 @@ resolve_deferred_bot_threads() {
     else
       nochange_disposition="" nochange_rc=1
     fi
-    if [ "${nochange_rc:-0}" -eq 0 ] && [ -n "$nochange_disposition" ]; then
+    if [ "${nochange_rc:-0}" -eq 0 ] && [[ -n "$nochange_disposition" ]]; then
       # A no-change disposition was found. Re-read the thread immediately before resolution.
       local fresh_json fresh_resolved fresh_comments
       fresh_json=$(gh api graphql -f query="$node_query" -f id="$id" 2>/dev/null) || fresh_json=""
       fresh_resolved=$(printf '%s' "$fresh_json" | jq -r \
         'if .data.node.isResolved == null then "unknown"
          elif .data.node.isResolved then "true" else "false" end' 2>/dev/null || echo "unknown")
-      if [ "$fresh_resolved" = "unknown" ]; then
+      if [[ "$fresh_resolved" = "unknown" ]]; then
         echo "::warning::could not re-read review thread ${id} during no-change check"
         failed_count=$((failed_count + 1))
         continue
       fi
-      if [ "$fresh_resolved" != "false" ]; then
+      if [[ "$fresh_resolved" != "false" ]]; then
         echo "::notice::skipping thread ${id} — already resolved during no-change check"
         continue
       fi
       fresh_comments=$(printf '%s' "$fresh_json" | jq -c \
         'if .data.node.comments.pageInfo.hasNextPage == false then (.data.node.comments.nodes // []) else "changed" end' \
         2>/dev/null || echo '"changed"')
-      if [ "$fresh_comments" != "$comments_json" ]; then
+      if [[ "$fresh_comments" != "$comments_json" ]]; then
         echo "::notice::skipping thread ${id} — thread changed during no-change disposition check; leaving unresolved"
         continue
       fi
@@ -1729,7 +1729,7 @@ resolve_deferred_bot_threads() {
       # Reject if any bot comment postdates the no-change verdict (a newer bot finding overrides it).
       local newer_bot
       newer_bot=$(nochange_bot_newer_count "$fresh_comments" "$nochange_disposition")
-      if [ "$newer_bot" != "0" ]; then
+      if [[ "$newer_bot" != "0" ]]; then
         echo "::notice::skipping thread ${id} — a bot comment was created or edited after the no-change disposition; leaving unresolved (#2079)"
         continue
       fi
@@ -1749,7 +1749,7 @@ resolve_deferred_bot_threads() {
 
     # Expected nonzero returns are captured via `||` so `set -e` never aborts the pass.
     reply_idx=$(dtv_latest_own_reply_index "$comments_json" "$bot_user") || continue
-    [ -n "$reply_idx" ] || continue
+    [[ -n "$reply_idx" ]] || continue
     reply_body=$(printf '%s' "$comments_json" | jq -r --argjson i "$reply_idx" '.[$i].body // ""' 2>/dev/null || echo "")
     parse_rc=0
     ref=$(dtv_parse_deferral "$reply_body") || parse_rc=$?
@@ -1757,7 +1757,7 @@ resolve_deferred_bot_threads() {
       # Most threads simply carry no deferral. A malformed deferral attempt is a
       # failure, not a skip: the thread stays merge-blocking, so no terminal may be
       # posted over it and the pass must stay retryable.
-      if [ "$ref" != "no-deferral" ]; then
+      if [[ "$ref" != "no-deferral" ]]; then
         echo "::warning::thread ${id} — deferral marker not verifiable (${ref}); leaving unresolved (#2045)"
         failed_count=$((failed_count + 1))
       fi
@@ -1773,10 +1773,10 @@ resolve_deferred_bot_threads() {
         elif $o.lastEditedAt == null then "no"
         elif ($o.lastEditedAt | type) != "string" then "unknown"
         elif $o.lastEditedAt > $r then "yes" else "no" end' 2>/dev/null || echo "unknown")
-    if [ "$edited_after" = "yes" ]; then
+    if [[ "$edited_after" = "yes" ]]; then
       echo "::notice::skipping thread ${id} — the bot finding was edited after our deferral; leaving unresolved (#2045)"
       continue
-    elif [ "$edited_after" != "no" ]; then
+    elif [[ "$edited_after" != "no" ]]; then
       # Unreadable is a resolver failure, not a skip: a terminal marker must not
       # be posted over a thread we could not evaluate.
       echo "::warning::could not read the edit time of review thread ${id} while checking deferrals"
@@ -1813,7 +1813,7 @@ resolve_deferred_bot_threads() {
     local verdict_rc=0
     verdict=$(_dtv_fetch_and_verify_tracker "$ref" "$id" "$origin_db_id") || verdict_rc=$?
     if [ "$verdict_rc" -ne 0 ]; then
-      { [ "$verdict" = "comments-unreadable" ] || [ "$verdict" = "issue-unreadable" ]; } && failed_count=$((failed_count + 1))
+      { [[ "$verdict" = "comments-unreadable" ]] || [[ "$verdict" = "issue-unreadable" ]]; } && failed_count=$((failed_count + 1))
       echo "::notice::skipping thread ${id} — tracking issue #${ref} cannot back the deferral (${verdict}); leaving unresolved (#2045)"
       continue
     fi
@@ -1823,7 +1823,7 @@ resolve_deferred_bot_threads() {
     verdict_rc=0
     verdict=$(_dtv_fetch_and_verify_tracker "$ref" "$id" "$origin_db_id") || verdict_rc=$?
     if [ "$verdict_rc" -ne 0 ]; then
-      { [ "$verdict" = "comments-unreadable" ] || [ "$verdict" = "issue-unreadable" ]; } && failed_count=$((failed_count + 1))
+      { [[ "$verdict" = "comments-unreadable" ]] || [[ "$verdict" = "issue-unreadable" ]]; } && failed_count=$((failed_count + 1))
       echo "::notice::skipping thread ${id} — tracking issue #${ref} no longer backs the deferral (${verdict}); leaving unresolved (#2045)"
       continue
     fi
@@ -1833,8 +1833,8 @@ resolve_deferred_bot_threads() {
     # comments) so a reply that landed meanwhile is never overridden.
     local fresh_json fresh_comments
     fresh_json=$(gh api graphql -f query="$node_query" -f id="$id" 2>/dev/null) || fresh_json=""
-    if [ "$(printf '%s' "$fresh_json" | jq -r 'if .data.node.isResolved == null then "unknown" else "ok" end' 2>/dev/null || echo unknown)" = "unknown" ] \
-       || [ "$(printf '%s' "$fresh_json" | jq -r "$snapshot_state_jq" 2>/dev/null || echo unknown)" = "unknown" ]; then
+    if [[ "$(printf '%s' "$fresh_json" | jq -r 'if .data.node.isResolved == null then "unknown" else "ok" end' 2>/dev/null || echo unknown)" = "unknown" ]] \
+       || [[ "$(printf '%s' "$fresh_json" | jq -r "$snapshot_state_jq" 2>/dev/null || echo unknown)" = "unknown" ]]; then
       echo "::warning::could not re-read review thread ${id} before resolving its deferral"
       failed_count=$((failed_count + 1))
       continue
@@ -1842,14 +1842,14 @@ resolve_deferred_bot_threads() {
     fresh_comments=$(printf '%s' "$fresh_json" | jq -c \
       'if .data.node.isResolved == false and .data.node.comments.pageInfo.hasNextPage == false
        then .data.node.comments.nodes else "changed" end' 2>/dev/null || echo '"changed"')
-    if [ "$fresh_comments" != "$comments_json" ]; then
+    if [[ "$fresh_comments" != "$comments_json" ]]; then
       echo "::notice::skipping thread ${id} — thread changed while verifying the tracking issue; leaving unresolved (#2045)"
       continue
     fi
 
     resolve_resp=$(gh api graphql -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \
         -f id="$id" 2>/dev/null) || resolve_resp=""
-    if [ "$(printf '%s' "$resolve_resp" | jq -r '.data.resolveReviewThread.thread.isResolved // false' 2>/dev/null)" = "true" ]; then
+    if [[ "$(printf '%s' "$resolve_resp" | jq -r '.data.resolveReviewThread.thread.isResolved // false' 2>/dev/null)" = "true" ]]; then
       resolved_count=$((resolved_count + 1))
       echo "::notice::resolved deferred bot thread ${id} (tracked in #${ref})"
     else
@@ -1913,11 +1913,11 @@ resolve_dispositioned_comments() {
   # marker reads as "this pass ended on the comment", so posting it over an
   # unconfirmed state would suppress the bot-comment retry.
   RDC_STATE_UNKNOWN=0
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would resolve dispositioned PR issue comments on PR #${PR_NUMBER}"
     return 0
   fi
-  if [ -z "${PR_NUMBER:-}" ]; then
+  if [[ -z "${PR_NUMBER:-}" ]]; then
     echo "::notice::resolve_dispositioned_comments: PR_NUMBER not set for intent=${intent} — skipping"
     return 0
   fi
@@ -1942,7 +1942,7 @@ resolve_dispositioned_comments() {
     }
   }'
   pages_file=$(mktemp) || { echo "::error::failed to create temporary file" >&2; exit 1; }
-  while [ "$has_next_page" = "true" ]; do
+  while [[ "$has_next_page" = "true" ]]; do
     page_response=$(gh api graphql -f query="$comments_query" \
       -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F pr="$PR_NUMBER" \
       "${cursor_args[@]}" 2>/dev/null)
@@ -1955,7 +1955,7 @@ resolve_dispositioned_comments() {
     cursor=$(printf '%s' "$page_response" | jq -r \
       '.data?.repository?.pullRequest?.comments?.pageInfo?.endCursor // ""' \
       2>/dev/null || echo "")
-    [ -z "$cursor" ] && has_next_page="false"
+    [[ -z "$cursor" ]] && has_next_page="false"
     cursor_args=("-f" "cursor=${cursor}")
   done
   local all_comments
@@ -1990,7 +1990,7 @@ resolve_dispositioned_comments() {
   reopen_ids=$(maintainer_gate_reopen_candidates "$all_comments" "$bot_user" 2>/dev/null \
     | jq -r '.[]?' 2>/dev/null || true)
   while IFS= read -r rid; do
-    [ -z "$rid" ] && continue
+    [[ -z "$rid" ]] && continue
     if gh api graphql -f query='mutation($id:ID!){unminimizeComment(input:{subjectId:$id}){unminimizedComment{isMinimized}}}' \
         -f id="$rid" >/dev/null 2>&1; then
       echo "::notice::unminimized comment ${rid} — edited after its latest disposition (or its disposition cannot cover a finding-bearing body); it needs a fresh disposition (#2008)"
@@ -2013,11 +2013,11 @@ resolve_dispositioned_comments() {
       | select(.id as $id | $skip | index($id) | not)
       | .id
     ' 2>/dev/null || true)
-  if [ -n "$reverify_ids" ]; then
+  if [[ -n "$reverify_ids" ]]; then
     candidate_ids=$(printf '%s\n%s' "$candidate_ids" "$reverify_ids")
   fi
 
-  if [ -z "$(printf '%s' "$candidate_ids" | sed '/^[[:space:]]*$/d')" ]; then
+  if [[ -z "$(printf '%s' "$candidate_ids" | sed '/^[[:space:]]*$/d')" ]]; then
     echo "::notice::no undispositioned PR issue comments on PR #${PR_NUMBER}"
     _rdc_unminimize_status "$unminimize_failed" || return 1
     return 0
@@ -2028,8 +2028,8 @@ resolve_dispositioned_comments() {
   local reverify edited_at chosen_created stale_rc
   # #2004: the `fixed` refs are read once per resolver run, on first use.
   local rdc_refs_ready="false" corrected_at
-  while IFS= read -r cid || [ -n "$cid" ]; do
-    [ -z "$cid" ] && continue
+  while IFS= read -r cid || [[ -n "$cid" ]]; do
+    [[ -z "$cid" ]] && continue
     corrected_at=""
 
     # (b) above: an already-RESOLVED, edited bot comment. It is re-verified only
@@ -2042,16 +2042,16 @@ resolve_dispositioned_comments() {
     # Re-read the ORIGINAL comment's CURRENT minimize state so a comment minimized
     # since enumeration is not double-processed; a fetch that can't confirm state
     # fails closed (skip). A re-verify candidate is RESOLVED by construction.
-    if [ "$reverify" != "true" ]; then
+    if [[ "$reverify" != "true" ]]; then
       cur_minimized=$(gh api graphql -f query='query($id:ID!){node(id:$id){... on IssueComment{isMinimized minimizedReason}}}' \
         -f id="$cid" 2>/dev/null \
         | jq -r 'if .data.node.isMinimized == null then "unknown"
                  elif .data.node.isMinimized then "true" else "false" end' 2>/dev/null || echo "unknown")
-      if [ "$cur_minimized" = "unknown" ]; then
+      if [[ "$cur_minimized" = "unknown" ]]; then
         echo "::warning::skipping comment ${cid} — its current state could not be confirmed at re-check"
         RDC_STATE_UNKNOWN=1
         continue
-      elif [ "$cur_minimized" != "false" ]; then
+      elif [[ "$cur_minimized" != "false" ]]; then
         echo "::notice::skipping comment ${cid} — already minimized at re-check"
         continue
       fi
@@ -2087,13 +2087,13 @@ resolve_dispositioned_comments() {
       # reply's FULL body (non-empty beyond the marker), so recover it by node id.
       reply_body=$(printf '%s' "$all_comments" | jq -r --arg id "$chosen_reply_id" \
         'first(.[] | select(.id == $id)) | .body // ""' 2>/dev/null || echo "")
-      while IFS= read -r sid || [ -n "$sid" ]; do
-        [ -z "$sid" ] && continue
+      while IFS= read -r sid || [[ -n "$sid" ]]; do
+        [[ -z "$sid" ]] && continue
         superseded_ids+=("$sid")
       done < <(printf '%s' "$selection" | jq -r '.superseded[]? // empty' 2>/dev/null || true)
     fi
 
-    if [ "$reverify" = "true" ]; then
+    if [[ "$reverify" = "true" ]]; then
       # Re-verify only when the chosen (latest) disposition was posted at/after the
       # edit while a superseded one predates it — a fresh disposition answering an
       # edited body. Anything else is a settled RESOLVED comment: leave it.
@@ -2114,10 +2114,10 @@ resolve_dispositioned_comments() {
         fi
         continue
       fi
-      if [ "${auth_count:-0}" -gt 1 ] && [ -n "$chosen_created" ] \
+      if [ "${auth_count:-0}" -gt 1 ] && [[ -n "$chosen_created" ]] \
          && [ "$stale_rc" -ne 0 ]; then
         for sid in "${superseded_ids[@]:-}"; do
-          [ -z "$sid" ] && continue
+          [[ -z "$sid" ]] && continue
           sid_created=$(printf '%s' "$all_comments" | jq -r --arg id "$sid" \
             'first(.[] | select(.id == $id)) | .createdAt // ""' 2>/dev/null || echo "")
           if cdv_disposition_is_stale "$edited_at" "$sid_created"; then
@@ -2125,13 +2125,13 @@ resolve_dispositioned_comments() {
           fi
         done
       fi
-      if [ "$straddles" != "true" ]; then
+      if [[ "$straddles" != "true" ]]; then
         continue
       fi
       echo "::notice::re-verifying comment ${cid} — edited at ${edited_at} after an earlier disposition; a fresh disposition ${chosen_reply_id} covers the current body (#2008)"
     fi
 
-    if [ "${auth_count:-0}" -lt 1 ] || [ -z "$chosen_reply_id" ]; then
+    if [ "${auth_count:-0}" -lt 1 ] || [[ -z "$chosen_reply_id" ]]; then
       echo "::notice::skipping comment ${cid} — no authorized dev-lead disposition reply from ${bot_user} found; leaving open (#1813)"
       continue
     fi
@@ -2147,9 +2147,9 @@ resolve_dispositioned_comments() {
     verified="false"
     case "$disposition" in
       fixed)
-        if [ "$pass_outcome" = "failed" ]; then
+        if [[ "$pass_outcome" = "failed" ]]; then
           echo "::notice::skipping comment ${cid} — a \`fixed\` disposition is not certified on a failed pass (its commit may not have been pushed); leaving open (#1992)"
-          if [ "$reverify" = "true" ]; then
+          if [[ "$reverify" = "true" ]]; then
             # Already RESOLVED with a stale body: fail closed by re-opening it.
             if ! gh api graphql -f query='mutation($id:ID!){unminimizeComment(input:{subjectId:$id}){unminimizedComment{isMinimized}}}' \
                 -f id="$cid" >/dev/null 2>&1; then
@@ -2169,7 +2169,7 @@ resolve_dispositioned_comments() {
         # The old "produced by THIS pass" rule could never accept a fix that landed
         # in an earlier pass. Accepting any later commit would let an unrelated
         # commit resolve the comment.
-        if [ "${rdc_refs_ready:-false}" != "true" ]; then
+        if [[ "${rdc_refs_ready:-false}" != "true" ]]; then
           rdc_fixed_refs
           rdc_refs_ready="true"
         fi
@@ -2192,9 +2192,9 @@ resolve_dispositioned_comments() {
           # captured body, so re-read the live one first; a changed or unreadable
           # body leaves the comment open for a disposition of the current body.
           if [ "$corrected_rc" -eq 0 ] \
-             && { ! live_body=$(rdc_live_comment_body "$cid") || [ "$live_body" != "$orig_body" ]; }; then
+             && { ! live_body=$(rdc_live_comment_body "$cid") || [[ "$live_body" != "$orig_body" ]]; }; then
             echo "::warning::comment ${cid}: its body changed or could not be re-read since it was captured; no correction posted, it stays open for a disposition of the current body (#2004)"
-            if [ "$reverify" = "true" ]; then
+            if [[ "$reverify" = "true" ]]; then
               # Already RESOLVED: a changed body must not stay minimized (#2008).
               if ! gh api graphql -f query='mutation($id:ID!){unminimizeComment(input:{subjectId:$id}){unminimizedComment{isMinimized}}}' \
                   -f id="$cid" >/dev/null 2>&1; then
@@ -2214,9 +2214,9 @@ resolve_dispositioned_comments() {
             if gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$fix_body" >/dev/null 2>&1; then
               echo "::notice::re-answered comment ${cid}: the corrected \`fixed\` disposition cites ${corrected} in place of ${sha} (#2004)"
               # Re-read after posting: an edit that raced the post was never checked.
-              if ! live_body=$(rdc_live_comment_body "$cid") || [ "$live_body" != "$orig_body" ]; then
+              if ! live_body=$(rdc_live_comment_body "$cid") || [[ "$live_body" != "$orig_body" ]]; then
                 echo "::warning::comment ${cid}: its body changed while the correction was posted; leaving it open for a disposition of the current body (#2004)"
-                if [ "$reverify" = "true" ]; then
+                if [[ "$reverify" = "true" ]]; then
                   # Already RESOLVED: a changed body must not stay minimized (#2008).
                   if ! gh api graphql -f query='mutation($id:ID!){unminimizeComment(input:{subjectId:$id}){unminimizedComment{isMinimized}}}' \
                       -f id="$cid" >/dev/null 2>&1; then
@@ -2242,7 +2242,7 @@ resolve_dispositioned_comments() {
       out-of-scope)
         # The referenced tracking issue must exist.
         local ref_num="${ref#\#}"
-        if [ -n "$ref_num" ] && gh issue view "$ref_num" --repo "$REPO" --json number >/dev/null 2>&1; then
+        if [[ -n "$ref_num" ]] && gh issue view "$ref_num" --repo "$REPO" --json number >/dev/null 2>&1; then
           verified="true"
         fi
         ;;
@@ -2250,12 +2250,12 @@ resolve_dispositioned_comments() {
         # The disposition reply must carry non-empty evidence beyond the marker itself.
         local evidence
         evidence=$(printf '%s' "$reply_body" | jq -Rsr 'gsub("<!--.*?-->";"";"s") | gsub("\\s";"";"g")' 2>/dev/null || echo "")
-        [ -n "$evidence" ] && verified="true"
+        [[ -n "$evidence" ]] && verified="true"
         # #2008: `informational` claims "no finding". It never verifies against a
         # body carrying a finding-bearing section (e.g. CodeRabbit's Security
         # Architecture Review beside a rate-limit block). A notice covers only its
         # own section; each finding needs fixed/answered/invalid/out-of-scope.
-        if [ "$disposition" = "informational" ] && [ "$verified" = "true" ]; then
+        if [[ "$disposition" = "informational" ]] && [[ "$verified" = "true" ]]; then
           local orig_body
           orig_body=$(printf '%s' "$all_comments" | jq -r --arg id "$cid" \
             'first(.[] | select(.id == $id)) | .body // ""' 2>/dev/null || echo "")
@@ -2272,7 +2272,7 @@ resolve_dispositioned_comments() {
 
     if ! cdv_authorize "$disposition" "$is_human" "$verified"; then
       echo "::notice::skipping comment ${cid} — disposition '${disposition}' not authorized to resolve (is_human=${is_human} verified=${verified}); leaving open (#1813)"
-      if [ "$disposition" = "fixed" ] && [ "$reverify" != "true" ]; then
+      if [[ "$disposition" = "fixed" ]] && [[ "$reverify" != "true" ]]; then
         # #2004: an unverified `fixed` is re-answered on later passes. Converge the
         # older replies to OUTDATED now, so the replies never stack (#1992).
         local usid
@@ -2285,7 +2285,7 @@ resolve_dispositioned_comments() {
           fi
         done
       fi
-      if [ "$reverify" = "true" ]; then
+      if [[ "$reverify" = "true" ]]; then
         # Fail closed: the fresh disposition answering the edit did not verify,
         # and the older one predates the edit, so nothing covers the current body.
         if gh api graphql -f query='mutation($id:ID!){unminimizeComment(input:{subjectId:$id}){unminimizedComment{isMinimized}}}' \
@@ -2299,12 +2299,12 @@ resolve_dispositioned_comments() {
       continue
     fi
 
-    if [ "$reverify" = "true" ]; then
+    if [[ "$reverify" = "true" ]]; then
       # Already RESOLVED. Only converge the superseded replies to OUTDATED, so the
       # next pass sees exactly one disposition and does not re-verify again.
       local rsid
       for rsid in "${superseded_ids[@]:-}"; do
-        [ -z "$rsid" ] && continue
+        [[ -z "$rsid" ]] && continue
         if gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' \
             -f id="$rsid" >/dev/null 2>&1; then
           echo "::notice::minimized superseded disposition reply ${rsid} OUTDATED (#1992, #2008)"
@@ -2322,7 +2322,7 @@ resolve_dispositioned_comments() {
       'first(.[] | select(.id == $id)) | .lastEditedAt // ""' 2>/dev/null || echo "")
     chosen_created=$(printf '%s' "${selection:-}" | jq -r '.chosen.createdAt // ""' 2>/dev/null || echo "")
     # A corrected `fixed` reply posted above judged the current body (#2004).
-    [ -n "$corrected_at" ] && chosen_created="$corrected_at"
+    [[ -n "$corrected_at" ]] && chosen_created="$corrected_at"
     stale_rc=0
     cdv_disposition_is_stale "$edited_at" "$chosen_created" || stale_rc=$?
     if [ "$stale_rc" -ne 1 ]; then
@@ -2332,7 +2332,7 @@ resolve_dispositioned_comments() {
       # disposition even when the candidate is not yet minimized.
       local sid
       for sid in "${superseded_ids[@]:-}"; do
-        [ -z "$sid" ] && continue
+        [[ -z "$sid" ]] && continue
         if gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' \
             -f id="$sid" >/dev/null 2>&1; then
           echo "::notice::minimized superseded disposition reply ${sid} OUTDATED (#1992)"
@@ -2353,7 +2353,7 @@ resolve_dispositioned_comments() {
       # its comment is genuinely addressed.
       local sid
       for sid in "${superseded_ids[@]:-}"; do
-        [ -z "$sid" ] && continue
+        [[ -z "$sid" ]] && continue
         if gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' \
             -f id="$sid" >/dev/null 2>&1; then
           echo "::notice::minimized superseded disposition reply ${sid} OUTDATED (#1992)"
@@ -2393,7 +2393,7 @@ _rdc_unminimize_status() {
 # NEVER hardcoded here — they are the authoritative required set for this branch.
 # Empty when the ruleset API is unreadable → compute_ci_status fails closed.
 _ci_required_checks() {
-  if [ -z "${_CI_REQUIRED_CHECKS_CACHE+x}" ]; then
+  if [[ -z "${_CI_REQUIRED_CHECKS_CACHE+x}" ]]; then
     _CI_REQUIRED_CHECKS_CACHE="$(ruleset_required_checks "${REPO:-}" "${BASE_REF:-main}" 2>/dev/null || true)"
   fi
   printf '%s' "$_CI_REQUIRED_CHECKS_CACHE"
@@ -2428,7 +2428,7 @@ ci_blocking_status() {
 ci_is_blocking() {
   local st
   st="$(ci_blocking_status)"
-  [ "$st" = "failing" ] || [ "$st" = "pending" ]
+  [[ "$st" = "failing" ]] || [[ "$st" = "pending" ]]
 }
 
 # ci_blocking_reason: a human phrase naming the specific check(s) that make CI a
@@ -2450,10 +2450,10 @@ ci_blocking_reason() {
   # configured): only the former warrants the "failing closed" note, or it
   # misleadingly claims the ruleset was unreadable when it was merely empty.
   required_names="$(_ci_required_checks)"
-  if [ -z "$required_names" ]; then
+  if [[ -z "$required_names" ]]; then
     is_unreadable="true"
     required_names="[]"
-  elif [ "$required_names" = "[]" ]; then
+  elif [[ "$required_names" = "[]" ]]; then
     required_names="[]"
   else
     required_names="$(jq -c 'if type == "array" then . else [] end' <<< "$required_names" 2>/dev/null || echo '[]')"
@@ -2508,16 +2508,16 @@ ci_blocking_reason() {
 blocking_reason_phrase() {
   local reasons=() ci_reason changes_requested
   ci_reason="$(ci_blocking_reason)"
-  [ -n "$ci_reason" ] && reasons+=("$ci_reason")
+  [[ -n "$ci_reason" ]] && reasons+=("$ci_reason")
   changes_requested=$(printf '%s' "${ALL_REVIEWS_JSON:-[]}" | \
     jq '[.[] | select(.state == "CHANGES_REQUESTED")] | length' 2>/dev/null || echo "0")
   [ "${changes_requested:-0}" -gt 0 ] && reasons+=("a reviewer requested changes")
-  if [ "${#reasons[@]}" -eq 0 ]; then
+  if [[ "${#reasons[@]}" -eq 0 ]]; then
     printf 'a required check is failing or pending, or a reviewer requested changes'
   else
     local out="" r
     for r in "${reasons[@]}"; do
-      if [ -z "$out" ]; then out="$r"; else out="${out}; ${r}"; fi
+      if [[ -z "$out" ]]; then out="$r"; else out="${out}; ${r}"; fi
     done
     printf '%s' "$out"
   fi
@@ -2557,7 +2557,7 @@ has_tier1_blockers() {
   # Detects bots via __typename == "Bot" (covers bots whose GraphQL login omits [bot] suffix)
   # or login ending with [bot] (belt-and-suspenders for bots that include the suffix).
   unresolved_bot_threads=0
-  if [ -n "${PR_NUMBER:-}" ]; then
+  if [[ -n "${PR_NUMBER:-}" ]]; then
     local cursor="" has_next_page="true" page_response page_count
     local cursor_args=()
     local bot_thread_query='query($owner:String!,$repo:String!,$pr:Int!,$cursor:String){
@@ -2570,7 +2570,7 @@ has_tier1_blockers() {
         }
       }
     }'
-    while [ "$has_next_page" = "true" ]; do
+    while [[ "$has_next_page" = "true" ]]; do
       page_response=$(gh api graphql -f query="$bot_thread_query" \
         -F owner="${REPO%%/*}" -F repo="${REPO##*/}" -F pr="$PR_NUMBER" \
         "${cursor_args[@]}" 2>/dev/null) || {
@@ -2590,7 +2590,7 @@ has_tier1_blockers() {
       cursor=$(printf '%s' "$page_response" | jq -r \
         '.data?.repository?.pullRequest?.reviewThreads?.pageInfo?.endCursor // ""' \
         2>/dev/null || echo "")
-      [ -z "$cursor" ] && has_next_page="false"
+      [[ -z "$cursor" ]] && has_next_page="false"
       cursor_args=("-f" "cursor=${cursor}")
     done
   fi
@@ -2712,7 +2712,7 @@ This PR's rebase conflict failed automated resolution **${REBASE_MAX_FAIL_ATTEMP
 **Reason for last failure:** ${reason}
 
 Resolve the conflict manually, then remove the \`${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}\` label **and** delete this comment to re-enable automated rebasing."
-  if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
+  if [[ "$DEV_LEAD_DRY_RUN" = "true" ]]; then
     echo "[dry-run] would post rebase exhaustion marker, add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review} and disable auto-merge on PR #${PR_NUMBER}"
     return 0
   fi
@@ -2736,7 +2736,7 @@ escalate_rebase_needs_human() {
   local reason="$1"
   # Prevent the EXIT-trap auto-merge restore from re-enabling what we disable.
   _AM_NEEDS_RESTORE=0
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     post_reviews_terminal "rebase" "failed" "$reason"
     echo "[dry-run] would add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review} and disable auto-merge on PR #${PR_NUMBER}"
     return 0
@@ -2799,7 +2799,7 @@ pr_mergeable_conflict_state() {
     mergeable="$(printf '%s' "$json" | jq -r '.mergeable // ""' 2>/dev/null || true)"
     state="$(printf '%s' "$json" | jq -r '.mergeStateStatus // ""' 2>/dev/null || true)"
     verdict="$(rebase_conflict_state "$mergeable" "$state")"
-    [ "$verdict" != "indeterminate" ] && break
+    [[ "$verdict" != "indeterminate" ]] && break
     if [ $(( i + 1 )) -lt "$polls" ]; then
       sleep "$REBASE_MERGE_STATE_POLL_SLEEP"
     fi
@@ -2820,9 +2820,9 @@ verify_resolution_integrity() {
   local script_dir
   script_dir="${AGENT_SCRIPT_DIR:-$(dirname "$0")}"
   changed="$(git diff --name-only "origin/${base_ref}...HEAD" -- '*.sh' 2>/dev/null || true)"
-  while IFS= read -r file || [ -n "$file" ]; do
-    [ -n "$file" ] || continue
-    [ -f "$file" ] || continue   # deleted by the resolution — nothing to check
+  while IFS= read -r file || [[ -n "$file" ]]; do
+    [[ -n "$file" ]] || continue
+    [[ -f "$file" ]] || continue   # deleted by the resolution — nothing to check
     if ! bash -n "$file" 2>/dev/null; then
       echo "::warning::integrity gate: bash -n failed on ${file} after rebase resolution (#1890 AC #7)"
       rc=1
@@ -2859,8 +2859,8 @@ EOF
 expire_stale_terminal_markers() {
   local intent="$1"
   local sha="${HEAD_SHA:-}"
-  [ -z "$sha" ] && return 0
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  [[ -z "$sha" ]] && return 0
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would expire stale terminal markers for intent=${intent} sha=${sha}"
     return 0
   fi
@@ -2868,7 +2868,7 @@ expire_stale_terminal_markers() {
   # A fix-bot-comment pass handles ONE comment, so it expires only that comment's
   # terminal markers. Other comments' completed passes on the same SHA are what
   # keeps the #2017 retry from re-dispatching them.
-  if [ "$intent" = "fix-bot-comment" ] && [[ "${COMMENT_NODE_ID:-}" =~ ^[-A-Za-z0-9_+/=]+$ ]]; then
+  if [[ "$intent" = "fix-bot-comment" ]] && [[ "${COMMENT_NODE_ID:-}" =~ ^[-A-Za-z0-9_+/=]+$ ]]; then
     pattern="${pattern} comment=${COMMENT_NODE_ID//+/\\+}( |-->)"
   fi
   local stale_ids
@@ -2891,8 +2891,8 @@ expire_stale_terminal_markers() {
 expire_stale_rate_limited_marker() {
   local intent="$1"
   local sha="${HEAD_SHA:-}"
-  [ -z "$sha" ] && return 0
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  [[ -z "$sha" ]] && return 0
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would expire stale rate-limited marker for intent=${intent} sha=${sha}"
     return 0
   fi
@@ -2915,9 +2915,9 @@ has_reviews_rate_limited_marker() {
   local intent="$1"
   local reason="${2:-rate-limit}"
   local sha="${HEAD_SHA:-}"
-  [ -z "$sha" ] && return 1  # no SHA means no dedup possible
+  [[ -z "$sha" ]] && return 1  # no SHA means no dedup possible
   local status_token="rate-limited"
-  { [ "$reason" = "blocked" ] || [ "$reason" = "resolve-failed" ]; } && status_token="blocked"
+  { [[ "$reason" = "blocked" ]] || [[ "$reason" = "resolve-failed" ]]; } && status_token="blocked"
   # Match the reason too: blocked and resolve-failed share status=blocked, and a
   # change of hold reason must still notify the requester. A legacy marker with no
   # reason= field (pre-#1568) still dedups on its status alone.
@@ -2959,7 +2959,7 @@ post_reviews_rate_limited() {
   # is parsed from engine output (parse_reset_time) before this function is called.
   # resolve-failed (a thread/comment resolution or finalization failure) is not a
   # quota hold either: it takes the same non-quota status and backoff (#2045).
-  if [ "$reason" = "blocked" ] || [ "$reason" = "resolve-failed" ]; then
+  if [[ "$reason" = "blocked" ]] || [[ "$reason" = "resolve-failed" ]]; then
     printf '%s' "$(date -u -d '+30 minutes' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset"
   fi
 
@@ -2975,7 +2975,7 @@ post_reviews_rate_limited() {
   # Only suppress if the reason is the same (issue #1568 logic error: suppress on
   # reason change would hide the shift from blocked→rate-limited or vice versa).
   local had_prior_rl_marker=false
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "false" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "false" ]]; then
     has_reviews_rate_limited_marker "$intent" "$reason" && had_prior_rl_marker=true
   fi
 
@@ -2983,8 +2983,8 @@ post_reviews_rate_limited() {
   # marker is posted first so the old one remains as a safety net if the post fails
   # transiently; old markers are only removed after the replacement is confirmed posted.
   local stale_rl_ids=""
-  if [ -n "${HEAD_SHA:-}" ]; then
-    if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ -n "${HEAD_SHA:-}" ]]; then
+    if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
       echo "[dry-run] would expire stale rate-limited marker for intent=${intent} sha=${HEAD_SHA}"
     else
       local rl_pattern="${REVIEWS_MARKER_PREFIX}${PR_NUMBER} sha=${HEAD_SHA} intent=${intent} status=(rate-limited|blocked|history-unavailable)"
@@ -2996,12 +2996,12 @@ post_reviews_rate_limited() {
   local reset_time
   reset_time=$(cat "$DEV_LEAD_SIDECAR_DIR/dev-lead-rate-limit-reset" 2>/dev/null || true)
   local reset_detail=""
-  if [ -n "$reset_time" ]; then
+  if [[ -n "$reset_time" ]]; then
     reset_detail=" reset=${reset_time}"
   fi
 
   local sha_detail=""
-  if [ -n "${HEAD_SHA:-}" ]; then
+  if [[ -n "${HEAD_SHA:-}" ]]; then
     sha_detail=" sha=${HEAD_SHA}"
   fi
 
@@ -3010,22 +3010,22 @@ post_reviews_rate_limited() {
   # for visible-text selection + marker forensics. The retry cron and marker dedup
   # patterns match `status=(rate-limited|blocked)`, so both tokens re-dispatch.
   local status_token="rate-limited"
-  { [ "$reason" = "blocked" ] || [ "$reason" = "resolve-failed" ]; } && status_token="blocked"
+  { [[ "$reason" = "blocked" ]] || [[ "$reason" = "resolve-failed" ]]; } && status_token="blocked"
   local marker="${REVIEWS_MARKER_PREFIX}${PR_NUMBER}${sha_detail} intent=${intent} status=${status_token} reason=${reason}${reset_detail} -->"
 
   # Retry message depends on the reason and on whether the intent can be
   # re-dispatched automatically.
   local heading retry_msg
-  if [ "$reason" = "resolve-failed" ]; then
+  if [[ "$reason" = "resolve-failed" ]]; then
     heading="## Dev-Lead — could not finish resolving review items (intent: ${intent})"
     retry_msg="A review-thread or comment resolution step failed after the fix pass, so the pass was not marked done. The retry cron will re-attempt automatically."
-    if [ -n "$reset_time" ]; then
+    if [[ -n "$reset_time" ]]; then
       retry_msg="${retry_msg} Next attempt after: \`${reset_time}\`"
     fi
-  elif [ "$reason" = "blocked" ]; then
+  elif [[ "$reason" = "blocked" ]]; then
     heading="## Dev-Lead — waiting on PR blockers (intent: ${intent})"
     retry_msg="No changes were committed, but the PR still can't be marked done: $(blocking_reason_phrase). The retry cron will re-attempt automatically."
-    if [ -n "$reset_time" ]; then
+    if [[ -n "$reset_time" ]]; then
       retry_msg="${retry_msg} Next attempt after: \`${reset_time}\`"
     fi
   else
@@ -3046,7 +3046,7 @@ post_reviews_rate_limited() {
         retry_msg="Manual re-trigger may be required."
         ;;
     esac
-    if [ -n "$reset_time" ]; then
+    if [[ -n "$reset_time" ]]; then
       retry_msg="${retry_msg} Rate limit resets at: \`${reset_time}\`"
     fi
   fi
@@ -3056,7 +3056,7 @@ ${heading}
 **PR:** #${PR_NUMBER}
 ${retry_msg}"
 
-  if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
+  if [[ "$DEV_LEAD_DRY_RUN" = "true" ]]; then
     echo "[dry-run] would post rate-limited marker for intent=${intent} reason=${reason}"
     echo "$marker_body"
   else
@@ -3075,19 +3075,19 @@ ${retry_msg}"
   # For user-triggered intents, post a separate visible acknowledgment on the first
   # rate-limit cycle only. Suppress repeat acks when a persistent blocker keeps the
   # backoff interval cycling — the old ack is still visible and a repeat is misleading.
-  if [ "$had_prior_rl_marker" = "false" ]; then
+  if [[ "$had_prior_rl_marker" = "false" ]]; then
     case "$intent" in
       review-changes)
         local actor_mention=""
-        [ -n "${ACTOR:-}" ] && actor_mention="@${ACTOR} "
+        [[ -n "${ACTOR:-}" ]] && actor_mention="@${ACTOR} "
         local reset_display="${reset_time:-unknown}"
         local ack_body
-        if [ "$reason" = "resolve-failed" ]; then
+        if [[ "$reason" = "resolve-failed" ]]; then
           ack_body="<!-- dev-lead rate-limit-ack -->
 > [!NOTE]
 > ${actor_mention}I worked through this PR, but a review-thread or comment resolution step failed, so I can't mark it done yet. I'll retry automatically.
 > Next attempt after: \`${reset_display}\`"
-        elif [ "$reason" = "blocked" ]; then
+        elif [[ "$reason" = "blocked" ]]; then
           ack_body="<!-- dev-lead rate-limit-ack -->
 > [!NOTE]
 > ${actor_mention}I reviewed this PR and no code changes were needed, but I can't mark it done yet: $(blocking_reason_phrase). I'll re-check automatically.
@@ -3098,7 +3098,7 @@ ${retry_msg}"
 > ${actor_mention}I received your request but all AI engines are currently rate-limited. I'll retry automatically once the rate limit clears.
 > Rate limit resets at: \`${reset_display}\`"
         fi
-        if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
+        if [[ "$DEV_LEAD_DRY_RUN" = "true" ]]; then
           echo "[dry-run] would post user-visible ${reason} acknowledgment"
           echo "$ack_body"
         else
@@ -3107,12 +3107,12 @@ ${retry_msg}"
         ;;
       on-mention)
         local actor_mention=""
-        [ -n "${ACTOR:-}" ] && actor_mention="@${ACTOR} "
+        [[ -n "${ACTOR:-}" ]] && actor_mention="@${ACTOR} "
         local reset_display="${reset_time:-unknown}"
         local ack_body="<!-- dev-lead rate-limit-ack -->
 > [!NOTE]
 > ${actor_mention}I received your request but all AI engines are currently rate-limited. Please re-mention \`@dev-lead\` when the rate limit clears (estimated: \`${reset_display}\`) — I cannot reconstruct the original instruction automatically."
-        if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
+        if [[ "$DEV_LEAD_DRY_RUN" = "true" ]]; then
           echo "[dry-run] would post user-visible rate-limit acknowledgment"
           echo "$ack_body"
         else
@@ -3168,7 +3168,7 @@ pr_nets_to_zero() {
     echo "::warning::no-op guard: git diff against ${baseref} failed — skipping net-zero check" >&2
     return 1
   }
-  [ -z "$changed" ]
+  [[ -z "$changed" ]]
 }
 
 # flag_noop_pr <intent> — a fix pass reverted the PR's own changes, netting the
@@ -3181,7 +3181,7 @@ flag_noop_pr() {
   # A self-cancelling PR must stay unmergeable until a human looks: prevent
   # restore_auto_merge (EXIT trap) from re-enabling what we are about to disable.
   _AM_NEEDS_RESTORE=0
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] no-op guard: would flag PR #${PR_NUMBER} (${intent}) as net-zero, add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}, disable auto-merge"
     return 0
   fi
@@ -3213,15 +3213,15 @@ commit_and_push() {
   local has_uncommitted=false has_unpushed=false
 
   # git status --porcelain covers untracked files that git diff misses
-  [ -n "$(git status --porcelain 2>/dev/null)" ] && has_uncommitted=true
+  [[ -n "$(git status --porcelain 2>/dev/null)" ]] && has_uncommitted=true
 
   # Detect engine-committed but not pushed: prefer @{u} if upstream is configured,
   # fall back to HEAD_SHA (resolved from PR API at script startup) for fork checkouts.
   local upstream
   upstream=$(git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || true)
-  if [ -n "$upstream" ]; then
+  if [[ -n "$upstream" ]]; then
     git log "${upstream}..HEAD" --oneline 2>/dev/null | grep -q . && has_unpushed=true
-  elif [ -n "${HEAD_SHA:-}" ]; then
+  elif [[ -n "${HEAD_SHA:-}" ]]; then
     git log "${HEAD_SHA}..HEAD" --oneline 2>/dev/null | grep -q . && has_unpushed=true
   fi
 
@@ -3239,7 +3239,7 @@ commit_and_push() {
     *)               commit_msg="chore: dev-lead update (${intent}) [skip ci-relay]" ;;
   esac
 
-  if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
+  if [[ "$DEV_LEAD_DRY_RUN" = "true" ]]; then
     if $has_uncommitted; then
       echo "[dry-run] would git add -A, commit '${commit_msg}', and push"
     else
@@ -3284,7 +3284,7 @@ commit_and_push() {
     case "$intent" in
       fix-bot-comment|fix-reviews)
         local ssg_pr="" ssg_out ssg_rc=0
-        if ssg_pass_touches_stubs "${RESOLUTION_BASE_SHA:-}" HEAD && [ -n "${PR_NUMBER:-}" ] && [ -n "${REPO:-}" ]; then
+        if ssg_pass_touches_stubs "${RESOLUTION_BASE_SHA:-}" HEAD && [[ -n "${PR_NUMBER:-}" ]] && [[ -n "${REPO:-}" ]]; then
           # Bounded retry: unreadable = non-zero exit or output that is not a JSON object.
           local ssg_try
           for ssg_try in 1 2 3; do
@@ -3337,12 +3337,12 @@ commit_and_push() {
           # Several intents default BASE_REF to `main` before the PR is read, so ask
           # the API for the PR's real target; an unreadable base leaves ttg_mb empty.
           local ttg_base=""
-          if [ -n "${PR_NUMBER:-}" ] && [ -n "${REPO:-}" ]; then
+          if [[ -n "${PR_NUMBER:-}" ]] && [[ -n "${REPO:-}" ]]; then
             ttg_base=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.base.ref // empty' 2>/dev/null) || ttg_base=""
           fi
-          if [ -n "$ttg_base" ]; then
+          if [[ -n "$ttg_base" ]]; then
             ttg_mb=$(ttg_resolve_merge_base "$ttg_base" "${RESOLUTION_BASE_SHA:-}" "${HEAD_REF:-}") || ttg_mb=""
-            [ -n "$ttg_mb" ] && { ttg_umb=$(git merge-base HEAD "origin/${ttg_base}" 2>/dev/null) || ttg_umb=""; }
+            [[ -n "$ttg_mb" ]] && { ttg_umb=$(git merge-base HEAD "origin/${ttg_base}" 2>/dev/null) || ttg_umb=""; }
           fi
         fi
         ttg_out=$(ttg_scan_pass "${RESOLUTION_BASE_SHA:-}" HEAD "$ttg_mb" "$ttg_umb") || ttg_rc=$?
@@ -3356,7 +3356,7 @@ commit_and_push() {
           echo "::error::Test-tamper guard: pre-pass head or merge base with ${BASE_REF:-main} unknown — could not verify ${intent} for rewritten tests, refusing to push (#2013/#2141)"
           flag_test_tamper "$intent" "(the tamper scan could not resolve the pre-pass head or the PR's merge base with \`${BASE_REF:-main}\`, so the pass could not be verified)"
           return 4
-        elif [ "$(printf '%s\n' "$ttg_out" | head -1)" = "justified" ]; then
+        elif [[ "$(printf '%s\n' "$ttg_out" | head -1)" = "justified" ]]; then
           echo "::notice::Test-tamper guard: existing test(s) changed with a cited Test-Change-Justification: ${ttg_files:-skip added} (#2013)"
         fi
         ;;
@@ -3408,10 +3408,10 @@ commit_and_push() {
     # The test-suite verdict covers the handoff's tree. If the remote moved since the
     # pass started, push_no_clobber would rebase onto it and push a tree the suite
     # never saw, so refuse and let the next pass start from the new head (#2143).
-    if [ "${DEV_LEAD_PHASE:-}" = "push" ]; then
+    if [[ "${DEV_LEAD_PHASE:-}" = "push" ]]; then
       local pnc_remote="" pnc_rc=0
       pnc_remote=$(cl_remote_head) || pnc_rc=$?
-      if [ "$pnc_rc" -ne 1 ] && { [ "$pnc_rc" -ne 0 ] || [ "$pnc_remote" != "${RESOLUTION_BASE_SHA:-}" ]; }; then
+      if [ "$pnc_rc" -ne 1 ] && { [ "$pnc_rc" -ne 0 ] || [[ "$pnc_remote" != "${RESOLUTION_BASE_SHA:-}" ]]; }; then
         echo "::error::push phase: the remote head (${pnc_remote:-unreadable}) is not the pre-pass head ${RESOLUTION_BASE_SHA:-<unknown>} — the tested tree would be rebased, so nothing is pushed (#2143)" >&2
         retract_unlanded_claims "$intent" failed || true
         exit 1
@@ -3438,7 +3438,7 @@ commit_and_push() {
 # compare, so it warns and passes — the push itself already succeeded.
 verify_push_landed() {
   local start="${RESOLUTION_BASE_SHA:-}" pushed remote="" remote_rc=0 on_remote=false verdict
-  if [ -z "$start" ]; then
+  if [[ -z "$start" ]]; then
     echo "::warning::push-landed check skipped — no pre-pass head recorded for this run (#2013)"
     return 0
   fi
@@ -3454,7 +3454,7 @@ verify_push_landed() {
     echo "::error::push not verified (unknown): could not read the remote head back after the push (pre-pass head ${start}) — treating the push as failed (#2013)" >&2
     return 1
   fi
-  if [ -n "$remote" ] && [ -n "$pushed" ] && git merge-base --is-ancestor "$pushed" "$remote" 2>/dev/null; then
+  if [[ -n "$remote" ]] && [[ -n "$pushed" ]] && git merge-base --is-ancestor "$pushed" "$remote" 2>/dev/null; then
     on_remote=true
   fi
   if ! verdict=$(cl_push_landed_verdict "$start" "$pushed" "$remote" "$on_remote"); then
@@ -3510,7 +3510,7 @@ stamp_pass_replies() {
       echo "::warning::stamp_pass_replies: no usable reply record — no-change dispositions are disabled this pass (#2079)"
     fi
   fi
-  if [ "${PASS_REPLIES_UNKNOWN:-0}" = "1" ]; then
+  if [[ "${PASS_REPLIES_UNKNOWN:-0}" = "1" ]]; then
     echo "::warning::stamp_pass_replies: the engine ran without a reply recorder — no-change dispositions stay disabled on PR #${PR_NUMBER:-} until a human clears it (#2161)"
     failed=1
     new_pending+="UNATTRIBUTED"$'\n'
@@ -3518,7 +3518,7 @@ stamp_pass_replies() {
   # Replies an earlier pass could not stamp stay pending until stamped (#2161).
   if markers=$(pending_reply_marker_comments); then
     while IFS= read -r m; do
-      [ -z "$m" ] && continue
+      [[ -z "$m" ]] && continue
       marker_ids+="$(jq -r '.id' <<<"$m")"$'\n'
       pending+="$(cl_pending_marker_ids "$(jq -r '.body // ""' <<<"$m")" || true)"$'\n'
     done <<< "$markers"
@@ -3529,8 +3529,8 @@ stamp_pass_replies() {
   fi
   ids=$(printf '%s\n%s\n' "$recorded" "$pending" | awk 'NF && !seen[$0]++')
   while IFS= read -r id; do
-    [ -z "$id" ] && continue
-    if [ "$id" = "UNATTRIBUTED" ]; then
+    [[ -z "$id" ]] && continue
+    if [[ "$id" = "UNATTRIBUTED" ]]; then
       failed=1; new_pending+="${id}"$'\n'; continue
     fi
     body_json=$(gh api graphql \
@@ -3590,12 +3590,12 @@ pending_reply_marker_comments() {
 # entry is lost. Returns 1 when a non-empty list could not be written.
 save_pending_replies() {
   local ids="$1" read_ok="$2" marker_ids="$3" markers="$4" body cid first="" first_body=""
-  if [ -n "$ids" ]; then
+  if [[ -n "$ids" ]]; then
     body=$(cl_pending_marker_body "$ids")
-    if [ "$read_ok" -eq 1 ] && [ -n "$(printf '%s' "$marker_ids" | tr -d '[:space:]')" ]; then
+    if [ "$read_ok" -eq 1 ] && [[ -n "$(printf '%s' "$marker_ids" | tr -d '[:space:]')" ]]; then
       first=$(printf '%s\n' "$marker_ids" | awk 'NF {print; exit}')
       first_body=$(printf '%s\n' "$markers" | awk 'NF {print; exit}' | jq -r '.body // ""' 2>/dev/null || true)
-      if [ "$first_body" != "$body" ]; then
+      if [[ "$first_body" != "$body" ]]; then
         gh api -X PATCH "repos/${REPO}/issues/comments/${first}" -f body="$body" >/dev/null 2>&1 || return 1
       fi
     else
@@ -3604,7 +3604,7 @@ save_pending_replies() {
   fi
   [ "$read_ok" -eq 1 ] || return 0
   for cid in $marker_ids; do
-    [ "$cid" = "$first" ] && continue
+    [[ "$cid" = "$first" ]] && continue
     gh api -X DELETE "repos/${REPO}/issues/comments/${cid}" >/dev/null 2>&1 \
       || echo "::warning::save_pending_replies: could not delete pending-replies marker ${cid} on PR #${PR_NUMBER:-} (#2161)"
   done
@@ -3633,12 +3633,12 @@ save_pending_replies() {
 # Idempotent: a retracted reply carries no marker and is never selected again.
 retract_unlanded_claims() {
   local intent="$1" outcome="${2:-ok}"
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] would retract unlanded claim replies posted by this ${intent} pass on PR #${PR_NUMBER:-}"
     return 0
   fi
-  [ -z "${PR_NUMBER:-}" ] && return 0
-  if [ -z "${PASS_START_ISO:-}" ]; then
+  [[ -z "${PR_NUMBER:-}" ]] && return 0
+  if [[ -z "${PASS_START_ISO:-}" ]]; then
     echo "::notice::retract_unlanded_claims: no pass start recorded — skipping (#2013)"
     return 0
   fi
@@ -3646,8 +3646,8 @@ retract_unlanded_claims() {
   local bot_user="${BOT_USER:-donpetry-bot}" base="${RESOLUTION_BASE_SHA:-}"
   local ref="" ref_rc=0
   ref=$(cl_remote_head) || ref_rc=$?
-  if [ -z "$ref" ]; then
-    if [ "$ref_rc" -eq 1 ] && [ "$outcome" = "ok" ]; then
+  if [[ -z "$ref" ]]; then
+    if [ "$ref_rc" -eq 1 ] && [[ "$outcome" = "ok" ]]; then
       ref="$(git rev-parse HEAD 2>/dev/null || true)"
     else
       ref="$base"
@@ -3693,27 +3693,27 @@ retract_unlanded_claims() {
   # the reply lives in (pulls = review-thread reply, issues = PR issue comment),
   # which is also the path segment its PATCH uses.
   rows=$(
-    [ -z "$rows" ] || awk '{ print "pulls\t" $0 }' <<<"$rows"
-    [ -z "$issue_rows" ] || awk '{ print "issues\t" $0 }' <<<"$issue_rows"
+    [[ -z "$rows" ]] || awk '{ print "pulls\t" $0 }' <<<"$rows"
+    [[ -z "$issue_rows" ]] || awk '{ print "issues\t" $0 }' <<<"$issue_rows"
   )
 
   local rebased remapped=0 surface listing what
   while IFS=$'\t' read -r surface id sha; do
-    [ -z "$id" ] && continue
+    [[ -z "$id" ]] && continue
     listing="$comments"
     what="claim reply"
-    if [ "$surface" = "issues" ]; then
+    if [[ "$surface" = "issues" ]]; then
       listing="$issue_comments"
       what="PR-comment claim reply"
     fi
     body=$(printf '%s' "$listing" | jq -r --arg id "$id" 'first(.[] | select((.id | tostring) == $id)) | .body // ""' 2>/dev/null || echo "")
-    if [ -z "$sha" ]; then
+    if [[ -z "$sha" ]]; then
       reason="unverifiable"
     else
       facts=$(acv_gather_commit_facts "$sha" "$base" "${ref:-HEAD}")
       on_ref=$(printf '%s' "$facts" | jq -r '.on_head // false' 2>/dev/null || echo "false")
       in_base=$(printf '%s' "$facts" | jq -r 'if .in_base == false then "false" else "true" end' 2>/dev/null || echo "true")
-      [ -z "$ref" ] && on_ref=false
+      [[ -z "$ref" ]] && on_ref=false
       if reason=$(acv_claim_in_pass "$base" "$on_ref" "$in_base"); then
         continue
       fi
@@ -3722,16 +3722,16 @@ retract_unlanded_claims() {
       # (and is this pass's), the fix is on the branch: re-point the claim at the
       # successor instead of retracting it, so the thread resolves this pass.
       rebased=""
-      if [ "$reason" = "not-on-ref" ] && [ -n "$ref" ]; then
+      if [[ "$reason" = "not-on-ref" ]] && [[ -n "$ref" ]]; then
         rebased=$(cl_map_sha "$sha" "${_PUSH_GUARD_REWRITES:-}") || rebased=""
       fi
-      if [ -n "$rebased" ]; then
+      if [[ -n "$rebased" ]]; then
         facts=$(acv_gather_commit_facts "$rebased" "$base" "$ref")
         on_ref=$(printf '%s' "$facts" | jq -r '.on_head // false' 2>/dev/null || echo "false")
         in_base=$(printf '%s' "$facts" | jq -r 'if .in_base == false then "false" else "true" end' 2>/dev/null || echo "true")
         new_body=$(cl_rewrite_claim_sha "$body" "$rebased") || new_body=""
         if acv_claim_in_pass "$base" "$on_ref" "$in_base" >/dev/null \
-           && [ -n "$new_body" ]; then
+           && [[ -n "$new_body" ]]; then
           if gh api -X PATCH "repos/${REPO}/${surface}/comments/${id}" -f body="$new_body" >/dev/null 2>&1; then
             remapped=$((remapped + 1))
             echo "::notice::${what} ${id} on PR #${PR_NUMBER}: ${sha} was rebased onto a foreign commit and landed as ${rebased} — claim updated, not retracted (#2032)"
@@ -3767,7 +3767,7 @@ record_suite_summary() {
     *"NOT RUN"*|*"NOT verified"*) echo "::warning::${line}" ;;
     *) echo "::notice::${line}" ;;
   esac
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     printf '%s\n' "$line" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
   fi
 }
@@ -3778,7 +3778,7 @@ record_suite_summary() {
 flag_test_regression() {
   local intent="$1" tests="$2"
   _AM_NEEDS_RESTORE=0
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] test-regression guard: would flag PR #${PR_NUMBER} (${intent}), add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}, disable auto-merge"
     return 0
   fi
@@ -3806,7 +3806,7 @@ The \`${intent}\` pass left the test suite failing on test(s) that passed on the
 flag_test_unverified() {
   local intent="$1" reason="$2"
   _AM_NEEDS_RESTORE=0
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] test-regression guard: would flag PR #${PR_NUMBER} (${intent}) as unverified, add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}, disable auto-merge"
     return 0
   fi
@@ -3834,7 +3834,7 @@ The \`${intent}\` pass could not be checked against the test suite: ${reason}. W
 # success; returns 1 when the handoff could not be written.
 dlh_hand_off() {
   local dir="${DEV_LEAD_HANDOFF_DIR:-}" state sha result
-  if [ -z "$dir" ] || [ -z "${RESOLUTION_BASE_SHA:-}" ]; then
+  if [[ -z "$dir" ]] || [[ -z "${RESOLUTION_BASE_SHA:-}" ]]; then
     echo "::error::work phase: DEV_LEAD_HANDOFF_DIR or the pre-pass head is unset (#2143)" >&2
     return 1
   fi
@@ -3877,16 +3877,16 @@ dlh_enter_push_phase() {
   RESOLUTION_BASE_SHA="${DEV_LEAD_BASE_SHA:-}"
   PASS_START_ISO="${DEV_LEAD_PASS_START_ISO:-}"
   local result=""
-  if [ -n "$DLH_DIR" ]; then
+  if [[ -n "$DLH_DIR" ]]; then
     result="$(jq -r '.result_sha // ""' "$DLH_DIR/state.json")"
     _AM_NEEDS_RESTORE="$(jq -r '.am.needs_restore // "0"' "$DLH_DIR/state.json")"
     _AM_MERGE_METHOD="$(jq -r '.am.merge_method // "squash"' "$DLH_DIR/state.json")"
     _AM_COMMIT_TITLE="$(jq -r '.am.commit_title // ""' "$DLH_DIR/state.json")"
     _AM_COMMIT_MESSAGE="$(jq -r '.am.commit_message // ""' "$DLH_DIR/state.json")"
     _AM_HEAD_SHA="$(jq -r '.am.head_sha // ""' "$DLH_DIR/state.json")"
-    [ "$_AM_NEEDS_RESTORE" = "1" ] || _AM_NEEDS_RESTORE=0
+    [[ "$_AM_NEEDS_RESTORE" = "1" ]] || _AM_NEEDS_RESTORE=0
   fi
-  if [ -z "$DLH_DIR" ] || [ -z "$RESOLUTION_BASE_SHA" ] \
+  if [[ -z "$DLH_DIR" ]] || [[ -z "$RESOLUTION_BASE_SHA" ]] \
      || ! tjh_apply_result "$DLH_DIR" "$result"; then
     echo "::error::push phase: could not restore the ${INTENT_TYPE} pass's result ${result:-<unknown>} — nothing pushed (#2143)"
     retract_unlanded_claims "$INTENT_TYPE" failed || true
@@ -3903,7 +3903,7 @@ dlh_enter_push_phase() {
 flag_test_tamper() {
   local intent="$1" files="$2"
   _AM_NEEDS_RESTORE=0
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] test-tamper guard: would flag PR #${PR_NUMBER} (${intent}), add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}, disable auto-merge"
     return 0
   fi
@@ -3934,7 +3934,7 @@ If the test really is wrong, a human should make that call, or the fix should ca
 flag_sync_stub_drift() {
   local intent="$1" rows="$2"
   _AM_NEEDS_RESTORE=0
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] sync-stub guard: would decline on PR #${PR_NUMBER} (${intent}), add ${NEEDS_HUMAN_REVIEW_LABEL:-needs-human-review}, disable auto-merge"
     return 0
   fi
@@ -3959,7 +3959,7 @@ $(ssg_declined_body "$intent" "$rows")${HOLD_LABEL_NOTE}" \
 # so the count is the run of consecutive non-converging passes (#1567 AC #4).
 count_not_applied_markers() {
   local intent="$1"
-  [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ] && { echo 0; return 0; }
+  [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]] && { echo 0; return 0; }
   local pattern="${REVIEWS_MARKER_PREFIX}${PR_NUMBER}.* intent=${intent} status=not-applied"
   # No error masking: a failing gh api (auth, rate-limit, network) must abort
   # loudly rather than silently return 0, which would suppress escalation.
@@ -3971,7 +3971,7 @@ count_not_applied_markers() {
 # genuinely applies the requested changes, so the convergence counter resets.
 clear_not_applied_markers() {
   local intent="$1"
-  [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ] && return 0
+  [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]] && return 0
   local pattern="${REVIEWS_MARKER_PREFIX}${PR_NUMBER}.* intent=${intent} status=not-applied"
   local ids id
   # No error masking: a failing gh api|jq must abort loudly rather than silently
@@ -3983,7 +3983,7 @@ clear_not_applied_markers() {
   # Split safely into an array (IFS scoped to read) so no glob metacharacter in
   # the id list undergoes pathname expansion.
   local -a ids_arr=()
-  if [ -n "$ids" ]; then
+  if [[ -n "$ids" ]]; then
     IFS=$'\n' read -r -d '' -a ids_arr <<< "$ids" || true
   fi
   for id in "${ids_arr[@]}"; do
@@ -4000,7 +4000,7 @@ escalate_review_nonconvergence() {
   _REVIEW_ESCALATED=1
   # Keep the EXIT-trap restore from re-enabling auto-merge we are about to disable.
   _AM_NEEDS_RESTORE=0
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     echo "[dry-run] review non-convergence: would escalate PR #${PR_NUMBER} (${intent}) after ${count} not-applied passes"
     return 0
   fi
@@ -4038,7 +4038,7 @@ Auto-merge has been disabled and no further automatic passes will run until a hu
 finalize_review_application() {
   local intent="$1"
   # Dry-run has no worktree diff to assess — preserve the prior announcement.
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     post_reviews_terminal "$intent" "applied" "Changes committed and pushed."
     return 0
   fi
@@ -4047,7 +4047,7 @@ finalize_review_application() {
   cur_sha="$(git rev-parse HEAD 2>/dev/null || true)"
 
   local substantive="true" changed_regions="" named_regions verdict
-  if [ -n "$pre_sha" ] && [ -n "$cur_sha" ] \
+  if [[ -n "$pre_sha" ]] && [[ -n "$cur_sha" ]] \
      && git rev-parse --verify --quiet "${pre_sha}^{commit}" >/dev/null 2>&1; then
     # --numstat, not --name-only: git lists a file under --name-only even when
     # -w leaves nothing to show, so a whitespace-only commit read as substantive
@@ -4055,7 +4055,7 @@ finalize_review_application() {
     # (fail-open, as above).
     local ws_diff ws_rc=0
     ws_diff="$(git diff -w --numstat "$pre_sha" "$cur_sha" 2>/dev/null)" || ws_rc=$?
-    if [ "$ws_rc" -eq 0 ] && [ -z "$ws_diff" ]; then
+    if [ "$ws_rc" -eq 0 ] && [[ -z "$ws_diff" ]]; then
       substantive="false"
     fi
     changed_regions="$(git diff --unified=0 "$pre_sha" "$cur_sha" 2>/dev/null | rce_parse_hunks)"
@@ -4064,13 +4064,13 @@ finalize_review_application() {
   verdict="$(rce_classify "$substantive" "$named_regions" "$changed_regions")"
 
   local enumerated=""
-  [ -n "$named_regions" ] && enumerated="$(rce_enumerate "$named_regions" "$changed_regions")"
+  [[ -n "$named_regions" ]] && enumerated="$(rce_enumerate "$named_regions" "$changed_regions")"
 
   case "$verdict" in
     applied)
       clear_not_applied_markers "$intent" || return 1
       local summary="Changes committed and pushed."
-      [ -n "$enumerated" ] && summary="Changes committed and pushed. Requested items addressed:
+      [[ -n "$enumerated" ]] && summary="Changes committed and pushed. Requested items addressed:
 ${enumerated}"
       post_reviews_terminal "$intent" "applied" "$summary"
       ;;
@@ -4093,9 +4093,9 @@ The unaddressed items above still need work."
       # auto-mergeable, even before the escalation limit is reached.
       _REVIEW_INCOMPLETE=1
       local summary
-      if [ "$substantive" = "false" ]; then
+      if [[ "$substantive" = "false" ]]; then
         summary="A commit was pushed, but it made **no substantive change** (whitespace/cosmetic only) — the requested review changes were not applied."
-      elif [ -n "$enumerated" ]; then
+      elif [[ -n "$enumerated" ]]; then
         summary="A commit was pushed, but it **did not touch any region the review named** — the requested changes were not applied. Per requested item:
 ${enumerated}"
       else
@@ -4142,7 +4142,7 @@ post_resolve_failed_marker() {
   local HEAD_SHA="${HEAD_SHA:-}" pushed_head
   if [ "$cp_rc" -eq 0 ]; then
     pushed_head=$(git rev-parse HEAD 2>/dev/null || true)
-    [ -n "$pushed_head" ] && HEAD_SHA="$pushed_head"
+    [[ -n "$pushed_head" ]] && HEAD_SHA="$pushed_head"
   fi
   post_reviews_rate_limited "$intent" "resolve-failed"
 }
@@ -4165,18 +4165,18 @@ addressed_failed() {
 #   Gate check for whether resolution of review threads is allowed based on git state.
 resolution_gate_open() {
   local cp_rc="${1:-1}"
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+  if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]]; then
     return 0
   fi
   local pre_sha="${RESOLUTION_BASE_SHA:-}" cur_sha
   cur_sha="$(git rev-parse HEAD 2>/dev/null || true)"
-  if [ -z "$pre_sha" ] || [ -z "$cur_sha" ]; then
+  if [[ -z "$pre_sha" ]] || [[ -z "$cur_sha" ]]; then
     return "$cp_rc"
   fi
   ri_may_resolve "$pre_sha" "$cur_sha"
 }
 
-if [ "$DEV_LEAD_PHASE" = "push" ]; then
+if [[ "$DEV_LEAD_PHASE" = "push" ]]; then
   dlh_enter_push_phase
 fi
 
@@ -4373,12 +4373,12 @@ case "$INTENT_TYPE" in
         fi
         _fbc_terminal="no-changes"
       fi
-      if [ "${RDC_STATE_UNKNOWN:-0}" = "1" ]; then
+      if [[ "${RDC_STATE_UNKNOWN:-0}" = "1" ]]; then
         echo "::warning::fix-bot-comment: a comment's current state could not be confirmed — withholding the terminal marker so the bot-comment retry can re-dispatch (#2017)"
         _fbc_terminal=""
-      elif [ -n "$_fbc_terminal" ] && [ -n "${COMMENT_NODE_ID:-}" ] && [ "${DEV_LEAD_DRY_RUN:-false}" != "true" ]; then
+      elif [[ -n "$_fbc_terminal" ]] && [[ -n "${COMMENT_NODE_ID:-}" ]] && [[ "${DEV_LEAD_DRY_RUN:-false}" != "true" ]]; then
         _fbc_resolved=$(fbc_target_resolved)
-        if [ "$_fbc_resolved" != "yes" ]; then
+        if [[ "$_fbc_resolved" != "yes" ]]; then
           echo "::warning::fix-bot-comment: comment ${COMMENT_NODE_ID} has no verified disposition after this pass (state: ${_fbc_resolved}) — withholding the terminal marker so the bot-comment retry can re-dispatch within its attempt limits (#2017)"
           _fbc_terminal=""
         fi
@@ -4592,11 +4592,11 @@ case "$INTENT_TYPE" in
     export PR_NUMBER="${PR_NUMBER:-}"
     export PR_URL="https://github.com/${REPO}/pull/${PR_NUMBER}"
     export REPO BASE_REF="${BASE_REF:-main}" HEAD_REF="${HEAD_REF:-}" CONFLICTING_FILES="${CONFLICTING_FILES:-}"
-    if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
+    if [[ "$DEV_LEAD_DRY_RUN" = "true" ]]; then
       echo "[dry-run] would run rebase for PR $PR_NUMBER"
       exit 0
     fi
-    if [ -z "$PR_NUMBER" ]; then
+    if [[ -z "$PR_NUMBER" ]]; then
       echo "::error::PR_NUMBER is required for rebase"
       exit 1
     fi
@@ -4705,7 +4705,7 @@ case "$INTENT_TYPE" in
         # gate's output cannot close the block early. (No `local`: this is the
         # script's top level, not a function.)
         _rig_note=""
-        if [ -n "${RIG_DETAIL:-}" ]; then
+        if [[ -n "${RIG_DETAIL:-}" ]]; then
           _rig_fence="$(pick_fence "$RIG_DETAIL")"
           _rig_note="
 
@@ -4746,7 +4746,7 @@ ${_rig_fence}"
     exit "$rc"
     ;;
   enable-auto-merge)
-    if [ -z "$PR_NUMBER" ]; then
+    if [[ -z "$PR_NUMBER" ]]; then
       echo "::error::PR_NUMBER is required for enable-auto-merge"
       exit 1
     fi

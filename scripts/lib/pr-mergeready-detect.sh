@@ -135,13 +135,13 @@ pr_mergeready_is_gated() {
 #   never wrongly reclassifies a genuinely merge-ready PR as agent-blocked.
 pr_mergeready_thread_agent_blocked() {
   local threads_json="${1:-}" trusted_csv="${2:-}"
-  [ -n "$threads_json" ] || return 1
+  [[ -n "$threads_json" ]] || return 1
   # Normalize the trusted set to a JSON array of `[bot]`-suffix-stripped logins.
   local trusted_json
   trusted_json=$(printf '%s' "$trusted_csv" \
     | jq -R 'split(",") | map(sub("\\[bot\\]$"; "")) | map(select(. != ""))' \
       2>/dev/null) || trusted_json='[]'
-  [ -n "$trusted_json" ] || trusted_json='[]'
+  [[ -n "$trusted_json" ]] || trusted_json='[]'
   jq -e --argjson trusted "$trusted_json" '
     def strip: sub("\\[bot\\]$"; "");
     if (type != "object") then false
@@ -186,16 +186,16 @@ pr_mergeready_shape() {
 
   # Not a candidate unless idle past the threshold and fully review-/merge-ready.
   [ "$hours" -gt "$min_age" ] || return 0
-  [ "$decision" = "APPROVED" ] || return 0
-  [ "$mergeable" = "MERGEABLE" ] || return 0
+  [[ "$decision" = "APPROVED" ]] || return 0
+  [[ "$mergeable" = "MERGEABLE" ]] || return 0
 
   # A pending/zombie check means pr-review would defer — the #1427 shape.
-  if [ "$ci" = "pending" ]; then
+  if [[ "$ci" = "pending" ]]; then
     printf 'reviewer-defer\n'
     return 0
   fi
   # Only a green PR can be merge-ready; a failing one is waiting on a fix.
-  [ "$ci" = "passing" ] || return 0
+  [[ "$ci" = "passing" ]] || return 0
 
   # Green + approved + mergeable + idle: agent-blocked (#1425) or truly stranded.
   case "$agent_blocked" in
@@ -212,7 +212,7 @@ pr_mergeready_shape() {
 pr_mergeready_reasons() {
   local shape
   shape=$(pr_mergeready_shape "$@")
-  [ "$shape" = "merge-ready-idle" ] || return 0
+  [[ "$shape" = "merge-ready-idle" ]] || return 0
 
   local hours min_age
   hours=$(_mergeready_int "${5:-0}")
@@ -229,7 +229,7 @@ pr_mergeready_reasons() {
 is_pr_mergeready() {
   local reasons
   reasons=$(pr_mergeready_reasons "$@")
-  [ -n "$reasons" ]
+  [[ -n "$reasons" ]]
 }
 
 # pr_mergeready_hours_since <iso8601> [now_epoch]
@@ -241,7 +241,7 @@ pr_mergeready_hours_since() {
   [ "$now" -gt 0 ] || now=$(date -u +%s)
   local ts_epoch
   ts_epoch=$(date -u -d "$ts" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s 2>/dev/null || true)
-  if [ -z "$ts_epoch" ]; then
+  if [[ -z "$ts_epoch" ]]; then
     echo 0
     return 0
   fi
@@ -272,7 +272,7 @@ generate_mergeready_report() {
   printf 'dev-lead:hands-off, initiative:hold) are excluded. Detection only — no PR is '
   printf 'mutated, nudged, or auto-merged (#1469 AC#3). See #1469 / the #860 post-mortem.\n\n'
 
-  if [ -z "$f" ] || [ ! -s "$f" ]; then
+  if [[ -z "$f" ]] || [[ ! -s "$f" ]]; then
     printf '✅ No open PR is merge-ready and stranded.\n'
     return 0
   fi
@@ -281,7 +281,7 @@ generate_mergeready_report() {
   printf '|---|---|---|\n'
   local num url title reason
   while IFS=$'\t' read -r num url title reason; do
-    [ -n "$num" ] || continue
+    [[ -n "$num" ]] || continue
     printf '| [#%s](%s) | %s | %s |\n' "$num" "$url" "$title" "$reason"
   done < "$f"
 }

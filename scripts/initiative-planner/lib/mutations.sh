@@ -151,7 +151,7 @@ list_sub_issue_numbers() {
   if _is_dry_run; then
     local subs="${DRY_RUN_EXISTING_SUBISSUES:-}"
     # shellcheck disable=SC2086 # intentional word-splitting on space/comma
-    [ -n "$subs" ] && printf '%s\n' ${subs//,/ }
+    [[ -n "$subs" ]] && printf '%s\n' ${subs//,/ }
     return 0
   fi
   gh api "repos/${repo}/issues/${epic}/sub_issues" --jq '.[].number'
@@ -173,7 +173,7 @@ existing_reconcile_keys() {
   if _is_dry_run; then
     local keys="${DRY_RUN_EXISTING_RECONCILE_KEYS:-}"
     # shellcheck disable=SC2086 # intentional word-splitting on space/comma
-    [ -n "$keys" ] && printf '%s\n' ${keys//,/ }
+    [[ -n "$keys" ]] && printf '%s\n' ${keys//,/ }
     return 0
   fi
   gh api "repos/${repo}/issues/${epic}/sub_issues" --paginate --jq '.[].body' 2>/dev/null \

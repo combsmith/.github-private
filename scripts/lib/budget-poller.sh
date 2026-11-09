@@ -71,7 +71,7 @@ bp_log() { printf 'budget-poller: %s\n' "$*" >&2; }
 # bp_now — epoch seconds, honoring $BUDGET_POLLER_NOW (testability).
 # ---------------------------------------------------------------------------
 bp_now() {
-  if [ -n "${BUDGET_POLLER_NOW:-}" ]; then
+  if [[ -n "${BUDGET_POLLER_NOW:-}" ]]; then
     printf '%s' "$BUDGET_POLLER_NOW"
     return 0
   fi
@@ -112,7 +112,7 @@ bp_gate() {
 # ---------------------------------------------------------------------------
 bp_last_ok() {
   local log="${1:-}"
-  [ -n "$log" ] && [ -s "$log" ] || return 0
+  [[ -n "$log" ]] && [[ -s "$log" ]] || return 0
   jq -cR 'fromjson? | select(type == "object" and .poll == "ok")' "$log" 2>/dev/null | tail -n 1 || true
 }
 
@@ -121,7 +121,7 @@ bp_last_ok() {
 # ---------------------------------------------------------------------------
 bp_last_record() {
   local log="${1:-}"
-  [ -n "$log" ] && [ -s "$log" ] || return 0
+  [[ -n "$log" ]] && [[ -s "$log" ]] || return 0
   jq -cR 'fromjson? | select(type == "object")' "$log" 2>/dev/null | tail -n 1 || true
 }
 
@@ -138,7 +138,7 @@ bp_last_record() {
 bp_error_fields() {
   local http="${1:-}" body="${2:-}" etype="" msg="" out
   local nulls='{"error_type":null,"error_detail":null}'
-  if [ "$http" = "200" ] || [ -z "$body" ]; then
+  if [[ "$http" = "200" ]] || [[ -z "$body" ]]; then
     printf '%s' "$nulls"
     return 0
   fi
@@ -158,7 +158,7 @@ bp_error_fields() {
   out="$(jq -cn --arg t "$etype" --arg m "$msg" '
     ($m | gsub("[\u0000-\u001f\u007f-\u009f]"; "") | .[0:200]) as $d
     | {error_type: $t, error_detail: (if $d == "" then null else $d end)}' 2>/dev/null)" || out=""
-  if [ -n "$out" ] && jq -e 'type == "object"' <<<"$out" >/dev/null 2>&1; then
+  if [[ -n "$out" ]] && jq -e 'type == "object"' <<<"$out" >/dev/null 2>&1; then
     printf '%s' "$out"
   else
     printf '%s' "$nulls"
@@ -182,7 +182,7 @@ bp_build_record() {
   local t_event="${13:-}" t_cron="${14:-}"
   local err
   err="$(bp_error_fields "$http" "${15:-}")"
-  [ -n "$prev" ] && jq -e 'type == "object"' <<<"$prev" >/dev/null 2>&1 || prev='null'
+  [[ -n "$prev" ]] && jq -e 'type == "object"' <<<"$prev" >/dev/null 2>&1 || prev='null'
   # A malformed clock must not abort the record (`--argjson` would fail under set -e).
   [[ "$now" =~ ^[0-9]+$ ]] || now="$(date +%s)"
 
@@ -389,7 +389,7 @@ bp_fleet_section() {
       ;;
   esac
   bp_delivery_line "$log" "$now"
-  if [ -n "$latest" ]; then
+  if [[ -n "$latest" ]]; then
     jq -r '"- **Latest record:** `\(.line // "n/a")` (HTTP status \(.http_status // "n/a"), \(.ts // "n/a"))"' \
       <<<"$latest" 2>/dev/null || true
     printf -- '- **Dry-run decision:** %s\n' "$(bp_decision_text "$latest")"
@@ -410,7 +410,7 @@ bp_fleet_section() {
 bp_delivery_line() {
   local log="$1" now="$2"
   [[ "$now" =~ ^[0-9]+$ ]] || now="$(date +%s)"
-  { [ -n "$log" ] && [ -s "$log" ] && cat "$log"; } 2>/dev/null \
+  { [[ -n "$log" ]] && [[ -s "$log" ]] && cat "$log"; } 2>/dev/null \
     | jq -rRs --argjson now "$now" --argjson exp "$BUDGET_POLLER_EXPECTED_RUNS_PER_DAY" '
       [ split("\n")[] | fromjson? | select(type == "object" and (.epoch | type) == "number"
           and .epoch > ($now - 86400) and .epoch <= $now) ] as $r
@@ -452,7 +452,7 @@ bp_download_latest_log() {
       && unzip -q -o "$workdir/log.zip" -d "$workdir/out" >/dev/null 2>&1; then
       found="$(find "$workdir/out" -type f -name '*.jsonl' -print | head -n 1)"
     fi
-    if [ -n "$found" ] && [ -s "$found" ] && jq -e . "$found" >/dev/null 2>&1; then
+    if [[ -n "$found" ]] && [[ -s "$found" ]] && jq -e . "$found" >/dev/null 2>&1; then
       cp "$found" "$dest"
       rm -rf "$workdir"
       return 0

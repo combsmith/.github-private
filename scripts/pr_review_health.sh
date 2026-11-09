@@ -60,7 +60,7 @@ echo ""
 # ---------------------------------------------------------------------------
 if ! gh api "repos/${WORKFLOW_REPO}/actions/workflows/${WORKFLOW_FILE}/runs?per_page=1" \
      >/dev/null 2>&1; then
-  if [ -n "${GH_PAT_FALLBACK:-}" ]; then
+  if [[ -n "${GH_PAT_FALLBACK:-}" ]]; then
     echo "::warning::GH_TOKEN cannot access ${WORKFLOW_REPO} — using GH_PAT_FALLBACK"
     export GH_TOKEN="$GH_PAT_FALLBACK"
   else
@@ -119,7 +119,7 @@ sweep_dispatched=()
 sweep_fetched=0
 total_sweep_ticks=$(jq 'length' <<< "$sweep_runs_meta" 2>/dev/null || echo 0)
 while IFS= read -r sweep_id; do
-  [ -n "$sweep_id" ] || continue
+  [[ -n "$sweep_id" ]] || continue
   if [ "$sweep_fetched" -ge "$SWEEP_MAX_LOG_FETCH" ]; then
     echo "::warning::sweep-hit-rate: reached SWEEP_MAX_LOG_FETCH=${SWEEP_MAX_LOG_FETCH}; omitting remaining ticks from the metric"
     break
@@ -130,7 +130,7 @@ while IFS= read -r sweep_id; do
   sweep_dispatched+=("${dispatched:-0}")
 done < <(jq -r '.[].id' <<< "$sweep_runs_meta")
 
-if [ "${#sweep_dispatched[@]}" -gt 0 ]; then
+if [[ "${#sweep_dispatched[@]}" -gt 0 ]]; then
   sweep_telemetry=$(jq -n '$ARGS.positional | map({event: "schedule", dispatched: (. | tonumber)})' --args "${sweep_dispatched[@]}")
 else
   sweep_telemetry='[]'
@@ -158,7 +158,7 @@ if ! ingress_wf_id=$(gh api "repos/${WORKFLOW_REPO}/actions/workflows?per_page=1
   --jq "first(.workflows[] | select((.path | split(\"/\") | last) == \"${INGRESS_WORKFLOW_BASENAME}\") | .id | tostring) // empty" \
   2>/dev/null); then
   echo "::warning::Cannot read workflows for ${WORKFLOW_REPO} — pr-review ingress attribution skipped"
-elif [ -n "$ingress_wf_id" ]; then
+elif [[ -n "$ingress_wf_id" ]]; then
   # A failed run-list read must not silently collapse to "no runs" — that would
   # hide the post-collapse signal. Warn and skip rather than report an empty set.
   if ! ingress_run_ids=$(gh api \
@@ -170,7 +170,7 @@ elif [ -n "$ingress_wf_id" ]; then
   else
     per_run_tmp=$(mktemp)
     while IFS= read -r run_id; do
-      [ -n "$run_id" ] || continue
+      [[ -n "$run_id" ]] || continue
       if ! jobs_raw=$(gh api "repos/${WORKFLOW_REPO}/actions/runs/${run_id}/jobs?per_page=100" --paginate \
         --jq '[.jobs[] | {name, conclusion}]' 2>/dev/null); then
         echo "::warning::Cannot read jobs for run ${run_id} — pr-review ingress attribution may undercount"
@@ -260,7 +260,7 @@ fi
 # ---------------------------------------------------------------------------
 # 4. Build report
 # ---------------------------------------------------------------------------
-[ -n "${GITHUB_ENV:-}" ] && {
+[[ -n "${GITHUB_ENV:-}" ]] && {
   if [ "$failed_runs" -gt 0 ]; then
     echo "HAS_FAILURES=true" >> "$GITHUB_ENV"
   else
@@ -278,9 +278,9 @@ LOG_DIR="${LOG_DIR:-}"
 logs_file=$(mktemp)
 # One jq pass over failed runs; append each log file in the same order
 while IFS=$'\t' read -r run_id run_meta; do
-  [ -n "$LOG_DIR" ] || continue
+  [[ -n "$LOG_DIR" ]] || continue
   log_file="${LOG_DIR}/run_${run_id}.txt"
-  [ -f "$log_file" ] || continue
+  [[ -f "$log_file" ]] || continue
   {
     printf '=== LOG: %s ===\n' "$run_meta"
     cat "$log_file"
@@ -318,7 +318,7 @@ workflow_source=$(gh api "repos/${WORKFLOW_REPO}/contents/.github/workflows/${WO
   # Per-role attribution for the post-collapse pr-review signal (#1727).
   # Deterministic — same truncation guarantee. Omitted when the repo carries no
   # agent-ingress.yml (current reality), so legacy repos see no empty section.
-  if [ -s "$ingress_attr_jsonl" ]; then
+  if [[ -s "$ingress_attr_jsonl" ]]; then
     attr_tsv=$(mktemp)
     # Fold the PRE-collapse legacy pr-review runs (Section 1's runs_json) into the
     # SAME per-role bucket as the POST-collapse ingress records so a role that ran
@@ -427,7 +427,7 @@ then
 fi
 rm -f "$logs_file"
 
-[ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "$REPORT_FILE" ] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+[[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && [[ -f "$REPORT_FILE" ]] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
 
 echo ""
 echo "Report written to $REPORT_FILE ($(wc -c < "$REPORT_FILE") bytes)"

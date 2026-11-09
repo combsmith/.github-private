@@ -51,16 +51,16 @@ die() {
 }
 
 command -v jq >/dev/null 2>&1 || die "jq is required but not installed"
-[ -f "$SCORER" ] || die "scorer not found (expected $SCORER)"
+[[ -f "$SCORER" ]] || die "scorer not found (expected $SCORER)"
 
 skill="${1:-}"
 incumbent="${2:-}"
 candidate="${3:-}"
-if [ -z "$skill" ] || [ -z "$incumbent" ] || [ -z "$candidate" ]; then
+if [[ -z "$skill" ]] || [[ -z "$incumbent" ]] || [[ -z "$candidate" ]]; then
   die "usage: gate.sh <skill> <incumbent_file> <candidate_file>"
 fi
-[ -f "$incumbent" ] || die "incumbent skill file not found: $incumbent"
-[ -f "$candidate" ] || die "candidate skill file not found: $candidate"
+[[ -f "$incumbent" ]] || die "incumbent skill file not found: $incumbent"
+[[ -f "$candidate" ]] || die "candidate skill file not found: $candidate"
 
 # run_scorer <skill_file> — run the held-out scorer over one skill file and echo
 # its full JSON report. run-eval.sh exits 1 when some cases fail (a legitimate
@@ -93,7 +93,7 @@ candidate_score="$(jq -r '.score' <<<"$candidate_report")"
 
 # Strict beat: '>' rejects ties and regressions alike.
 accepted="$(jq -n --argjson c "$candidate_score" --argjson i "$incumbent_score" '$c > $i')"
-if [ "$accepted" = true ]; then
+if [[ "$accepted" = true ]]; then
   verdict="accept"
 else
   verdict="reject"
@@ -107,7 +107,7 @@ jq -cn \
   --arg verdict "$verdict" \
   '{skill:$skill, incumbent_score:$incumbent_score, candidate_score:$candidate_score, accepted:$accepted, verdict:$verdict}'
 
-if [ "$accepted" = true ]; then
+if [[ "$accepted" = true ]]; then
   echo "::notice::strict-improvement gate: ACCEPT — candidate $candidate_score > incumbent $incumbent_score" >&2
   exit 0
 fi

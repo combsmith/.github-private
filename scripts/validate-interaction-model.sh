@@ -81,7 +81,7 @@ imv_valid_timer_role() {
 # and a reusable entrypoint — §3). Pure: reads the file, writes stdout.
 imv_on_signals() {
   local file="${1:-}"
-  [ -n "$file" ] && [ -f "$file" ] || return 0
+  [[ -n "$file" ]] && [[ -f "$file" ]] || return 0
   awk '
     BEGIN { inon=0; topkey=""; in_rd_types=0; rd_had_types=0 }
     # inline array form: on: [push, pull_request]
@@ -153,7 +153,7 @@ imv_on_event_set() {
 # and trailing comments stripped). Pure.
 imv_on_crons() {
   local file="${1:-}"
-  [ -n "$file" ] && [ -f "$file" ] || return 0
+  [[ -n "$file" ]] && [[ -f "$file" ]] || return 0
   awk '
     /^on:/ { inon=1 }
     inon && /^[A-Za-z_]/ && !/^on:/ { inon=0 }
@@ -180,7 +180,7 @@ imv_on_crons() {
 # exclusion table are ignored. Pure.
 imv_table_rows() {
   local md="${1:-}"
-  [ -n "$md" ] && [ -f "$md" ] || return 0
+  [[ -n "$md" ]] && [[ -f "$md" ]] || return 0
   awk -F'|' '
     $0 ~ "^\\|[[:space:]]*`\\.github/workflows/" {
       # first cell ($2): `path` optionally followed by a (role) qualifier
@@ -208,7 +208,7 @@ imv_table_rows() {
 # completeness check counts rows against. Pure: reads the file, writes stdout.
 imv_wf_jobs() {
   local file="${1:-}"
-  [ -n "$file" ] && [ -f "$file" ] || return 0
+  [[ -n "$file" ]] && [[ -f "$file" ]] || return 0
   awk '
     /^jobs:[[:space:]]*(#.*)?$/ { inj=1; job_indent=""; next }
     inj && /^[A-Za-z_]/ { inj=0 }
@@ -235,7 +235,7 @@ imv_wf_jobs() {
 # the §4 blockquoted exclusion table. Pure.
 imv_table_exclusions() {
   local md="${1:-}"
-  [ -n "$md" ] && [ -f "$md" ] || return 0
+  [[ -n "$md" ]] && [[ -f "$md" ]] || return 0
   awk '
     $0 ~ "^>[[:space:]]*\\|[[:space:]]*`\\.github/workflows/" {
       s=$0; sub(/^[^`]*`/,"",s); sub(/`.*/,"",s); print s
@@ -353,7 +353,7 @@ imv_c_field() {
 # independent of INTERACTION_MODEL_ROOT, so fixture trees need not ship the
 # scripts. Overridable via INTERACTION_MODEL_SCRIPTS_DIR for isolated tests.
 imv_serving_scripts_dir() {
-  if [ -n "${INTERACTION_MODEL_SCRIPTS_DIR:-}" ]; then
+  if [[ -n "${INTERACTION_MODEL_SCRIPTS_DIR:-}" ]]; then
     printf '%s' "$INTERACTION_MODEL_SCRIPTS_DIR"
   else
     (cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -364,7 +364,7 @@ imv_serving_scripts_dir() {
 # `: "${VARNAME:=default}"` shell assignment in <file>. Empty if absent.
 imv_escalation_label_from() {
   local file="${1:-}" var="${2:-}"
-  [ -n "$file" ] && [ -f "$file" ] || return 0
+  [[ -n "$file" ]] && [[ -f "$file" ]] || return 0
   awk -v v="$var" '
     index($0, v ":=") > 0 {
       s=$0; sub(/.*:=/,"",s); sub(/}.*/,"",s); gsub(/[\047"]/,"",s);
@@ -393,7 +393,7 @@ imv_canonical_escalation_markers() {
 imv_persona_opt_out() {
   local root="${1:-}" role="${2:-}" pf
   pf="$root/personas/$role/persona.yml"
-  [ -f "$pf" ] || return 0
+  [[ -f "$pf" ]] || return 0
   awk '
     /^[[:space:]]*opt_out_label:/ {
       v=$0; sub(/.*opt_out_label:[[:space:]]*/,"",v); gsub(/[\047"]/,"",v);
@@ -411,7 +411,7 @@ imv_persona_opt_out() {
 imv_persona_serves_pr_surface() {
   local root="${1:-}" role="${2:-}" pf
   pf="$root/personas/$role/persona.yml"
-  [ -f "$pf" ] || return 1
+  [[ -f "$pf" ]] || return 1
   awk '
     function flush() { if (cur == "pull_request" && en && ov) found=1; cur=""; en=0; ov=0 }
     /^[A-Za-z_]/ { flush() }   # a top-level key ends the surfaces list
@@ -445,11 +445,11 @@ imv_v_completeness() {
   rows="$(imv_table_rows "$md")"
   exclusions="$(imv_table_exclusions "$md")"
   while IFS= read -r f; do
-    [ -n "$f" ] || continue
+    [[ -n "$f" ]] || continue
     rel="${f#"$root/"}"
     if printf '%s\n' "$exclusions" | grep -qxF "$rel"; then continue; fi
     base="$(basename "$rel")"
-    if [ "$base" = "agent-ingress.yml" ]; then
+    if [[ "$base" = "agent-ingress.yml" ]]; then
       imv_v_completeness_ingress "$f" "$rel" "$rows"
     else
       # For regular workflows: count rows with this path and no role qualifier
@@ -481,9 +481,9 @@ imv_v_completeness_ingress() {
   roles_raw="$(printf '%s\n' "$rows" | awk -F'\t' -v p="$rel" '$1==p && $4!~/^[[:space:]]*$/ {print $4}')"
   roles_dedup="$(printf '%s' "$roles_raw" | sort -u)"
   # Check for duplicate role qualifiers (same role appearing more than once)
-  if [ -n "$roles_raw" ] && [ "$(printf '%s' "$roles_raw" | grep -c . || true)" -gt "$(printf '%s' "$roles_dedup" | grep -c . || true)" ]; then
+  if [[ -n "$roles_raw" ]] && [ "$(printf '%s' "$roles_raw" | grep -c . || true)" -gt "$(printf '%s' "$roles_dedup" | grep -c . || true)" ]; then
     while IFS= read -r role; do
-      [ -n "$role" ] || continue
+      [[ -n "$role" ]] || continue
       count=$(printf '%s' "$roles_raw" | grep -c "^${role}$" || true)
       if [ "$count" -gt 1 ]; then
         printf 'FAIL[a]: %s has multiple §4 rows for role %s — each role-job must have exactly one row (§10).\n' "$rel" "$role"
@@ -492,13 +492,13 @@ imv_v_completeness_ingress() {
   fi
   roles="$roles_dedup"
   while IFS= read -r job; do
-    [ -n "$job" ] || continue
+    [[ -n "$job" ]] || continue
     if ! printf '%s\n' "$roles" | grep -qxF "$job"; then
       printf 'FAIL[a]: %s job %s is a collapsed ingress role with no §4 classification row — add one row per role-job (see the §4 ingress convention).\n' "$rel" "$job"
     fi
   done <<< "$jobs"
   while IFS= read -r role; do
-    [ -n "$role" ] || continue
+    [[ -n "$role" ]] || continue
     if ! printf '%s\n' "$jobs" | grep -qxF "$role"; then
       printf 'FAIL[table]: §4 row %s (%s) names an ingress role that is not a job in the file — remove the stale row (§10).\n' "$rel" "$role"
     fi
@@ -509,10 +509,10 @@ imv_v_completeness_ingress() {
 imv_v_timer_roles() {
   local md="$1" path cls tr role trn
   while IFS=$'\t' read -r path cls tr role; do
-    [ -n "$path" ] || continue
-    [ "$cls" = "2" ] || continue
+    [[ -n "$path" ]] || continue
+    [[ "$cls" = "2" ]] || continue
     trn="$(imv_norm_timer_role "$tr")"
-    if [ -z "$trn" ] || ! imv_valid_timer_role "$trn"; then
+    if [[ -z "$trn" ]] || ! imv_valid_timer_role "$trn"; then
       printf 'FAIL[b]: %s is Class 2 (a scheduled interaction-family timer) but its timer_role is %s — a Class-2 backstop must declare one of backstop|safety-net|self-heal (§6.1).\n' \
         "$path" "${trn:-<none>}"
     fi
@@ -525,9 +525,9 @@ imv_v_timer_roles() {
 imv_v_class() {
   local root="$1" md="$2" path cls tr role trn wf S
   while IFS=$'\t' read -r path cls tr role; do
-    [ -n "$path" ] || continue
+    [[ -n "$path" ]] || continue
     wf="$root/$path"
-    if [ ! -f "$wf" ]; then
+    if [[ ! -f "$wf" ]]; then
       printf 'FAIL[table]: §4 row names %s, which does not exist on disk — remove the stale row (§10).\n' "$path"
       continue
     fi
@@ -535,23 +535,23 @@ imv_v_class() {
     if imv_on_has_schedule "$wf"; then S=1; else S=0; fi
     case "$cls" in
       1)
-        if [ "$S" = "1" ]; then
+        if [[ "$S" = "1" ]]; then
           printf 'FAIL[class]: %s is asserted Class 1 but its on: block has a schedule — a Class-1 event reaction must not carry a cron (§2/§3).\n' "$path"
         fi
-        if [ -n "$trn" ]; then
+        if [[ -n "$trn" ]]; then
           printf 'FAIL[class]: %s is asserted Class 1 but declares timer_role %s — Class 1 carries no timer_role (§3).\n' "$path" "$trn"
         fi
         ;;
       2)
-        if [ "$S" = "0" ]; then
+        if [[ "$S" = "0" ]]; then
           printf 'FAIL[class]: %s is asserted Class 2 but its on: block has no schedule — a Class-2 backstop is defined by its reconciliation timer (§2/§3).\n' "$path"
         fi
         ;;
       3)
-        if [ "$S" = "0" ]; then
+        if [[ "$S" = "0" ]]; then
           printf 'FAIL[class]: %s is asserted Class 3 but its on: block has no schedule — a Class-3 origin is the cadence (§2/§3).\n' "$path"
         fi
-        if [ -n "$trn" ]; then
+        if [[ -n "$trn" ]]; then
           printf 'FAIL[class]: %s is asserted Class 3 but declares timer_role %s — a Class-3 report/canary carries no timer_role (§6.1).\n' "$path" "$trn"
         fi
         ;;
@@ -568,12 +568,12 @@ imv_v_class() {
 imv_v_contracts() {
   local root="$1" c rel wf actual_events actual_crons decl_events decl_crons
   while IFS= read -r c; do
-    [ -n "$c" ] || continue
+    [[ -n "$c" ]] || continue
     rel="${c#"$root/"}"
 
     actual_events=""; actual_crons=""
     while IFS= read -r wf; do
-      [ -n "$wf" ] || continue
+      [[ -n "$wf" ]] || continue
       # The shared persona-mention router's on: block also carries the
       # pull_request EVENT surface (#2187), but the router dispatches a persona on
       # it only when that persona's manifest enables a pull_request surface. A
@@ -581,7 +581,7 @@ imv_v_contracts() {
       # contract is not charged with it.
       local role status=0
       role="$(imv_c_role "$c")" || status=$?
-      if [ "$status" -eq 0 ] && [ "$wf" = ".github/workflows/persona-mention.yml" ] \
+      if [ "$status" -eq 0 ] && [[ "$wf" = ".github/workflows/persona-mention.yml" ]] \
          && ! imv_persona_serves_pr_surface "$root" "$role"; then
         actual_events+="$(imv_on_event_set "$root/$wf" | grep -vx 'pull_request' || true)"$'\n'
       else
@@ -595,19 +595,19 @@ imv_v_contracts() {
     decl_events="$(imv_c_events "$c" | grep -v '^$' | sort -u || true)"
     decl_crons="$(imv_c_timer_crons "$c" | grep -v '^$' | sort -u || true)"
 
-    if [ "$decl_events" != "$actual_events" ]; then
+    if [[ "$decl_events" != "$actual_events" ]]; then
       printf 'FAIL[c]: %s declares triggers.events {%s} but its workflows subscribe to {%s} — the contract must mirror the real on: block (§8.1/§10).\n' \
         "$rel" "$(printf '%s' "$decl_events" | paste -sd, -)" "$(printf '%s' "$actual_events" | paste -sd, -)"
     fi
-    if [ "$decl_crons" != "$actual_crons" ]; then
+    if [[ "$decl_crons" != "$actual_crons" ]]; then
       printf 'FAIL[c]: %s declares timer crons {%s} but its workflows schedule {%s} — the contract must mirror the real on: block (§8.1/§10).\n' \
         "$rel" "$(printf '%s' "$decl_crons" | paste -sd, -)" "$(printf '%s' "$actual_crons" | paste -sd, -)"
     fi
 
-    if [ -z "$(imv_c_field "$c" idempotency_key)" ]; then
+    if [[ -z "$(imv_c_field "$c" idempotency_key)" ]]; then
       printf 'FAIL[d]: %s declares no idempotency_key — an interaction driver must state what makes a re-run a no-op (§8.1).\n' "$rel"
     fi
-    if [ -z "$(imv_c_field "$c" concurrency_lane)" ]; then
+    if [[ -z "$(imv_c_field "$c" concurrency_lane)" ]]; then
       printf 'FAIL[d]: %s declares no concurrency_lane — an interaction driver must state its serialization lane (§8.1).\n' "$rel"
     fi
   done < <(imv_contract_files "$root")
@@ -621,7 +621,7 @@ imv_v_boundary() {
   local root="$1" c role ev emit sub_role sub_ev subs=""
   # Collect `role<TAB>bare-event` subscription pairs across all contracts.
   while IFS= read -r c; do
-    [ -n "$c" ] || continue
+    [[ -n "$c" ]] || continue
     role="$(imv_c_role "$c")"
     while IFS= read -r ev; do
       case "$ev" in ""|*:*) continue ;; esac   # skip empties and prefixed (bridge) events
@@ -630,15 +630,15 @@ imv_v_boundary() {
   done < <(imv_contract_files "$root")
 
   while IFS= read -r c; do
-    [ -n "$c" ] || continue
+    [[ -n "$c" ]] || continue
     role="$(imv_c_role "$c")"
     while IFS= read -r emit; do
       case "$emit" in ""|*:*) continue ;; esac  # only bare emits (commit, push) can be a raw event
       while IFS=$'\t' read -r sub_role sub_ev; do
-        [ -n "$sub_role" ] || continue
-        [ -n "$sub_ev" ] || continue
-        [ "$sub_ev" = "$emit" ] || continue
-        [ "$sub_role" != "$role" ] || continue
+        [[ -n "$sub_role" ]] || continue
+        [[ -n "$sub_ev" ]] || continue
+        [[ "$sub_ev" = "$emit" ]] || continue
+        [[ "$sub_role" != "$role" ]] || continue
         printf 'FAIL[e]: role %s emits the suppressed event %q that role %s subscribes to, with no repository_dispatch bridge — a GITHUB_TOKEN-authored %s never triggers a downstream workflow (§5).\n' \
           "$role" "$emit" "$sub_role" "$emit"
       done <<< "$subs"
@@ -676,29 +676,29 @@ imv_v_stop_markers() {
   # INTERACTION_MODEL_SCRIPTS_DIR points at a missing/incompatible serving-script
   # directory). Without this guard an empty brake silently disables the required
   # human-brake check, letting a persona pass without declaring it.
-  if [ -z "$brake" ] || [ -z "$canon" ]; then
+  if [[ -z "$brake" ]] || [[ -z "$canon" ]]; then
     printf 'FAIL[stop]: could not derive the canonical escalation markers from the serving scripts (%s) — the required human-brake check cannot run. Check INTERACTION_MODEL_SCRIPTS_DIR / scripts/lib/pr-automation-budget.sh and scripts/qa-lead-advisory-gate.sh (§6.2.3).\n' \
       "$(imv_serving_scripts_dir)"
     return 0
   fi
 
-  while IFS= read -r c || [ -n "$c" ]; do
-    [ -n "$c" ] || continue
+  while IFS= read -r c || [[ -n "$c" ]]; do
+    [[ -n "$c" ]] || continue
     kind="$(imv_c_kind "$c")"
-    [ "$kind" = "persona" ] || continue
+    [[ "$kind" = "persona" ]] || continue
     rel="${c#"$root/"}"
     role="$(imv_c_role "$c")"
     opt_out="$(imv_persona_opt_out "$root" "$role")"
     honoured="$(printf '%s\n%s\n' "$opt_out" "$canon" | grep -v '^$' | sort -u)"
     markers="$(imv_c_stop_markers "$c")"
 
-    if [ -n "$brake" ] && ! printf '%s\n' "$markers" | grep -qxF "$brake"; then
+    if [[ -n "$brake" ]] && ! printf '%s\n' "$markers" | grep -qxF "$brake"; then
       printf 'FAIL[stop]: %s omits the canonical human brake %q from stop_markers — the mention router reads this contract, so a human applying %q would not stop this persona there (§6.2.3; pr_has_escalation_label). Declare it.\n' \
         "$rel" "$brake" "$brake"
     fi
 
-    while IFS= read -r m || [ -n "$m" ]; do
-      [ -n "$m" ] || continue
+    while IFS= read -r m || [[ -n "$m" ]]; do
+      [[ -n "$m" ]] || continue
       if ! printf '%s\n' "$honoured" | grep -qxF "$m"; then
         printf 'FAIL[stop]: %s declares stop_marker %q that no serving workflow honours — a persona honours only its opt_out_label (%s) and the canonical escalation markers {%s} (§6.2.3/§8.1). Remove it or wire a surface that checks it.\n' \
           "$rel" "$m" "${opt_out:-<none>}" "$(printf '%s' "$canon" | paste -sd, -)"
@@ -710,7 +710,7 @@ imv_v_stop_markers() {
 # ── main ─────────────────────────────────────────────────────────────────────
 
 imv_repo_root() {
-  if [ -n "${INTERACTION_MODEL_ROOT:-}" ]; then
+  if [[ -n "${INTERACTION_MODEL_ROOT:-}" ]]; then
     printf '%s' "$INTERACTION_MODEL_ROOT"
   else
     (cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -722,7 +722,7 @@ main() {
   root="$(imv_repo_root)"
   md="$root/docs/agentic-interaction-model.md"
 
-  if [ ! -f "$md" ]; then
+  if [[ ! -f "$md" ]]; then
     echo "::error::validate-interaction-model: standard not found at $md" >&2
     return 1
   fi
@@ -736,7 +736,7 @@ main() {
     imv_v_stop_markers "$root"
   )"
 
-  if [ -n "$violations" ]; then
+  if [[ -n "$violations" ]]; then
     echo "" >&2
     echo "validate-interaction-model: FAIL — the agentic interaction model (docs/agentic-interaction-model.md) is violated:" >&2
     printf '%s\n' "$violations" >&2
@@ -750,6 +750,6 @@ main() {
 }
 
 # Only run main when executed directly, so tests can source the functions.
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

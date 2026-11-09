@@ -853,7 +853,7 @@ GHEOF
   # Never in DRY_RUN, and best-effort (cannot fail the review run). Anchored to
   # the retry block's OWN guard (it is the condition that also requires an
   # owner/repo), not to an unrelated DRY_RUN check elsewhere in the range.
-  guard_line=$(grep -n 'if \[ "\${DRY_RUN:-false}" != "true" \] && \[ -n "\$_OWNER_REPO" \]' "$REVIEW" | head -1 | cut -d: -f1)
+  guard_line=$(grep -n 'if \[\[ "\${DRY_RUN:-false}" != "true" \]\] && \[\[ -n "\$_OWNER_REPO" \]\]' "$REVIEW" | head -1 | cut -d: -f1)
   [ -n "$guard_line" ]
   [ "$gate_line" -lt "$guard_line" ]
   [ "$guard_line" -lt "$scan_line" ]

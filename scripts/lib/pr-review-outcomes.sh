@@ -26,7 +26,7 @@
 #           Absent/empty JSON → a single zeroed TOTAL row.
 pr_review_outcomes_by_event() {
   local json="${1:-}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
   jq -r '
     (if type == "array" then . else [] end) as $r
     | ($r
@@ -89,7 +89,7 @@ _pr_review_cancel_rate() {
 #   never discard it (same guarantee as the convergence-latency section).
 pr_review_render_outcome_mix() {
   local json="${1:-}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
 
   printf '## Run-outcome mix by triggering event\n\n'
   printf 'pr-review run conclusions over the window, split by the event that '
@@ -102,9 +102,9 @@ pr_review_render_outcome_mix() {
 
   local event success cancelled skipped failure total rate label
   while IFS=$'\t' read -r event success cancelled skipped failure total; do
-    [ -n "$event" ] || continue
+    [[ -n "$event" ]] || continue
     rate="$(_pr_review_cancel_rate "$cancelled" "$total")"
-    if [ "$event" = "TOTAL" ]; then
+    if [[ "$event" = "TOTAL" ]]; then
       label='**TOTAL**'
     else
       label="\`$event\`"

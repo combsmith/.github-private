@@ -69,7 +69,7 @@ rce_parse_hunks() {
 # A line of 0 (unknown) falls back to a file-level touch: any hunk in that path.
 rce_region_covered() {
   local path="$1" line="$2" changed="$3" window="${4:-3}"
-  [ -z "$changed" ] && return 1
+  [[ -z "$changed" ]] && return 1
   awk -F'\t' -v p="$path" -v l="$line" -v w="$window" '
     $1 == "" { next }
     $1 != p { next }
@@ -90,17 +90,17 @@ rce_region_covered() {
 #                 which case a substantive commit is accepted)
 rce_classify() {
   local substantive="$1" named="$2" changed="$3" window="${4:-3}"
-  if [ "$substantive" != "true" ]; then
+  if [[ "$substantive" != "true" ]]; then
     echo "not-applied"
     return 0
   fi
-  if [ -z "$named" ]; then
+  if [[ -z "$named" ]]; then
     echo "applied"
     return 0
   fi
   local total=0 hit=0 path line
   while IFS=$'\t' read -r path line; do
-    [ -n "$path" ] || continue
+    [[ -n "$path" ]] || continue
     total=$((total + 1))
     if rce_region_covered "$path" "${line:-0}" "$changed" "$window"; then
       hit=$((hit + 1))
@@ -126,7 +126,7 @@ rce_enumerate() {
   local named="$1" changed="$2" window="${3:-3}"
   local path line label
   while IFS=$'\t' read -r path line; do
-    [ -n "$path" ] || continue
+    [[ -n "$path" ]] || continue
     if rce_region_covered "$path" "${line:-0}" "$changed" "$window"; then
       label="applied"
     else

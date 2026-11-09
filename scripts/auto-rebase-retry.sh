@@ -59,7 +59,7 @@ summary() { echo "$1" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true; }
 # repository_dispatch (the same bridge the conflict sentinel uses) carrying the
 # PR number and intent=rebase, so the PR is routed straight into dev-lead's
 # rebase intent.
-if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+if [[ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]]; then
   case "${PR_NUMBER}" in
     ''|*[!0-9]*|0|0[0-9]*)
       echo "::warning::workflow_dispatch invoked with an invalid or missing pr_number '${PR_NUMBER}' — must be a positive integer (>0, no leading zeros)"
@@ -67,7 +67,7 @@ if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
       ;;
   esac
   echo "::notice::Manual recovery: routing PR #${PR_NUMBER} into dev-lead's rebase intent via repository_dispatch"
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     echo "  [dry-run] would fire dev-lead-reviews-retry repository_dispatch for PR #${PR_NUMBER} (intent=rebase)"
     summary "### Manual rebase recovery (dry-run)"
     summary "Would route PR #${PR_NUMBER} into dev-lead's \`rebase\` intent."
@@ -107,7 +107,7 @@ if [[ "$CONCLUSION" != "failure" ]]; then
 fi
 
 # ── guard: need a run id to retry ─────────────────────────────────────────────
-if [ -z "$RUN_ID" ]; then
+if [[ -z "$RUN_ID" ]]; then
   echo "::warning::No RUN_ID provided — cannot retry the failed ${WORKFLOW_NAME} run"
   exit 0
 fi
@@ -124,7 +124,7 @@ fi
 next_attempt=$(( RUN_ATTEMPT + 1 ))
 echo "::notice::${WORKFLOW_NAME} run ${RUN_ID} failed on attempt ${RUN_ATTEMPT} — re-running failed jobs (attempt ${next_attempt}/${MAX_ATTEMPTS})"
 
-if [ "$DRY_RUN" = "true" ]; then
+if [[ "$DRY_RUN" = "true" ]]; then
   echo "  [dry-run] would run: gh run rerun ${RUN_ID} --failed (repo ${REPO})"
   summary "### Auto-rebase retry (dry-run)"
   summary "Would re-run failed jobs of run \`${RUN_ID}\` (attempt ${next_attempt}/${MAX_ATTEMPTS})."

@@ -25,8 +25,8 @@ PR_NUMBER=""
 
 cleanup() {
   log "Cleanup: ${SCENARIO_NAME}"
-  [ -n "$PR_NUMBER" ] && cleanup_pr "${PR_NUMBER}" || true
-  [ -n "$BRANCH" ] && cleanup_branch "${BRANCH}" || true
+  [[ -n "$PR_NUMBER" ]] && cleanup_pr "${PR_NUMBER}" || true
+  [[ -n "$BRANCH" ]] && cleanup_branch "${BRANCH}" || true
 }
 
 trap cleanup EXIT
@@ -36,7 +36,7 @@ main() {
   log "Test: CI failure → ci-relay → repository_dispatch → fix-ci intent"
 
   # ── Check for required token ───────────────────────────────────────────────
-  if [ -z "${GH_TOKEN:-}" ]; then
+  if [[ -z "${GH_TOKEN:-}" ]]; then
     err "GH_TOKEN not set — skipping live scenario ${SCENARIO_NAME}"
     record_result "${SCENARIO_NAME}" "SKIP" "GH_TOKEN not set"
     exit 0
@@ -101,7 +101,7 @@ if [ "x" = "y" ]; then
     sleep 15
   done
 
-  if [ "${check_status}" != "failed" ]; then
+  if [[ "${check_status}" != "failed" ]]; then
     warn "No check failures appeared within timeout — CI may not run shellcheck on this branch"
     warn "Attempting to verify ci-relay via repository_dispatch directly..."
     # Fall through to check for the dispatch workflow
@@ -142,7 +142,7 @@ if [ "x" = "y" ]; then
   fi
 
   # The fix-ci dispatch should also succeed (or neutral for dry-run)
-  if [ "${dispatch_conclusion}" != "success" ] && [ "${dispatch_conclusion}" != "neutral" ]; then
+  if [[ "${dispatch_conclusion}" != "success" ]] && [[ "${dispatch_conclusion}" != "neutral" ]]; then
     echo "[FAIL] ${SCENARIO_NAME}: fix-ci dispatch conclusion=${dispatch_conclusion} (expected success or neutral)"
     all_pass=false
   else
@@ -157,7 +157,7 @@ if [ "x" = "y" ]; then
   log "fix-ci comment count on PR: ${fix_comment}"
 
   # ── Result ─────────────────────────────────────────────────────────────────
-  if [ "${all_pass}" = "true" ]; then
+  if [[ "${all_pass}" = "true" ]]; then
     log "[PASS] ${SCENARIO_NAME}: CI failure → relay → fix-ci dispatch succeeded"
     record_result "${SCENARIO_NAME}" "PASS" "relay=${relay_conclusion} dispatch=${dispatch_conclusion}"
     exit 0

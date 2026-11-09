@@ -43,7 +43,7 @@ set -euo pipefail
 #   go      : `func name(`          and `func (recv) name(`
 sc_touched_functions() {
   local diff="${1:-}"
-  [ -n "$diff" ] || return 0
+  [[ -n "$diff" ]] || return 0
   printf '%s\n' "$diff" | awk '
     # Only consider added/removed content lines and @@ hunk headers; skip diff
     # file headers (+++/---).
@@ -150,7 +150,7 @@ sc_touched_functions() {
 # PAT surfaced as GH_PAT (same convention as _downstream_gh in
 # downstream-impact.sh); otherwise fall back to whatever auth gh already has.
 _symbol_context_gh() {
-  if [ -n "${GH_PAT:-}" ]; then
+  if [[ -n "${GH_PAT:-}" ]]; then
     GH_TOKEN="$GH_PAT" gh "$@"
   else
     gh "$@"
@@ -171,11 +171,11 @@ _symbol_context_gh() {
 # graceful-degradation warning and keep the review alive.
 sc_search_symbol_contexts() {
   local symbol="$1" repo="$2" max="${3:-3}"
-  [ -n "$symbol" ] || return 0
+  [[ -n "$symbol" ]] || return 0
 
   local json_fields="path,textMatches"
   local args=(search code "$symbol" --limit "$max" --json "$json_fields")
-  [ -n "$repo" ] && args+=(--repo "$repo")
+  [[ -n "$repo" ]] && args+=(--repo "$repo")
 
   local raw rc=0
   raw=$(_symbol_context_gh "${args[@]}" 2>/dev/null) || rc=$?
@@ -183,7 +183,7 @@ sc_search_symbol_contexts() {
     return 2
   fi
   # An empty/invalid payload is treated as "no results", not a failure.
-  [ -n "$raw" ] || return 0
+  [[ -n "$raw" ]] || return 0
 
   printf '%s' "$raw" | jq -r '
     if type == "array" then .[] else empty end
@@ -227,7 +227,7 @@ assemble_symbol_context() {
   functions=$(sc_touched_functions "$diff")
 
   # No touched functions -> literal "(none)", zero searches (AC #4).
-  if [ -z "$functions" ]; then
+  if [[ -z "$functions" ]]; then
     printf '%s' "(none)" > "$out_file"
     export SYMBOL_CONTEXT_FILE="$out_file"
     return 0
@@ -237,7 +237,7 @@ assemble_symbol_context() {
   local counts_csv="" total=0 fn_count=0 warned=0
   local fn
   while IFS= read -r fn; do
-    [ -n "$fn" ] || continue
+    [[ -n "$fn" ]] || continue
     if [ "$fn_count" -ge "$max_funcs" ]; then
       block+=$'\n'"(function cap reached: $max_funcs; remaining touched functions not searched)"$'\n'
       break
@@ -259,10 +259,10 @@ assemble_symbol_context() {
       continue
     fi
 
-    if [ -n "$ctx" ]; then
+    if [[ -n "$ctx" ]]; then
       local l path snip
       while IFS= read -r l; do
-        [ -n "$l" ] || continue
+        [[ -n "$l" ]] || continue
         path="${l%%$'\t'*}"
         snip="${l#*$'\t'}"
         block+="    $path: $snip"$'\n'

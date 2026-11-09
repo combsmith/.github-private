@@ -19,7 +19,7 @@
 # in GitHub's thread order. Returns non-zero (no stdout) on any fetch failure.
 ort_fetch_open_threads() {
   local repo="${1:-}" pr="${2:-}"
-  if [ -z "$repo" ] || [ -z "$pr" ]; then
+  if [[ -z "$repo" ]] || [[ -z "$pr" ]]; then
     echo "::error::ort_fetch_open_threads: repo and PR number are required" >&2
     return 1
   fi
@@ -68,19 +68,19 @@ ort_fetch_open_threads() {
     has_next=$(printf '%s' "$page_response" | jq -r '
       .data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage
       | if type == "boolean" then tostring else "invalid" end') || return 1
-    if [ "$has_next" = "invalid" ]; then
+    if [[ "$has_next" = "invalid" ]]; then
       echo "::error::ort_fetch_open_threads: page ${page_no} for ${repo}#${pr} has a missing or non-boolean hasNextPage" >&2
       return 1
     fi
-    [ "$has_next" = "true" ] || break
+    [[ "$has_next" = "true" ]] || break
     prev_cursor="$cursor"
     cursor=$(printf '%s' "$page_response" | jq -r \
       '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor // ""') || return 1
-    if [ -z "$cursor" ]; then
+    if [[ -z "$cursor" ]]; then
       echo "::error::ort_fetch_open_threads: page ${page_no} for ${repo}#${pr} reports hasNextPage without an endCursor" >&2
       return 1
     fi
-    if [ "$cursor" = "$prev_cursor" ]; then
+    if [[ "$cursor" = "$prev_cursor" ]]; then
       echo "::error::ort_fetch_open_threads: page ${page_no} for ${repo}#${pr} returned an endCursor that did not advance" >&2
       return 1
     fi

@@ -67,7 +67,7 @@ is_preflight_step() {
 #   outage), and a passing preflight is never a failure.
 step_is_preflight_failure() {
   is_preflight_step "${1:-}" || return 1
-  [ "${2:-}" = "failure" ]
+  [[ "${2:-}" = "failure" ]]
 }
 
 # repo_liveness_state <consecutive_preflight_failures> [newest_run_recent]
@@ -84,7 +84,7 @@ repo_liveness_state() {
   local n newest
   n=$(_el_int "${1:-0}")
   newest="${2:-yes}"
-  if [ "$newest" != "yes" ]; then
+  if [[ "$newest" != "yes" ]]; then
     echo "STALE"
   elif [ "$n" -ge "$ENGINE_SUSTAINED_RUNS" ]; then
     echo "OUTAGE"
@@ -119,7 +119,7 @@ within_lookback() {
 #   are "<run_iso> <TAB> <yes|no>", most-recent first.
 newest_run_recent() {
   local f="${1:-}" now="${2:-}" days="${3:-}" iso epoch
-  if [ -z "$f" ] || [ ! -s "$f" ]; then
+  if [[ -z "$f" ]] || [[ ! -s "$f" ]]; then
     echo "no"
     return 0
   fi
@@ -140,12 +140,12 @@ newest_run_recent() {
 #   "<run_iso> <TAB> <yes|no>", most-recent first.
 within_window_streak() {
   local f="${1:-}" now="${2:-}" days="${3:-}" streak=0 iso failed epoch
-  { [ -n "$f" ] && [ -s "$f" ]; } || { echo 0; return 0; }
+  { [[ -n "$f" ]] && [[ -s "$f" ]]; } || { echo 0; return 0; }
   while IFS=$'\t' read -r iso failed; do
-    [ -n "$iso" ] || continue
+    [[ -n "$iso" ]] || continue
     epoch=$(_el_to_epoch "$iso")
     within_lookback "$(_el_int "$epoch")" "$now" "$days" || break
-    [ "$failed" = "yes" ] || break
+    [[ "$failed" = "yes" ]] || break
     streak=$(( streak + 1 ))
   done < "$f"
   echo "$streak"
@@ -248,7 +248,7 @@ escalation_headline() {
 #   Portable across GNU/BSD date implementations (#1600).
 _el_to_epoch() {
   local v="${1:-}" normalized
-  [ -n "$v" ] || { echo ""; return 0; }
+  [[ -n "$v" ]] || { echo ""; return 0; }
   # Normalize ISO 8601 to a space-separated form for the BSD fallback below.
   #
   # This MUST be anchored, not a blanket substitution: `${v//T/ }` also rewrites
@@ -286,12 +286,12 @@ pat_expiry_state() {
   [ "$warn_days" -eq 0 ] && warn_days=14
   now="${3:-$(date -u +%s)}"
 
-  if [ -z "$value" ]; then
+  if [[ -z "$value" ]]; then
     echo "NO_EXPIRY"
     return 0
   fi
   exp=$(_el_to_epoch "$value")
-  if [ -z "$exp" ]; then
+  if [[ -z "$exp" ]]; then
     echo "UNKNOWN"
     return 0
   fi
@@ -332,7 +332,7 @@ pat_missing_scopes() {
 pat_scopes_ok() {
   local missing
   missing=$(pat_missing_scopes "$@")
-  [ -z "$missing" ]
+  [[ -z "$missing" ]]
 }
 
 # render_liveness_table <rows_tsv_file>
@@ -344,7 +344,7 @@ pat_scopes_ok() {
 #   line and no table, so a clean run still emits a signal.
 render_liveness_table() {
   local f="${1:-}"
-  if [ -z "$f" ] || [ ! -s "$f" ]; then
+  if [[ -z "$f" ]] || [[ ! -s "$f" ]]; then
     printf 'No engine-token preflight failure detected across the monitored caller stubs.\n'
     return 0
   fi
@@ -352,7 +352,7 @@ render_liveness_table() {
   printf '|---|---|---|---|---|\n'
   local repo stub state consec last_run
   while IFS=$'\t' read -r repo stub state consec last_run; do
-    [ -n "$repo" ] || continue
+    [[ -n "$repo" ]] || continue
     printf '| %s | `%s` | %s | %s | %s |\n' "$repo" "$stub" "$state" "$consec" "${last_run:-—}"
   done < "$f"
 }
