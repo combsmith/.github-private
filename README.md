@@ -40,7 +40,7 @@ frameworks/               # Installed agentic frameworks (git subtree)
 | [`compliance-auditor`](agents/compliance-auditor.md) | Audit repo against org standards | `@compliance-auditor` in any org repo |
 | [`feature-ideator`](agents/feature-ideator.md) | Generate and prioritize feature ideas | `@feature-ideator` in any org repo |
 | [`pr-reviewer`](agents/pr-reviewer.md) | Cascading PR review (triage → deep → security audit) with cross-engine adversarial review (see also [`pr-review-trigger.yml`](.github/workflows/pr-review-trigger.yml) for scheduled automation) | `@pr-reviewer` in any org PR |
-| [`why-not-approved`](agents/why-not-approved.md) | Explain why pr-review has not approved a PR, and what would change that, by running the real gate chain read-only | `@why-not-approved` in any org PR |
+| [`why-not-approved`](agents/why-not-approved.md) | Explain why pr-review has not approved a PR, and what would change that, by running the real gate chain read-only | Select `why-not-approved` in the Copilot agents panel, or run `bash scripts/pr-approval-diagnostic.sh <pr-url>` from this repository |
 
 ## Automated Workflows
 
