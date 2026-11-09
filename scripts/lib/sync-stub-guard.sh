@@ -350,13 +350,15 @@ ssg_rebase_record() {
   pr_paths=$(git -c core.quotePath=false log --no-renames --name-only --format= "${mb}..${pre}" 2>/dev/null) \
     || return 2
   if [[ -n "$base_rev" ]] && git cat-file -e "${base_rev}^{commit}" 2>/dev/null; then
-    base_paths=$(git -c core.quotePath=false grep -l -I -e 'SOURCE OF TRUTH:' "$base_rev" -- 2>/dev/null \
-      | sed "s#^${base_rev}:##" || true)
+    base_paths=$(git -c core.quotePath=false grep -l -I -e 'SOURCE OF TRUTH:' "$base_rev" -- 2>/dev/null | while IFS= read -r path; do
+      printf '%s\n' "${path#${base_rev}:}"
+    done || true)
   fi
   candidates=$(
     {
-      git -c core.quotePath=false grep -l -I -e 'SOURCE OF TRUTH:' "$pre" -- 2>/dev/null \
-        | sed "s#^${pre}:##" || true
+      git -c core.quotePath=false grep -l -I -e 'SOURCE OF TRUTH:' "$pre" -- 2>/dev/null | while IFS= read -r path; do
+        printf '%s\n' "${path#${pre}:}"
+      done || true
       printf '%s\n' "$pr_paths"
       printf '%s\n' "$base_paths"
     } | awk 'NF && !seen[$0]++'
