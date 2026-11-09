@@ -95,8 +95,23 @@ if grep -Eq 'pip install' <<<"$normalized_run"; then
     echo "  a flaky source build (issue #1364)."
     fail=1
   fi
+  # The pin is either inline (pyyaml==X.Y.Z) or, since #1240, a hash-pinned
+  # requirements file (--require-hashes -r requirements/ci/<set>.txt) that
+  # itself pins pyyaml==X.Y.Z.
+  pin_source="$normalized_run"
+  if grep -Fq -- '--require-hashes' <<<"$normalized_run"; then
+    while IFS= read -r req; do
+      req_path="${SCRIPT_DIR}/../${req}"
+      if [ -f "$req_path" ]; then
+        pin_source+=" $(cat "$req_path")"
+      else
+        echo "FAIL: requirements file \"$req\" referenced by \"$STEP_NAME\" does not exist (#1240)"
+        fail=1
+      fi
+    done < <(grep -Eo -- '-r[[:space:]]+requirements/ci/[A-Za-z0-9._-]+\.txt' <<<"$normalized_run" | awk '{print $2}')
+  fi
   status=0
-  grep -Eiq 'pyyaml==[0-9]+\.[0-9]+\.[0-9]+' <<<"$normalized_run" || status=$?
+  grep -Eiq 'pyyaml==[0-9]+\.[0-9]+\.[0-9]+' <<<"$pin_source" || status=$?
   if [ "$status" -eq 2 ]; then
     echo "FAIL: grep error while checking for the pyyaml version pin"
     exit 2
