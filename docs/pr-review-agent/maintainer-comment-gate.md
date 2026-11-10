@@ -59,8 +59,8 @@ trial-ended notice has an operational consequence. A comment blocks approval unt
 is minimized `RESOLVED`, **unless** it is in the exemption set recorded in
 [ADR-0012](../architecture/adr/0012-comment-gate-exemption-set.md) (#2209):
 
-- **Our own automation's replies, and the conflict sentinel.** Comments carrying one
-  of our registered markers — `<!-- pr-review-agent … -->`, `<!-- pr-review-claim … -->`,
+- **Our own automation's replies, and the conflict sentinel.** Comments from an
+  `OWNER`, `MEMBER` or `COLLABORATOR` carrying one of our registered markers — `<!-- pr-review-agent … -->`, `<!-- pr-review-claim … -->`,
   `<!-- persona:… -->`, `<!-- dev-lead … -->` (including the
   `<!-- dev-lead:comment-disposition … -->` reply), `<!-- dependency-advisory -->`,
   `<!-- maintainer-resolve … -->`, and the `<!-- auto-rebase-conflict: … -->` sentinel —
@@ -69,7 +69,10 @@ is minimized `RESOLVED`, **unless** it is in the exemption set recorded in
   matters because several of these workflows post as the human owner `don-petry`, the
   *same account* a human maintainer uses, so login alone cannot separate the two.)
   Comments from the agent's own login (`BOT_USER`, default `donpetry-bot`) are likewise
-  excluded.
+  excluded. The marker is trusted only together with the author association (#1921):
+  this repo is public, so anyone can comment, and a marker pasted by any other
+  author, or by one with no association, does nothing. That comment blocks like any
+  other.
 - **A review request.** From an `OWNER`, `MEMBER` or `COLLABORATOR` only, a comment
   whose whole trimmed body is `@<bot user>`, optionally followed by `please review`
   (case-insensitive, optional final `.` or `!`), optionally followed by the Claude
