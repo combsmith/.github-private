@@ -420,6 +420,19 @@ HOOK
   [[ "$status" -eq 1 ]]
 }
 
+@test "e2e rebase: a failed base fetch after the push flags the PR as unverified instead of trusting a stale origin/<base>" {
+  _mk_pr
+  _main_moves
+  _e2e_stubs "$SYNC_PR_JSON"
+  _engine "$PIN"
+  # After the engine's push, the base can no longer be fetched.
+  echo 'git remote set-url origin /nonexistent/remote.git' >> "$BIN/claude"
+  _run_rebase
+  grep -q 'dev-lead-sync-stub-drift pr=42 intent=rebase' "$REC"
+  run grep -q 'status=applied' "$REC"
+  [[ "$status" -eq 1 ]]
+}
+
 # ---------------------------------------------------------------------------
 # Wiring: the engine's push is never blocked, shimmed or deferred
 # ---------------------------------------------------------------------------
