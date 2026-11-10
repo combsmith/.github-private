@@ -511,7 +511,8 @@ build_and_run() {
   fi
   local capture_file="${SHADOW_OUTPUT_FILE:-}"
   if [ -n "$capture_file" ]; then
-    PATH="$engine_path" run_writer_with_fallback "$prompt_file" "${INTENT_TYPE:-}" 2>&1 | tee -a "$capture_file" || rc=$?
+    PATH="$engine_path" run_writer_with_fallback "$prompt_file" "${INTENT_TYPE:-}" 2>&1 | tee -a "$capture_file"
+    rc="${PIPESTATUS[0]}"
   else
     PATH="$engine_path" run_writer_with_fallback "$prompt_file" "${INTENT_TYPE:-}" || rc=$?
   fi

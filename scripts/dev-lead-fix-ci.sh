@@ -362,7 +362,8 @@ main() {
     local engine_rc=0
     local capture_file="${SHADOW_OUTPUT_FILE:-}"
     if [ -n "$capture_file" ]; then
-      run_writer_with_fallback "$prompt_file" "fix-ci" 2>&1 | tee -a "$capture_file" || engine_rc=$?
+      run_writer_with_fallback "$prompt_file" "fix-ci" 2>&1 | tee -a "$capture_file"
+      engine_rc="${PIPESTATUS[0]}"
     else
       run_writer_with_fallback "$prompt_file" "fix-ci" || engine_rc=$?
     fi
