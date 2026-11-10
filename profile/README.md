@@ -53,7 +53,8 @@ Engineering standards live in
 Copilot custom agent profiles live in
 [`.github-private/agents/`](https://github.com/combsmith/.github-private/tree/main/agents)
 and are available org-wide from GitHub.com, VS Code, and JetBrains.
-Invoke any agent by typing `@<agent-name>` in a supported surface.
+Invoke an agent by typing `@<agent-name>` in a supported surface, except where its row below
+notes a different invocation.
 
 | Agent | Role |
 |---|---|
@@ -61,7 +62,7 @@ Invoke any agent by typing `@<agent-name>` in a supported surface.
 | [`compliance-auditor`](https://github.com/combsmith/.github-private/blob/main/agents/compliance-auditor.md) | Audits a repository against combsmith org standards (CI, agent config, repo settings, dependabot, push protection). Reports findings and can auto-fix non-breaking compliance gaps. |
 | [`feature-ideator`](https://github.com/combsmith/.github-private/blob/main/agents/feature-ideator.md) | Generates feature ideas and improvements for a repository by analyzing its codebase, issues, discussions, and competitive landscape. Produces actionable feature proposals with effort estimates. |
 | [`pr-reviewer`](https://github.com/combsmith/.github-private/blob/main/agents/pr-reviewer.md) | Multi-tier PR review agent with cascading risk assessment. Classifies PR risk (LOW/MEDIUM/HIGH), runs deep analysis with cross-engine adversarial review, and makes approve/escalate decisions. (Automated event-driven counterpart: [`pr-review-trigger.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/pr-review-trigger.yml).) |
-| [`why-not-approved`](https://github.com/combsmith/.github-private/blob/main/agents/why-not-approved.md) | Explains why pr-review has not approved a combsmith pull request, and what would change that, by running the real pr-review gate chain read-only. |
+| [`why-not-approved`](https://github.com/combsmith/.github-private/blob/main/agents/why-not-approved.md) | Explains why pr-review has not approved a combsmith pull request, and what would change that, by running the real pr-review gate chain read-only. Invoke by selecting it in the Copilot agents panel, or run `bash scripts/pr-approval-diagnostic.sh <pr-url>` from `.github-private` (not a bare `@why-not-approved`). |
 
 ## Automated Workflows
 
