@@ -268,19 +268,20 @@ ai_models_problems() {
 # Fable 5.1 is superseded by Fable 5.2, the preferred Fable; a chain naming
 # claude-fable-5-2 does not warn. A configured old Fable is still HONOURED as a
 # stop-gap (this warns, it does not reject), so an operator can pin it while
-# migrating. Sources checked: the per-tier CLAUDE_<TIER>_MODEL_CHAIN envs and
-# AI_MODELS_CLAUDE.
+# migrating. Sources checked: the per-tier CLAUDE_<TIER>_MODEL_CHAIN envs (including
+# CLAUDE_FABLE_MODEL_CHAIN) and AI_MODELS_CLAUDE.
 ai_models_fable_deprecation() {
   local key chain var found=""
   # Static tier→var map (not printf|tr): pure parameter expansion, no per-tier
   # subshell. Bash 3.2-safe.
-  for key in triage deep audit action single; do
+  for key in triage deep audit action single fable; do
     case "$key" in
       triage) var="CLAUDE_TRIAGE_MODEL_CHAIN" ;;
       deep)   var="CLAUDE_DEEP_MODEL_CHAIN" ;;
       audit)  var="CLAUDE_AUDIT_MODEL_CHAIN" ;;
       action) var="CLAUDE_ACTION_MODEL_CHAIN" ;;
       single) var="CLAUDE_SINGLE_MODEL_CHAIN" ;;
+      fable)  var="CLAUDE_FABLE_MODEL_CHAIN" ;;
     esac
     chain="${!var:-}"
     case ",${chain// /}," in *,claude-fable-5,*|*,claude-fable-5-1,*) found=1 ;; esac

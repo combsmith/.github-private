@@ -498,6 +498,14 @@ STUB
   [ -n "$(ai_models_fable_deprecation)" ]
 }
 
+@test "fable-deprecation: CLAUDE_FABLE_MODEL_CHAIN direct override warns for old Fable only" {
+  source "$LIB"
+  export CLAUDE_FABLE_MODEL_CHAIN="claude-fable-5-1"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_FABLE_MODEL_CHAIN="claude-fable-5-2"
+  [ -z "$(ai_models_fable_deprecation)" ]
+}
+
 @test "fable-deprecation: engine.sh warns once via AI_MODELS_CLAUDE and still honours the model" {
   run bash -c "export REVIEW_ENGINE=claude AI_MODELS_CLAUDE='audit=claude-fable-5,claude-opus-4-8'
     _w=\"\$(mktemp)\"
