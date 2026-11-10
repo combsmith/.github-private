@@ -42,6 +42,13 @@ We will narrow #1813's "every PR issue comment" scope to every PR issue comment
    (`_MAINTAINER_GATE_AGENT_MARKERS`): `pr-review-agent`, `pr-review-claim`,
    `persona:`, `dev-lead` (including `dev-lead:comment-disposition`),
    `dependency-advisory`, `maintainer-resolve`, and `auto-rebase-conflict:`.
+   The author association must be `OWNER`, `MEMBER` or `COLLABORATOR`
+   ([#1921](https://github.com/combsmith/.github-private/issues/1921)). The repo
+   is public, so anyone can paste a marker into a comment. Our automation posts
+   with a trusted association (as `don-petry`) or as the bot login (exemption 1),
+   so this costs it nothing. From any other author, or with no association, the
+   marker does nothing and the comment blocks. `dev-lead-intent.sh` already
+   applies this rule to the rebase sentinel.
 3. **A review request**: the author association is `OWNER`, `MEMBER` or
    `COLLABORATOR`, and the whole trimmed body is the bot mention (`@<bot user>`),
    optionally followed by `please review` (case-insensitive, optional final `.`
@@ -94,6 +101,11 @@ Bats tests cover the definition (ADR-0004).
   "@donpetry-bot please take another look" or a request with a note attached
   still blocks and needs a disposition or the opt-out marker. A looser match
   would let a finding hide behind a mention.
+- An automation marker, like the opt-out marker, is honoured only from an
+  OWNER/MEMBER/COLLABORATOR (#1921). A drive-by commenter cannot hide a finding
+  by pasting one. A collaborator still can, because the marker is not signed
+  and the gate cannot tell a collaborator's own words from automation posting
+  as `don-petry`.
 - The opt-out marker is a trust grant to every OWNER/MEMBER/COLLABORATOR. A
   collaborator can clear their own comment from the gate without a disposition,
   so anything they post with the marker is not checked.
