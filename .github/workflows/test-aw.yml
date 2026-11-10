@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install PyYAML
-        run: pip install "pyyaml==6.0.3" --only-binary=":all:" --quiet
+        run: pip install --require-hashes --only-binary=":all:" --quiet -r requirements/ci/pyyaml.txt
 
       - name: Run spec validator
         run: bash tests/aw/validate-specs.sh
@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install PyYAML
-        run: pip install "pyyaml==6.0.3" --only-binary=":all:" --quiet
+        run: pip install --require-hashes --only-binary=":all:" --quiet -r requirements/ci/pyyaml.txt
 
       - name: Unit tests (skip guard + safe-output validation)
         run: bash tests/aw/issue-triage/test_aw_run.sh
