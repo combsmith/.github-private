@@ -31,6 +31,10 @@
 
 # ── Anthropic Claude (authoritative) ──────────────────────────────────────────
 claude-fable-5*	2026-06-11	10.00	1.00	12.50	50.00
+# Fable 5.2: its own row — the 17-char `claude-fable-5-2*` glob beats
+# `claude-fable-5*` (15), so 5-2 records never take Fable 5's rate. Verified against
+# https://platform.claude.com/docs/en/about-claude/pricing (2026-11-10).
+claude-fable-5-2*	2026-11-09	8.00	0.20	10.00	40.00
 claude-opus-4-1*	2025-01-01	15.00	1.50	18.75	75.00
 claude-opus-4-0*	2025-01-01	15.00	1.50	18.75	75.00
 claude-opus-4-*	2025-11-01	5.00	0.50	6.25	25.00

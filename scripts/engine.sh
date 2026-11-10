@@ -98,8 +98,9 @@ if [ -z "${AI_MODELS_PROBLEM_REPORTED:-}" ]; then
   fi
   unset _models_problems _models_line
 fi
-# Fable 5 is deprecated (#1901): warn once per run when a configured chain still
-# names a claude-fable-* model, but still honour it (a stop-gap, not a rejection).
+# Fable 5 and 5.1 are deprecated (#1901; Fable 5.2 is the preferred Fable): warn
+# once per run when a configured chain still names either, but still honour it
+# (a stop-gap, not a rejection).
 if [ -z "${AI_MODELS_FABLE_WARNED:-}" ]; then
   _fable_warn="$(ai_models_fable_deprecation)"
   if [ -n "$_fable_warn" ]; then

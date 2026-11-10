@@ -92,6 +92,18 @@ setup() {
   [ -z "$output" ]
 }
 
+# Fable 5.2 has its own row: the claude-fable-5-2* glob beats claude-fable-5*, so it
+# takes $8/$40 (cache read 2.5% of input), and bare claude-fable-5 keeps its rate.
+@test "price_for: fable 5.2 pinned at effective_from (2026-11-09) → \$8 / \$0.20 / \$10 / \$40" {
+  run price_for "claude-fable-5-2" "2026-11-09"
+  [ "$output" = "8.00 0.20 10.00 40.00" ]
+}
+
+@test "price_for: bare claude-fable-5 unaffected by the 5-2 row" {
+  run price_for "claude-fable-5" "2026-11-10"
+  [ "$output" = "10.00 1.00 12.50 50.00" ]
+}
+
 @test "price_for: unknown model → empty" {
   run price_for "mystery-model-v9" "2026-06-07"
   [ -z "$output" ]

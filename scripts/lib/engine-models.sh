@@ -4,7 +4,7 @@
 # One Actions variable per provider holds every model it uses, so a retired or
 # renamed model is a variable edit rather than a code change and a release:
 #
-#   AI_MODELS_CLAUDE   triage=… ; deep=… ; audit=… ; action=… ; single=… ; duck=…
+#   AI_MODELS_CLAUDE   triage=… ; deep=… ; audit=… ; action=… ; single=… ; duck=… ; fable=…
 #   AI_MODELS_GEMINI   (the same keys)
 #   AI_MODELS_COPILOT  (the same keys)
 #
@@ -19,9 +19,12 @@
 #   single  single-reviewer mode
 #   duck    the model used when this provider is the rubber duck (one model;
 #           default: Claude sonnet 5.5, Gemini and Copilot the triage model)
+# Claude also takes one family key, which no engine tier runs:
+#   fable   the id `ai_model_for_family fable` returns (one model; default
+#           claude-fable-5-2)
 # Copilot takes one model per key: the GitHub Models client has no in-engine
-# chain. A duck key, or any Copilot key, given several models warns and keeps
-# the first.
+# chain. A duck or fable key, or any Copilot key, given several models warns and
+# keeps the first.
 #
 # Precedence per key, highest first:
 #   1. the env vars kept for existing callers:
@@ -64,10 +67,15 @@
 #     `--effort high` in engine.sh's run_agentic so moving off Fable does not
 #     silently lower their reasoning effort (triage/action keep the default).
 #     Min cacheable prefix opus-4-8 = 4096 tok.
-#   - Fable 5 is deprecated but not removed: a chain that still names a
-#     claude-fable-* model (AI_MODELS_CLAUDE or CLAUDE_<TIER>_MODEL_CHAIN) is
-#     honoured as a stop-gap and warns once per run (ai_models_fable_deprecation);
-#     its price rows stay in model-pricing.tsv for historical token records.
+#   - Fable 5 and 5.1 are deprecated but not removed: a chain that still names
+#     claude-fable-5 or claude-fable-5-1 (AI_MODELS_CLAUDE or
+#     CLAUDE_<TIER>_MODEL_CHAIN) is honoured as a stop-gap and warns once per run
+#     (ai_models_fable_deprecation); their price rows stay in model-pricing.tsv
+#     for historical token records.
+#   - Fable 5.2 is the preferred Fable: the `fable` key (and so
+#     `ai_model_for_family fable`) defaults to claude-fable-5-2, and a chain that
+#     names it does not warn. No engine tier defaults to Fable — audit/single stay
+#     on opus-5-5 (#1901) — so Fable runs only where a caller asks for it.
 #   - The subscription cap is shared across Claude models (#206), so an
 #     in-Claude chain only helps with per-model RPM/TPM limits.
 ai_models_default() {
@@ -78,6 +86,7 @@ ai_models_default() {
     claude:action) printf '%s' "claude-sonnet-5-5,claude-sonnet-5,claude-opus-5-5" ;;
     claude:single) printf '%s' "claude-opus-5-5,claude-opus-4-8,claude-opus-4-7" ;;
     claude:duck)   printf '%s' "claude-sonnet-5-5" ;;
+    claude:fable)  printf '%s' "claude-fable-5-2" ;;
     # gemini-2.5-pro is withdrawn for new keys ("no longer available to new
     # users … use models/gemini-3.1-pro-preview", #1960), so the quality tier
     # uses 3.1-pro-preview and degrades to the flash model that is known to work.
@@ -91,11 +100,12 @@ ai_models_default() {
   esac
 }
 
-# _ai_models_keys <provider> — the keys AI_MODELS_<PROVIDER> accepts (the same
-# for every provider).
+# _ai_models_keys <provider> — the keys AI_MODELS_<PROVIDER> accepts: the task
+# keys every provider shares, plus Claude's `fable` family key.
 _ai_models_keys() {
   case "${1:-}" in
-    claude|gemini|copilot) printf '%s' "triage deep audit action single duck" ;;
+    claude)         printf '%s' "triage deep audit action single duck fable" ;;
+    gemini|copilot) printf '%s' "triage deep audit action single duck" ;;
   esac
 }
 
@@ -160,7 +170,7 @@ _ai_models_scan() {
       [ "$key" = "$want" ] && found=""
       continue
     fi
-    if [[ "$chain" == *,* ]] && { [ "$key" = duck ] || [ "$provider" = copilot ]; }; then
+    if [[ "$chain" == *,* ]] && { [ "$key" = duck ] || [ "$key" = fable ] || [ "$provider" = copilot ]; }; then
       [ "$mode" = problems ] && printf "%s: '%s' takes one model — only '%s' is used\n" "$var" "$key" "${chain%%,*}"
       chain="${chain%%,*}"
     fi
@@ -253,11 +263,13 @@ ai_models_problems() {
 }
 
 # ai_models_fable_deprecation — one deprecation line when a *configured* Claude
-# chain still names a claude-fable-* model, else nothing. Fable 5 is deprecated
-# (#1901, epic #1895 Phase 3): audit/single now default to claude-opus-5-5. A
-# configured Fable model is still HONOURED as a stop-gap (this warns, it does not
-# reject), so an operator can pin it while migrating. Sources checked: the
-# per-tier CLAUDE_<TIER>_MODEL_CHAIN envs and AI_MODELS_CLAUDE.
+# chain still names a retired Fable (claude-fable-5 or claude-fable-5-1), else
+# nothing. Fable 5 was deprecated in #1901 (audit/single moved to opus-5-5) and
+# Fable 5.1 is superseded by Fable 5.2, the preferred Fable; a chain naming
+# claude-fable-5-2 does not warn. A configured old Fable is still HONOURED as a
+# stop-gap (this warns, it does not reject), so an operator can pin it while
+# migrating. Sources checked: the per-tier CLAUDE_<TIER>_MODEL_CHAIN envs and
+# AI_MODELS_CLAUDE.
 ai_models_fable_deprecation() {
   local key chain var found=""
   # Static tier→var map (not printf|tr): pure parameter expansion, no per-tier
@@ -271,30 +283,33 @@ ai_models_fable_deprecation() {
       single) var="CLAUDE_SINGLE_MODEL_CHAIN" ;;
     esac
     chain="${!var:-}"
-    case ",${chain// /}," in *,claude-fable-*) found=1 ;; esac
+    case ",${chain// /}," in *,claude-fable-5,*|*,claude-fable-5-1,*) found=1 ;; esac
   done
-  # One tr subshell to fold AI_MODELS_CLAUDE to lowercase (keys are
-  # case-insensitive, ${var,,} is Bash 4+), then a single per-key pattern match
-  # over the whole spec — the six ai_models_configured command substitutions this
-  # replaces each forked a subshell.
+  # One tr subshell to fold AI_MODELS_CLAUDE to lowercase (${var,,} is Bash 4+);
+  # then '=', ';' and newlines become ',' so every model id in the spec is a whole
+  # comma-delimited field.
   local lower
   lower="$(printf '%s' "${AI_MODELS_CLAUDE:-}" | tr '[:upper:]' '[:lower:]')"
-  case ",${lower// /}," in
-    *triage=*claude-fable-*|*deep=*claude-fable-*|*audit=*claude-fable-*|*action=*claude-fable-*|*single=*claude-fable-*|*duck=*claude-fable-*)
-      found=1 ;;
+  lower="${lower//=/,}"
+  lower="${lower//;/,}"
+  lower="${lower//$'\n'/,}"
+  case ",${lower//[[:space:]]/}," in
+    *,claude-fable-5,*|*,claude-fable-5-1,*) found=1 ;;
   esac
   [ -n "$found" ] || return 0
-  printf '%s' "claude-fable-* is deprecated (#1901): audit/single now default to claude-opus-5-5 (chain claude-opus-5-5,claude-opus-4-8,claude-opus-4-7). The configured Fable model is still honoured as a stop-gap — repoint it to claude-opus-5-5."
+  printf '%s' "claude-fable-5 and claude-fable-5-1 are deprecated (#1901): audit/single default to claude-opus-5-5 (chain claude-opus-5-5,claude-opus-4-8,claude-opus-4-7), and claude-fable-5-2 is the preferred Fable. The configured model is still honoured as a stop-gap — repoint it to claude-opus-5-5, or to claude-fable-5-2 where Fable is wanted."
 }
 
 # ai_model_for_family <family> — the current concrete model id for a Claude model
-# FAMILY (opus|sonnet|haiku), so callers name a family and never pin a version
+# FAMILY (opus|sonnet|haiku|fable), so callers name a family and never pin a version
 # (#1979, companion combsmith/.github#1199). The families map to the tiers
 # whose primary is that family, and the id is that tier's chain FIRST model — the
 # existing chains stay the single source of truth:
 #     opus   → deep    (default primary claude-opus-5-5)
 #     sonnet → action  (default primary claude-sonnet-5-5)
 #     haiku  → triage  (default primary claude-haiku-4-5-20251001)
+#     fable  → fable   (no engine tier; the AI_MODELS_CLAUDE `fable` key,
+#                      default claude-fable-5-2)
 # Overrides are honoured with the same precedence engine.sh uses: the per-tier
 # CLAUDE_<TIER>_MODEL_CHAIN env first (ai_models_chain does not read it), then
 # AI_MODELS_CLAUDE (via ai_models_chain), then the built-in default. An unknown
@@ -305,8 +320,9 @@ ai_model_for_family() {
     opus)   tier=deep;   var=CLAUDE_DEEP_MODEL_CHAIN ;;
     sonnet) tier=action; var=CLAUDE_ACTION_MODEL_CHAIN ;;
     haiku)  tier=triage; var=CLAUDE_TRIAGE_MODEL_CHAIN ;;
+    fable)  tier=fable;  var=CLAUDE_FABLE_MODEL_CHAIN ;;
     *)
-      printf '::warning::ai_model_for_family: unknown family %s (expected opus|sonnet|haiku)\n' "$family" >&2
+      printf '::warning::ai_model_for_family: unknown family %s (expected opus|sonnet|haiku|fable)\n' "$family" >&2
       return 1 ;;
   esac
   chain="${!var:-}"
