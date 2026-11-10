@@ -279,7 +279,7 @@ _e2e_stubs() {
   cat > "$BIN/gh" <<EOF
 #!/usr/bin/env bash
 case "\$*" in
-  *"pr view"*) echo '{"state":"OPEN","headRefName":"feat","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}' ;;
+  *"pr view"*) echo '{"state":"OPEN","headRefName":"feat","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","isCrossRepository":false}' ;;
   *"pr checkout"*) git checkout -q -B feat --track origin/feat ;;
   *"pr comment"*) printf 'COMMENT %s\n' "\$*" >> "$REC" ;;
   *"pr merge"*) printf 'MERGE %s\n' "\$*" >> "$REC" ;;
