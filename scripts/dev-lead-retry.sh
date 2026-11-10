@@ -113,6 +113,15 @@ set -euo pipefail
 #   carrying a client_payload field that parser does not read is held back, with
 #   a ::warning:: naming the field (lib/dispatch-channel-gate.sh); payloads every
 #   release reads still reach older-pinned repos.
+#
+# QA Lead advisories are pulled too (#2487, ADR-0016). The QA Lead posts one
+#   advisory as a PR opens, and on a dev-lead PR no pass read it.
+#   scan_pr_for_qa_advisories finds an advisory with items and no
+#   `dev-lead:advisory-disposition` reply on an open, unheld dev-lead PR, and
+#   sends the existing review-changes retry, whose pass applies or declines each
+#   item. A dispositioned advisory never dispatches again (lib/qa-advisory-retry.sh).
+#   On `Escalate? yes` it adds dev-lead:needs-human and records an escalated
+#   disposition instead. The advisory never blocks merge either way.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Escalation gate (#946): pr_has_escalation_label / NEEDS_HUMAN_REVIEW_LABEL.
@@ -137,6 +146,9 @@ source "$SCRIPT_DIR/lib/dispatch-channel-gate.sh"
 # Budget poller log reader (#2139): bp_download_latest_log / bp_last_ok / bp_staleness.
 # shellcheck source=lib/budget-poller.sh
 source "$SCRIPT_DIR/lib/budget-poller.sh"
+# QA Lead advisory pull (#2487, ADR-0016): qa_advisory_decisions and its markers.
+# shellcheck source=lib/qa-advisory-retry.sh
+source "$SCRIPT_DIR/lib/qa-advisory-retry.sh"
 
 TARGET_ORG="${TARGET_ORG:-combsmith}"
 DELEGATION_ORGS="${DELEGATION_ORGS:-}"
@@ -1501,6 +1513,138 @@ scan_pr_for_unreplied_bot_threads() {
   echo "1"
 }
 
+# scan_pr_for_qa_advisories <repo> <pr_number>
+# Pulls QA Lead advisories into dev-lead's pass (#2487, ADR-0016). On an open
+# PR dev-lead authored (author plus same-repository head, as the bot-comment
+# scan checks) that no hold suppresses, the pure qa_advisory_decisions picks
+# the OLDEST advisory to act on:
+#   dispatch — post a `dev-lead-qa-advisory-retry` marker, then send the existing
+#              dev-lead-reviews-retry with intent_type review-changes. If the
+#              dispatch fails, withdraw the marker.
+#   escalate — `Escalate? yes`: add dev-lead:needs-human, then post an
+#              `outcome=escalated` disposition so it is recorded and never acted on
+#              again. If the label cannot be added, post nothing, and the next scan
+#              retries. Nothing is applied.
+# At most one action per PR per scan (one per-PR lane). Prints only the number of
+# dispatches to stdout. Everything else goes to stderr. Fails closed: 0 dispatches
+# on any read failure. The advisory is never a merge gate, so a skipped or
+# exhausted advisory holds nothing.
+scan_pr_for_qa_advisories() {
+  local repo="$1" pr_number="$2"
+
+  local pr_obj
+  pr_obj=$(gh api "repos/${repo}/pulls/${pr_number}" 2>/dev/null || echo '{}')
+  local pr_state head_sha head_repo pr_author
+  pr_state=$(jq -r '.state // empty' <<< "$pr_obj" 2>/dev/null || true)
+  head_sha=$(jq -r '.head?.sha // empty' <<< "$pr_obj" 2>/dev/null || true)
+  head_repo=$(jq -r '.head?.repo?.full_name // empty' <<< "$pr_obj" 2>/dev/null || true)
+  pr_author=$(jq -r '.user?.login // empty' <<< "$pr_obj" 2>/dev/null || true)
+  if [ "$pr_state" != "open" ]; then
+    echo "0"; return 0
+  fi
+  # Authorship gate (#1311): only a PR dev-lead authored, from this repository.
+  # Never the branch name, which any contributor can choose.
+  if [ -z "$pr_author" ] || [ "$pr_author" != "$(dev_lead_identity)" ] \
+     || [ "$head_repo" != "$repo" ]; then
+    echo "0"; return 0
+  fi
+  local labels_json
+  labels_json=$(jq -c '[.labels[]?.name]' <<< "$pr_obj" 2>/dev/null || echo 'null')
+  if pr_resume_suppressed "$pr_number" "$repo" "$labels_json"; then
+    echo "0"; return 0
+  fi
+
+  local comments
+  if ! comments=$(bcr_fetch_pr_comments "$repo" "$pr_number"); then
+    echo "  [warn] qa-advisory retry: could not read PR ${pr_number} comments in ${repo} — skipping (fail closed)" >&2
+    echo "0"; return 0
+  fi
+  # Cheap pre-filter: most PRs carry no QA Lead advisory at all.
+  if ! jq -e --arg m "$QA_ADVISORY_PERSONA_MARKER" \
+       'any(.[]? | objects; (.body // "") | contains($m))' <<< "$comments" >/dev/null 2>&1; then
+    echo "0"; return 0
+  fi
+
+  local automation
+  automation=$(bcr_automation_logins)
+  # A run another path queued moments ago for this head is still pending in the
+  # per-PR lane. Defer to it. Only our own automation's guard counts.
+  if has_dispatch_guard "$(jq -c --arg a "$automation" '
+        ($a | split(",") | map(sub("\\[bot\\]$"; ""))) as $L
+        | [ .[] | objects | select(((.author.login // "") | sub("\\[bot\\]$"; "")) as $l | $L | index($l) != null)
+            | .body // empty ]' <<< "$comments" 2>/dev/null || echo '[]')" "$head_sha"; then
+    echo "  [skip] qa-advisory retry: PR ${pr_number} SHA ${head_sha:0:8} has a recent dispatch guard — not superseding it" >&2
+    echo "0"; return 0
+  fi
+
+  local decisions
+  if ! decisions=$(qa_advisory_decisions "$comments" "$(get_now_epoch)" "$automation"); then
+    echo "  [warn] qa-advisory retry: could not evaluate PR ${pr_number} comments — skipping (fail closed)" >&2
+    echo "0"; return 0
+  fi
+  jq -r --arg pr "$pr_number" '.[] | select(.decision == "skip")
+      | "  [skip] qa-advisory \(.id) on PR \($pr): \(.reason)"' <<< "$decisions" >&2 || true
+  if jq -e 'any(.[]; .reason == "retry-attempts-exhausted")' <<< "$decisions" >/dev/null 2>&1; then
+    echo "  ::warning::qa-advisory retry: PR ${pr_number} in ${repo} has a QA Lead advisory that ${QA_ADVISORY_RETRY_MAX_ATTEMPTS:-2} review-changes passes left without a disposition — not retrying it again. It never blocks merge; a human may apply it." >&2
+  fi
+
+  local pick cid decision attempt now_iso
+  pick=$(jq -c 'first(.[] | select(.decision == "dispatch" or .decision == "escalate")) // empty' <<< "$decisions")
+  if [ -z "$pick" ]; then
+    echo "0"; return 0
+  fi
+  cid=$(jq -r '.id' <<< "$pick")
+  decision=$(jq -r '.decision' <<< "$pick")
+  attempt=$(jq -r '.attempt' <<< "$pick")
+  # Spliced into marker bodies below.
+  if [[ ! "$cid" =~ ^[-A-Za-z0-9_+/=]+$ ]] || [[ ! "$attempt" =~ ^[0-9]+$ ]]; then
+    echo "  [warn] qa-advisory retry: unexpected advisory id/attempt on PR ${pr_number} — not acting" >&2
+    echo "0"; return 0
+  fi
+
+  if [ "$decision" = "escalate" ]; then
+    echo "  [escalate] qa-advisory ${cid} on PR ${pr_number}: Escalate? yes → ${NEEDS_HUMAN_LABEL}, nothing applied" >&2
+    if [ "$DRY_RUN" = "true" ]; then
+      echo "  [dry-run] would add ${NEEDS_HUMAN_LABEL} to PR ${pr_number} in ${repo} and record an escalated disposition" >&2
+      echo "0"; return 0
+    fi
+    # Label first: a disposition without the hold would end the advisory with no
+    # human told. A failed label is loud (apply_hold_label) and leaves the
+    # advisory open for the next scan.
+    if ! apply_hold_label "$repo" "$pr_number" "$NEEDS_HUMAN_LABEL" >&2; then
+      echo "0"; return 0
+    fi
+    if ! gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
+         -f body="$(qa_advisory_escalation_body "$cid")" >/dev/null 2>&1; then
+      echo "  ::warning::qa-advisory retry: PR ${pr_number} in ${repo} is held for the escalated QA Lead advisory, but its disposition could not be posted" >&2
+    fi
+    echo "0"; return 0
+  fi
+
+  echo "  [retry] qa-advisory ${cid} on PR ${pr_number}: undispositioned → review-changes attempt ${attempt}" >&2
+  # A target pinned to a parser that drops a payload field would fail the run
+  # (#2086); hold before the marker, which would read as a pending retry.
+  if ! dcg_target_reads "$repo" pr_number head_sha repo intent_type; then
+    echo "0"; return 0
+  fi
+  now_iso="${NOW_ISO:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+  # Record the attempt BEFORE dispatching, so the next scan sees it as pending.
+  local marker_id=""
+  if [ "$DRY_RUN" != "true" ]; then
+    if ! marker_id=$(gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
+         -f body="$(qa_advisory_retry_marker "$cid" "$attempt" "$now_iso")" \
+         --jq '.id // empty' 2>/dev/null) || [[ ! "$marker_id" =~ ^[0-9]+$ ]]; then
+      echo "  [warn] qa-advisory retry: could not record the retry marker on PR ${pr_number} — not dispatching (dedup unavailable)" >&2
+      echo "0"; return 0
+    fi
+  fi
+  if ! dispatch_reviews_retry "$repo" "$pr_number" "$head_sha" "review-changes"; then
+    withdraw_bot_comment_retry_marker "$repo" "$marker_id"
+    echo "0"; return 0
+  fi
+  echo "1"
+}
+
 # scan_repo <repo>: scan all open PRs in a repo for rate-limited markers
 scan_repo() {
   local repo="$1"
@@ -1532,6 +1676,11 @@ scan_repo() {
       # Unreplied bot review threads (#2046), under the same one-per-PR rule.
       if [ "${dispatched:-0}" -eq 0 ]; then
         dispatched=$(scan_pr_for_unreplied_bot_threads "$repo" "$pr_number")
+        total_dispatched=$(( total_dispatched + dispatched ))
+      fi
+      # Undispositioned QA Lead advisories (#2487), under the same one-per-PR rule.
+      if [ "${dispatched:-0}" -eq 0 ]; then
+        dispatched=$(scan_pr_for_qa_advisories "$repo" "$pr_number")
         total_dispatched=$(( total_dispatched + dispatched ))
       fi
     done < <(jq -c '.[]' <<< "$prs_json")

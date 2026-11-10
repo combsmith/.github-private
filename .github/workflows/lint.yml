@@ -269,6 +269,7 @@ jobs:
             tests/test_channel_pin_consistency.bats \
             tests/pr_review_canary.bats \
             tests/dev-lead/unit/test_bot_thread_retry.bats \
+            tests/dev-lead/unit/test_qa_advisory_retry.bats \
             tests/dev-lead/unit/test_maintainer_review_thread_gate.bats \
             tests/dev-lead/unit/test_open_review_threads.bats \
             tests/dev-lead/unit/test_maintainer_comment_gate.bats \
