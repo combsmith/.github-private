@@ -368,7 +368,7 @@ while IFS= read -r pr_url; do
   fi
 
   review_decision=$(jq -r '.reviewDecision // ""' <<< "$snapshot")
-  if [ "$review_decision" != "REVIEW_REQUIRED" ]; then
+  if [[ "$review_decision" != "REVIEW_REQUIRED" ]]; then
     echo "  skip $pr_url — reviewDecision='$review_decision' (not REVIEW_REQUIRED)"
     continue
   fi
@@ -445,15 +445,15 @@ while IFS= read -r pr_url; do
     now_epoch=$(date -u +%s)
     # Dispatch once the reset has elapsed; an unparseable reset fails open to a
     # retry so a malformed marker can never strand the PR indefinitely.
-    if [ -z "$reset_epoch" ] || [ "$now_epoch" -ge "$reset_epoch" ]; then
-      if [ "$SCHEDULED_SWEEP" = "true" ] && [ "$is_dependabot" != "true" ]; then
+    if [[ -z "$reset_epoch" ]] || (( now_epoch >= reset_epoch )); then
+      if [[ "$SCHEDULED_SWEEP" == "true" ]] && [[ "$is_dependabot" != "true" ]]; then
         eventability=$(classify_rollup_eventability "$(jq '.statusCheckRollup' <<< "$snapshot")")
-        if [ "$eventability" = "eventable-only" ]; then
+        if [[ "$eventability" == "eventable-only" ]]; then
           echo "  skip $pr_url — rate-limited marker elapsed but all checks eventable; scheduled sweep is un-eventable-only (#1408)"
           continue
         fi
       fi
-      if [ "$is_dependabot" = "true" ] && ! dependabot_dispatchable "$pr_url" "$owner_repo" "$head_sha"; then
+      if [[ "$is_dependabot" == "true" ]] && ! dependabot_dispatchable "$pr_url" "$owner_repo" "$head_sha"; then
         continue
       fi
       dispatch_review "$pr_url" "rate-limited (reset $rl_reset elapsed, head ${head_sha:0:8})"
@@ -494,11 +494,11 @@ while IFS= read -r pr_url; do
   # this sweep's snapshot re-blocks at execution time), as do the per-PR automation
   # budget (#926) and the needs-human-review escalation gate (handled above) — so
   # the rescue can neither bypass a quality gate nor re-ignite a runaway.
-  if [ "$is_dependabot" = "true" ] && ! dependabot_dispatchable "$pr_url" "$owner_repo" "$head_sha"; then
+  if [[ "$is_dependabot" == "true" ]] && ! dependabot_dispatchable "$pr_url" "$owner_repo" "$head_sha"; then
     continue
   fi
 
-  if [ "${marker_at_head:-0}" -gt 0 ]; then
+  if (( ${marker_at_head:-0} > 0 )); then
     dispatch_review "$pr_url" "orphaned-marker (head ${head_sha:0:8}, no verdict)" force
     continue
   fi
@@ -508,15 +508,15 @@ while IFS= read -r pr_url; do
   # Actions runs is owned by the workflow_run fast path, so re-dispatching it here
   # would be the redundant re-review this story removes.
   # A Dependabot PR is exempt: no fast path exists for it (#2481, above).
-  if [ "$SCHEDULED_SWEEP" = "true" ] && [ "$is_dependabot" != "true" ]; then
+  if [[ "$SCHEDULED_SWEEP" == "true" ]] && [[ "$is_dependabot" != "true" ]]; then
     eventability=$(classify_rollup_eventability "$(jq '.statusCheckRollup? // []' <<< "$snapshot" 2>/dev/null || echo '[]')")
-    if [ "$eventability" = "eventable-only" ]; then
+    if [[ "$eventability" == "eventable-only" ]]; then
       echo "  skip $pr_url — all checks eventable (workflow_run fast path owns it); scheduled sweep is un-eventable-only (#1408)"
       continue
     fi
   fi
 
-  if [ "$is_dependabot" = "true" ]; then
+  if [[ "$is_dependabot" == "true" ]]; then
     dispatch_review "$pr_url" "dependabot stuck-green (head ${head_sha:0:8}, #2481)"
   else
     dispatch_review "$pr_url" "stuck-green (head ${head_sha:0:8})"

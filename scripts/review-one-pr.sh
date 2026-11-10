@@ -507,9 +507,9 @@ if dependabot_is_author "$(jq -r '.author.login // ""' <<< "$PR_SNAPSHOT" 2>/dev
   _dp_num=""
   [[ "$PR_URL" =~ /pull/([0-9]+) ]] && _dp_num="${BASH_REMATCH[1]}"
   dependabot_provenance_check "$_OWNER_REPO" "$_dp_num" "$PR_HEAD_SHA" || _dp_rc=$?
-  if [ "$_dp_rc" -eq 0 ]; then
+  if (( _dp_rc == 0 )); then
     echo "    Dependabot provenance: $DEPENDABOT_GATE_REASON"
-  elif [ "$_dp_rc" -eq 1 ]; then
+  elif (( _dp_rc == 1 )); then
     echo "    skip: Dependabot provenance — $DEPENDABOT_GATE_REASON (#2481)"
     emit_verdict skip dependabot-provenance "every commit on the PR is Dependabot's or an automerge update-branch merge (Dependabot recreates the PR), or a human code owner reviews it"
     exit 100

@@ -1094,6 +1094,8 @@ write_dependabot_pr() {
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"Dependabot provenance"* ]]
+  [[ "$output" == *"unverified"* ]]
 }
 
 @test "#2481: a green Dependabot PR whose commits cannot be read is NOT dispatched (fail closed)" {

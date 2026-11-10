@@ -112,34 +112,34 @@ dependabot_provenance_check() {
   local repo="${1:-}" pr="${2:-}" expected="${3:-}" pr_json commits_json head user again rc=0
   DEPENDABOT_GATE_REASON=""
 
-  if ! [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$pr" =~ ^[0-9]+$ ]]; then
+  if ! [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || ! [[ "$pr" =~ ^[0-9]+$ ]]; then
     DEPENDABOT_GATE_REASON="malformed repository or pull request number"
     return 2
   fi
-  if ! pr_json=$(gh api "repos/${repo}/pulls/${pr}" 2>/dev/null) || [ -z "$pr_json" ]; then
+  if ! pr_json=$(gh api "repos/${repo}/pulls/${pr}" 2>/dev/null) || [[ -z "$pr_json" ]]; then
     DEPENDABOT_GATE_REASON="could not read the pull request"
     return 2
   fi
   user=$(jq -r '.user.login // ""' <<< "$pr_json" 2>/dev/null) || user=""
-  if [ -z "$user" ]; then
+  if [[ -z "$user" ]]; then
     DEPENDABOT_GATE_REASON="could not read the pull request author"
     return 2
   fi
-  if [ "$user" != "$DEPENDABOT_LOGIN" ]; then
+  if [[ "$user" != "$DEPENDABOT_LOGIN" ]]; then
     DEPENDABOT_GATE_REASON="the pull request was not opened by Dependabot (author $user)"
     return 1
   fi
   head=$(jq -r '.head.sha // ""' <<< "$pr_json" 2>/dev/null) || head=""
   if ! commits_json=$(gh api "repos/${repo}/pulls/${pr}/commits?per_page=100" --paginate --slurp 2>/dev/null) \
-      || [ -z "$commits_json" ]; then
+      || [[ -z "$commits_json" ]]; then
     DEPENDABOT_GATE_REASON="could not read the pull request's commits"
     return 2
   fi
   DEPENDABOT_GATE_REASON=$(dependabot_provenance_gate "$pr_json" "$commits_json" \
     "$DEPENDABOT_AUTOMERGE_LOGIN" "$expected") || rc=$?
-  [ "$rc" -eq 0 ] || return "$rc"
+  (( rc == 0 )) || return "$rc"
   if ! again=$(gh api "repos/${repo}/pulls/${pr}" 2>/dev/null) \
-      || [ "$(jq -r '.head.sha // ""' <<< "$again" 2>/dev/null)" != "$head" ]; then
+      || [[ "$(jq -r '.head.sha // ""' <<< "$again" 2>/dev/null)" != "$head" ]]; then
     DEPENDABOT_GATE_REASON="the head changed while it was being read"
     return 2
   fi
