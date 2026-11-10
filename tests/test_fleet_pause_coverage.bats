@@ -8,7 +8,8 @@
 #   • asserts, for every gated job and step, that it is skipped when the variable
 #     is `true` and runs when it is unset or `false`, and that the `fleet-paused`
 #     notice job is the exact complement;
-#   • executes each notice step and checks the one line it prints;
+#   • executes each notice step and checks the one line it prints, also when a
+#     pause variable holds a line break (#2282);
 #   • proves the check fails under mutation: a gate removed or made bypassable, a
 #     new model-calling workflow with no row, a second ungated model job or step,
 #     a notice job lost, on different events, or able to reach a credential, an
@@ -196,6 +197,61 @@ PY
     [ "${#lines[@]}" -eq 1 ]
     [[ "$output" == *"Pause source: not set (paused by hand). Paused until: not set." ]]
   done
+}
+
+# all_notice_scripts — "<label>\t<run: base64>" for every pause notice: each
+# fleet-paused job, and the per-step notice of daily-pr-review-health.yml.
+all_notice_scripts() {
+  python3 - "$REPO_ROOT/.github/workflows" "${NEWLY_GATED[@]}" <<'PY'
+import base64, sys, yaml
+root, names = sys.argv[1], sys.argv[2:]
+def emit(label, script):
+    print(label + "\t" + base64.b64encode(script.encode()).decode())
+for name in names:
+    doc = yaml.safe_load(open(f"{root}/{name}", encoding="utf-8"))
+    emit(name, doc["jobs"]["fleet-paused"]["steps"][0]["run"])
+doc = yaml.safe_load(open(f"{root}/daily-pr-review-health.yml", encoding="utf-8"))
+steps = [s for job in doc["jobs"].values() for s in job.get("steps", [])
+         if s.get("name") == "Report the fleet pause"]
+assert len(steps) == 1, "daily-pr-review-health.yml: expected one pause notice step"
+emit("daily-pr-review-health.yml", steps[0]["run"])
+PY
+}
+
+@test "notice: a line break in the source or until time cannot start a second workflow command (#2282)" {
+  local label b64 script n=0
+  while IFS=$'\t' read -r label b64; do
+    script="$(base64 -d <<< "$b64")"
+    PAUSE_SOURCE=$'by hand\n::error title=injected::boom' \
+      PAUSE_UNTIL=$'2026-10-13T16:00:00Z\r\n::add-mask::x\r' run bash -c "$script"
+    [ "$status" -eq 0 ] || { echo "$label: notice step failed"; return 1; }
+    [ "${#lines[@]}" -eq 1 ] || { echo "$label: expected one line, got ${#lines[@]}: $output"; return 1; }
+    [[ "$output" != *$'\r'* ]] || { echo "$label: a carriage return survived"; return 1; }
+    [[ "$output" == "::notice title=Agent fleet paused::"* ]]
+    [[ "$output" == *"Pause source: by hand ::error title=injected::boom. Paused until: 2026-10-13T16:00:00Z  ::add-mask::x ." ]] \
+      || { echo "$label: unexpected flattening: $output"; return 1; }
+    n=$((n + 1))
+  done < <(all_notice_scripts)
+  [ "$n" -eq $(( ${#NEWLY_GATED[@]} + 1 )) ]
+}
+
+@test "notice: single-line values print exactly the line they always did (#2282)" {
+  local label b64 script head n=0
+  while IFS=$'\t' read -r label b64; do
+    script="$(base64 -d <<< "$b64")"
+    # The fixed text before the values, as written in the workflow.
+    head="$(PAUSE_SOURCE=S PAUSE_UNTIL=U bash -c "$script")"
+    head="${head%Pause source: S. Paused until: U.}"
+    [[ "$head" == "::notice title=Agent fleet paused::"*" " ]] || { echo "$label: unexpected text: $head"; return 1; }
+    PAUSE_SOURCE='rate-limit-observed (budget breaker)' PAUSE_UNTIL=2026-10-13T16:00:00Z run bash -c "$script"
+    [ "$output" == "${head}Pause source: rate-limit-observed (budget breaker). Paused until: 2026-10-13T16:00:00Z." ] \
+      || { echo "$label: $output"; return 1; }
+    PAUSE_SOURCE='' PAUSE_UNTIL='' run bash -c "$script"
+    [ "$output" == "${head}Pause source: not set (paused by hand). Paused until: not set." ] \
+      || { echo "$label: $output"; return 1; }
+    n=$((n + 1))
+  done < <(all_notice_scripts)
+  [ "$n" -eq $(( ${#NEWLY_GATED[@]} + 1 )) ]
 }
 
 # ── mutation: a gate removed or made bypassable ──────────────────────────────

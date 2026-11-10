@@ -378,6 +378,9 @@ jobs:
           PAUSE_SOURCE: ${{ vars.AGENTS_PAUSE_SOURCE }}
           PAUSE_UNTIL: ${{ vars.AGENTS_PAUSE_UNTIL }}
         run: |
+          # A line break in a value would start a second workflow command (#2282).
+          PAUSE_SOURCE="${PAUSE_SOURCE//[$'\r\n']/ }"
+          PAUSE_UNTIL="${PAUSE_UNTIL//[$'\r\n']/ }"
           echo "::notice title=Agent fleet paused::Daily PR Review Health Check: the agent fleet is paused (AGENTS_PAUSED=true)," \
             "so the pr-review log analysis and the MCP connectivity probe were skipped." \
             "The runaway, stall and merge-ready scans are not paused; see their own steps for whether they ran." \

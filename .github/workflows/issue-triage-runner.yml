@@ -109,6 +109,9 @@ jobs:
     steps:
       - name: Report the fleet pause
         run: |
+          # A line break in a value would start a second workflow command (#2282).
+          PAUSE_SOURCE="${PAUSE_SOURCE//[$'\r\n']/ }"
+          PAUSE_UNTIL="${PAUSE_UNTIL//[$'\r\n']/ }"
           echo "::notice title=Agent fleet paused::Issue Triage: not run, the agent fleet is paused (AGENTS_PAUSED=true)." \
             "Pause source: ${PAUSE_SOURCE:-not set (paused by hand)}." \
             "Paused until: ${PAUSE_UNTIL:-not set}."

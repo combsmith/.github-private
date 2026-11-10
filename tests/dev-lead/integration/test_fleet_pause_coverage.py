@@ -390,7 +390,9 @@ def check_notice_text(where, steps, fails):
     if "::notice" not in text:
         fails.add(f"{where}: must print one `::notice` line saying the fleet is paused")
     for var in ("PAUSE_SOURCE", "PAUSE_UNTIL"):
-        if var not in text:
+        # An expansion that prints the value; `${VAR//…}` is the step flattening
+        # line breaks out of it (#2282), which on its own prints nothing.
+        if not re.search(r"\$(?:\{" + var + r"(?!//)|" + var + r")\b", text):
             fails.add(f"{where}: the notice must name the pause source and until time ({var})")
 
 
