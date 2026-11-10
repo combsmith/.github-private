@@ -142,6 +142,7 @@ jobs:
             tests/auto_rebase_health.bats \
             tests/pr_review_outcomes.bats \
             tests/pr_review_sweep_metrics.bats \
+            tests/pr_review_health.bats \
             tests/model_pricing.bats \
             tests/test_check_model_pins.bats \
             tests/test_check_bats_negation.bats \
