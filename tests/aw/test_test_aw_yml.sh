@@ -47,7 +47,8 @@ fi
 # ---------------------------------------------------------------------------
 # Test 2: every PyYAML install step is version-pinned and binary-only
 # A run step that invokes `pip install ... pyyaml ...` must:
-#   - pin the version (contain "pyyaml==")
+#   - pin the version (contain "pyyaml==", inline or in the hash-pinned
+#     requirements/ci file it installs with --require-hashes -r, #1240)
 #   - force a wheel (contain "--only-binary")
 # so it cannot resolve an arbitrary version or build from source over the network.
 # ---------------------------------------------------------------------------
@@ -70,9 +71,24 @@ if not install_steps:
     print("no PyYAML pip-install step found in test-aw.yml", file=sys.stderr)
     sys.exit(1)
 
+import os
+repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[1]))))
+
+def pin_text(run):
+    # Since #1240 the pin may live in a hash-pinned requirements file
+    # (--require-hashes -r requirements/ci/<set>.txt) that itself pins pyyaml==X.
+    text = run
+    if '--require-hashes' in run:
+        for req in re.findall(r'-r\s+(requirements/ci/[A-Za-z0-9._-]+\.txt)', run):
+            path = os.path.join(repo_root, req)
+            if os.path.isfile(path):
+                with open(path, encoding='utf-8') as fh:
+                    text += '\n' + fh.read()
+    return text
+
 bad = []
 for name, run in install_steps:
-    pinned = bool(re.search(r'pyyaml\s*==', run, re.IGNORECASE))
+    pinned = bool(re.search(r'pyyaml\s*==', pin_text(run), re.IGNORECASE))
     binary_only = '--only-binary' in run
     if not (pinned and binary_only):
         bad.append(f"{name!r}: pinned={pinned} only-binary={binary_only} :: {run.strip()!r}")
