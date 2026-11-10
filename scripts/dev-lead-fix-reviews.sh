@@ -847,29 +847,6 @@ resolve_actor_outdated_threads() {
 # Called before engine invocation in fix-reviews, fix-bot-comment, and review-changes
 # so the agent can identify Tier-1 blockers (failing CI + CHANGES_REQUESTED reviews)
 # and never wrongly declare "no-changes" while the PR is still blocked.
-# export_qa_advisories: echo the JSON list of open QA Lead advisories this
-# review-changes pass must apply or decline (#2487, ADR-0016): [{id, createdAt,
-# body}], oldest first, at most 5, each body cut to 4000 characters. These
-# advisories are optional. They never gate the pass, so a failed read logs a
-# warning and gives `[]` instead of failing the pass. The retry cron re-offers
-# the advisory later. Escalated and dispositioned advisories are left out
-# (qa_advisory_open).
-export_qa_advisories() {
-  local comments open
-  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ] || [ -z "${PR_NUMBER:-}" ] || [ -z "${REPO:-}" ]; then
-    printf '[]'
-    return 0
-  fi
-  if ! comments=$(bcr_fetch_pr_comments "$REPO" "$PR_NUMBER" 2>/dev/null) \
-     || ! open=$(qa_advisory_open "$comments" "${BOT_USER:-don-petry}") \
-     || ! open=$(jq -c '.[:5] | map(.body |= .[:4000])' <<< "$open" 2>/dev/null); then
-    echo "::warning::review-changes: could not read QA Lead advisories on PR #${PR_NUMBER} — this pass does not see them; the retry cron offers them again (#2487)" >&2
-    printf '[]'
-    return 0
-  fi
-  printf '%s' "$open"
-}
-
 fetch_pr_context() {
   # Base branch: _ci_required_checks reads the ruleset for the PR's ACTUAL target
   # branch. Some intents (fix-bot-comment, review-changes) do not receive BASE_REF

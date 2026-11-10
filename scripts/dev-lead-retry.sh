@@ -1539,13 +1539,13 @@ scan_pr_for_qa_advisories() {
   head_sha=$(jq -r '.head?.sha // empty' <<< "$pr_obj" 2>/dev/null || true)
   head_repo=$(jq -r '.head?.repo?.full_name // empty' <<< "$pr_obj" 2>/dev/null || true)
   pr_author=$(jq -r '.user?.login // empty' <<< "$pr_obj" 2>/dev/null || true)
-  if [ "$pr_state" != "open" ]; then
+  if [[ "$pr_state" != "open" ]]; then
     echo "0"; return 0
   fi
   # Authorship gate (#1311): only a PR dev-lead authored, from this repository.
   # Never the branch name, which any contributor can choose.
-  if [ -z "$pr_author" ] || [ "$pr_author" != "$(dev_lead_identity)" ] \
-     || [ "$head_repo" != "$repo" ]; then
+  if [[ -z "$pr_author" || "$pr_author" != "$(dev_lead_identity)" ]] \
+     || [[ "$head_repo" != "$repo" ]]; then
     echo "0"; return 0
   fi
   local labels_json
@@ -1590,7 +1590,7 @@ scan_pr_for_qa_advisories() {
 
   local pick cid decision attempt now_iso
   pick=$(jq -c 'first(.[] | select(.decision == "dispatch" or .decision == "escalate")) // empty' <<< "$decisions")
-  if [ -z "$pick" ]; then
+  if [[ -z "$pick" ]]; then
     echo "0"; return 0
   fi
   cid=$(jq -r '.id' <<< "$pick")
@@ -1602,9 +1602,9 @@ scan_pr_for_qa_advisories() {
     echo "0"; return 0
   fi
 
-  if [ "$decision" = "escalate" ]; then
+  if [[ "$decision" = "escalate" ]]; then
     echo "  [escalate] qa-advisory ${cid} on PR ${pr_number}: Escalate? yes → ${NEEDS_HUMAN_LABEL}, nothing applied" >&2
-    if [ "$DRY_RUN" = "true" ]; then
+    if [[ "$DRY_RUN" = "true" ]]; then
       echo "  [dry-run] would add ${NEEDS_HUMAN_LABEL} to PR ${pr_number} in ${repo} and record an escalated disposition" >&2
       echo "0"; return 0
     fi
@@ -1614,8 +1614,18 @@ scan_pr_for_qa_advisories() {
     if ! apply_hold_label "$repo" "$pr_number" "$NEEDS_HUMAN_LABEL" >&2; then
       echo "0"; return 0
     fi
-    if ! gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
-         -f body="$(qa_advisory_escalation_body "$cid")" >/dev/null 2>&1; then
+    # Retry the post: a lost disposition would let the label be re-applied after
+    # a human clears it (the advisory would still be undispositioned).
+    local posted=false try
+    for try in 1 2 3; do
+      if gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
+           -f body="$(qa_advisory_escalation_body "$cid")" >/dev/null 2>&1; then
+        posted=true
+        break
+      fi
+      [[ "$try" -lt 3 ]] && sleep "${QA_ADVISORY_POST_RETRY_SLEEP:-2}"
+    done
+    if [[ "$posted" != true ]]; then
       echo "  ::warning::qa-advisory retry: PR ${pr_number} in ${repo} is held for the escalated QA Lead advisory, but its disposition could not be posted" >&2
     fi
     echo "0"; return 0
@@ -1630,7 +1640,7 @@ scan_pr_for_qa_advisories() {
   now_iso="${NOW_ISO:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
   # Record the attempt BEFORE dispatching, so the next scan sees it as pending.
   local marker_id=""
-  if [ "$DRY_RUN" != "true" ]; then
+  if [[ "$DRY_RUN" != "true" ]]; then
     if ! marker_id=$(gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
          -f body="$(qa_advisory_retry_marker "$cid" "$attempt" "$now_iso")" \
          --jq '.id // empty' 2>/dev/null) || [[ ! "$marker_id" =~ ^[0-9]+$ ]]; then
@@ -1679,7 +1689,7 @@ scan_repo() {
         total_dispatched=$(( total_dispatched + dispatched ))
       fi
       # Undispositioned QA Lead advisories (#2487), under the same one-per-PR rule.
-      if [ "${dispatched:-0}" -eq 0 ]; then
+      if [[ "${dispatched:-0}" -eq 0 ]]; then
         dispatched=$(scan_pr_for_qa_advisories "$repo" "$pr_number")
         total_dispatched=$(( total_dispatched + dispatched ))
       fi

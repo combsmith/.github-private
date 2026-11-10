@@ -440,3 +440,37 @@ GHEOF
   grep -q 'lib/qa-advisory-retry.sh' "$f"
   grep -q 'QA_ADVISORIES_JSON=' "$f"
 }
+
+# export_qa_advisories behaviour (lives in the lib so it can be sourced alone)
+@test "export_qa_advisories: fetch failure gives [] and a warning" {
+  bcr_fetch_pr_comments() { return 1; }
+  export PR_NUMBER=1 REPO=o/r
+  run export_qa_advisories
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[]" ]]
+}
+
+@test "export_qa_advisories: caps at 5 advisories and 4000 body chars, drops escalated/dispositioned" {
+  export PR_NUMBER=1 REPO=o/r BOT_USER=don-petry
+  long=$(printf 'x%.0s' $(seq 1 5000))
+  list=()
+  for i in 1 2 3 4 5 6; do
+    list+=("$(_c "IC_a$i" "$(_advisory_body no "$long")" "2026-10-01T1$i:00:00Z")")
+  done
+  list+=("$(_c IC_esc "$(_advisory_body yes 'x')")")
+  list+=("$(_c IC_done "$(_advisory_body no 'x')")")
+  list+=("$(_c IC_d '<!-- dev-lead:advisory-disposition id=IC_done -->')")
+  COMMENTS="$(_list "${list[@]}")"
+  bcr_fetch_pr_comments() { printf '%s' "$COMMENTS"; }
+  run export_qa_advisories
+  [ "$status" -eq 0 ]
+  [ "$(jq -r 'length' <<< "$output")" = "5" ]
+  [ "$(jq -r 'map(.id) | index("IC_esc")' <<< "$output")" = "null" ]
+  [ "$(jq -r 'map(.body | length) | max' <<< "$output")" -le 4000 ]
+}
+
+@test "export_qa_advisories: dry run gives []" {
+  export PR_NUMBER=1 REPO=o/r DEV_LEAD_DRY_RUN=true
+  run export_qa_advisories
+  [ "$output" = "[]" ]
+}
