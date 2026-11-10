@@ -13,6 +13,8 @@
 #   • the fix-reviews thread enumeration (lib/open-review-threads.sh) seeing every
 #     unresolved thread across pages, reviewers and older reviews.
 
+bats_require_minimum_version 1.5.0
+
 SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
 LIB="$SCRIPT_DIR/scripts/lib/bot-thread-retry.sh"
 RETRY_SCRIPT="$SCRIPT_DIR/scripts/dev-lead-retry.sh"
