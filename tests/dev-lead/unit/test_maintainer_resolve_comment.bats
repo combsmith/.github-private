@@ -225,7 +225,9 @@ teardown() {
   body="$(bash -c "source '$MRC'; mrc_build_reply_body 'sonarqubecloud' 'a-maintainer' 'quality gate passed'")"
   # Encode the reply body as a JSON string value for the snapshot.
   reply="$(printf '%s' "$body" | jq -Rs .)"
-  json='{"comments":[{"author":{"login":"a-maintainer"},"body":'"$reply"',"isMinimized":false,"minimizedReason":""}]}'
+  # The script needs permission to minimize, so its poster is a trusted
+  # association; the gate honours the marker only from one (#1921).
+  json='{"comments":[{"author":{"login":"a-maintainer"},"authorAssociation":"COLLABORATOR","body":'"$reply"',"isMinimized":false,"minimizedReason":""}]}'
   run bash -c "source '$GATE'; check_maintainer_comments \"\$1\" donpetry-bot" _ "$json"
   [ "$status" -eq 0 ]
 }
