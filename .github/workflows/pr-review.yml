@@ -86,9 +86,10 @@ on:
 # (inherited from the caller's triggering event) and `inputs.*` (forwarded by
 # the stub), so its behaviour is unchanged.
 
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
 permissions:
   contents: read
-  pull-requests: write
   checks: read
 
 concurrency:
@@ -153,6 +154,10 @@ concurrency:
 
 jobs:
   review:
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: read
     runs-on: ubuntu-latest
     timeout-minutes: 60
     # Early exit conditions (avoids spinning up the runner for guaranteed no-ops):

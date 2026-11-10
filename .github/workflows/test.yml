@@ -45,6 +45,9 @@ jobs:
       - name: Run test.yml resilience guard
         run: bash tests/test_test_workflow_resilience.sh
 
+      - name: Run workflow token-permissions guard
+        run: bash tests/test_workflow_token_permissions.sh
+
       - name: Run sonarcloud workflow tests
         run: bash tests/test_sonarcloud_workflow.sh
 

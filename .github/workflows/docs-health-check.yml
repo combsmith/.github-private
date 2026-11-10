@@ -13,9 +13,10 @@ on:
         default: "90"
         type: string
 
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: docs-health-check
@@ -23,6 +24,9 @@ concurrency:
 
 jobs:
   health-check:
+    permissions:
+      contents: read
+      issues: write
     # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
     # (neutral, not red) and `fleet-paused` below reports why.
     if: vars.AGENTS_PAUSED != 'true'

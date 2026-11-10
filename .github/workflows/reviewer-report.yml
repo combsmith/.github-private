@@ -37,9 +37,10 @@ on:
         default: "7"
         type: string
 
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: reviewer-report-${{ inputs.org || 'combsmith' }}
@@ -47,6 +48,9 @@ concurrency:
 
 jobs:
   report:
+    permissions:
+      contents: read
+      issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:

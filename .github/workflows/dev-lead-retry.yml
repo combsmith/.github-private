@@ -52,11 +52,10 @@ on:
         default: "30"
         type: string
 
-# contents: write is required to create repository_dispatch events.
-# actions: read downloads the budget poller's `budget-poller-log` artifact (#2139).
 # No Claude credential here: the poller holds it; this workflow reads its output.
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
 permissions:
-  contents: write
   actions: read
 
 concurrency:
@@ -71,6 +70,11 @@ env:
 
 jobs:
   retry:
+    # contents: write is required to create repository_dispatch events.
+    # actions: read downloads the budget poller's `budget-poller-log` artifact (#2139).
+    permissions:
+      contents: write
+      actions: read
     # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
     # (neutral, not red) and `fleet-paused` below reports why.
     if: vars.AGENTS_PAUSED != 'true'
@@ -126,6 +130,7 @@ jobs:
   # the same events, and says why in one line. Inventory and rules: AGENTS.md
   # "Pausing the agent fleet" and scripts/lib/fleet-pause-registry.tsv.
   fleet-paused:
+    permissions: {}  # only prints a notice
     if: vars.AGENTS_PAUSED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 2

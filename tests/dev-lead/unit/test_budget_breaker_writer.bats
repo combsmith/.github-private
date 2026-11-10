@@ -1230,13 +1230,18 @@ types" ]
   run grep -nE "cron:[[:space:]]*['\"]0[[:space:]]" "$WORKFLOW"
   [ "$status" -eq 1 ]
 
-  # Top-level permissions are exactly contents: read and issues: write, and no
-  # job widens them.
-  local perms
+  # Top-level permissions are exactly contents: read (read-only workflow token,
+  # OpenSSF Scorecard Token-Permissions #216); the one job adds exactly
+  # issues: write for the notice, and nothing else widens them.
+  local perms jobperms
   perms="$(awk '/^permissions:/ {f=1; next} f && /^[A-Za-z]/ {f=0} f && /^  [a-z-]+:/ {sub(/^  /, ""); sub(/[[:space:]]*#.*/, ""); print}' "$WORKFLOW")"
-  [ "$perms" = "contents: read
+  [ "$perms" = "contents: read" ]
+  jobperms="$(awk '/^    permissions:/ {f=1; next} f && !/^      / {f=0} f && /^      [a-z-]+:/ {sub(/^      /, ""); sub(/[[:space:]]*#.*/, ""); print}' "$WORKFLOW")"
+  [ "$jobperms" = "contents: read
 issues: write" ]
-  [ "$(grep -cE '^[[:space:]]*permissions:' "$WORKFLOW")" = "1" ]
+  [ "$(grep -cE '^[[:space:]]*permissions:' "$WORKFLOW")" = "2" ]
+  [ "$(grep -cE '^permissions:' "$WORKFLOW")" = "1" ]
+  [ "$(grep -cE '^    permissions:' "$WORKFLOW")" = "1" ]
   run grep -nE 'write-all' "$WORKFLOW"
   [ "$status" -eq 1 ]
 

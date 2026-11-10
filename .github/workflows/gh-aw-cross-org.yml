@@ -9,10 +9,9 @@ on:
   repository_dispatch:
     types: [gh-aw-issue-triage, gh-aw-ci-failure]
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
+permissions: {}
 
 concurrency:
   # Serialise per issue or per PR within each source repo to avoid double-fixes.
@@ -42,6 +41,10 @@ env:
 
 jobs:
   dispatch:
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
     # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
     # (neutral, not red) and `fleet-paused` below reports why.
     if: vars.AGENTS_PAUSED != 'true'

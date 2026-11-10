@@ -9,18 +9,24 @@ on:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
 
-# Mirrors the validated permission set declared by the caller
-# (ci-failure-analyst.lock.yml): post a PR comment (pull-requests/issues: write),
-# read failed-run logs via gh run view (actions: read) and the PR diff (contents: read).
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
 permissions:
   contents: read
-  issues: write
-  pull-requests: write
   actions: read
   checks: read
 
 jobs:
   analyze:
+    # Mirrors the validated permission set declared by the caller
+    # (ci-failure-analyst.lock.yml): post a PR comment (pull-requests/issues: write),
+    # read failed-run logs via gh run view (actions: read) and the PR diff (contents: read).
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      actions: read
+      checks: read
     # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
     # (neutral, not red).
     # No `fleet-paused` notice job here: the canary promotion gate counts every

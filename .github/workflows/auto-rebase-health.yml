@@ -30,9 +30,10 @@ on:
         default: "7"
         type: string
 
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
 permissions:
   contents: read
-  issues: write
   pull-requests: read
   actions: read
 
@@ -42,6 +43,11 @@ concurrency:
 
 jobs:
   report:
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

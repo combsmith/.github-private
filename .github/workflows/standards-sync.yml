@@ -6,9 +6,10 @@ on:
     - cron: '11 9 * * 1'
   workflow_dispatch: {}
 
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: standards-sync
@@ -16,6 +17,9 @@ concurrency:
 
 jobs:
   sync:
+    permissions:
+      contents: read
+      issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

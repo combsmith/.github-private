@@ -105,18 +105,23 @@ setup() {
   [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-next"* ]]
   [[ "$output" == *"force_review: \${{ inputs.force_review || '' }}"* ]]
   # Column-0 comments before the top-level permissions: key stay in the on: block
-  # (anti-hidden-trigger). The permissions VALUES are top-level here (not job-level)
-  # so they are not part of this job's frozen region.
-  [[ "$output" == *"Granted to the called reusable"* ]]
+  # (anti-hidden-trigger).
+  [[ "$output" == *"Workflow-level token stays read-only"* ]]
+  # The write grant lives on the job since #216 (top-level token is read-only), so
+  # it is part of this job's frozen region: a silent escalation must drift.
+  [[ "$output" == *"pull-requests: write"* ]]
   [[ "$output" != *"secrets: inherit"* ]]
 }
 
-@test "extract (legacy): ci-failure-analyst analyze job yields the on block and the channel-pinned uses only" {
+@test "extract (legacy): ci-failure-analyst analyze job yields the on block, its permissions, and the channel-pinned uses" {
   run extract_forwarding_block "${REPO_ROOT}/.github/workflows/ci-failure-analyst.lock.yml" "analyze"
   [ "$status" -eq 0 ]
   [[ "$output" == on:* ]]
   [[ "$output" == *"uses: combsmith/.github-private/.github/workflows/ci-failure-analyst-reusable.yml@ci-failure-analyst/v1-stable"* ]]
   [[ "$output" != *"with:"* ]]
+  # Job-level write grants (moved off the workflow level in #216) are frozen.
+  [[ "$output" == *"pull-requests: write"* ]]
+  [[ "$output" == *"issues: write"* ]]
   # if: and secrets: are excluded from the frozen region.
   [[ "$output" != *"CLAUDE_CODE_OAUTH_TOKEN"* ]]
   [[ "$output" != *"conclusion == 'failure'"* ]]

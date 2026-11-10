@@ -52,15 +52,20 @@ on:
     # pr-review-mention.yml). Payload: { pr_url, force_review }.
     types: [pr-review-mention]
 
-# Granted to the called reusable's job (a reusable can be granted no more than
-# the calling job has). Mirrors pr-review.yml's own permissions block.
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
 permissions:
   contents: read
-  pull-requests: write
   checks: read
 
 jobs:
   review:
+    # Granted to the called reusable's job (a reusable can be granted no more than
+    # the calling job has). Mirrors pr-review.yml's own permissions block.
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: read
     # Ring-0 channel — see the header block for the dogfooding rationale.
     uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-next
     with:

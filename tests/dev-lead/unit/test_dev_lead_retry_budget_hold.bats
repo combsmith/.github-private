@@ -432,22 +432,40 @@ _assert_fail_open() {
   [ "$status" -eq 1 ]
 }
 
-@test "workflow (#2139 AC4): permissions are exactly contents: write + actions: read, none per job" {
+@test "workflow (#2139 AC4, #216): retry job gets exactly contents: write + actions: read; top level read-only" {
   # Read with awk and grep, not a YAML library: the unit job installs only Bats,
   # so importing PyYAML passed only while the runner image happened to ship it (#2162).
-  local top
+  # #216 (OpenSSF Scorecard Token-Permissions) moved the write scope off the
+  # workflow level onto the one job that dispatches; the retry job's effective
+  # token is unchanged and the fleet-paused notice job gets none.
+  local top retry
   top="$(awk '
     /^permissions:[[:space:]]*(#.*)?$/ { inblock = 1; next }   # the top-level key, block form
     inblock && /^[[:space:]]*(#.*)?$/  { next }                # blank line or comment
     inblock && /^[^[:space:]]/         { inblock = 0 }         # the next top-level key ends it
     inblock { sub(/[[:space:]]+#.*$/, ""); gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print }
   ' "$RETRY_WORKFLOW" | LC_ALL=C sort)"
-  # Exactly these two scopes at the top level: nothing missing, nothing extra.
-  [ "$top" = "$(printf 'actions: read\ncontents: write')" ]
-  # One `permissions` key in the whole file, and it is that top-level block: a
-  # per-job block, or an inline top-level value such as `read-all`, fails here.
-  [ "$(grep -cE '^[[:space:]]*permissions[[:space:]]*:' "$RETRY_WORKFLOW")" -eq 1 ]
+  # Exactly this read scope at the top level: nothing missing, nothing extra.
+  [ "$top" = "actions: read" ]
+  retry="$(awk '
+    /^  retry:[[:space:]]*(#.*)?$/                       { injob = 1; next }
+    injob && /^  [^[:space:]#]/                          { injob = 0 }   # the next job ends it
+    injob && /^    permissions:[[:space:]]*(#.*)?$/      { inblock = 1; next }
+    inblock && /^[[:space:]]*(#.*)?$/                    { next }
+    inblock && !/^      /                                { inblock = 0 }
+    inblock { sub(/[[:space:]]+#.*$/, ""); gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print }
+  ' "$RETRY_WORKFLOW" | LC_ALL=C sort)"
+  # Exactly these two scopes on the retry job: nothing missing, nothing extra.
+  [ "$retry" = "$(printf 'actions: read\ncontents: write')" ]
+  # Three `permissions` keys in the whole file: the top-level block, the retry
+  # job's block, and the fleet-paused job's empty grant. Any other per-job block,
+  # or an inline value such as `read-all`/`write-all`, fails here.
+  [ "$(grep -cE '^[[:space:]]*permissions[[:space:]]*:' "$RETRY_WORKFLOW")" -eq 3 ]
   [ "$(grep -cE '^permissions:[[:space:]]*(#.*)?$' "$RETRY_WORKFLOW")" -eq 1 ]
+  [ "$(grep -cE '^    permissions:[[:space:]]*(#.*)?$' "$RETRY_WORKFLOW")" -eq 1 ]
+  [ "$(grep -cE '^    permissions:[[:space:]]*\{\}[[:space:]]*(#.*)?$' "$RETRY_WORKFLOW")" -eq 1 ]
+  run grep -nE 'write-all|read-all' "$RETRY_WORKFLOW"
+  [ "$status" -eq 1 ]
 }
 
 @test "workflow (#2139 AC4): secrets referenced are only the existing GitHub PATs/token" {

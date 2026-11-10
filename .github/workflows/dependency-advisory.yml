@@ -21,9 +21,10 @@ on:
       - 'build.gradle'
       - 'build.gradle.kts'
 
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: dependency-advisory-${{ github.event.pull_request.number }}
@@ -31,6 +32,9 @@ concurrency:
 
 jobs:
   advisory:
+    permissions:
+      contents: read
+      pull-requests: write
     # AGENTS_PAUSED (#1525, #2249): with the fleet paused this job is skipped
     # (neutral, not red) and `fleet-paused` below reports why.
     if: vars.AGENTS_PAUSED != 'true'

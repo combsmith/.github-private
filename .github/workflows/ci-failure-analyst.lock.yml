@@ -11,9 +11,9 @@ on:
   check_run:
     types: [completed]
 
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
 permissions:
-  pull-requests: write
-  issues: write        # post/read PR comments via the Issues comments API
   actions: read
   contents: read
   checks: read
@@ -26,6 +26,12 @@ run-name: "CI Failure Analyst"
 
 jobs:
   analyze:
+    permissions:
+      pull-requests: write
+      issues: write        # post/read PR comments via the Issues comments API
+      actions: read
+      contents: read
+      checks: read
     # Skip non-failures and the analyst's own check run to prevent loops.
     if: >-
       github.event.check_run.conclusion == 'failure' &&

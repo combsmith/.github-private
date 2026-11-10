@@ -31,9 +31,10 @@ on:
         required: false
         type: string
 
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: engine-token-liveness
@@ -41,6 +42,9 @@ concurrency:
 
 jobs:
   liveness:
+    permissions:
+      contents: read
+      issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

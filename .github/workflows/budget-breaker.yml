@@ -97,9 +97,10 @@ on:
     types: [completed]
   # No workflow_dispatch, and no other trigger: see the header.
 
+# Workflow-level token stays read-only; write scopes are granted per job below
+# (least privilege, OpenSSF Scorecard Token-Permissions, #216).
 permissions:
   contents: read
-  issues: write  # the trip / clear notice on the tracking issue
 
 # One run at a time, and at most one waiting: GitHub keeps a single pending run
 # per group and a newer arrival replaces it. The replaced run loses nothing: the
@@ -112,6 +113,9 @@ concurrency:
 
 jobs:
   breaker:
+    permissions:
+      contents: read
+      issues: write  # the trip / clear notice on the tracking issue
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
