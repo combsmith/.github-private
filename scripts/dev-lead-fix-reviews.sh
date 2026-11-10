@@ -3986,7 +3986,8 @@ rebase_record_synced_stubs() {
 # the base changed the path, else the pre-pass content), commits the restores as
 # one follow-up commit, pushes it the normal way, and posts one comment naming
 # each restored path. A path that cannot be restored, or a refused push, flags
-# the PR (flag_sync_stub_drift) with a comment that says the branch was pushed.
+# the PR (flag_sync_stub_drift) with a comment that says the branch was pushed,
+# and returns 1 so the caller stops instead of reporting the pass applied.
 rebase_restore_synced_stubs() {
   [ "${SSG_REBASE_ACTIVE:-0}" = "1" ] || return 0
   local out="" rc=0 restored failed before
@@ -3999,7 +4000,7 @@ rebase_restore_synced_stubs() {
   if [ "$rc" -ne 0 ]; then
     echo "::error::Sync-stub guard: could not check the synced paths on standards-sync PR #${PR_NUMBER} after the rebase — flagging (#2232)"
     flag_sync_stub_drift "rebase" "" "$(ssg_rebase_unrestored_body "")"
-    return 0
+    return 1
   fi
   restored=$(printf '%s\n' "$out" | awk -F'\t' '$1 == "restored"')
   failed=$(printf '%s\n' "$out" | awk -F'\t' '$1 == "failed" { print $2 "\t" $4 }')
@@ -4022,6 +4023,7 @@ $(ssg_rebase_restored_body "$restored")" \
   if [ -n "$failed" ]; then
     echo "::error::Sync-stub guard: the rebase left synced path(s) on PR #${PR_NUMBER} that could not be restored — flagging (#2232)"
     flag_sync_stub_drift "rebase" "$failed" "$(ssg_rebase_unrestored_body "$failed")"
+    return 1
   fi
   return 0
 }
@@ -4771,7 +4773,8 @@ case "$INTENT_TYPE" in
       fi
       # Sync-stub guard (#2232): the rebase is pushed; restore any synced path it
       # left equal to neither the PR's nor the base branch's content.
-      rebase_restore_synced_stubs
+      # A flagged (held) pass must never go on to report status=applied.
+      rebase_restore_synced_stubs || exit 1
       # Post-resolution integrity gate (#1890 AC #7): a corrupted resolution
       # (#1482/#1485) must never be reported applied and allowed to merge. Escalate
       # to a human immediately — corruption is not something to retry.

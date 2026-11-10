@@ -284,6 +284,7 @@ jobs:
             tests/dev-lead/unit/test_deferred_thread_verify.bats \
             tests/dev-lead/unit/test_fewshot_assemble.bats \
             tests/dev-lead/unit/test_net_diff_guard.bats \
+            tests/dev-lead/unit/test_sync_stub_guard_rebase.bats \
             tests/dev-lead/unit/test_git_history.bats \
             tests/dev-lead/unit/test_verify_approval_review.bats \
             tests/dev-lead/unit/test_usage_telemetry.bats \
