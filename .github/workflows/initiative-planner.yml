@@ -190,7 +190,7 @@ jobs:
           echo "PLAN_PATH=${{ runner.temp }}/plan.json" >> "$GITHUB_ENV"
 
       - name: Install Python jsonschema
-        run: pip install --quiet 'jsonschema>=4'
+        run: pip install --quiet --require-hashes --only-binary ":all:" -r requirements/ci/jsonschema.txt
 
       # ── reviewed-plan handoff (#604) ────────────────────────────────────────
       # When a maintainer supplies a prior dry-run's run ID, load THAT run's

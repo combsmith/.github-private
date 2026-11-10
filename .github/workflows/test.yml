@@ -38,7 +38,7 @@ jobs:
               sleep "$delay"
             done
           }
-          retry pip install "pyyaml==6.0.3" --only-binary=":all:" --quiet
+          retry pip install --require-hashes --only-binary=":all:" --quiet -r requirements/ci/pyyaml.txt
           retry sudo apt-get update
           retry sudo apt-get install -y yq
 
