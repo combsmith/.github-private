@@ -669,11 +669,10 @@ event-filtered, no-runner skips.
 - Post-collapse window: `2026-10-10T01:16:00Z..2026-10-14T01:16:00Z`, 4 days,
   from the markets#513 merge.
 - `agent-ingress.yml` had 382 runs. Each of the five deleted stubs had 0.
-- A job counts as **billed** when `runner_name` is non-empty. Billed
+- **Billed-job and billed-minute method:** A job counts as **billed** when `runner_name` is non-empty. Billed
   minutes are per job, each rounded up to a whole minute. This
-  measures billed usage, not billing: `combsmith/markets` is a public
-  repository, and public-repository Actions jobs accrue no billable minutes.
-  Read the figures below as a proxy for billed load.
+  applies the same counting method as the billing engine: `combsmith/markets` is a public
+  repository, and public-repository Actions jobs accrue no billable minutes, but the measurements use the billed-job and billed-minute method.
 - Job sample: 1340 of the 1342 baseline runs (§1a; 2 returned no jobs), and all
   382 post-collapse runs.
 
