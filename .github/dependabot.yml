@@ -15,3 +15,19 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # pip — hash-pinned CI requirements (#1240, OpenSSF Scorecard Pinned-Dependencies).
+  # Workflows install Python tooling only via `pip install --require-hashes -r
+  # requirements/ci/<set>.txt`. Dependabot bumps the versions and regenerates the hashes.
+  - package-ecosystem: "pip"
+    directory: "/requirements/ci"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "security"
+      - "dependencies"
+    groups:
+      pip:
+        patterns:
+          - "*"
