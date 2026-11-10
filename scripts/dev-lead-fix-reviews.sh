@@ -3991,7 +3991,10 @@ rebase_record_synced_stubs() {
 rebase_restore_synced_stubs() {
   [ "${SSG_REBASE_ACTIVE:-0}" = "1" ] || return 0
   local out="" rc=0 restored failed before
-  git fetch -q origin "+refs/heads/${SSG_REBASE_BASE}:refs/remotes/origin/${SSG_REBASE_BASE}" >/dev/null 2>&1 || true
+  # A failed base fetch leaves origin/<base> possibly stale: treat as unverified.
+  if ! git fetch -q origin "+refs/heads/${SSG_REBASE_BASE}:refs/remotes/origin/${SSG_REBASE_BASE}" >/dev/null 2>&1; then
+    SSG_REBASE_UNKNOWN=1
+  fi
   if [ "${SSG_REBASE_UNKNOWN:-0}" = "1" ]; then
     rc=2
   else
@@ -4007,7 +4010,7 @@ rebase_restore_synced_stubs() {
   if [ -n "$restored" ]; then
     setup_git_identity
     before="$(git rev-parse HEAD)"
-    if git commit -q -m "chore: restore synced stubs after rebase [skip ci-relay]" \
+    if git commit -q -m "chore: restore synced stubs after rebase [skip ci-relay]" -m "$(dev_lead_stamp_trailer)" \
        && push_no_clobber && verify_push_landed; then
       echo "::notice::Sync-stub guard: restored $(printf '%s\n' "$restored" | grep -c .) synced path(s) on PR #${PR_NUMBER} after the rebase (#2232)"
       gh pr comment "$PR_NUMBER" --repo "$REPO" --body "<!-- dev-lead-sync-stub-restore pr=${PR_NUMBER} -->
