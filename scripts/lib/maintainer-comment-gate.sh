@@ -31,10 +31,12 @@
 #   (codeant-ai, qodo-code-review, and so on), EXCEPT the exemption set recorded
 #   in ADR-0012 (#2209), which narrows #1813's "every PR issue comment":
 #     • our bot login;
-#     • a body carrying one of our registered automation markers — our own
-#       disposition/ack/note replies (so the agent never has to answer itself)
-#       and the `<!-- auto-rebase-conflict: ... -->` sentinel (the conflict
-#       already blocks the merge, so counting the comment gates it twice);
+#     • from an OWNER/MEMBER/COLLABORATOR only (#1921): a body carrying one of our
+#       registered automation markers — our own disposition/ack/note replies (so
+#       the agent never has to answer itself) and the
+#       `<!-- auto-rebase-conflict: ... -->` sentinel (the conflict already
+#       blocks the merge, so counting the comment gates it twice). From any other
+#       author the marker does nothing, so a pasted marker cannot hide a finding;
 #     • from an OWNER/MEMBER/COLLABORATOR only: a review request, matched on the
 #       whole trimmed body (`@<bot user>`, optionally `please review` with an
 #       optional `.`/`!`, optionally the Claude Code footer) and nothing looser;
@@ -88,6 +90,9 @@ set -euo pipefail
 # reply must not itself become a fresh undispositioned blocker.
 # `auto-rebase-conflict:` is the auto-rebase sentinel (#2209). A conflict already
 # blocks the merge, so the comment reporting it is not a second blocker.
+# The gate honours these markers only from a trusted author association
+# (agent_marked in _MAINTAINER_GATE_SCOPE_JQ_DEFS, #1921). Our own bot login is
+# exempt by login, without any marker.
 readonly _MAINTAINER_GATE_AGENT_MARKERS='<!-- (pr-review-agent|pr-review-claim|persona:|dev-lead|dependency-advisory|maintainer-resolve|auto-rebase-conflict:)[^>]*-->'
 
 # The gate's scope (#2209, ADR-0012) as jq definitions, shared by
@@ -103,8 +108,15 @@ readonly _MAINTAINER_GATE_AGENT_MARKERS='<!-- (pr-review-agent|pr-review-claim|p
 #                    Anchored at both ends: any other text keeps it in scope.
 #   opted_out      — from a trusted author, the body carries
 #                    `<!-- maintainer:not-a-finding -->`.
-#   in_gate_scope  — not our bot login, no registered marker, and neither of the
-#                    two exemptions above.
+#   agent_marked   — from a trusted author, the body carries a registered
+#                    automation marker ($markers). The marker alone is not enough
+#                    (#1921): the repo is public, so anyone can paste one into a
+#                    comment. Our automation posts as don-petry (an OWNER/MEMBER)
+#                    or as our bot login (exempt by login), so requiring trust
+#                    costs it nothing. This matches the rule dev-lead-intent.sh
+#                    applies to the rebase sentinel. A missing association is
+#                    untrusted, so a marker without one blocks (fail closed).
+#   in_gate_scope  — not our bot login, and none of the three exemptions above.
 readonly _MAINTAINER_GATE_SCOPE_JQ_DEFS='
   def gate_bot_bare: ($botuser | if endswith("[bot]") then .[0:-5] else . end);
   def trusted_author:
@@ -119,10 +131,13 @@ readonly _MAINTAINER_GATE_SCOPE_JQ_DEFS='
   def opted_out:
     trusted_author
     and ((.body // "") | tostring | contains("<!-- maintainer:not-a-finding -->"));
+  def agent_marked:
+    trusted_author
+    and ((.body // "") | tostring | test($markers));
   def in_gate_scope:
     (.author?.login // "" | tostring) as $l
     | ($l != $botuser and $l != gate_bot_bare)
-      and (((.body // "") | tostring | test($markers)) | not)
+      and (agent_marked | not)
       and (review_request | not)
       and (opted_out | not);
 '
