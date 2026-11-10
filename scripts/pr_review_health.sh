@@ -226,6 +226,7 @@ read -r dur_n dur_min dur_p50 dur_p95 dur_max < <(echo "$runs_json" | jq -r '
 # ---------------------------------------------------------------------------
 # 3. Helpers
 # ---------------------------------------------------------------------------
+# Format seconds as a human-readable duration (e.g., "5m30s" or "45s").
 fmt_dur() {
   local s=$1
   if [ "$s" -ge 60 ]; then
@@ -235,6 +236,24 @@ fmt_dur() {
   fi
 }
 
+# llm_quota_refused <file>... — 0 when a FAILED Claude call's captured output
+# reads as a quota / usage-limit refusal (#2446), e.g. "You've hit your weekly
+# limit · resets 4pm (UTC)" or an HTTP 429. Only consulted after a non-zero exit,
+# so a successful analysis that merely discusses rate limits is never matched.
+# Narrower than engine.sh's _rate_limit_pattern on purpose: this script does not
+# source engine.sh, and anything not matched here still fails the step.
+llm_quota_refused() {
+  # Detect if a failed Claude call was refused due to quota or rate-limiting.
+  local f files=()
+  for f in "$@"; do
+    [[ -s "$f" ]] && files+=("$f")
+  done
+  [[ "${#files[@]}" -gt 0 ]] || return 1
+  grep -qiE "hit your ([a-z]+ )?limit|reached your ([a-z]+ )?limit|[0-9]+-[a-z]+ limit reached|usage limit|too many requests|quota (exceeded|exhausted|reached)|out of (credits|tokens)|overloaded_error|([^0-9]|^)(429|529)([^0-9]|$)" \
+    "${files[@]}"
+}
+
+# Return an emoji icon representing the workflow conclusion status.
 conclusion_icon() {
   case "$1" in
     success)   echo "✅" ;;
@@ -246,7 +265,6 @@ conclusion_icon() {
 }
 
 # overall is the pre-computed status fed as a hint to the LLM prompt below.
-# shellcheck disable=SC2034
 if [ "$failed_runs" -eq 0 ]; then
   overall="HEALTHY"
 elif [ "$(echo "$failure_rate > 50" | bc)" -eq 1 ]; then
@@ -275,6 +293,12 @@ RUNS_SUMMARY=$(echo "$runs_json" | jq -r '
 ')
 LOG_DIR="${LOG_DIR:-}"
 
+logs_file=""
+llm_out=""
+llm_err=""
+# Registered before the first mktemp so every exit path (including a failed
+# second mktemp or a failed report append) removes whatever was created.
+trap 'rm -f "$logs_file" "$llm_out" "$llm_err"' EXIT
 logs_file=$(mktemp)
 # One jq pass over failed runs; append each log file in the same order
 while IFS=$'\t' read -r run_id run_meta; do
@@ -346,16 +370,20 @@ if [ "${total_sweep_ticks:-0}" -gt 0 ] && [ "$sweep_ticks" -lt "$total_sweep_tic
 fi
 
 echo "Invoking Claude for log analysis..."
-# Claude writes errors to stdout (not stderr), so they'd silently land in
-# $REPORT_FILE with the stdout redirect below.  Wrap in `if !` so a non-zero
-# exit surfaces the file contents to the Actions log before aborting.
-if ! claude --print --model "$(ai_model_for_family sonnet)" --no-session-persistence >> "$REPORT_FILE" <<PROMPT
+# Claude writes errors to stdout (not stderr), so the output is captured to temp
+# files and only appended to $REPORT_FILE on success — an error line must never
+# be published as if it were analysis.
+llm_out=$(mktemp)
+llm_err=$(mktemp)
+if claude --print --model "$(ai_model_for_family sonnet)" --no-session-persistence \
+  > "$llm_out" 2> "$llm_err" <<PROMPT
 You are analyzing GitHub Actions workflow run logs for the PR Review Agent.
 
 ## Context
 - Workflow: \`${WORKFLOW_FILE}\` in repo \`${WORKFLOW_REPO}\`
 - Analysis window: last ${LOOKBACK_DAYS} days (all runs fetched via pagination)
 - Report date: ${TODAY}
+- Pre-computed health status: \`${overall}\`
 - Total runs fetched: ${total_runs} | Successful: ${success_runs} | Failed: ${failed_runs} | Cancelled: ${cancelled_runs}
 - Run duration across ${dur_n} completed run(s): p50 $(fmt_dur "$dur_p50") | p95 $(fmt_dur "$dur_p95") (min $(fmt_dur "$dur_min") / max $(fmt_dur "$dur_max"))
 
@@ -420,12 +448,23 @@ Single line: \`Health: X/10 — <one-sentence verdict>\`
 Output ONLY the markdown report — no preamble or commentary outside the report sections.
 PROMPT
 then
+  cat "$llm_err" >&2
+  cat "$llm_out" >> "$REPORT_FILE"
+elif llm_quota_refused "$llm_out" "$llm_err"; then
+  # Quota / usage-limit refusal (#2446): the provider declined the call, the
+  # health check itself is fine. Keep the deterministic sections, say why the
+  # analysis is missing, and exit 0 so this step does not fail the job and skip
+  # the runaway / stall / merge-ready scans that follow (they make no model call).
+  echo "::warning::Claude log analysis skipped — the call was refused for quota / usage limit. Deterministic report sections are still published. CLI output: $(cat "$llm_out" "$llm_err" | head -c 300 | tr '\n' ' ')"
+  {
+    printf '## Log analysis skipped\n\n'
+    printf '_The Claude log-analysis call was refused for quota / usage limit, so this report carries only the deterministic sections above. The model analysis returns on the next run with budget._\n'
+  } >> "$REPORT_FILE"
+else
   echo "::error::Claude invocation failed. CLI output follows:"
-  cat "$REPORT_FILE" >&2
-  rm -f "$logs_file"
+  cat "$llm_out" "$llm_err" >&2
   exit 1
 fi
-rm -f "$logs_file"
 
 [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "$REPORT_FILE" ] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
 
