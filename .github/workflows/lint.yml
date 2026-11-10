@@ -16,6 +16,9 @@ on:
       - 'evals/**'
       - 'release/**'
       - '.gitleaks.toml'
+      # Hash-pinned pip requirements installed by the jobs below (#1240), so a
+      # Dependabot bump of requirements/ci/ is exercised before it merges.
+      - 'requirements/**'
   # Post-merge coverage parity with `unit` (#1486, epic #1402): re-run the bats
   # suite against actual trunk state after every merge so shell-script behavioral
   # regressions surface on `main`, not just on PRs. Paths are scoped to the
@@ -102,7 +105,7 @@ jobs:
         run: sudo apt-get install -y bats
 
       - name: Install Python deps (validator tests)
-        run: pip3 install --quiet 'jsonschema>=4' pyyaml
+        run: pip3 install --quiet --require-hashes --only-binary ":all:" -r requirements/ci/jsonschema.txt -r requirements/ci/pyyaml.txt
 
       - name: Install markdownlint-cli2 (behavioral regression test)
         run: npm install -g markdownlint-cli2@0.23.2
@@ -182,6 +185,7 @@ jobs:
             tests/test_decision_brief_workflow.bats \
             tests/test_oversized_pr.bats \
             tests/test_dependabot.bats \
+            tests/test_pip_hash_pinning.bats \
             tests/dependency_advisory.bats \
             tests/test_feature_ideation.bats \
             tests/test_apply_repo_settings.bats \
@@ -453,7 +457,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install PyYAML
-        run: pip3 install --quiet pyyaml
+        run: pip3 install --quiet --require-hashes --only-binary ":all:" -r requirements/ci/pyyaml.txt
 
       - name: Validate agent profile frontmatter
         run: |
@@ -507,7 +511,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install Python deps
-        run: pip3 install --quiet 'jsonschema>=4' pyyaml
+        run: pip3 install --quiet --require-hashes --only-binary ":all:" -r requirements/ci/jsonschema.txt -r requirements/ci/pyyaml.txt
 
       - name: Validate persona manifests
         # Use local schema that implements ADR-0006: shared-runtime personas
@@ -536,7 +540,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Python deps
-        run: pip3 install --quiet 'jsonschema>=4'
+        run: pip3 install --quiet --require-hashes --only-binary ":all:" -r requirements/ci/jsonschema.txt
 
       - name: Validate per-case eval schema conformance across the tree
         run: python3 evals/validate-cases.py --schema-tree evals
@@ -561,7 +565,7 @@ jobs:
           persist-credentials: false
 
       - name: Install PyYAML
-        run: pip3 install --quiet "pyyaml==6.0.3" --only-binary=":all:"
+        run: pip3 install --quiet --require-hashes --only-binary=":all:" -r requirements/ci/pyyaml.txt
 
       - name: Validate interaction contracts
         run: python3 interaction-contracts/validate-interaction-contracts.py .
@@ -611,7 +615,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install PyYAML
-        run: pip3 install --quiet pyyaml
+        run: pip3 install --quiet --require-hashes --only-binary ":all:" -r requirements/ci/pyyaml.txt
 
       - name: Verify live persona addressing teams
         env:
@@ -632,7 +636,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install PyYAML
-        run: pip3 install --quiet pyyaml
+        run: pip3 install --quiet --require-hashes --only-binary ":all:" -r requirements/ci/pyyaml.txt
 
       - name: Verify persona identity ↔ workflow wiring
         run: bash scripts/verify-persona-identity.sh personas

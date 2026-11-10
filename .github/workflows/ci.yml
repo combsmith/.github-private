@@ -31,7 +31,7 @@ jobs:
 
       - name: Lint YAML
         run: |
-          pip install --quiet --only-binary :all: "yamllint==1.38.0" # v1.38.0
+          pip install --quiet --require-hashes --only-binary :all: -r requirements/ci/yamllint.txt  # yamllint==1.38.0, hash-pinned (#1240)
           shopt -s extglob
           yamllint -c <(cat <<'YAMLLINTRC'
           extends: default
