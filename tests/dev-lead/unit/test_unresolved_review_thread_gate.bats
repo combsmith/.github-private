@@ -46,8 +46,9 @@ _run_check() {
   (head -n 1 "$GATE" || true) | grep -q "^#!/usr/bin/env bash"
 }
 
-@test "Unresolved-thread gate: script uses set -euo pipefail" {
-  grep -q "^set -euo pipefail" "$GATE"
+@test "Unresolved-thread gate: enables set -euo pipefail only in the standalone block, not at top level (sourced-safe)" {
+  ! grep -q "^set -euo pipefail" "$GATE"
+  grep -q "^  set -euo pipefail" "$GATE"
 }
 
 @test "Unresolved-thread gate: defines check_unresolved_review_threads function" {

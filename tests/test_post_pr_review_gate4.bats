@@ -206,29 +206,41 @@ write_verdict() {
 
 # ── Pre-POST recheck: clean at the initial gate, blocked at the recheck ──────
 
-@test "recheck: clean initial snapshot then unresolved thread → NOT approved, recheck escalation posted (#1766)" {
+@test "recheck: clean initial snapshot then unresolved thread → NOT approved, routed to AI-delegation fix-request (#1766)" {
   export URT_GQL_RECHECK_MODE="unresolved"
   export HOLD_LABEL_PRESENT=1
   local vf; vf=$(write_verdict approve LOW)
   run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
   echo "$output" >&2
-  [ "$status" -eq 101 ]
+  [ "$status" -eq 0 ]
   [ ! -s "$APPROVE_LOG" ]
   [[ "$output" == *"gate4 (recheck)"* ]]
   grep -qi 'unresolved review thread' "$COMMENT_OUT"
-  grep -qi 're-check immediately before approval' "$COMMENT_OUT"
+  grep -qi 'fix requested' "$COMMENT_OUT"
 }
 
-@test "recheck: clean initial snapshot then incomplete (paginated) → NOT approved, fail-closed escalation posted (#1766)" {
+@test "recheck: clean initial snapshot then incomplete (paginated) → NOT approved, fail-closed fix-request (#1766)" {
   export URT_GQL_RECHECK_MODE="paginated"
   export HOLD_LABEL_PRESENT=1
   local vf; vf=$(write_verdict approve LOW)
   run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
   echo "$output" >&2
-  [ "$status" -eq 101 ]
+  [ "$status" -eq 0 ]
   [ ! -s "$APPROVE_LOG" ]
   [[ "$output" == *"could not be re-enumerated"* ]]
   grep -qi 'could not be re-enumerated' "$COMMENT_OUT"
+  grep -qi 'fix requested' "$COMMENT_OUT"
+}
+
+@test "recheck: unresolved thread with AI delegation disabled → human escalation (exit 101)" {
+  export URT_GQL_RECHECK_MODE="unresolved"
+  export HOLD_LABEL_PRESENT=1
+  export AI_DELEGATION_ENABLED="false"
+  local vf; vf=$(write_verdict approve LOW)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2
+  [ "$status" -eq 101 ]
+  [ ! -s "$APPROVE_LOG" ]
 }
 
 # ── The gate only governs approvals: an escalate verdict is untouched ────────
