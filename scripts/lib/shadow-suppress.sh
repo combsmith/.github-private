@@ -30,7 +30,7 @@
 #   1 if shadow mode is inactive (post as normal)
 shadow_mode_active() {
   local v="${DEV_LEAD_SHADOW_MODE:-}"
-  v="$(printf '%s' "$v" | tr '[:upper:]' '[:lower:]')"
+  v="${v,,}"
   case "$v" in
     ""|false|0|no|off) return 1 ;;
     *) return 0 ;;
@@ -60,6 +60,7 @@ shadow_apply_suppression() {
   export DEV_LEAD_DRY_RUN="true"
 
   export SHADOW_OUTPUT_FILE="${SHADOW_OUTPUT_FILE:-/tmp/dev-lead-shadow-output.txt}"
+  mkdir -p "$(dirname "$SHADOW_OUTPUT_FILE")" 2>/dev/null || true
   printf '[shadow] PR-output suppression active for this run (%s)\n' \
     "$(date -u +%FT%TZ 2>/dev/null || echo now)" >> "$SHADOW_OUTPUT_FILE" 2>/dev/null || true
 

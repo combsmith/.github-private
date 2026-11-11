@@ -609,7 +609,7 @@ main() {
     envsubst < "$template_path" > "$prompt_file"
   fi
 
-  if [ "$DEV_LEAD_DRY_RUN" = "true" ] && ! shadow_mode_active; then
+  if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
     echo "[dry-run] fix-issue: would implement issue #${ISSUE_NUMBER} using prompt: $prompt_file"
     rm -f "${prompt_file:-}"
     exit 0
@@ -639,13 +639,7 @@ main() {
   pre_engine_sha=$(git rev-parse HEAD)
 
   local engine_rc=0
-  local capture_file="${SHADOW_OUTPUT_FILE:-}"
-  if [ -n "$capture_file" ]; then
-    run_writer_with_fallback "$prompt_file" "fix-issue" 2>&1 | tee -a "$capture_file"
-    engine_rc="${PIPESTATUS[0]}"
-  else
-    run_writer_with_fallback "$prompt_file" "fix-issue" || engine_rc=$?
-  fi
+  run_writer_with_fallback "$prompt_file" "fix-issue" || engine_rc=$?
   if [ "$engine_rc" -ne 0 ]; then
     # Unified failure handler: classifies the cause, surfaces it on the issue
     # (marker + comment + run link + redacted snippet), and decides retry vs.

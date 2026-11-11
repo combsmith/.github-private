@@ -487,7 +487,7 @@ build_and_run() {
     printf '%s\n' "${out}${rest}" > "$prompt_file"
   fi
 
-  if [ "$DEV_LEAD_DRY_RUN" = "true" ] && ! shadow_mode_active; then
+  if [ "$DEV_LEAD_DRY_RUN" = "true" ]; then
     echo "[dry-run] would run engine with prompt: $prompt_file ($(wc -l < "$prompt_file") lines)"
     rm -f "${prompt_file:-}"
     return 0
@@ -509,13 +509,7 @@ build_and_run() {
       PASS_REPLIES_UNKNOWN=1
     fi
   fi
-  local capture_file="${SHADOW_OUTPUT_FILE:-}"
-  if [ -n "$capture_file" ]; then
-    PATH="$engine_path" run_writer_with_fallback "$prompt_file" "${INTENT_TYPE:-}" 2>&1 | tee -a "$capture_file"
-    rc="${PIPESTATUS[0]}"
-  else
-    PATH="$engine_path" run_writer_with_fallback "$prompt_file" "${INTENT_TYPE:-}" || rc=$?
-  fi
+  PATH="$engine_path" run_writer_with_fallback "$prompt_file" "${INTENT_TYPE:-}" || rc=$?
   [ -n "$shim_dir" ] && rm -rf "$shim_dir"
   rm -f "${prompt_file:-}"
   return "$rc"
