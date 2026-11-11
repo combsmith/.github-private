@@ -48,7 +48,7 @@ anything:
    persona gains no capability and no cross-repo action.
 2. **What counts as an advisory.** A comment whose body starts with
    `<!-- persona:qa-lead -->`, from a trusted author association
-   (OWNER/MEMBER/COLLABORATOR, the #1921 bot-login exemption rule), with at least
+   (OWNER/MEMBER/COLLABORATOR, the #1921 association rule), with at least
    one bullet under "What I'd shore up". An out-of-scope note has no items and is
    not acted on. Only `qa-lead` is in scope. Other personas stay purely advisory
    until this path proves out. An untrusted author's `<!-- persona:` marker stays

@@ -37,9 +37,9 @@
 #                                   BOUND: it never dispatches again, however
 #                                   long it waits.
 #     escalate                      its `**Escalate?**` line says yes. dev-lead
-#                                   applies nothing; the sweep adds the
-#                                   dev-lead:needs-human hold and records an
-#                                   `outcome=escalated` disposition.
+#                                   applies nothing; the sweep records an
+#                                   `outcome=escalated` disposition and adds no
+#                                   hold.
 #     skip/retry-attempts-exhausted MAX_ATTEMPTS retries were sent and none
 #                                   produced a disposition. The PR is not held:
 #                                   an advisory never blocks merge.
@@ -199,7 +199,11 @@ export_qa_advisories() {
     return 0
   fi
   # Verify the PR author is dev-lead before exporting advisories.
-  pr_obj=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" 2>/dev/null || echo '{}')
+  if ! pr_obj=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" 2>/dev/null); then
+    echo "::warning::review-changes: could not read the PR author of #${PR_NUMBER} — this pass does not see QA Lead advisories; the retry cron offers them again (#2487)" >&2
+    printf '[]'
+    return 0
+  fi
   pr_author=$(jq -r '.user?.login // empty' <<< "$pr_obj" 2>/dev/null || true)
   # dev_lead_identity lives in dev-lead-retry.sh and is not defined in every
   # caller (the fix-reviews pass); fall back to DEV_LEAD_USER / the owner account.
@@ -210,11 +214,12 @@ export_qa_advisories() {
     dl_user="${DEV_LEAD_USER:-don-petry}"
   fi
   if [[ -z "$pr_author" || "$pr_author" != "$dl_user" ]]; then
+    [[ -n "$pr_author" ]] || echo "::warning::review-changes: PR #${PR_NUMBER} has no readable author — QA Lead advisories not exported (#2487)" >&2
     printf '[]'
     return 0
   fi
   if ! comments=$(bcr_fetch_pr_comments "$REPO" "$PR_NUMBER" 2>/dev/null) \
-     || ! open=$(qa_advisory_open "$comments" "${dl_user},${BOT_USER:-donpetry-bot}") \
+     || ! open=$(qa_advisory_open "$comments" "${dl_user},${BOT_USER:-donpetry-bot},donpetry-bot") \
      || ! open=$(jq -c '.[:5] | map(.body |= .[:4000])' <<< "$open" 2>/dev/null); then
     echo "::warning::review-changes: could not read QA Lead advisories on PR #${PR_NUMBER} — this pass does not see them; the retry cron offers them again (#2487)" >&2
     printf '[]'

@@ -312,7 +312,7 @@ GHEOF
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
 
-@test "sweep: Escalate? yes posts an escalated disposition even if the disposition post retries" {
+@test "sweep: Escalate? yes posts an escalated disposition and dispatches nothing" {
   export COMMENTS_RESPONSE
   COMMENTS_RESPONSE="$(_comments_page "$(_c IC_adv "$(_advisory_body yes 'x')")")"
   _setup_sweep

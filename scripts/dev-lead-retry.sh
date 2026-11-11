@@ -120,8 +120,8 @@ set -euo pipefail
 #   `dev-lead:advisory-disposition` reply on an open, unheld dev-lead PR, and
 #   sends the existing review-changes retry, whose pass applies or declines each
 #   item. A dispositioned advisory never dispatches again (lib/qa-advisory-retry.sh).
-#   On `Escalate? yes` it adds dev-lead:needs-human and records an escalated
-#   disposition instead. The advisory never blocks merge either way.
+#   On `Escalate? yes` it records an escalated disposition instead and adds no
+#   label. The advisory never blocks merge either way.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Escalation gate (#946): pr_has_escalation_label / NEEDS_HUMAN_REVIEW_LABEL.
@@ -1521,10 +1521,9 @@ scan_pr_for_unreplied_bot_threads() {
 #   dispatch — post a `dev-lead-qa-advisory-retry` marker, then send the existing
 #              dev-lead-reviews-retry with intent_type review-changes. If the
 #              dispatch fails, withdraw the marker.
-#   escalate — `Escalate? yes`: add dev-lead:needs-human, then post an
-#              `outcome=escalated` disposition so it is recorded and never acted on
-#              again. If the label cannot be added, post nothing, and the next scan
-#              retries. Nothing is applied.
+#   escalate — `Escalate? yes`: post an `outcome=escalated` disposition so it is
+#              recorded and never acted on again. No label or hold is added.
+#              Nothing is applied.
 # At most one action per PR per scan (one per-PR lane). Prints only the number of
 # dispatches to stdout. Everything else goes to stderr. Fails closed: 0 dispatches
 # on any read failure. The advisory is never a merge gate, so a skipped or
