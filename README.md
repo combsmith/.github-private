@@ -26,7 +26,7 @@ agents/                   # Copilot custom agent profiles (org-wide)
 prompts/                  # Prompt libraries used by workflows
 scripts/                  # Shell orchestration for GitHub Actions
 frameworks/               # Installed agentic frameworks (git subtree)
-  bmad-bgreat-suite/      # bmad-bgreat-suite @ ae8914e84b87: SRE and DevOps agents
+  bmad-bgreat-suite/      # bmad-bgreat-suite @ ae8914e84b87: SRE, DevOps, and Security agents
   bmad-method/            # BMAD-METHOD v6.8.0: multi-agent development lifecycle
   bmad-test-architecture/ # bmad-method-test-architecture-enterprise v1.19.0
 .github/workflows/        # Scheduled automation (PR review, health checks)

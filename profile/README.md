@@ -82,6 +82,8 @@ These are distinct from the `@mention` Copilot agents above.
 | [`pr-review-trigger.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/pr-review-trigger.yml) | PR review agent — cascading triage → deep → security review on pull requests. (`@mention` counterpart: [`pr-reviewer`](https://github.com/combsmith/.github-private/blob/main/agents/pr-reviewer.md).) |
 | [`release-notes.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/release-notes.yml) | Release-notes agent — drafts Keep-a-Changelog entries from merged PRs and opens a CHANGELOG PR |
 | [`stale-manager.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/stale-manager.yml) | Stale manager agent — warns and closes stale issues/PRs across the org |
+| [`budget-breaker.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/budget-breaker.yml) | Budget breaker — pauses the agent fleet when the fleet reports quota refusals and lifts its own pause at the reported reset; default off, logs the write it would make until armed (#2153) |
+| [`model-ab.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/model-ab.yml) | Manually dispatched Opus 5.5 vs 4.8 held-out A/B + liveness/effort probe |
 
 ## Agentic Frameworks
 
@@ -104,12 +106,10 @@ Scheduled reports and dashboards post as issues or workflow-run summaries for ma
 |---|---|
 | [`actions-fleet-monitor.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/actions-fleet-monitor.yml) | Actions fleet monitor — org-wide workflow token usage and run anomalies |
 | [`auto-rebase-health.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/auto-rebase-health.yml) | Daily auto-rebase health report (issue) — rebase success/failure trends |
-| [`budget-breaker.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/budget-breaker.yml) | Budget breaker — pauses the agent fleet when the fleet reports quota refusals and lifts its own pause at the reported reset; default off, logs the write it would make until armed (#2153) |
 | [`budget-poller.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/budget-poller.yml) | Dry-run Claude budget poller — reads the usage windows twice hourly, logs what the token-budget breaker would do (never sets a variable), and proves the feed is alive (#2029) |
 | [`daily-pr-review-health.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/daily-pr-review-health.yml) | Daily PR-review health check — flags PR-review agent failures as an issue |
 | [`docs-health-check.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/docs-health-check.yml) | Docs health check — flags stale/broken docs as an issue |
 | [`engine-token-liveness.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/engine-token-liveness.yml) | Engine-token liveness monitor — asserts dev-lead/pr-review caller stubs are not failing at the "Engine token preflight" step, and escalates a sustained fleet-wide outage that would otherwise go unalerted (#1587) |
-| [`model-ab.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/model-ab.yml) | Manually dispatched Opus 5.5 vs 4.8 held-out A/B + liveness/effort probe |
 | [`premature-closure-audit.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/premature-closure-audit.yml) | Premature-closure audit — flags issues closed as completed with no merged closing PR, and OPEN issues carrying an unbacked completion claim (#1445) |
 | [`reviewer-report.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/reviewer-report.yml) | Reviewer scorecard (per workflow-run summary) — per-reviewer PR-review activity |
 | [`skill-eval-report.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/skill-eval-report.yml) | Skill-eval results report — agent skill pass/fail trends (self-improving-skills pipeline) |
