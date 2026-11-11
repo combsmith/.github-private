@@ -139,9 +139,10 @@ jobs:
           DISCUSSION_NODE_ID: ${{ github.event.discussion.node_id }}
           SERVER_URL: ${{ github.server_url }}
         run: |
+          set -euo pipefail
           permission=none
           if [[ "${AUTHOR}" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
-            permission=$(gh api "repos/${REPO}/collaborators/${AUTHOR}/permission" --jq '.permission')
+            permission=$(gh api "repos/${REPO}/collaborators/${AUTHOR}/permission" --jq '.permission' || echo none)
           fi
           case "${permission}" in
             admin | write) ;;
@@ -150,7 +151,6 @@ jobs:
               exit 0
               ;;
           esac
-          set -euo pipefail
           echo "Discussion #${DISCUSSION_NUMBER} created → re-dispatching feature-ideation.yml for single-idea enhancement."
           # Capture the dispatched run's database ID for exact correlation. This is
           # better than timestamp-based selection (createdAt >= dispatch_time) since
