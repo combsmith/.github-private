@@ -30,7 +30,7 @@ setup() {
 ARGS="$*"
 case "$ARGS" in
   *"pulls?state=open"*)
-    echo "[]" ;;
+    echo "0" ;;
   *"api"*"repos/"*"issues/"*)
     echo '{"title":"Test Issue","body":"Test issue body"}' ;;
   *"issue comment"*)
