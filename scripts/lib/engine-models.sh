@@ -266,43 +266,38 @@ ai_models_problems() {
 # chain still names a retired Fable (claude-fable-5 or claude-fable-5-1), else
 # nothing. Fable 5 was deprecated in #1901 (audit/single moved to opus-5-5) and
 # Fable 5.1 is superseded by Fable 5.2, the preferred Fable; a chain naming
-# claude-fable-5-2 does not warn. Fable 5 matches only as a whole id (a prefix
-# would catch 5-2); Fable 5.1 matches as a prefix, so a suffixed 5-1 id still
-# warns. A configured old Fable is still HONOURED as a
+# claude-fable-5-2 does not warn. Fable 5 matches only as a whole id or with an
+# 8-digit date suffix (a prefix would catch 5-2); Fable 5.1 matches as a prefix,
+# so a suffixed 5-1 id still warns. A configured old Fable is still HONOURED as a
 # stop-gap (this warns, it does not reject), so an operator can pin it while
 # migrating. Sources checked: the per-tier CLAUDE_<TIER>_MODEL_CHAIN envs (including
 # CLAUDE_FABLE_MODEL_CHAIN) and AI_MODELS_CLAUDE.
 ai_models_fable_deprecation() {
-  local key chain var found=""
+  local key all=""
   # Static tier→var map (not printf|tr): pure parameter expansion, no per-tier
   # subshell. Bash 3.2-safe.
   for key in triage deep audit action single fable; do
     case "$key" in
-      triage) var="CLAUDE_TRIAGE_MODEL_CHAIN" ;;
-      deep)   var="CLAUDE_DEEP_MODEL_CHAIN" ;;
-      audit)  var="CLAUDE_AUDIT_MODEL_CHAIN" ;;
-      action) var="CLAUDE_ACTION_MODEL_CHAIN" ;;
-      single) var="CLAUDE_SINGLE_MODEL_CHAIN" ;;
-      fable)  var="CLAUDE_FABLE_MODEL_CHAIN" ;;
-    esac
-    chain="${!var:-}"
-    case ",${chain// /}," in
-      *,claude-fable-5-1-????????,*|*,claude-fable-5-1,*|*,claude-fable-5-????????,*|*,claude-fable-5,*) found=1 ;;
+      triage) all="$all,${CLAUDE_TRIAGE_MODEL_CHAIN:-}" ;;
+      deep)   all="$all,${CLAUDE_DEEP_MODEL_CHAIN:-}" ;;
+      audit)  all="$all,${CLAUDE_AUDIT_MODEL_CHAIN:-}" ;;
+      action) all="$all,${CLAUDE_ACTION_MODEL_CHAIN:-}" ;;
+      single) all="$all,${CLAUDE_SINGLE_MODEL_CHAIN:-}" ;;
+      fable)  all="$all,${CLAUDE_FABLE_MODEL_CHAIN:-}" ;;
     esac
   done
-  # One tr subshell to fold AI_MODELS_CLAUDE to lowercase (${var,,} is Bash 4+);
-  # then '=', ';' and newlines become ',' so every model id in the spec is a whole
-  # comma-delimited field.
-  local lower
-  lower="$(printf '%s' "${AI_MODELS_CLAUDE:-}" | tr '[:upper:]' '[:lower:]')"
-  lower="${lower//=/,}"
-  lower="${lower//;/,}"
-  lower="${lower//$'\n'/,}"
-  # Restrict to accepted Claude keys (claude, opus, sonnet, haiku, fable=).
-  # This prevents false warnings on malformed entries like unknown=claude-fable-5.
-  lower="$(printf '%s' "$lower" | tr ',' '\n' | grep -E '^(claude|opus|sonnet|haiku|fable)' | tr '\n' ',')"
-  case ",${lower//[[:space:]]/}," in
-    *,claude-fable-5-1-????????,*|*,claude-fable-5-1,*|*,claude-fable-5-????????,*|*,claude-fable-5,*) found=1 ;;
+  # AI_MODELS_CLAUDE goes through the same parser that honours it, so an unknown
+  # key (ignored there) does not warn and a padded id (trimmed there) does.
+  if [ -n "${AI_MODELS_CLAUDE:-}" ]; then
+    for key in $(_ai_models_keys claude); do
+      all="$all,$(ai_models_configured claude "$key")"
+    done
+  fi
+  # One tr subshell to fold to lowercase (${var,,} is Bash 4+).
+  all="$(printf '%s' "$all" | tr '[:upper:]' '[:lower:]')"
+  local found=""
+  case "${all//[[:space:]]/}," in
+    *,claude-fable-5,*|*,claude-fable-5-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9],*|*,claude-fable-5-1*) found=1 ;;
   esac
   [ -n "$found" ] || return 0
   printf '%s' "claude-fable-5 and claude-fable-5-1 are deprecated (#1901): audit/single default to claude-opus-5-5 (chain claude-opus-5-5,claude-opus-4-8,claude-opus-4-7), and claude-fable-5-2 is the preferred Fable. The configured model is still honoured as a stop-gap — repoint it to claude-opus-5-5, or to claude-fable-5-2 where Fable is wanted."

@@ -511,6 +511,20 @@ STUB
   [ -z "$(ai_models_fable_deprecation)" ]
 }
 
+@test "fable-deprecation: AI_MODELS_CLAUDE is read the way the parser honours it" {
+  # An unknown key is ignored by the parser, so it does not warn.
+  export AI_MODELS_CLAUDE="unknown=claude-fable-5"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  # A padded id is trimmed and used by the parser, so it warns.
+  export AI_MODELS_CLAUDE="fable= claude-fable-5"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  # A date-suffixed Fable 5 warns; a date-suffixed Fable 5.2 does not.
+  export AI_MODELS_CLAUDE="audit=claude-fable-5-20260101"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  export AI_MODELS_CLAUDE="audit=claude-fable-5-2-20261201"
+  [ -z "$(ai_models_fable_deprecation)" ]
+}
+
 @test "fable-deprecation: engine.sh warns once via AI_MODELS_CLAUDE and still honours the model" {
   run bash -c "export REVIEW_ENGINE=claude AI_MODELS_CLAUDE='audit=claude-fable-5,claude-opus-4-8'
     _w=\"\$(mktemp)\"
