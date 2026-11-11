@@ -273,29 +273,29 @@ ai_models_problems() {
 # migrating. Sources checked: the per-tier CLAUDE_<TIER>_MODEL_CHAIN envs (including
 # CLAUDE_FABLE_MODEL_CHAIN) and AI_MODELS_CLAUDE.
 ai_models_fable_deprecation() {
-  local key all=""
-  # Static tier→var map (not printf|tr): pure parameter expansion, no per-tier
-  # subshell. Bash 3.2-safe.
-  for key in triage deep audit action single fable; do
+  local key env all=""
+  # Per key, the chain that actually runs: a CLAUDE_<TIER>_MODEL_CHAIN env wins
+  # (engine.sh only falls back to AI_MODELS_CLAUDE when it is empty), so a
+  # superseded AI_MODELS_CLAUDE entry does not warn. AI_MODELS_CLAUDE goes through
+  # the same parser that honours it, so an unknown key (ignored there) does not
+  # warn and a padded id (trimmed there) does. duck has no env override.
+  for key in $(_ai_models_keys claude); do
+    # Static tier→var map (not printf|tr): pure parameter expansion. Bash 3.2-safe.
     case "$key" in
-      triage) all="$all,${CLAUDE_TRIAGE_MODEL_CHAIN:-}" ;;
-      deep)   all="$all,${CLAUDE_DEEP_MODEL_CHAIN:-}" ;;
-      audit)  all="$all,${CLAUDE_AUDIT_MODEL_CHAIN:-}" ;;
-      action) all="$all,${CLAUDE_ACTION_MODEL_CHAIN:-}" ;;
-      single) all="$all,${CLAUDE_SINGLE_MODEL_CHAIN:-}" ;;
-      fable)  all="$all,${CLAUDE_FABLE_MODEL_CHAIN:-}" ;;
+      triage) env="${CLAUDE_TRIAGE_MODEL_CHAIN:-}" ;;
+      deep)   env="${CLAUDE_DEEP_MODEL_CHAIN:-}" ;;
+      audit)  env="${CLAUDE_AUDIT_MODEL_CHAIN:-}" ;;
+      action) env="${CLAUDE_ACTION_MODEL_CHAIN:-}" ;;
+      single) env="${CLAUDE_SINGLE_MODEL_CHAIN:-}" ;;
+      fable)  env="${CLAUDE_FABLE_MODEL_CHAIN:-}" ;;
+      *)      env="" ;;
     esac
-  done
-  # AI_MODELS_CLAUDE goes through the same parser that honours it, so an unknown
-  # key (ignored there) does not warn and a padded id (trimmed there) does.
-  if [ -n "${AI_MODELS_CLAUDE:-}" ]; then
-    for key in $(_ai_models_keys claude); do
-      # Skip fable key from AI_MODELS_CLAUDE if CLAUDE_FABLE_MODEL_CHAIN is set
-      # (per-tier override takes precedence, #1901 companion fix).
-      [ "$key" = "fable" ] && [ -n "${CLAUDE_FABLE_MODEL_CHAIN:-}" ] && continue
+    if [ -n "$env" ]; then
+      all="$all,$env"
+    elif [ -n "${AI_MODELS_CLAUDE:-}" ]; then
       all="$all,$(ai_models_configured claude "$key")"
-    done
-  fi
+    fi
+  done
   # One tr subshell to fold to lowercase (${var,,} is Bash 4+).
   all="$(printf '%s' "$all" | tr '[:upper:]' '[:lower:]')"
   local found=""

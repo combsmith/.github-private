@@ -525,6 +525,19 @@ STUB
   [ -z "$(ai_models_fable_deprecation)" ]
 }
 
+@test "fable-deprecation: an AI_MODELS_CLAUDE entry superseded by its tier env does not warn" {
+  # engine.sh uses CLAUDE_AUDIT_MODEL_CHAIN over AI_MODELS_CLAUDE's audit= entry.
+  export AI_MODELS_CLAUDE="audit=claude-fable-5"
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-opus-5-5"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  # A tier with no env override still warns from AI_MODELS_CLAUDE.
+  export AI_MODELS_CLAUDE="audit=claude-fable-5; single=claude-fable-5-1"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  # duck has no env override, so its AI_MODELS_CLAUDE entry is always checked.
+  export AI_MODELS_CLAUDE="duck=claude-fable-5"
+  [ -n "$(ai_models_fable_deprecation)" ]
+}
+
 @test "fable-deprecation: engine.sh warns once via AI_MODELS_CLAUDE and still honours the model" {
   run bash -c "export REVIEW_ENGINE=claude AI_MODELS_CLAUDE='audit=claude-fable-5,claude-opus-4-8'
     _w=\"\$(mktemp)\"
