@@ -186,34 +186,26 @@ jobs:
           body="$(printf '%s\n\n%s' \
             "🔎 **Feature ideation dispatched.** The BMAD Analyst runs in a separate workflow run: ${run_url}" \
             "This Idea is only enhanced if that run succeeds — a failed run means it was **not** handed off. (claude-code-action cannot run on a \`discussion\` event, so it is bridged to \`workflow_dispatch\`.)")"
-          # Verify PAT is authenticated as expected identity before posting.
-          # The business-analyst manifest declares don-petry, so a misconfigured
-          # fallback could publish announcements under an unintended account.
-          auth_user="$(gh api user --jq .login 2>/dev/null || true)"
-          if [ "${auth_user}" != "don-petry" ]; then
-            echo "::warning::PAT authenticated as '${auth_user}' but expected 'don-petry'; skipping on-Idea link post (non-fatal); run: ${run_url}"
-          else
-            # Retry a few times so a TRANSIENT GraphQL hiccup does not drop the only
-            # on-Idea signal that this run happened — otherwise a later-failing ideate
-            # run stays invisible on the Idea (error-handling gap flagged in review).
-            # Still best-effort/non-fatal BY DESIGN: we must not fail the bridge (the
-            # dispatch already succeeded) and cannot wait on the run itself
-            # (concurrency: feature-ideation would deadlock). If every attempt fails we
-            # emit a ::warning:: annotation (a visible red signal on the bridge run) and
-            # log the run URL, so the failure is surfaced rather than silently green.
-            posted=""
-            for _ in 1 2 3; do
-              if gh api graphql \
-                -f discussionId="${DISCUSSION_NODE_ID}" \
-                -f body="${body}" \
-                -f query="mutation(\$discussionId: ID!, \$body: String!) { addDiscussionComment(input: {discussionId: \$discussionId, body: \$body}) { comment { id } } }"; then
-                posted=1
-                break
-              fi
-              sleep 5
-            done
-            [ -n "${posted}" ] || echo "::warning::Could not post the dispatched-run link to discussion #${DISCUSSION_NUMBER} after retries (non-fatal); run: ${run_url}"
-          fi
+          # Retry a few times so a TRANSIENT GraphQL hiccup does not drop the only
+          # on-Idea signal that this run happened — otherwise a later-failing ideate
+          # run stays invisible on the Idea (error-handling gap flagged in review).
+          # Still best-effort/non-fatal BY DESIGN: we must not fail the bridge (the
+          # dispatch already succeeded) and cannot wait on the run itself
+          # (concurrency: feature-ideation would deadlock). If every attempt fails we
+          # emit a ::warning:: annotation (a visible red signal on the bridge run) and
+          # log the run URL, so the failure is surfaced rather than silently green.
+          posted=""
+          for _ in 1 2 3; do
+            if gh api graphql \
+              -f discussionId="${DISCUSSION_NODE_ID}" \
+              -f body="${body}" \
+              -f query="mutation(\$discussionId: ID!, \$body: String!) { addDiscussionComment(input: {discussionId: \$discussionId, body: \$body}) { comment { id } } }"; then
+              posted=1
+              break
+            fi
+            sleep 5
+          done
+          [ -n "${posted}" ] || echo "::warning::Could not post the dispatched-run link to discussion #${DISCUSSION_NUMBER} after retries (non-fatal); run: ${run_url}"
 
   # ── #571 input resolution — keep `inputs` out of the reusable `with:` ────────
   # A reusable-workflow call graph (its `uses:` + `with:`) is validated at
