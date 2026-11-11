@@ -186,11 +186,12 @@ qa_advisory_decisions() {
 
 # export_qa_advisories: echo the JSON list of open QA Lead advisories this
 # review-changes pass must apply or decline (#2487, ADR-0016): [{id, createdAt,
-# body}], oldest first, at most 5, each body cut to 4000 characters. These
-# advisories are optional. They never gate the pass, so a failed read logs a
-# warning and gives `[]` instead of failing the pass. The retry cron re-offers
-# the advisory later. Escalated and dispositioned advisories are left out
-# (qa_advisory_open). Only exports advisories for PRs authored by dev-lead.
+# body}], oldest first, at most 5, each body cut to 4000 characters. Verifies
+# the PR author is dev-lead before exporting; returns [] for non-dev-lead PRs to
+# prevent advisory handling on PRs authored by other users. These advisories are
+# optional. They never gate the pass, so a failed read logs a warning and gives
+# `[]` instead of failing the pass. The retry cron re-offers the advisory later.
+# Escalated and dispositioned advisories are left out (qa_advisory_open).
 export_qa_advisories() {
   local comments open pr_obj pr_author
   if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" || -z "${PR_NUMBER:-}" || -z "${REPO:-}" ]]; then
