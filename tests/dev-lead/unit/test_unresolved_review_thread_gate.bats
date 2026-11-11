@@ -47,7 +47,7 @@ _run_check() {
 }
 
 @test "Unresolved-thread gate: enables set -euo pipefail only in the standalone block, not at top level (sourced-safe)" {
-  ! grep -q "^set -euo pipefail" "$GATE"
+  [ -z "$(grep '^set -euo pipefail' "$GATE" || true)" ]
   grep -q "^  set -euo pipefail" "$GATE"
 }
 
