@@ -122,6 +122,9 @@ GHEOF
   export AI_DELEGATION_ENABLED="true"
   export REVIEW_CYCLE="0"
   export MAX_REVIEW_CYCLES="3"
+  # Disable merge-queue retries for fast, deterministic tests (unrelated to gate 4)
+  export MERGE_QUEUE_RETRY_ATTEMPTS="1"
+  export MERGE_QUEUE_RETRY_DELAY="0"
 }
 
 # No teardown needed: TEST_DIR is $BATS_TEST_TMPDIR, which BATS creates per-test
@@ -252,6 +255,8 @@ write_verdict() {
   echo "$output" >&2
   [ "$status" -eq 0 ]
   [ ! -s "$APPROVE_LOG" ]
+  # Escalate verdict must NOT trigger thread enumeration
+  ! grep -q "reviewThreads" "$GH_LOG"
 }
 
 # ── DRY_RUN reflects the downgrade in the printed decision ──────────────────
