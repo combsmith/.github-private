@@ -100,6 +100,7 @@ jobs:
           # Export the model override variable so ai_model_for_family honours
           # operator-configured model chains (vars.AI_MODELS_CLAUDE).
           AI_MODELS_CLAUDE: ${{ vars.AI_MODELS_CLAUDE }}
+          CLAUDE_FABLE_MODEL_CHAIN: ${{ vars.CLAUDE_FABLE_MODEL_CHAIN || '' }}
         run: |
           source scripts/lib/engine-models.sh
           want="$REQUESTED_MODEL"

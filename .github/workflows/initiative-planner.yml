@@ -238,6 +238,7 @@ jobs:
           REQUESTED_MODEL: ${{ github.event.inputs.model }}
           # Operator model override for the family resolver (#1979).
           AI_MODELS_CLAUDE: ${{ vars.AI_MODELS_CLAUDE || '' }}
+          CLAUDE_FABLE_MODEL_CHAIN: ${{ vars.CLAUDE_FABLE_MODEL_CHAIN || '' }}
         run: |
           source scripts/lib/engine-models.sh
           want="$REQUESTED_MODEL"
