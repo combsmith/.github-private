@@ -22,6 +22,8 @@ AUTOMATION='don-petry,donpetry-bot'
 # 2026-10-02T01:00:00Z
 NOW_EPOCH=1790902800
 
+bats_require_minimum_version 1.5.0
+
 setup() {
   # shellcheck source=/dev/null
   source "$LIB"
@@ -519,4 +521,36 @@ GHEOF
   run _qa_logins_json " don-petry , donpetry-bot[bot] "
   [ "$status" -eq 0 ]
   [ "$output" = '["don-petry","donpetry-bot"]' ]
+}
+
+@test "export_qa_advisories: PR author read failure gives [] and a warning" {
+  export PR_NUMBER=1 REPO=o/r
+  dev_lead_identity() { echo "don-petry"; }
+  bcr_fetch_pr_comments() { printf '[]'; }
+  gh() { return 1; }
+  export -f gh dev_lead_identity
+  run --separate-stderr export_qa_advisories
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+  [[ "$stderr" == *"could not read the PR author"* ]]
+}
+
+@test "export_qa_advisories: honours a donpetry-bot disposition" {
+  export PR_NUMBER=1 REPO=o/r BOT_USER=don-petry
+  dev_lead_identity() { echo "don-petry"; }
+  COMMENTS="$(_list \
+    "$(_c IC_open "$(_advisory_body no 'Gap A.')" 2026-10-01T10:00:00Z)" \
+    "$(_c IC_done "$(_advisory_body no 'Gap B.')" 2026-10-01T11:00:00Z)" \
+    "$(_c IC_d '<!-- dev-lead:advisory-disposition id=IC_done outcome=handled -->' 2026-10-01T12:00:00Z OWNER donpetry-bot)")"
+  bcr_fetch_pr_comments() { printf '%s' "$COMMENTS"; }
+  gh() {
+    case "$*" in
+      *"repos/o/r/pulls/1"*) printf '{"user":{"login":"don-petry"}}' ;;
+      *) echo "[]" ;;
+    esac
+  }
+  export -f gh dev_lead_identity
+  run export_qa_advisories
+  [ "$status" -eq 0 ]
+  [ "$(jq -r 'map(.id) | join(",")' <<< "$output")" = "IC_open" ]
 }
