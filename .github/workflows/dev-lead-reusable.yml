@@ -877,6 +877,9 @@ jobs:
   ci-relay:
     if: >-
       vars.AGENTS_PAUSED != 'true' &&
+      # #1713: shadow runs must not dispatch live runs; run only when shadow_mode is
+      # explicitly false (fail-closed: true or indeterminate ⇒ job skipped).
+      (inputs.shadow_mode == false || inputs.shadow_mode == 'false') &&
       github.event_name == 'check_run' &&
       github.event.action == 'completed' &&
       github.event.check_run.conclusion == 'failure' &&
@@ -984,6 +987,9 @@ jobs:
   resume:
     if: >-
       vars.AGENTS_PAUSED != 'true' &&
+      # #1713: shadow runs must not dispatch live runs; run only when shadow_mode is
+      # explicitly false (fail-closed: true or indeterminate ⇒ job skipped).
+      (inputs.shadow_mode == false || inputs.shadow_mode == 'false') &&
       ((github.event_name == 'pull_request_review' && github.event.action == 'submitted') ||
       (github.event_name == 'check_run' &&
        github.event.action == 'completed' &&
