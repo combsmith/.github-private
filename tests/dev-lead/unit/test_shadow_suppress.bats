@@ -124,3 +124,14 @@ setup() {
   [ "$DEV_LEAD_DRY_RUN" = "true" ]
   [ "$DEV_LEAD_SHADOW_MODE" = "true" ]
 }
+
+@test "shadow: apply when active + write fails → emits ::warning:: and notes run log fallback" {
+  # Point SHADOW_OUTPUT_FILE at an unwritable path: under /dev/null (which is not a directory)
+  # so mkdir/write fail, triggering the write-failure branch.
+  export DEV_LEAD_SHADOW_MODE="true"
+  SHADOW_OUTPUT_FILE="/dev/null/subdir/shadow-output.txt"; export SHADOW_OUTPUT_FILE
+  run shadow_apply_suppression
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"::warning::"* ]]
+  [[ "$output" == *"the run log only"* ]]
+}
