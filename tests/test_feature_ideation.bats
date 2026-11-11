@@ -218,16 +218,23 @@ setup() {
 @test "feature-ideation.yml redispatch surfaces the dispatched run on the Discussion" {
   # Posts a comment on the Idea Discussion (GraphQL addDiscussionComment) linking
   # the dispatched run, keyed to the discussion node id from the event.
-  grep -qF "addDiscussionComment" "$FEATURE_IDEATION_YML"
-  grep -qE "github\.event\.discussion\.node_id" "$FEATURE_IDEATION_YML"
+  # Assertions are scoped to the redispatch job's steps (not the whole file) so
+  # comments or other jobs cannot cause false positives.
+  local steps_run steps_env
+  steps_run=$(yq '.jobs.redispatch.steps[].run' "$FEATURE_IDEATION_YML")
+  steps_env=$(yq '.jobs.redispatch.steps[].env[]' "$FEATURE_IDEATION_YML")
+  grep -qF "addDiscussionComment" <<<"$steps_run"
+  grep -qE "github\.event\.discussion\.node_id" <<<"$steps_env"
   # …and the comment text interpolates the dispatched run's URL.
-  grep -qF 'The BMAD Analyst runs in a separate workflow run: ${run_url}' "$FEATURE_IDEATION_YML"
+  grep -qF 'The BMAD Analyst runs in a separate workflow run: ${run_url}' <<<"$steps_run"
 }
 
 @test "feature-ideation.yml redispatch correlates the run by dispatch time" {
   # The dispatched run is identified by recording the dispatch time (with slack for
   # clock skew) and selecting only runs created at/after it, so a pre-existing run
   # is never linked by mistake.
-  grep -qF 'dispatch_time=' "$FEATURE_IDEATION_YML"
-  grep -qF 'select(.createdAt >= ' "$FEATURE_IDEATION_YML"
+  local steps_run
+  steps_run=$(yq '.jobs.redispatch.steps[].run' "$FEATURE_IDEATION_YML")
+  grep -qF 'dispatch_time=' <<<"$steps_run"
+  grep -qF 'select(.createdAt >= ' <<<"$steps_run"
 }
