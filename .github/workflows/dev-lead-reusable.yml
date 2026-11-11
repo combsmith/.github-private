@@ -708,6 +708,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+      - name: Upload shadow output
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shadow-output-${{ github.run_id }}
+          path: /tmp/dev-lead-shadow-output-${{ github.run_id }}.txt
+          if-no-files-found: ignore
+          retention-days: 1
+
   # ── test-suite ──────────────────────────────────────────────────────────────
   # Runs the repo's test suite on a guarded pass's result (#2143). The suite is
   # code from the PR branch, so this job holds NOTHING it could read: no secrets.*,
