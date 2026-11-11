@@ -1180,6 +1180,7 @@ _FIX="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)/../../fixtures"
 _CODEX_NF_BODY="$(cat "$_FIX/codex/pr2467-review-summary-no-findings.md")"
 _CR_2467_BODY="$(cat "$_FIX/coderabbit/pr2467-summary-minimal-ratelimited.md")"
 _CR_2456_BODY="$(cat "$_FIX/coderabbit/pr2456-summary-minimal.md")"
+_CR_2494_BODY="$(cat "$_FIX/coderabbit/pr2494-summary-empty-retained-concerns.md")"
 _SONAR_2467_BODY="$(cat "$_FIX/sonarqubecloud/pr2467-quality-gate-passed.md")"
 _CR_ARCH_FINDING=$'\n<!-- architecture_review_start -->\n### Security Architecture Review\n\n**Security architecture risk:** _🟡 Moderate_ · up to `11929`\n\n**Retained concerns**\n- **Medium · security · inferred:** the lookup trusts an unvalidated name.\n<!-- architecture_review_end -->\n'
 
@@ -1303,6 +1304,30 @@ _expect_nf_open() { _expect_open "$@"; }
 
 @test "hands-off: the same snapshot with a Low-risk CodeRabbit summary still withholds approval → 1" {
   _run_check "$(_hands_off_pr "$_CODEX_NF_BODY" "$(_sub "$_CR_2467_BODY" '\*\*⚪ Minimal\*\* · up to' '**🔵 Low** · up to')" "$_SONAR_2467_BODY")"
+  [ "$status" -eq 1 ]
+}
+
+# #2501: PR 2494's summary was blocked with an informational disposition because
+# its empty "Retained concerns" heading read as a finding.
+@test "hands-off(#2501): a CodeRabbit summary with an empty Retained concerns section keeps approval → 0" {
+  _run_check "$(_hands_off_pr "$_CODEX_NF_BODY" "$_CR_2494_BODY" "$_SONAR_2467_BODY")"
+  [ "$status" -eq 0 ]
+  # Minimized RESOLVED, edited after a covering informational disposition: still clear.
+  local comments
+  comments=$(_hands_off_pr "$_CODEX_NF_BODY" "$_CR_2494_BODY" "$_SONAR_2467_BODY" | jq -c '
+    .comments |= map(if .id == "IC_cr" then .isMinimized = true | .minimizedReason = "resolved" else . end)
+    | .comments += [{id:"IC_disp_cr", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+        body:"Clean summary.\n<!-- dev-lead:comment-disposition id=IC_cr disposition=informational -->",
+        createdAt:"2026-11-06T22:13:30Z", lastEditedAt:null, isMinimized:false, minimizedReason:null}]')
+  _run_check "$comments"
+  [ "$status" -eq 0 ]
+}
+
+@test "hands-off(#2501): the same summary with one listed retained concern still withholds approval → 1" {
+  local cr_find
+  cr_find="$(_sub "$_CR_2494_BODY" 'No architecture-level concerns identified\.' '- **Medium · security · inferred:** the lookup trusts an unvalidated name.')"
+  [[ "$cr_find" == *"the lookup trusts"* ]]
+  _run_check "$(_hands_off_pr "$_CODEX_NF_BODY" "$cr_find" "$_SONAR_2467_BODY")"
   [ "$status" -eq 1 ]
 }
 

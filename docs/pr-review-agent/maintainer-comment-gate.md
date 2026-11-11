@@ -99,7 +99,8 @@ is minimized `RESOLVED`, **unless** it is in the exemption set recorded in
   blocks. An unreadable registry degrades to "clear nothing", never to clearing
   something it cannot classify. **A pattern never clears a body with a
   finding-bearing section (#2008).** Such sections include a Security Architecture
-  Review with retained concerns, a non-zero `Actionable comments posted`, and
+  Review that lists retained concerns (an empty section, such as "No
+  architecture-level concerns identified.", is not one, #2501), a non-zero `Actionable comments posted`, and
   Outside-diff or Nitpick comments (`reviewer_sources_finding_section_pattern`). A
   notice covers only itself, never the findings beside it.
 

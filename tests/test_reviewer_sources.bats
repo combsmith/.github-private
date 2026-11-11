@@ -336,6 +336,34 @@ _has_findings() {
   [ "$status" -eq 0 ]
 }
 
+@test "finding-section(#2501): an empty Retained concerns section is not finding-bearing" {
+  # Live PR 2494 summary: Minimal risk, "Retained concerns" then "No architecture-level concerns identified."
+  run _has_findings "$(cat "$BATS_TEST_DIRNAME/fixtures/coderabbit/pr2494-summary-empty-retained-concerns.md")"
+  [ "$status" -eq 1 ]
+  # A heading followed directly by <details> or the section end lists nothing.
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\n\n<details>\n<summary>Security review details</summary>\n</details>\n<!-- architecture_review_end -->'
+  [ "$status" -eq 1 ]
+  run _has_findings $'<!-- architecture_review_start -->\n**Hardening Proposals**\n<!-- architecture_review_end -->'
+  [ "$status" -eq 1 ]
+  run _has_findings $'<!-- architecture_review_start -->\n**Hardening Proposals**\nNo hardening proposals.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 1 ]
+}
+
+@test "finding-section(#2501): a Retained concerns or Hardening Proposals section that lists something still counts" {
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nThe lookup trusts an unvalidated name.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\n1. The lookup trusts an unvalidated name.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
+  # A "No ..." line followed by a list item is not empty (fail closed).
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo blocking concerns, but:\n- the lookup trusts an unvalidated name.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
+  run _has_findings $'<!-- architecture_review_start -->\n**Hardening Proposals**\n- _proposed_ \u2014 validate the name.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
+  # The live PR 2494 summary with one listed concern added.
+  run _has_findings "$(sed 's/^No architecture-level concerns identified\.$/- **Medium · security · inferred:** the lookup trusts an unvalidated name./' "$BATS_TEST_DIRNAME/fixtures/coderabbit/pr2494-summary-empty-retained-concerns.md")"
+  [ "$status" -eq 0 ]
+}
+
 # Each pattern matches the bot's COMPLETE known notice body and is anchored at
 # both ends, so the real notices posted on this repo clear while a notice followed
 # by finding text still blocks (CodeRabbit security review on #2000).
