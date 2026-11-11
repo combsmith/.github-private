@@ -376,6 +376,12 @@ _has_findings() {
   [ "$status" -eq 0 ]
   run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo critical issues but the name is unvalidated\n<!-- architecture_review_end -->'
   [ "$status" -eq 0 ]
+  # A "No ..." line that does not report an absence of concerns still counts.
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo input validation is performed.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
+  # A <details> block other than "Security review details" may hold the concerns.
+  run _has_findings $'<!-- architecture_review_start -->\n**Hardening Proposals**\n<details>\n<summary>Proposal</summary>\n- Validate the lookup name before use.\n</details>\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
   # The live PR 2494 summary with one listed concern added.
   run _has_findings "$(sed 's/^No architecture-level concerns identified\.$/- **Medium · security · inferred:** the lookup trusts an unvalidated name./' "$BATS_TEST_DIRNAME/fixtures/coderabbit/pr2494-summary-empty-retained-concerns.md")"
   [ "$status" -eq 0 ]
