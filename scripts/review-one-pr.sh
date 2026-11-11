@@ -1062,9 +1062,9 @@ if [ -n "${EXISTING_MARKER_SHA:-}" ]; then
       | jq -r --arg bot "${BOT_USER:-donpetry-bot}" --arg sha "$PRIOR_REVIEW_SHA" '
           [ ((.reviews // []) + (.comments // []))[]
             | select((.author.login? // "") == $bot)
-            | (.body // empty)
-            | select(test("<!-- pr-review-agent v1 sha=" + $sha + "( [^>]*)? -->"))
-          ] | last // empty
+            | select((.body // empty) | test("<!-- pr-review-agent v1 sha=" + $sha + "( [^>]*)? -->"))
+            | {ts: (.submittedAt // .createdAt // ""), body: (.body // empty)}
+          ] | sort_by(.ts) | reverse | .[0].body // empty
         ' 2>/dev/null || true
   )
   # Validate that the matched body actually contains our marker to reduce
