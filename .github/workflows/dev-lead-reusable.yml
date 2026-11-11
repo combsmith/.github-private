@@ -875,10 +875,10 @@ jobs:
   # repin their own dev-lead.yml. Keep in sync with FIX_CI_IGNORED_CHECKS in
   # scripts/dev-lead-fix-ci.sh.
   ci-relay:
+    # #1713: shadow runs must not dispatch live runs; run only when shadow_mode is
+    # explicitly false (fail-closed: true or indeterminate ⇒ job skipped).
     if: >-
       vars.AGENTS_PAUSED != 'true' &&
-      # #1713: shadow runs must not dispatch live runs; run only when shadow_mode is
-      # explicitly false (fail-closed: true or indeterminate ⇒ job skipped).
       (inputs.shadow_mode == false || inputs.shadow_mode == 'false') &&
       github.event_name == 'check_run' &&
       github.event.action == 'completed' &&
@@ -985,10 +985,10 @@ jobs:
   # dispatch job ignores (its if: excludes check_run); a human review already
   # wakes dispatch, but resuming there too is harmless (budget-gated).
   resume:
+    # #1713: shadow runs must not dispatch live runs; run only when shadow_mode is
+    # explicitly false (fail-closed: true or indeterminate ⇒ job skipped).
     if: >-
       vars.AGENTS_PAUSED != 'true' &&
-      # #1713: shadow runs must not dispatch live runs; run only when shadow_mode is
-      # explicitly false (fail-closed: true or indeterminate ⇒ job skipped).
       (inputs.shadow_mode == false || inputs.shadow_mode == 'false') &&
       ((github.event_name == 'pull_request_review' && github.event.action == 'submitted') ||
       (github.event_name == 'check_run' &&
