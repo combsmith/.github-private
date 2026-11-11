@@ -145,7 +145,12 @@ check_unresolved_review_threads() {
       ;;
   esac
 
-  if [[ "$verdict" =~ ^[0-9]+$ ]] && [[ "$verdict" -gt 0 ]]; then
+  if ! [[ "$verdict" =~ ^[0-9]+$ ]]; then
+    log_unresolved_gate_warn "review-threads snapshot produced malformed verdict '$verdict' — failing closed (blocking approval)"
+    return 2
+  fi
+
+  if [[ "$verdict" -gt 0 ]]; then
     log_unresolved_gate_warn "$verdict unresolved review thread(s) — withholding approval (decision gate 4, #1766)"
     return 1
   fi
