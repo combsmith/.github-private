@@ -234,14 +234,14 @@ setup() {
   grep -qF 'The BMAD Analyst runs in a separate workflow run: ${run_url}' <<<"$steps_run"
 }
 
-@test "feature-ideation.yml redispatch correlates the run by dispatch ID" {
-  # The dispatched run is identified by capturing the database ID returned from
-  # gh workflow run dispatch, which is more robust than timestamp-based selection
-  # (which can pick a wrong run if another manual dispatch fires during polling).
+@test "feature-ideation.yml redispatch resolves the dispatched run without unsupported gh flags" {
+  # `gh workflow run` has no --json/-q flags and returns no run ID. The run is
+  # resolved afterwards via `gh run list --event workflow_dispatch --created`.
   local steps_run
   steps_run=$(yq '.jobs.redispatch.steps[].run' "$FEATURE_IDEATION_YML")
-  grep -qF 'dispatch_run_id=' <<<"$steps_run"
-  grep -qF 'select(.databaseId == ' <<<"$steps_run"
-  # The filter must actually interpolate the dispatch run ID variable.
-  grep -qF 'select(.databaseId == ${dispatch_run_id})' <<<"$steps_run"
+  grep -qF 'dispatched_at=' <<<"$steps_run"
+  grep -qF -- '--event workflow_dispatch' <<<"$steps_run"
+  grep -qF -- '--created ">=${dispatched_at}"' <<<"$steps_run"
+  # The dispatch command itself must not carry unsupported output flags.
+  ! grep -A3 'gh workflow run feature-ideation.yml' <<<"$steps_run" | grep -qF -- '--json'
 }
