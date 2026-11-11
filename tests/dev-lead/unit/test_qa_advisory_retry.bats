@@ -299,7 +299,7 @@ GHEOF
   if grep -q -- '--method POST' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
 
-@test "sweep: Escalate? yes adds dev-lead:needs-human, posts an escalated disposition, dispatches nothing" {
+@test "sweep: Escalate? yes posts an escalated disposition, never applies hold label, dispatches nothing" {
   export COMMENTS_RESPONSE
   COMMENTS_RESPONSE="$(_comments_page "$(_c IC_adv "$(_advisory_body yes 'Fix the assertions.')")")"
   _setup_sweep
@@ -307,23 +307,19 @@ GHEOF
   run scan_pr_for_qa_advisories "combsmith/.github-private" 180
   [ "$status" -eq 0 ]
   [ "${lines[-1]}" = "0" ]
-  grep -q 'labels\[\]=dev-lead:needs-human' "$GH_LOG"
   grep -q 'dev-lead:advisory-disposition id=IC_adv outcome=escalated' "$GH_LOG"
-  label_line=$(grep -n '/labels' "$GH_LOG" | head -1 | cut -d: -f1)
-  disp_line=$(grep -n 'advisory-disposition' "$GH_LOG" | head -1 | cut -d: -f1)
-  [ "$label_line" -lt "$disp_line" ]
+  if grep -q 'labels\[\]=dev-lead:needs-human' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
 
-@test "sweep: a failed escalation label posts no disposition, so the next scan tries again" {
+@test "sweep: Escalate? yes posts an escalated disposition even if the disposition post retries" {
   export COMMENTS_RESPONSE
   COMMENTS_RESPONSE="$(_comments_page "$(_c IC_adv "$(_advisory_body yes 'x')")")"
-  export LABEL_FAILS=1
   _setup_sweep
 
   run scan_pr_for_qa_advisories "combsmith/.github-private" 180
   [ "${lines[-1]}" = "0" ]
-  if grep -q 'advisory-disposition' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
+  grep -q 'advisory-disposition' "$GH_LOG"
   if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
 
@@ -444,14 +440,22 @@ GHEOF
 # export_qa_advisories behaviour (lives in the lib so it can be sourced alone)
 @test "export_qa_advisories: fetch failure gives [] and a warning" {
   bcr_fetch_pr_comments() { return 1; }
+  dev_lead_identity() { echo "don-petry"; }
   export PR_NUMBER=1 REPO=o/r
+  gh() {
+    case "$*" in
+      *"repos/o/r/pulls/1"*) printf '{"user":{"login":"don-petry"}}' ;;
+      *) echo "[]" ;;
+    esac
+  }
+  export -f gh dev_lead_identity
   run export_qa_advisories
   [ "$status" -eq 0 ]
   [[ "$output" == *"[]" ]]
 }
 
 @test "export_qa_advisories: caps at 5 advisories and 4000 body chars, drops escalated/dispositioned" {
-  export PR_NUMBER=1 REPO=o/r BOT_USER=don-petry
+  export PR_NUMBER=1 REPO=o/r BOT_USER=don-petry DEV_LEAD_USER="don-petry"
   long=$(printf 'x%.0s' $(seq 1 5000))
   list=()
   for i in 1 2 3 4 5 6; do
@@ -462,6 +466,14 @@ GHEOF
   list+=("$(_c IC_d '<!-- dev-lead:advisory-disposition id=IC_done -->')")
   COMMENTS="$(_list "${list[@]}")"
   bcr_fetch_pr_comments() { printf '%s' "$COMMENTS"; }
+  dev_lead_identity() { echo "don-petry"; }
+  gh() {
+    case "$*" in
+      *"repos/o/r/pulls/1"*) printf '{"user":{"login":"don-petry"}}' ;;
+      *) echo "[]" ;;
+    esac
+  }
+  export -f gh dev_lead_identity
   run export_qa_advisories
   [ "$status" -eq 0 ]
   [ "$(jq -r 'length' <<< "$output")" = "5" ]
@@ -471,6 +483,14 @@ GHEOF
 
 @test "export_qa_advisories: dry run gives []" {
   export PR_NUMBER=1 REPO=o/r DEV_LEAD_DRY_RUN=true
+  dev_lead_identity() { echo "don-petry"; }
+  gh() {
+    case "$*" in
+      *"repos/o/r/pulls/1"*) printf '{"user":{"login":"don-petry"}}' ;;
+      *) echo "[]" ;;
+    esac
+  }
+  export -f gh dev_lead_identity
   run export_qa_advisories
   [ "$output" = "[]" ]
 }

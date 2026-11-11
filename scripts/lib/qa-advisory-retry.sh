@@ -119,7 +119,7 @@ qa_advisory_retry_marker() {
 qa_advisory_escalation_body() {
   printf '%s\n\n%s\n\n%s%s outcome=escalated -->\n' \
     "**dev-lead: QA Lead advisory escalated to a human.**" \
-    "The QA Lead advisory above says it needs a maintainer before merge, so dev-lead applied none of its items and added the \`dev-lead:needs-human\` label. The advisory itself never blocks merge (ADR-0016)." \
+    "The QA Lead advisory above says it needs a maintainer before merge, so dev-lead applied none of its items. The advisory is recorded but never blocks merge (ADR-0016)." \
     "$QA_ADVISORY_DISPOSITION_PREFIX" "$1"
 }
 
@@ -190,10 +190,17 @@ qa_advisory_decisions() {
 # advisories are optional. They never gate the pass, so a failed read logs a
 # warning and gives `[]` instead of failing the pass. The retry cron re-offers
 # the advisory later. Escalated and dispositioned advisories are left out
-# (qa_advisory_open).
+# (qa_advisory_open). Only exports advisories for PRs authored by dev-lead.
 export_qa_advisories() {
-  local comments open
+  local comments open pr_obj pr_author
   if [[ "${DEV_LEAD_DRY_RUN:-false}" = "true" || -z "${PR_NUMBER:-}" || -z "${REPO:-}" ]]; then
+    printf '[]'
+    return 0
+  fi
+  # Verify the PR author is dev-lead before exporting advisories.
+  pr_obj=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" 2>/dev/null || echo '{}')
+  pr_author=$(jq -r '.user?.login // empty' <<< "$pr_obj" 2>/dev/null || true)
+  if [[ -z "$pr_author" || "$pr_author" != "$(dev_lead_identity)" ]]; then
     printf '[]'
     return 0
   fi

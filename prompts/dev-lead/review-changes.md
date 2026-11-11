@@ -128,7 +128,7 @@ If the list is `[]`, skip this phase. Each entry has the advisory comment's node
 
 For each item:
 
-1. **Apply it** when it is a concrete test gap or a small fix in scope for this PR. Add the new test, run it, and **commit** before you reply (`git add -A && git commit -m "test(qa-advisory): <what>"`). Never push.
+1. **Apply it** when it is a concrete test gap or a small fix in scope for this PR. Add the new test, run it, and **commit** before you reply (`git add -A && git commit -m "test(qa-advisory): <what>"`). Never push. The commit claim you post must prove a substantive diff touching the files the advisory names, not just whitespace or unrelated changes. The harness verifies this (ADR-0011).
 2. **Decline it** with a one-line reason when it is out of scope, already covered (name the test), wrong for this code, or would need a change to an **existing** test. Never edit an existing test to satisfy an advisory. Decline that item with "changes an existing test — needs a human (ADR-0011 rule 4)". A question about CI (for example "does CI run this test file?") is answered by reading the workflow files. Apply it only if the gap is real and the fix belongs in this PR.
 
 Then post **one** PR comment per advisory. It lists every item with its outcome and ends with the disposition marker on its own line, using the advisory's `id`:

@@ -1543,9 +1543,9 @@ scan_pr_for_qa_advisories() {
     echo "0"; return 0
   fi
   # Authorship gate (#1311): only a PR dev-lead authored, from this repository.
-  # Never the branch name, which any contributor can choose.
+  # Never the branch name, which any contributor can choose. Also require a valid HEAD SHA.
   if [[ -z "$pr_author" || "$pr_author" != "$(dev_lead_identity)" ]] \
-     || [[ "$head_repo" != "$repo" ]]; then
+     || [[ "$head_repo" != "$repo" ]] || [[ -z "$head_sha" ]]; then
     echo "0"; return 0
   fi
   local labels_json
@@ -1603,19 +1603,13 @@ scan_pr_for_qa_advisories() {
   fi
 
   if [[ "$decision" = "escalate" ]]; then
-    echo "  [escalate] qa-advisory ${cid} on PR ${pr_number}: Escalate? yes → ${NEEDS_HUMAN_LABEL}, nothing applied" >&2
+    echo "  [escalate] qa-advisory ${cid} on PR ${pr_number}: Escalate? yes → record disposition, nothing applied (advisory never blocks merge)" >&2
     if [[ "$DRY_RUN" = "true" ]]; then
-      echo "  [dry-run] would add ${NEEDS_HUMAN_LABEL} to PR ${pr_number} in ${repo} and record an escalated disposition" >&2
+      echo "  [dry-run] would record an escalated disposition on PR ${pr_number} in ${repo}" >&2
       echo "0"; return 0
     fi
-    # Label first: a disposition without the hold would end the advisory with no
-    # human told. A failed label is loud (apply_hold_label) and leaves the
-    # advisory open for the next scan.
-    if ! apply_hold_label "$repo" "$pr_number" "$NEEDS_HUMAN_LABEL" >&2; then
-      echo "0"; return 0
-    fi
-    # Retry the post: a lost disposition would let the label be re-applied after
-    # a human clears it (the advisory would still be undispositioned).
+    # Post the escalated disposition. The advisory is recorded without blocking merge.
+    # Retry the post on failure: a lost disposition would leave the advisory open.
     local posted=false try
     for try in 1 2 3; do
       if gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
@@ -1626,7 +1620,7 @@ scan_pr_for_qa_advisories() {
       [[ "$try" -lt 3 ]] && sleep "${QA_ADVISORY_POST_RETRY_SLEEP:-2}"
     done
     if [[ "$posted" != true ]]; then
-      echo "  ::warning::qa-advisory retry: PR ${pr_number} in ${repo} is held for the escalated QA Lead advisory, but its disposition could not be posted" >&2
+      echo "  ::warning::qa-advisory retry: PR ${pr_number} in ${repo} has an escalated QA Lead advisory, but its disposition could not be posted" >&2
     fi
     echo "0"; return 0
   fi

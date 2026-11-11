@@ -48,15 +48,16 @@ anything:
    persona gains no capability and no cross-repo action.
 2. **What counts as an advisory.** A comment whose body starts with
    `<!-- persona:qa-lead -->`, from a trusted author association
-   (OWNER/MEMBER/COLLABORATOR, the #1921 rule), with at least one bullet under
-   "What I'd shore up". An out-of-scope note has no items and is not acted on.
-   Only `qa-lead` is in scope. Other personas stay purely advisory until this
-   path proves out.
+   (OWNER/MEMBER/COLLABORATOR, the #1921 bot-login exemption rule), with at least
+   one bullet under "What I'd shore up". An out-of-scope note has no items and is
+   not acted on. Only `qa-lead` is in scope. Other personas stay purely advisory
+   until this path proves out. An untrusted author's `<!-- persona:` marker stays
+   out of gate scope per ADR-0012.
 3. **Disposition.** The review-changes pass posts one PR comment per advisory.
    The comment gives each item an outcome: *applied*, committed first and backed
    by one `dev-lead:claim` that the ADR-0011 claim checks verify, or *declined*,
-   with a reason. It ends with
-   `<!-- dev-lead:advisory-disposition id=<advisory node id> outcome=handled -->`.
+   with a reason. It ends with a complete
+   `<!-- dev-lead:advisory-disposition id=<advisory node id> outcome=handled -->` marker.
    The marker matches the maintainer gate's `dev-lead` agent marker (ADR-0012),
    so the reply is not a gate candidate. It carries no `persona:` marker and no
    persona handle, so the router's recursion guard is unchanged. A reply that
@@ -71,19 +72,21 @@ anything:
    advisory. The loop is therefore bounded at one advisory per PR open, each
    with a bounded number of passes. Bats tests pin the bound.
 5. **Escalation follows `Escalate?`, not the risk tier.** On
-   `**Escalate?** yes` dev-lead applies nothing. The cron adds
-   `dev-lead:needs-human`, then records an `outcome=escalated` disposition. A
-   change to an existing test always goes to a human (ADR-0011 rule 4). The pass
-   declines that item and says so.
+   `**Escalate?** yes` dev-lead applies nothing and records an
+   `outcome=escalated` disposition. A change to an existing test always goes to a
+   human (ADR-0011 rule 4). The pass declines that item and says so. The
+   escalation is recorded but never blocks merge.
 6. **Never blocking.** The advisory stays out of the maintainer gate by its
    `persona:` marker (ADR-0012). A missing, failed or exhausted pass holds
    nothing: the PR's merge does not wait on an advisory.
 
 ## Consequences
 
-- A test gap the QA Lead names on a dev-lead PR gets a recorded decision,
-  applied or declined, without a person relaying it. The decision sits on the
-  PR, so it is easy to audit.
+- A test gap the QA Lead names on a dev-lead PR gets a recorded decision when
+  one of the bounded retries produces a disposition. The decision sits on the PR,
+  so it is easy to audit. An exhausted advisory (no disposition after MAX_ATTEMPTS
+  retries) is dropped with only a `::warning::` in the cron log, as the advisory
+  never blocks merge.
 - dev-lead writes both the code and the tests the QA Lead suggests. Separation
   of duties is weaker than under Option B, where the test architect would write
   the test. A decline is only as good as dev-lead's reason, and nothing checks
@@ -100,6 +103,5 @@ anything:
 - The disposition marker is not signed. Any OWNER/MEMBER/COLLABORATOR posting as
   an automation login can end an advisory by hand. The same trust holds for
   every marker under ADR-0012.
-- On `Escalate? yes` the whole PR is held for a human (`dev-lead:needs-human`),
-  not just the advisory. That is the conservative reading of "escalate", and it
-  also stops dev-lead's other passes on that PR until someone clears the label.
+- On `Escalate? yes` the advisory is recorded as escalated but never blocks merge,
+  leaving the decision visible on the PR for a human to act on if they choose.
