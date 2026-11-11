@@ -23,7 +23,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/channel-pin-guard.sh"
 
 # shadow_mode_active / shadow_apply_suppression (#1713): total PR-output
 # suppression when this lane runs in shadow mode.
-source "$(dirname "$0")/lib/shadow-suppress.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/shadow-suppress.sh"
 
 # In shadow mode, force the already-tested dry-run "post nothing" path so no
 # PR output escapes. Must run before any posting site.

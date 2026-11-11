@@ -13,6 +13,9 @@ setup() {
   export GITHUB_OUTPUT="$(mktemp)"
   # Sidecars go to this test's directory, not the /tmp every session shares (#2271).
   export DEV_LEAD_SIDECAR_DIR="$BATS_TEST_TMPDIR"
+  # Pin shadow inputs so ambient settings cannot alter unrelated tests; keep output per-test.
+  export DEV_LEAD_SHADOW_MODE="false"
+  export SHADOW_OUTPUT_FILE="$BATS_TEST_TMPDIR/shadow-output.txt"
 
   STUB_BIN_DIR="$(mktemp -d)"
   cp "$STUB_ENGINES_DIR/stub-claude" "$STUB_BIN_DIR/claude"

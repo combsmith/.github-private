@@ -61,8 +61,13 @@ shadow_apply_suppression() {
 
   export SHADOW_OUTPUT_FILE="${SHADOW_OUTPUT_FILE:-/tmp/dev-lead-shadow-output.txt}"
   mkdir -p "$(dirname "$SHADOW_OUTPUT_FILE")" 2>/dev/null || true
-  printf '[shadow] PR-output suppression active for this run (%s)\n' \
-    "$(date -u +%FT%TZ 2>/dev/null || echo now)" >> "$SHADOW_OUTPUT_FILE" 2>/dev/null || true
+  local wrote="the run log only"
+  if printf '[shadow] PR-output suppression active for this run (%s)\n' \
+    "$(date -u +%FT%TZ 2>/dev/null || echo now)" >> "$SHADOW_OUTPUT_FILE" 2>/dev/null; then
+    wrote="the run log and ${SHADOW_OUTPUT_FILE}"
+  else
+    echo "::warning::shadow_mode: could not write ${SHADOW_OUTPUT_FILE}; suppressed output is in the run log only."
+  fi
 
-  echo "::notice::shadow_mode active — all PR output suppressed for this run; output routed to the run log and ${SHADOW_OUTPUT_FILE}."
+  echo "::notice::shadow_mode active — all PR output suppressed for this run; output routed to ${wrote}."
 }
