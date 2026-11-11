@@ -347,6 +347,9 @@ _has_findings() {
   [ "$status" -eq 1 ]
   run _has_findings $'<!-- architecture_review_start -->\n**Hardening Proposals**\nNo hardening proposals.\n<!-- architecture_review_end -->'
   [ "$status" -eq 1 ]
+  # Two clean sections in a row: the next heading ends the first (CodeRabbit on #2503).
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo concerns identified.\n\n**Hardening Proposals**\nNo hardening proposals.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 1 ]
   # A clean "No ..." line with blank lines before the section end, or at the end of the body.
   run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\n\nNo architecture-level concerns identified.\n\n\n<!-- architecture_review_end -->'
   [ "$status" -eq 1 ]
@@ -375,6 +378,9 @@ _has_findings() {
   run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo critical issues, but the name is unvalidated.\n<!-- architecture_review_end -->'
   [ "$status" -eq 0 ]
   run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo critical issues but the name is unvalidated\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
+  # A clean Retained concerns section followed by a populated Hardening Proposals one still counts.
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo concerns identified.\n\n**Hardening Proposals**\n- Validate the lookup name before use.\n<!-- architecture_review_end -->'
   [ "$status" -eq 0 ]
   # A "No ..." line that does not report an absence of concerns still counts.
   run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo input validation is performed.\n<!-- architecture_review_end -->'

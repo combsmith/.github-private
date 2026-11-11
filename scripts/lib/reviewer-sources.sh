@@ -118,12 +118,16 @@ reviewer_sources_info_status_patterns() {
 #       risk rating. A "Minimal" section with none of those is clean. A Retained
 #       concerns or Hardening Proposals heading counts only when it lists
 #       something (#2501). It is empty only when nothing but blank lines and at
-#       most one "No ... concerns|proposals|issues|findings|risks [identified]"
-#       line (letters, spaces and hyphens, no "but"/"however"/"except"/
-#       "although"/"though" — CodeRabbit's "No architecture-level concerns
-#       identified.") stands between it and the "Security review details"
-#       <details> block, the section end, or the end of the body. Anything else
-#       after the heading, across blank lines too, counts (fail closed): "No
+#       most one absence line stands between it and the next boundary. The
+#       absence line is "No <words> concern(s)|proposal(s)|issue(s)|finding(s)|
+#       risk(s)", optionally followed by "were|are|have been" and/or
+#       "identified|found|raised|retained|proposed|noted", and an optional period
+#       (letters, spaces and hyphens only, no "but"/"however"/"except"/"although"/
+#       "though") — e.g. CodeRabbit's "No architecture-level concerns
+#       identified.". A boundary is the "Security review details" <details>
+#       block, the next **Retained concerns** / **Hardening Proposals** heading
+#       (checked on its own), the section end, or the end of the body. Anything
+#       else after the heading, across blank lines too, counts (fail closed): "No
 #       input validation is performed." or a <details> block of any other
 #       summary is a finding.
 #     * a non-zero "Actionable comments posted: N".
@@ -133,7 +137,7 @@ reviewer_sources_info_status_patterns() {
 #   Fail closed: it errs toward matching. A false match only costs a real
 #   disposition; a missed one lets a finding be waved away.
 reviewer_sources_finding_section_pattern() {
-  printf '%s\n' '<!-- architecture_review_start -->(?:(?!<!-- architecture_review_end -->)[\s\S])*?(?:(?:Retained concerns|Hardening Proposals)(?!\*{0,2}[ \t]*(?:\r?\n[ \t]*)*(?:No (?![^\n]*\b(?:but|however|except|although|though)\b)[A-Za-z -]*?\b(?:concerns?|proposals?|issues?|findings?|risks?)(?: (?:were|are|have been))?(?: (?:identified|found|raised|retained|proposed|noted))?\.?[ \t]*(?:\r?\n[ \t]*)*)?(?:<details>\s*<summary>(?:<strong>)?Security review details|<!-- architecture_review_end|\z))|\*\*(?:Critical|High|Medium|Moderate|Low|Major|Minor)\s*·|Security architecture risk:\*\*\s*_[^_]*?(?:Low|Moderate|Medium|Elevated|High|Critical|Severe))|Actionable comments posted:\s*[1-9]|Outside diff range comments(?!\s*\(\s*0\s*\))|Nitpick comments(?!\s*\(\s*0\s*\))|\*\*Suggestion:\*\*|PR Risk:\s*(?!\**Low Risk\b(?:\*\*)?)\S'
+  printf '%s\n' '<!-- architecture_review_start -->(?:(?!<!-- architecture_review_end -->)[\s\S])*?(?:(?:Retained concerns|Hardening Proposals)(?!\*{0,2}[ \t]*(?:\r?\n[ \t]*)*(?:No (?![^\n]*\b(?:but|however|except|although|though)\b)[A-Za-z -]*?\b(?:concerns?|proposals?|issues?|findings?|risks?)(?: (?:were|are|have been))?(?: (?:identified|found|raised|retained|proposed|noted))?\.?[ \t]*(?:\r?\n[ \t]*)*)?(?:<details>\s*<summary>(?:<strong>)?Security review details|\*\*(?:Retained concerns|Hardening Proposals)\*\*|<!-- architecture_review_end|\z))|\*\*(?:Critical|High|Medium|Moderate|Low|Major|Minor)\s*·|Security architecture risk:\*\*\s*_[^_]*?(?:Low|Moderate|Medium|Elevated|High|Critical|Severe))|Actionable comments posted:\s*[1-9]|Outside diff range comments(?!\s*\(\s*0\s*\))|Nitpick comments(?!\s*\(\s*0\s*\))|\*\*Suggestion:\*\*|PR Risk:\s*(?!\**Low Risk\b(?:\*\*)?)\S'
 }
 
 # reviewer_sources_trusted_bots_csv
