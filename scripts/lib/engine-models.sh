@@ -266,7 +266,9 @@ ai_models_problems() {
 # chain still names a retired Fable (claude-fable-5 or claude-fable-5-1), else
 # nothing. Fable 5 was deprecated in #1901 (audit/single moved to opus-5-5) and
 # Fable 5.1 is superseded by Fable 5.2, the preferred Fable; a chain naming
-# claude-fable-5-2 does not warn. A configured old Fable is still HONOURED as a
+# claude-fable-5-2 does not warn. Fable 5 matches only as a whole id (a prefix
+# would catch 5-2); Fable 5.1 matches as a prefix, so a suffixed 5-1 id still
+# warns. A configured old Fable is still HONOURED as a
 # stop-gap (this warns, it does not reject), so an operator can pin it while
 # migrating. Sources checked: the per-tier CLAUDE_<TIER>_MODEL_CHAIN envs (including
 # CLAUDE_FABLE_MODEL_CHAIN) and AI_MODELS_CLAUDE.
@@ -284,7 +286,7 @@ ai_models_fable_deprecation() {
       fable)  var="CLAUDE_FABLE_MODEL_CHAIN" ;;
     esac
     chain="${!var:-}"
-    case ",${chain// /}," in *,claude-fable-5,*|*,claude-fable-5-1,*) found=1 ;; esac
+    case ",${chain// /}," in *,claude-fable-5,*|*,claude-fable-5-1*) found=1 ;; esac
   done
   # One tr subshell to fold AI_MODELS_CLAUDE to lowercase (${var,,} is Bash 4+);
   # then '=', ';' and newlines become ',' so every model id in the spec is a whole
@@ -295,7 +297,7 @@ ai_models_fable_deprecation() {
   lower="${lower//;/,}"
   lower="${lower//$'\n'/,}"
   case ",${lower//[[:space:]]/}," in
-    *,claude-fable-5,*|*,claude-fable-5-1,*) found=1 ;;
+    *,claude-fable-5,*|*,claude-fable-5-1*) found=1 ;;
   esac
   [ -n "$found" ] || return 0
   printf '%s' "claude-fable-5 and claude-fable-5-1 are deprecated (#1901): audit/single default to claude-opus-5-5 (chain claude-opus-5-5,claude-opus-4-8,claude-opus-4-7), and claude-fable-5-2 is the preferred Fable. The configured model is still honoured as a stop-gap — repoint it to claude-opus-5-5, or to claude-fable-5-2 where Fable is wanted."

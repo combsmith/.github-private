@@ -488,6 +488,11 @@ STUB
   [[ "$(ai_models_fable_deprecation)" == *"claude-fable-5-2"* ]]
   export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-2,claude-opus-5-5"
   [ -z "$(ai_models_fable_deprecation)" ]
+  # Boundary: a suffixed 5-1 id still warns; a suffixed 5-2 id stays silent.
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-1-20261001"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-2-20261201"
+  [ -z "$(ai_models_fable_deprecation)" ]
   unset CLAUDE_AUDIT_MODEL_CHAIN
   export AI_MODELS_CLAUDE="audit=claude-fable-5-2,claude-opus-5-5; fable=claude-fable-5-2"
   [ -z "$(ai_models_fable_deprecation)" ]
