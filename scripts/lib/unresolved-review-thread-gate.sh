@@ -33,7 +33,9 @@
 # The check is pure jq (no gh/network). urtg_fetch_review_threads() is the thin
 # gh helper the caller uses to obtain <threads_json>.
 
-set -euo pipefail
+# set -euo pipefail is intentionally omitted at the top level: this file is
+# sourced, and setting shell options would leak into the calling script. It is
+# enabled only in the standalone execution block below.
 
 # log_unresolved_gate_info <message...>
 #   Echo an info-level message to stderr with [unresolved-review-gate] prefix.
@@ -86,9 +88,9 @@ urtg_fetch_review_threads() {
   printf '%s' "$_raw" | jq -c '
     if (.errors != null and (.errors | length) > 0) then {complete: false, reviewThreads: []}
     else
-      (.data?.resource?.reviewThreads?) as $rt
+      (.data.resource.reviewThreads?) as $rt
       | if ($rt == null
-            or ($rt.pageInfo?.hasNextPage == null)
+            or ($rt.pageInfo.hasNextPage? == null)
             or ($rt.nodes | type) != "array")
         then {complete: false, reviewThreads: []}
         else {
@@ -154,6 +156,7 @@ check_unresolved_review_threads() {
 
 # Run standalone against a PR URL (only if executed, not sourced).
 if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
+  set -euo pipefail
   _pr_url="${1:-}"
   if [[ -z "$_pr_url" ]]; then
     echo "usage: unresolved-review-thread-gate.sh <pr-url>" >&2

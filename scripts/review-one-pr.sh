@@ -1272,7 +1272,7 @@ if [[ -n "${EXISTING_MARKER_SHA:-}" ]]; then
     gh pr view "$PR_URL" --json reviews,comments 2>/dev/null \
       | jq -r --arg bot "${BOT_USER:-donpetry-bot}" --arg sha "$PRIOR_REVIEW_SHA" '
           [ ((.reviews // []) + (.comments // []))[]
-            | select((.author?.login // "") == $bot)
+            | select((.author.login? // "") == $bot)
             | (.body // empty)
             | select(test("<!-- pr-review-agent v1 sha=" + $sha + "( [^>]*)? -->"))
           ] | last // empty
