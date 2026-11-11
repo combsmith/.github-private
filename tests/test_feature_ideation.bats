@@ -225,6 +225,11 @@ setup() {
   steps_env=$(yq '.jobs.redispatch.steps[].env[]' "$FEATURE_IDEATION_YML")
   grep -qF "addDiscussionComment" <<<"$steps_run"
   grep -qE "github\.event\.discussion\.node_id" <<<"$steps_env"
+  # The node id env key is bound to the mutation's discussionId, and the built
+  # body is what gets posted.
+  grep -qF 'DISCUSSION_NODE_ID' <<<"$(yq '.jobs.redispatch.steps[].env | keys | .[]' "$FEATURE_IDEATION_YML")"
+  grep -qF -- '-f discussionId="${DISCUSSION_NODE_ID}"' <<<"$steps_run"
+  grep -qF -- '-f body="${body}"' <<<"$steps_run"
   # …and the comment text interpolates the dispatched run's URL.
   grep -qF 'The BMAD Analyst runs in a separate workflow run: ${run_url}' <<<"$steps_run"
 }
@@ -237,4 +242,6 @@ setup() {
   steps_run=$(yq '.jobs.redispatch.steps[].run' "$FEATURE_IDEATION_YML")
   grep -qF 'dispatch_time=' <<<"$steps_run"
   grep -qF 'select(.createdAt >= ' <<<"$steps_run"
+  # The filter must actually interpolate the recorded dispatch time.
+  grep -qF 'select(.createdAt >= \"${dispatch_time}\")' <<<"$steps_run"
 }
