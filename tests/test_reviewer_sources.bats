@@ -383,6 +383,11 @@ _has_findings() {
   run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo concerns identified.\n\n**Hardening Proposals**\n- Validate the lookup name before use.\n<!-- architecture_review_end -->'
   [ "$status" -eq 0 ]
   # A "No ..." line that does not report an absence of concerns still counts.
+  # Missing-control statements that end in a finding noun still count (Codex on #2503).
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo controls mitigate the identified risks.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo protection against injection risks.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
   run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo input validation is performed.\n<!-- architecture_review_end -->'
   [ "$status" -eq 0 ]
   # A <details> block other than "Security review details" may hold the concerns.
