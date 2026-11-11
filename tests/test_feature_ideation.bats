@@ -240,8 +240,9 @@ setup() {
   local steps_run
   steps_run=$(yq '.jobs.redispatch.steps[].run' "$FEATURE_IDEATION_YML")
   grep -qF 'dispatched_at=' <<<"$steps_run"
+  grep -qF -- '--workflow feature-ideation.yml' <<<"$steps_run"
   grep -qF -- '--event workflow_dispatch' <<<"$steps_run"
   grep -qF -- '--created ">=${dispatched_at}"' <<<"$steps_run"
-  # The dispatch command itself must not carry unsupported output flags.
-  ! grep -A3 'gh workflow run feature-ideation.yml' <<<"$steps_run" | grep -qF -- '--json'
+  # The dispatch command itself must not carry unsupported output flags (--json or -q).
+  ! grep -A3 'gh workflow run feature-ideation.yml' <<<"$steps_run" | grep -qE -- '(--json|-q)'
 }
