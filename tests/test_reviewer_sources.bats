@@ -347,6 +347,11 @@ _has_findings() {
   [ "$status" -eq 1 ]
   run _has_findings $'<!-- architecture_review_start -->\n**Hardening Proposals**\nNo hardening proposals.\n<!-- architecture_review_end -->'
   [ "$status" -eq 1 ]
+  # A clean "No ..." line with blank lines before the section end, or at the end of the body.
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\n\nNo architecture-level concerns identified.\n\n\n<!-- architecture_review_end -->'
+  [ "$status" -eq 1 ]
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo architecture-level concerns identified.\n'
+  [ "$status" -eq 1 ]
 }
 
 @test "finding-section(#2501): a Retained concerns or Hardening Proposals section that lists something still counts" {
@@ -358,6 +363,18 @@ _has_findings() {
   run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo blocking concerns, but:\n- the lookup trusts an unvalidated name.\n<!-- architecture_review_end -->'
   [ "$status" -eq 0 ]
   run _has_findings $'<!-- architecture_review_start -->\n**Hardening Proposals**\n- _proposed_ \u2014 validate the name.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
+  # Review cases on #2503: content after a blank line still counts, for both headings.
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo blocking concerns, but:\n\n- Validate the lookup name before use.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
+  run _has_findings $'<!-- architecture_review_start -->\n**Hardening Proposals**\nNo hardening proposals.\n\n- _proposed_ — validate the name.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo architecture-level concerns identified.\n\nThe lookup trusts an unvalidated name.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
+  # A "No ..." line that itself states a concern still counts.
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo critical issues, but the name is unvalidated.\n<!-- architecture_review_end -->'
+  [ "$status" -eq 0 ]
+  run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\nNo critical issues but the name is unvalidated\n<!-- architecture_review_end -->'
   [ "$status" -eq 0 ]
   # The live PR 2494 summary with one listed concern added.
   run _has_findings "$(sed 's/^No architecture-level concerns identified\.$/- **Medium · security · inferred:** the lookup trusts an unvalidated name./' "$BATS_TEST_DIRNAME/fixtures/coderabbit/pr2494-summary-empty-retained-concerns.md")"

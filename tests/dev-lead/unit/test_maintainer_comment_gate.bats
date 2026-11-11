@@ -1312,13 +1312,14 @@ _expect_nf_open() { _expect_open "$@"; }
 @test "hands-off(#2501): a CodeRabbit summary with an empty Retained concerns section keeps approval → 0" {
   _run_check "$(_hands_off_pr "$_CODEX_NF_BODY" "$_CR_2494_BODY" "$_SONAR_2467_BODY")"
   [ "$status" -eq 0 ]
-  # Minimized RESOLVED, edited after a covering informational disposition: still clear.
+  # Minimized RESOLVED, edited (22:12:56Z) after a covering informational disposition: still clear.
   local comments
   comments=$(_hands_off_pr "$_CODEX_NF_BODY" "$_CR_2494_BODY" "$_SONAR_2467_BODY" | jq -c '
     .comments |= map(if .id == "IC_cr" then .isMinimized = true | .minimizedReason = "resolved" else . end)
     | .comments += [{id:"IC_disp_cr", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
         body:"Clean summary.\n<!-- dev-lead:comment-disposition id=IC_cr disposition=informational -->",
-        createdAt:"2026-11-06T22:13:30Z", lastEditedAt:null, isMinimized:false, minimizedReason:null}]')
+        createdAt:"2026-11-06T22:10:00Z", lastEditedAt:null, isMinimized:false, minimizedReason:null}]')
+  [ "$(jq -r '.comments[] | select(.id == "IC_cr") | .lastEditedAt' <<< "$comments")" \> "2026-11-06T22:10:00Z" ]
   _run_check "$comments"
   [ "$status" -eq 0 ]
 }
