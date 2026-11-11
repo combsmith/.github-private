@@ -105,7 +105,7 @@ _QA_ADVISORY_JQ_DEFS='
 _qa_logins_json() {
   local csv="${1:-}"
   [[ -n "$csv" ]] || return 1
-  jq -cn --arg a "$csv" '$a | split(",") | map(select(length > 0) | sub("\\[bot\\]$"; ""))
+  jq -cn --arg a "$csv" '$a | split(",") | map(gsub("^\\s+|\\s+$"; "") | select(length > 0) | sub("\\[bot\\]$"; ""))
     | if length == 0 then error("no logins") else . end' 2>/dev/null
 }
 
@@ -201,12 +201,20 @@ export_qa_advisories() {
   # Verify the PR author is dev-lead before exporting advisories.
   pr_obj=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" 2>/dev/null || echo '{}')
   pr_author=$(jq -r '.user?.login // empty' <<< "$pr_obj" 2>/dev/null || true)
-  if [[ -z "$pr_author" || "$pr_author" != "$(dev_lead_identity)" ]]; then
+  # dev_lead_identity lives in dev-lead-retry.sh and is not defined in every
+  # caller (the fix-reviews pass); fall back to DEV_LEAD_USER / the owner account.
+  local dl_user
+  if declare -F dev_lead_identity >/dev/null 2>&1; then
+    dl_user=$(dev_lead_identity)
+  else
+    dl_user="${DEV_LEAD_USER:-don-petry}"
+  fi
+  if [[ -z "$pr_author" || "$pr_author" != "$dl_user" ]]; then
     printf '[]'
     return 0
   fi
   if ! comments=$(bcr_fetch_pr_comments "$REPO" "$PR_NUMBER" 2>/dev/null) \
-     || ! open=$(qa_advisory_open "$comments" "${BOT_USER:-don-petry}") \
+     || ! open=$(qa_advisory_open "$comments" "${dl_user},${BOT_USER:-donpetry-bot}") \
      || ! open=$(jq -c '.[:5] | map(.body |= .[:4000])' <<< "$open" 2>/dev/null); then
     echo "::warning::review-changes: could not read QA Lead advisories on PR #${PR_NUMBER} — this pass does not see them; the retry cron offers them again (#2487)" >&2
     printf '[]'

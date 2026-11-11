@@ -494,3 +494,29 @@ GHEOF
   run export_qa_advisories
   [ "$output" = "[]" ]
 }
+
+@test "export_qa_advisories: works without dev_lead_identity and honours a don-petry disposition when BOT_USER is donpetry-bot" {
+  export PR_NUMBER=1 REPO=o/r BOT_USER=donpetry-bot DEV_LEAD_USER="don-petry"
+  unset -f dev_lead_identity
+  COMMENTS="$(_list \
+    "$(_c IC_open "$(_advisory_body no 'Gap A.')" 2026-10-01T10:00:00Z)" \
+    "$(_c IC_done "$(_advisory_body no 'Gap B.')" 2026-10-01T11:00:00Z)" \
+    "$(_c IC_d '<!-- dev-lead:advisory-disposition id=IC_done outcome=handled -->' 2026-10-01T12:00:00Z OWNER don-petry)")"
+  bcr_fetch_pr_comments() { printf '%s' "$COMMENTS"; }
+  gh() {
+    case "$*" in
+      *"repos/o/r/pulls/1"*) printf '{"user":{"login":"don-petry"}}' ;;
+      *) echo "[]" ;;
+    esac
+  }
+  export -f gh
+  run export_qa_advisories
+  [ "$status" -eq 0 ]
+  [ "$(jq -r 'map(.id) | join(",")' <<< "$output")" = "IC_open" ]
+}
+
+@test "qa: logins list tolerates whitespace around entries" {
+  run _qa_logins_json " don-petry , donpetry-bot[bot] "
+  [ "$status" -eq 0 ]
+  [ "$output" = '["don-petry","donpetry-bot"]' ]
+}

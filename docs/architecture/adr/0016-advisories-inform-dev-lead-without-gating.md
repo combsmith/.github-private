@@ -21,8 +21,8 @@ person picked it up.
 
 Switching the persona's identity would not help. `dev-lead-intent.sh` acts on a
 comment only from a trusted GitHub App or a trusted human's `@dev-lead`
-mention. The maintainer gate puts every `<!-- persona:` comment out of scope
-(ADR-0012). The move to `donpetry-bot` was tried and discarded advisories
+mention. The maintainer gate puts a trusted author's `<!-- persona:` comment out
+of scope (ADR-0012). The move to `donpetry-bot` was tried and discarded advisories
 (#1734), which is why ADR-0008 has personas post as the owner account.
 
 Two designs were weighed on #2487. In Option A, dev-lead pulls the advisory
