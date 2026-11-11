@@ -10,16 +10,16 @@ standards, and agentic infrastructure.
 | [.github](https://github.com/combsmith/.github) | Organization-wide GitHub configuration and workflows | Shell |
 | [.github-private](https://github.com/combsmith/.github-private) | Org-wide Copilot custom agents and agentic workflow infrastructure | Shell |
 | [ContentTwin](https://github.com/combsmith/ContentTwin) | AI-powered Social Media Agent for small organizations — enterprise-quality social presence at non-profit pricing | Shell |
-| [TalkTerm](https://github.com/combsmith/TalkTerm) | Desktop AI agent interface with voice-enabled animated avatars | TypeScript |
-| [bmad-bgreat-suite](https://github.com/combsmith/bmad-bgreat-suite) | BMad Operations Suite — SRE and DevOps agents and workflows for the BMad Method ecosystem | Shell |
-| [broodly](https://github.com/combsmith/broodly) | Field-first beekeeping decision-support app — Expo/React Native mobile + Go GraphQL API on GCP | HTML |
-| [broodminder-data](https://github.com/combsmith/broodminder-data) | Unified Python client, CLI, bulk export, periodic delta sync, OpenAPI 3.1 spec, and MCP server for BroodMinder beehive data | Python |
-| [empower-personal-dashboard](https://github.com/combsmith/empower-personal-dashboard) | Modern Python client and CLI for the Empower Personal Dashboard (formerly Personal Capital) API with 2FA, session persistence, balances, holdings, and transactions. | Python |
-| [google-app-scripts](https://github.com/combsmith/google-app-scripts) | A place to share Google AppScripts for personal productivity | JavaScript |
-| [incubator](https://github.com/combsmith/incubator) | Product incubator: pre-product idea Discussions, decision briefs/PRD-lite, and disposable POCs. Ideas graduate to their own product repo once a POC proves out. Front-of-funnel for the .github-private ideation pipeline. | Python |
-| [markets](https://github.com/combsmith/markets) | Market-day coordination for local farmer and art markets — vendors post updates, managers publish, customers see what's there today | HTML |
-| [repo-template](https://github.com/combsmith/repo-template) | Org template repository: one-click scaffold for new combsmith repos. Files via 'Use this template'; non-file standards via bootstrap. See epic combsmith/.github-private#964. | Shell |
-| [software-factory](https://github.com/combsmith/software-factory) | The Factory's decision core: a pure, checkable Kernel over GitHub facts, with schemas, lifecycles and a simulator | Python |
+| [TalkTerm](https://github.com/combsmith/TalkTerm) | | TypeScript |
+| [bmad-bgreat-suite](https://github.com/combsmith/bmad-bgreat-suite) | | Shell |
+| [broodly](https://github.com/combsmith/broodly) | | HTML |
+| [broodminder-data](https://github.com/combsmith/broodminder-data) | | Python |
+| [empower-personal-dashboard](https://github.com/combsmith/empower-personal-dashboard) | | Python |
+| [google-app-scripts](https://github.com/combsmith/google-app-scripts) | | JavaScript |
+| [incubator](https://github.com/combsmith/incubator) | | Python |
+| [markets](https://github.com/combsmith/markets) | | HTML |
+| [repo-template](https://github.com/combsmith/repo-template) | | Shell |
+| [software-factory](https://github.com/combsmith/software-factory) | | Python |
 | [software-factory-canary](https://github.com/combsmith/software-factory-canary) | Throwaway repo for the Factory's platform trials. Nothing here is depended on. | Shell |
 | [worldchest](https://github.com/combsmith/worldchest) | Automatic backup, sync, restore and versioning for Minecraft Bedrock worlds on kids' devices (not an official Minecraft product) | — |
 
