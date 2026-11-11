@@ -290,6 +290,9 @@ ai_models_fable_deprecation() {
   # key (ignored there) does not warn and a padded id (trimmed there) does.
   if [ -n "${AI_MODELS_CLAUDE:-}" ]; then
     for key in $(_ai_models_keys claude); do
+      # Skip fable key from AI_MODELS_CLAUDE if CLAUDE_FABLE_MODEL_CHAIN is set
+      # (per-tier override takes precedence, #1901 companion fix).
+      [ "$key" = "fable" ] && [ -n "${CLAUDE_FABLE_MODEL_CHAIN:-}" ] && continue
       all="$all,$(ai_models_configured claude "$key")"
     done
   fi
