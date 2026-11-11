@@ -234,14 +234,14 @@ setup() {
   grep -qF 'The BMAD Analyst runs in a separate workflow run: ${run_url}' <<<"$steps_run"
 }
 
-@test "feature-ideation.yml redispatch correlates the run by dispatch time" {
-  # The dispatched run is identified by recording the dispatch time (with slack for
-  # clock skew) and selecting only runs created at/after it, so a pre-existing run
-  # is never linked by mistake.
+@test "feature-ideation.yml redispatch correlates the run by dispatch ID" {
+  # The dispatched run is identified by capturing the database ID returned from
+  # gh workflow run dispatch, which is more robust than timestamp-based selection
+  # (which can pick a wrong run if another manual dispatch fires during polling).
   local steps_run
   steps_run=$(yq '.jobs.redispatch.steps[].run' "$FEATURE_IDEATION_YML")
-  grep -qF 'dispatch_time=' <<<"$steps_run"
-  grep -qF 'select(.createdAt >= ' <<<"$steps_run"
-  # The filter must actually interpolate the recorded dispatch time.
-  grep -qF 'select(.createdAt >= \"${dispatch_time}\")' <<<"$steps_run"
+  grep -qF 'dispatch_run_id=' <<<"$steps_run"
+  grep -qF 'select(.databaseId == ' <<<"$steps_run"
+  # The filter must actually interpolate the dispatch run ID variable.
+  grep -qF 'select(.databaseId == ${dispatch_run_id})' <<<"$steps_run"
 }
