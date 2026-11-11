@@ -49,6 +49,7 @@ jobs:
           TOOLING_REF: ${{ job.workflow_sha }}
         run: |
           set -euo pipefail
+          : "${TOOLING_REF:?job.workflow_sha is empty - cannot pin the resolver}"
           mkdir -p .ci-analyst-tooling/scripts
           gh api -H "Accept: application/vnd.github.raw" \
             "repos/combsmith/.github-private/contents/scripts/ci-failure-analyst-resolve.sh?ref=${TOOLING_REF}" \

@@ -34,19 +34,19 @@ emit() { printf '%s=%s\n' "$1" "$(printf '%s' "$2" | tr -d '\r\n')" >> "$GITHUB_
 # missing, empty or non-JSON payload.
 payload_field() {
   local event_path="${GITHUB_EVENT_PATH:-}"
-  [ -n "$event_path" ] && [ -s "$event_path" ] || return 0
+  [[ -n "$event_path" && -s "$event_path" ]] || return 0
   jq -r "$1 // empty" "$event_path" 2>/dev/null || true
 }
 
 # failed_jobs <run_id> — "job / failing step; job; ..." for the run's failed jobs.
 # A failed jobs lookup returns nonzero rather than reading as "no failed jobs".
 failed_jobs() {
-  [ -n "$1" ] || return 0
+  [[ -n "$1" ]] || return 0
   local jobs
   jobs="$(gh api "repos/$REPO/actions/runs/$1/jobs" --paginate \
     --jq '.jobs[]? | select(.conclusion == "failure")
           | .name + ((.steps // [] | map(select(.conclusion == "failure") | " / " + .name) | .[0]) // "")')" || return 1
-  [ -n "$jobs" ] || return 0
+  [[ -n "$jobs" ]] || return 0
   printf '%s\n' "$jobs" | paste -sd';' - | sed 's/;/; /g'
 }
 
@@ -69,7 +69,7 @@ resolve() {
   esac
 
   head_sha="$(payload_field ".$key.head_sha")"
-  if [ -z "$head_sha" ]; then
+  if [[ -z "$head_sha" ]]; then
     echo "::notice::No head SHA in the $event payload — skipping"
     emit skip true
     return 0
@@ -85,18 +85,18 @@ resolve() {
                                | select(.head?.repo?.id != null and .base?.repo?.id != null and .head?.repo?.id == .base?.repo?.id) | .number')"
   pr_number=""
   while IFS= read -r candidate; do
-    [ -n "$candidate" ] || continue
+    [[ -n "$candidate" ]] || continue
     # A failed lookup is not "closed": it fails the step rather than skipping.
     if ! pr_state="$(gh api "repos/$REPO/pulls/$candidate" --jq '.state')"; then
       echo "::error::Could not look up the state of PR #$candidate"
       return 1
     fi
-    if [ "$pr_state" = "open" ]; then
+    if [[ "$pr_state" == "open" ]]; then
       pr_number="$candidate"
       break
     fi
   done <<< "$candidates"
-  if [ -z "$pr_number" ]; then
+  if [[ -z "$pr_number" ]]; then
     # Fallback: the commits-to-pulls API covers a second push that arrived
     # before this event, and a workflow_run whose payload omits the PR. Only
     # an open PR counts, so a failure on the default branch is not reported
@@ -110,14 +110,14 @@ resolve() {
     fi
     pr_number="$(printf '%s\n' "$pulls" | sed -n '1p')"
   fi
-  if [ -z "$pr_number" ]; then
+  if [[ -z "$pr_number" ]]; then
     echo "::notice::No non-fork PR for SHA $head_sha — skipping"
     emit skip true
     return 0
   fi
 
   name="$(payload_field ".$key.name")"
-  if [ "$event" = check_run ]; then
+  if [[ "$event" == check_run ]]; then
     details_url="$(payload_field ".check_run.details_url // .check_run.html_url")"
     check_run_id="$(payload_field ".check_run.id")"
     # An Actions-hosted check links to its run; a third-party check does not.
@@ -159,7 +159,7 @@ idempotency() {
     return 0
   fi
   existing="$(printf '%s\n' "$ids" | sed -n '1p')"
-  if [ -n "$existing" ]; then
+  if [[ -n "$existing" ]]; then
     echo "::notice::Diagnostic comment already posted (id=$existing) — idempotency skip"
     emit exists true
   else

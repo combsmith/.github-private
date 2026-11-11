@@ -125,8 +125,8 @@ on:
   check_run:
     types: [completed]
   # Each repo may edit this list: name every workflow whose failures should be
-  # analysed. GitHub requires names (the `name:` of each workflow file); there
-  # is no wildcard. Never list "CI Failure Analyst" itself.
+  # analysed. GitHub matches the `name:` of each workflow file and also supports
+  # glob patterns; use exact names unless a wildcard is intentional. Never list "CI Failure Analyst" itself.
   workflow_run:
     workflows: ["CI", "Lint", "Tests"]
     types: [completed]
@@ -151,8 +151,9 @@ entry must match the target workflow's `name:` exactly. A workflow that is not l
 The `workflows:` list is the one part of the stub a repo is expected to change.
 
 When several watched workflows fail on the same commit, each failure starts an analyst run. The
-per-SHA concurrency group runs them one at a time, and the `<!-- ci-analyst sha=... -->` marker
-makes every run after the first an idempotency skip, giving one comment per commit.
+per-SHA concurrency group permits one running and one pending run; a newer event may replace an
+older pending run. The group prevents overlap, and any run that starts after the first is skipped
+by the `<!-- ci-analyst sha=... -->` marker, giving one comment per commit.
 
 **Rollout order.** The stubs pin `ci-failure-analyst/v1-stable`. A trigger takes effect as soon as
 the stub merges, but the reusable it calls is whatever that channel points at. The reusable at
