@@ -46,6 +46,7 @@ failed_jobs() {
   jobs="$(gh api "repos/$REPO/actions/runs/$1/jobs" --paginate \
     --jq '.jobs[]? | select(.conclusion == "failure")
           | .name + ([(.steps // [])[] | select(.conclusion == "failure") | " / " + .name][0] // "")')" || return 1
+  [ -n "$jobs" ] || return 0
   printf '%s\n' "$jobs" | paste -sd';' - | sed 's/;/; /g'
 }
 
@@ -81,7 +82,7 @@ resolve() {
   # A head SHA can belong to several PRs, so every candidate is checked and the
   # first open one wins; with none open, the commits-to-pulls lookup below runs.
   candidates="$(payload_field '(.'"$key"'.pull_requests // [])[]
-                               | select(.head.repo.id == .base.repo.id) | .number')"
+                               | select(.head?.repo?.id != null and .head?.repo?.id == .base?.repo?.id) | .number')"
   pr_number=""
   while IFS= read -r candidate; do
     [ -n "$candidate" ] || continue
@@ -103,7 +104,7 @@ resolve() {
     # rather than reading as "no PR".
     # shellcheck disable=SC2016  # $ENV.REPO is jq built-in syntax, not a shell variable
     if ! pulls="$(gh api "repos/$REPO/commits/$head_sha/pulls" \
-      --jq '.[] | select(.state == "open" and .head.repo.full_name == $ENV.REPO) | .number')"; then
+      --jq '.[] | select(.state == "open" and .head?.repo?.full_name == $ENV.REPO) | .number')"; then
       echo "::error::Could not look up the PRs for SHA $head_sha"
       return 1
     fi
@@ -151,7 +152,7 @@ idempotency() {
   # diagnostic gets posted for a commit that already has one.
   if ! ids="$(gh api "repos/$REPO/issues/${PR_NUMBER:?PR_NUMBER is required}/comments" \
     --paginate \
-    --jq ".[] | select(.body | startswith(\"<!-- ci-analyst sha=${HEAD_SHA:?HEAD_SHA is required} -->\")) | .id" \
+    --jq ".[] | select((.body // \"\") | startswith(\"<!-- ci-analyst sha=${HEAD_SHA:?HEAD_SHA is required} -->\")) | .id" \
     2>/dev/null)"; then
     echo "::warning::Comment lookup failed — skipping to avoid a duplicate diagnostic"
     emit exists true
