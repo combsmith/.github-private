@@ -115,7 +115,8 @@ reviewer_sources_info_status_patterns() {
 #   Matched sections:
 #     * an `architecture_review` section (terminated or not) carrying Retained
 #       concerns, Hardening Proposals, a severity-labelled item, or a non-minimal
-#       risk rating. A "Minimal" section with none of those is clean. A Retained
+#       risk rating, in either the _underscore_ or the current **bold** format.
+#       A "Minimal" section with none of those is clean. A Retained
 #       concerns or Hardening Proposals heading counts only when it lists
 #       something (#2501). It is empty only when nothing but blank lines and at
 #       most one absence line stands between it and the next boundary. The
@@ -140,7 +141,7 @@ reviewer_sources_info_status_patterns() {
 #   Fail closed: it errs toward matching. A false match only costs a real
 #   disposition; a missed one lets a finding be waved away.
 reviewer_sources_finding_section_pattern() {
-  printf '%s\n' '<!-- architecture_review_start -->(?:(?!<!-- architecture_review_end -->)[\s\S])*?(?:(?:Retained concerns|Hardening Proposals)(?!\*{0,2}[ \t]*(?:\r?\n[ \t]*)*(?:No (?:(?:architecture-level|security|blocking|critical|retained|hardening|material|significant|additional|new|open|outstanding|unresolved|notable|other|further|remaining) ){0,2}(?:concerns?|proposals?|issues?|findings?|risks?)(?: (?:were|are|have been))?(?: (?:identified|found|raised|retained|proposed|noted))?\.?[ \t]*(?:\r?\n[ \t]*)*)?(?:<details>\s*<summary>(?:<strong>)?Security review details|\*\*(?:Retained concerns|Hardening Proposals)\*\*|<!-- architecture_review_end|\z))|\*\*(?:Critical|High|Medium|Moderate|Low|Major|Minor)\s*·|Security architecture risk:\*\*\s*_[^_]*?(?:Low|Moderate|Medium|Elevated|High|Critical|Severe))|Actionable comments posted:\s*[1-9]|Outside diff range comments(?!\s*\(\s*0\s*\))|Nitpick comments(?!\s*\(\s*0\s*\))|\*\*Suggestion:\*\*|PR Risk:\s*(?!\**Low Risk\b(?:\*\*)?)\S'
+  printf '%s\n' '<!-- architecture_review_start -->(?:(?!<!-- architecture_review_end -->)[\s\S])*?(?:(?:Retained concerns|Hardening Proposals)(?!\*{0,2}[ \t]*(?:\r?\n[ \t]*)*(?:No (?:(?:architecture-level|security|blocking|critical|retained|hardening|material|significant|additional|new|open|outstanding|unresolved|notable|other|further|remaining) ){0,2}(?:concerns?|proposals?|issues?|findings?|risks?)(?: (?:were|are|have been))?(?: (?:identified|found|raised|retained|proposed|noted))?\.?[ \t]*(?:\r?\n[ \t]*)*)?(?:<details>\s*<summary>(?:<strong>)?Security review details|\*\*(?:Retained concerns|Hardening Proposals)\*\*|<!-- architecture_review_end|\z))|\*\*(?:Critical|High|Medium|Moderate|Low|Major|Minor)\s*·|Security architecture risk:\*\*\s*(?:_[^_]*?|\*\*[^*]*?)(?:Low|Moderate|Medium|Elevated|High|Critical|Severe))|Actionable comments posted:\s*[1-9]|Outside diff range comments(?!\s*\(\s*0\s*\))|Nitpick comments(?!\s*\(\s*0\s*\))|\*\*Suggestion:\*\*|PR Risk:\s*(?!\**Low Risk\b(?:\*\*)?)\S'
 }
 
 # reviewer_sources_trusted_bots_csv

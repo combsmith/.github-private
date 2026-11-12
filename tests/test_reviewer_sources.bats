@@ -331,6 +331,14 @@ _has_findings() {
 @test "finding-section(#2008): a non-minimal security risk with no listed concerns still counts (fail closed)" {
   run _has_findings $'<!-- architecture_review_start -->\n**Security architecture risk:** _🔴 High_ · up to `abc12`\n<!-- architecture_review_end -->'
   [ "$status" -eq 0 ]
+  # The current bold rating format counts the same way; a bold Minimal does not.
+  local r
+  for r in '🔵 Low' '🟡 Moderate' '🔴 High' 'Critical'; do
+    run _has_findings "<!-- architecture_review_start -->"$'\n'"**Security architecture risk:** **$r** · up to \`abc12\`"$'\n'"<!-- architecture_review_end -->"
+    [ "$status" -eq 0 ]
+  done
+  run _has_findings $'<!-- architecture_review_start -->\n**Security architecture risk:** **⚪ Minimal** · up to `abc12`\n<!-- architecture_review_end -->'
+  [ "$status" -eq 1 ]
   # An unterminated section (truncated body) carrying concerns still counts.
   run _has_findings $'<!-- architecture_review_start -->\n**Retained concerns**\n- **Low · security · observed:** x'
   [ "$status" -eq 0 ]

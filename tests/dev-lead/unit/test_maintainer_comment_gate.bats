@@ -1332,6 +1332,16 @@ _expect_nf_open() { _expect_open "$@"; }
   [ "$status" -eq 1 ]
 }
 
+# PR 2503 review: with the heading exempt, a non-minimal rating in the current bold
+# format is the only finding indicator left in an empty-section summary.
+@test "hands-off(#2501): the same summary with a bold Moderate security rating still withholds approval → 1" {
+  local cr_mod
+  cr_mod="$(_sub "$_CR_2494_BODY" '\*\*Security architecture risk:\*\* \*\*⚪ Minimal\*\*' '**Security architecture risk:** **🟡 Moderate**')"
+  [[ "$cr_mod" == *'**Security architecture risk:** **🟡 Moderate**'* ]]
+  _run_check "$(_hands_off_pr "$_CODEX_NF_BODY" "$cr_mod" "$_SONAR_2467_BODY")"
+  [ "$status" -eq 1 ]
+}
+
 # ── Codex: codex-review-state:v1 ─────────────────────────────────────
 
 # The builders must produce well-formed state, or a "still blocks" case below would
