@@ -844,7 +844,8 @@ JSON
  "reviews":{"nodes":[{"author":{"login":"coderabbitai"},"state":"CHANGES_REQUESTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"The handler mishandles rate limit exceeded responses."}]},
  "reviewThreads":{"nodes":[]},"comments":{"nodes":[]}}'
   [ "$status" -eq 0 ]
-  echo "$output" | jq -e '[.[] | select(.class=="refused")] | length == 0'
+  echo "$output" | jq -e '[.[] | select(.kind=="bot_pr" and .bot=="coderabbitai")]
+    | length == 1 and (.[0].classes | .finding == 1 and .refused == 0)'
 }
 
 @test "normalize: a CHANGES_REQUESTED review matching a per-bot status row stays a finding" {
