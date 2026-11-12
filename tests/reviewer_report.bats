@@ -852,6 +852,5 @@ JSON
  "reviews":{"nodes":[{"author":{"login":"coderabbitai"},"state":"CHANGES_REQUESTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"Walkthrough: please fix the migration order."}]},
  "reviewThreads":{"nodes":[]},"comments":{"nodes":[]}}'
   [ "$status" -eq 0 ]
-  echo "$output" | jq -e '[.[] | select(.class=="status")] | length == 0'
-  echo "$output" | jq -e '[.[] | select(.class=="finding")] | length == 1'
+  echo "$output" | jq -e '[.[] | select(.kind=="bot_pr" and .bot=="coderabbitai") | .classes] | .[0] | (.status // 0) == 0 and (.finding // 0) == 1'
 }
