@@ -168,7 +168,8 @@ if declare -F reviewer_sources_message_class_patterns >/dev/null 2>&1; then
   if [ -n "$_mc_rows" ]; then
     REVIEWER_MESSAGE_CLASS_JSON="$(jq -Rsc '
       split("\n") | map(select(length > 0) | split("\t")
-        | {login: .[0], class: .[1], kind: .[2], pattern: (.[3:] | join("\t"))})
+        | {login: (.[0] | ascii_downcase), class: .[1], kind: .[2], pattern: (.[3:] | join("\t"))})
+      | map(select(.pattern != "" and .login != ""))
       | map(select(. as $r | try ("" | test($r.pattern; "i") | true) catch false))
       | reduce .[] as $r ({}; .[$r.login] += [{class: $r.class, kind: $r.kind, pattern: $r.pattern}])
     ' <<<"$_mc_rows" 2>/dev/null)" || REVIEWER_MESSAGE_CLASS_JSON='{}'
@@ -264,7 +265,10 @@ _NORMALIZE_JQ='
     | if $m.kind == "check_run" and (failed_conclusions | index($concl)) != null then "status"
       else
         ( [ (class_rules[$m.bot] // [])[]
-            | select(.kind == "any" or .kind == $m.kind)
+            | select(.kind == $m.kind
+                     or (.kind == "any"
+                         and ($m.kind != "inline"
+                              or (.class == "finding" or .class == "clean"))))
             | select(.pattern as $p | $b | test($p; "i"))
             | .class ] | first ) as $rule
         | if $rule != null then $rule
@@ -277,7 +281,8 @@ _NORMALIZE_JQ='
           elif $m.kind == "review" and $m.state == "APPROVED" then "clean"
           elif $m.kind == "check_run" then
             if $concl == "success" or ($b | test("review ran"; "i")) then "clean"
-            elif $concl == "skipped" and ($b | test("did not run|too large|declin|skip|rate.?limit|quota|usage limit"; "i")) then "refused"
+            elif $concl == "skipped" and ($b | test("did not run|too large|declin|rate.?limit|quota|usage limit"; "i")) then "refused"
+            elif $concl == "skipped" and ($b | test("skip"; "i")) then "skipped"
             elif ($b | test("^\\s*$")) then "status"
             else "unclassified" end
           else "unclassified" end
@@ -458,7 +463,7 @@ _prev_v2() {
   local f="${1:-}" bot="$2" field="$3"
   [ -n "$f" ] && [ -f "$f" ] || { printf ''; return 0; }
   jq -r --arg b "$bot" --arg k "$field" '
-    if ((.schema_version? // 1) | tonumber? // 1) >= 2 then (.bots?[$b]?[$k]? // empty) else empty end
+    if ((.schema_version? // 1) | tonumber? // 1) >= 2 then (.bots?[$b]?[$k]? // (if $k == "no_response_prs" then .eligible_prs else 0 end)) else empty end
   ' "$f" 2>/dev/null || printf ''
 }
 
@@ -697,7 +702,8 @@ render_reviewer_report() {
   # overlap — a status notice or refusal is not coverage (#2504).
   local co_review multi_bot
   co_review="$(jq -s '
-    [ .[] | select(.kind=="bot_pr" and (.real_responses // 0) > 0) ] | group_by(.pr)
+    (reduce (.[] | select(.kind=="pr" and .draft == false)) as $p ({}; .[$p.pr] = true)) as $elig
+    | [ .[] | select(.kind=="bot_pr" and (.real_responses // 0) > 0 and ($elig[.pr] // false)) ] | group_by(.pr)
     | map(select(length >= 2)) | length
   ' "$dir"/*.jsonl 2>/dev/null || echo 0)"
   multi_bot="$(_fmt_pct "$co_review" "$eligible")"

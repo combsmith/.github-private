@@ -166,6 +166,7 @@ reviewer_sources_message_class_patterns() {
     return 1
   fi
   awk -F'\t' '
+    { sub(/\r$/, "") }
     /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
     {
       pat = $4

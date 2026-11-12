@@ -117,8 +117,8 @@ The class is decided in this order, and the first hit wins:
 4. Structural defaults:
    - the first comment of a review thread is a `finding`, and a later comment by the same bot (a reply) is `status`;
    - a `CHANGES_REQUESTED` review is a `finding` and an `APPROVED` one is `clean`;
-   - a check run that succeeded, or whose summary says the review ran, is `clean`;
-   - a check run skipped with a decline reason is `refused`, and one with an empty summary is `status`.
+   - when no earlier pattern matches, a check run that succeeded, or whose summary says the review ran, is `clean`;
+   - a check run skipped with a decline reason is `refused`, one skipped otherwise is `skipped`, and one with an empty summary is `status`.
 5. Otherwise `unclassified`.
 
 A PR counts as **reviewed** by a bot only if the bot left at least one `finding` or `clean`
@@ -186,7 +186,7 @@ collected, are in a **Details** section:
 | **👍 / 👎** | Reactions on the bot's inline comments. |
 | **Status messages / Unclassified messages** | Message counts. Neither ever makes a PR count as reviewed. |
 
-**Coverage overlap** counts PRs *reviewed* (finding or clean) by ≥2 bots. It is a redundancy
+**Coverage overlap** counts non-draft PRs *reviewed* (finding or clean) by ≥2 bots. It is a redundancy
 versus specialization signal.
 
 ### Agent comment noise (our own automation)
