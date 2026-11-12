@@ -32,7 +32,61 @@ and **Copilot**.
      └─ HIGH risk? ↓
    Tier 3: Security audit (~3 min, full agentic)
      └─ final decision → approve or escalate
+     └─ would escalate to a human? ↓   (opt-in: PR_REVIEW_ADJUDICATE=true)
+   Tier 4: Adjudicate (Fable, full agentic)
+     └─ approve / request_changes → replaces the escalation
+     └─ escalate (or any failure) → human escalation, as before
    ```
+
+   ### Tier 4: adjudicate
+
+   Tier 4 is opt-in, off by default (#2495). Turn it on with the repo variable
+   `PR_REVIEW_ADJUDICATE=true`. Delete the variable, or set it to anything else, to
+   turn it off. With the variable off, every path below behaves exactly as before.
+
+   Tier 4 runs **only** when a PR is about to be handed to a human:
+
+   - **Cascade escalation.** The verdict (cascade-action after tier 2 or 3, or the
+     single review) is `escalate` and does not qualify for an automated fix-request:
+     AI delegation is off, the cycle budget is spent, or the risk is HIGH.
+   - **Cycle cap.** The PR reached `MAX_REVIEW_CYCLES` without converging.
+
+   Fable (resolved with `ai_model_for_family fable`, never hard-pinned) gets the PR
+   diff and every prior tier's output from `prompts/adjudicate.md`. On a cascade
+   escalation that means triage, deep review, the rubber duck, the synthesis, the
+   security audit when it ran, and the final cascade verdict. At the cycle cap it
+   means the cascade's verdicts since the last reset. Fable writes structured JSON to
+   `$OUTPUT_FILE`: `decision` (`approve`, `request_changes` or `escalate`), `risk`,
+   `summary` and `findings`. Its stdout and discussion are never parsed.
+
+   - `approve` posts an approval built by the script with the usual
+     `decision=approved` marker.
+   - `request_changes` posts a fix-request comment, even where AI delegation is off.
+   - `escalate` proceeds to today's human escalation.
+
+   Guardrails:
+
+   - Fable may not approve a PR whose security audit reported HIGH risk; that still
+     escalates. At the cycle cap, where no audit runs, a prior verdict with
+     `risk=HIGH` blocks an approve the same way.
+   - One adjudication per head SHA, recorded by the bot-authored marker
+     `<!-- pr-review-agent adjudicate v1 sha=<SHA> trigger=… outcome=… decision=… overrode=… -->`.
+     A marker pasted by anyone else is ignored. Tier 4 never re-runs itself: once it
+     has run since the last reset (a human approval or a human escalation), a cycle
+     cap reached later goes straight to a human.
+   - A rate limit, an error, or invalid JSON falls back to the human escalation. It
+     never approves by default.
+   - It never runs under `DRY_RUN` on the cap path, so diagnose mode stays model-free.
+   - Mechanical and safety escalations still go straight to a human: a single-review
+     failure after retries, a label-write failure, and the dev-lead guards.
+
+   Observability: the run log prints
+   `[tier4] adjudicate ran: model=<id> trigger=… outcome=… decision=… overrode=…`.
+   The posted approval, fix-request or escalation comment carries the marker and a
+   **Tier 4 (adjudicate)** line naming the resolved model, the decision, and whether
+   it overrode the escalation. A verdict tier 4 decided records
+   `FINAL_TIER=adjudicate`. Token records go to `TOKEN_LOG_FILE` under tier
+   `adjudicate`.
 
    ### Cross-engine adversarial review (Rubber Duck)
 
@@ -290,6 +344,10 @@ gh workflow run pr-review.yml --repo combsmith/.github-private -f dry_run=false
   `gh variable set MAX_REVIEW_CYCLES --body 5 --repo combsmith/.github-private`
 - **Models** — change model IDs in `scripts/engine.sh`. The cascade tiers
   map to: triage → deep → audit → action.
+- **Tier 4 adjudicate** — a Fable second opinion before any human escalation
+  (off by default; see [Tier 4: adjudicate](#tier-4-adjudicate)):
+  `gh variable set PR_REVIEW_ADJUDICATE --body true --repo combsmith/.github-private`
+  (turn off: `gh variable delete PR_REVIEW_ADJUDICATE --repo combsmith/.github-private`)
 - **Max PRs per run** — defaults to 10 per cron tick to stay within the 60-min
   job timeout. Override:
   `gh variable set MAX_PRS --body 15 --repo combsmith/.github-private`
@@ -366,6 +424,7 @@ scripts/list-prs.sh       ← PR enumeration
 prompts/triage.md         ← Tier 1: fast risk triage (no tools)
 prompts/deep-review.md    ← Tier 2: thorough review (agentic)
 prompts/security-audit.md ← Tier 3: paranoid security check (agentic)
+prompts/adjudicate.md     ← Tier 4: Fable second opinion before a human escalation (opt-in)
 prompts/single-review.md  ← Fast path: small/incremental/triage-approved
 prompts/cascade-action.md ← Post-review: post, merge, delegate
 prompts/shared.md         ← Shared risk taxonomy and decision gates

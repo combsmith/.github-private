@@ -283,6 +283,13 @@ jobs:
       # kill-switch it without a code change. Operator guide:
       # docs/pr-review-agent/downstream-impact.md.
       DOWNSTREAM_IMPACT_ENABLED: ${{ vars.DOWNSTREAM_IMPACT_ENABLED || 'true' }}
+      # Tier 4 "adjudicate" (#2495): before a PR is handed to a human (a cascade
+      # escalate verdict or the review-cycle cap), ask Fable (`ai_model_for_family
+      # fable`) for a second opinion; its approve or request_changes replaces the
+      # escalation. Off by default — set the repo variable PR_REVIEW_ADJUDICATE=true
+      # to turn it on, anything else (or unset) to turn it off. Guide:
+      # docs/pr-review-agent/pr-review-agent.md ("Tier 4: adjudicate").
+      PR_REVIEW_ADJUDICATE: ${{ vars.PR_REVIEW_ADJUDICATE || 'false' }}
       # Pin via vars.CLAUDE_CODE_VERSION for fully reproducible caching; default
       # 'latest' caches an install indefinitely under that key — flush via the
       # Actions cache UI or bump the variable to pick up new releases.
