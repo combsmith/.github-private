@@ -3,7 +3,7 @@ set -euo pipefail
 # scripts/check-model-pins.sh (#1979) — fail when a concrete Claude model id is
 # hard-pinned outside the allowed files.
 #
-# The org standard: name a model FAMILY (opus|sonnet|haiku) and let
+# The org standard: name a model FAMILY (opus|sonnet|haiku|fable) and let
 # ai_model_for_family (scripts/lib/engine-models.sh) return the current id, so a
 # model swap is one variable/chain edit rather than a hunt across the tree
 # (companion combsmith/.github#1199).
@@ -66,7 +66,7 @@ for d in "${SCAN_DIRS[@]}"; do
 done
 
 if [ "$found" -ne 0 ]; then
-  echo "::error::check-model-pins: hard-pinned Claude model id(s) found above — name a family (opus|sonnet|haiku) via ai_model_for_family, or mark the line 'model-pin-ok: <reason>' if a concrete id is required."
+  echo "::error::check-model-pins: hard-pinned Claude model id(s) found above — name a family (opus|sonnet|haiku|fable) via ai_model_for_family, or mark the line 'model-pin-ok: <reason>' if a concrete id is required."
   exit 1
 fi
 
