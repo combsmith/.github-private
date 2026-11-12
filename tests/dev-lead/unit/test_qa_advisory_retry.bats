@@ -184,6 +184,12 @@ _decide() { qa_advisory_decisions "$1" "$NOW_EPOCH" "$AUTOMATION"; }
   [ "$(jq -r '.[0].decision' <<< "$output")" = "dispatch" ]
 }
 
+@test "qa: a recent QA advisory retry marker for another advisory holds the shared lane" {
+  m=$(_c IC_m "$(qa_advisory_retry_marker IC_other 1 2026-10-02T00:55:00Z)" 2026-10-02T00:55:00Z)
+  run _decide "$(_list "$(_adv)" "$m")"
+  [ "$(jq -r '.[0].reason' <<< "$output")" = "lane-busy" ]
+}
+
 @test "qa: several open advisories are listed oldest first" {
   run _decide "$(_list \
     "$(_c IC_new "$(_advisory_body no 'b')" 2026-10-01T22:00:00Z)" \

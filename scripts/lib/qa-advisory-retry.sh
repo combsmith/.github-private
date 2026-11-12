@@ -160,7 +160,7 @@ qa_advisory_decisions() {
     if type != "array" then error("not an array") else . end
     | . as $all
     | [ $all[] | objects | select(qa_ours) ] as $ours
-    | ([ $ours[] | select((.body // "") | test("<!-- dev-lead-bot-(comment-retry id=|thread-retry threads=|qa-advisory-retry id=)"))
+    | ([ $ours[] | select((.body // "") | test("<!-- (dev-lead-bot-(comment-retry id=|thread-retry threads=)|dev-lead-qa-advisory-retry id=)"))
          | select(($now - at_epoch) < $lane) ] | length > 0) as $lane_busy
     | ($all | map(objects | select(qa_is_advisory) | select(qa_item_count > 0))
             | sort_by(.createdAt // "")) as $advs
