@@ -268,8 +268,8 @@ _NORMALIZE_JQ='
             | select(.kind == $m.kind
                      or (.kind == "any"
                          and ($m.kind != "inline" or .class == "finding")))
-            | select($m.kind != "review" or $m.state != "CHANGES_REQUESTED")
             | select(.pattern as $p | $b | test($p; "i"))
+            | select($m.kind != "review" or $m.state != "CHANGES_REQUESTED")
             | .class ] | first ) as $rule
         | if $rule != null then $rule
           elif $m.kind != "inline"
