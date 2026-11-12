@@ -799,7 +799,7 @@ assertion is added for a fix, prove it: run the test against the unfixed code an
 
 ### Model selection — name a family, never pin a version
 
-Name a model **family** — `opus`, `sonnet`, or `haiku` — and resolve it to the
+Name a model **family** — `opus`, `sonnet`, `haiku`, or `fable` — and resolve it to the
 current concrete id at run time; do **not** hard-pin `claude-<family>-<version>`
 ids across the tree (#1979, companion
 [`combsmith/.github#1199`](https://github.com/combsmith/.github/issues/1199)).
