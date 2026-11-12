@@ -198,7 +198,7 @@ METADATA_ONLY=$(jq -r '.metadata_only // false' "$VERDICT_JSON")
 ADJUDICATION_JSON=$(jq -c '.adjudication // empty | select(type == "object")' "$VERDICT_JSON" 2>/dev/null || true)
 ADJ_DECISION=""
 ADJ_NOTE=""
-if [ -n "$ADJUDICATION_JSON" ]; then
+if [[ -n "$ADJUDICATION_JSON" ]]; then
   ADJ_DECISION=$(jq -r '.decision // ""' <<<"$ADJUDICATION_JSON" 2>/dev/null || true)
   ADJ_NOTE=$(adjudicate_note "$ADJUDICATION_JSON" "$PR_HEAD_SHA")
 fi
@@ -210,7 +210,7 @@ fi
 # raw verdict word, so a valid approve verdict failed the guard on formatting
 # alone and nothing was posted. Normalize only the present-tense word inside the
 # head-SHA v1 marker; a missing or contradictory decision still fails closed.
-if [ "$DECISION" = "approve" ]; then
+if [[ "$DECISION" == "approve" ]]; then
   # -z treats the body as one record so a marker wrapped across lines still
   # matches. Detect changes without command substitution stripping newlines: write
   # to temp files and compare via cmp, so a trailing-newline-only difference
@@ -513,7 +513,7 @@ if [ "$DRY_RUN" = "true" ]; then
   echo "Risk: $RISK"
   echo "Body:"
   echo "$BODY"
-  if [ -n "$ADJ_NOTE" ]; then
+  if [[ -n "$ADJ_NOTE" ]]; then
     echo "Tier 4:"
     echo "$ADJ_NOTE"
   fi
@@ -581,7 +581,7 @@ if [ "$DECISION" = "approve" ]; then
 
   # Tier 4 (#2495): record that adjudication produced this approval. Appended
   # after the marker checks above, so it cannot affect them.
-  if [ -n "$ADJ_NOTE" ]; then
+  if [[ -n "$ADJ_NOTE" ]]; then
     BODY="$BODY"$'\n\n'"$ADJ_NOTE"
   fi
 
@@ -739,7 +739,7 @@ elif [ "$DECISION" = "escalate" ]; then
   # not HIGH — adjudicate_escalates_to_human is that rule, shared with
   # review-one-pr.sh), or when tier 4 adjudicated this verdict to request_changes
   # (#2495). Everything else escalates to a human.
-  if [ "$ADJ_DECISION" = "request_changes" ] || ! adjudicate_escalates_to_human "$DECISION" "$RISK"; then
+  if [[ "$ADJ_DECISION" == "request_changes" ]] || ! adjudicate_escalates_to_human "$DECISION" "$RISK"; then
     # Post fix-request comment
     COMMENT_FILE="/tmp/pr-comment-$$.txt"
     NEXT_CYCLE=$(( ${REVIEW_CYCLE:-0} + 1 ))
@@ -790,7 +790,7 @@ $BODY_FOR_COMMENT
 
 $REARM_FOOTER
 COMMENT_END
-    if [ -n "$ADJ_NOTE" ]; then
+    if [[ -n "$ADJ_NOTE" ]]; then
       printf '\n%s\n' "$ADJ_NOTE" >> "$COMMENT_FILE"
     fi
 
@@ -856,7 +856,7 @@ COMMENT_END
     # Tier 4 (#2495): state that adjudication ran and confirmed (or could not
     # replace) this escalation. Empty when tier 4 did not run.
     ESC_ADJ_SECTION=""
-    if [ -n "$ADJ_NOTE" ]; then
+    if [[ -n "$ADJ_NOTE" ]]; then
       ESC_ADJ_SECTION=$'\n\n'"$ADJ_NOTE"
     fi
     ESC_BODY=$(cat <<ESC_END

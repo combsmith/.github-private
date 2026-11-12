@@ -30,7 +30,7 @@
 
 _ADJ_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Reset-event definitions (_REVIEW_CYCLE_JQ_DEFS) and AUTOMATION_BOT_LOGINS.
-if [ -z "${_REVIEW_CYCLE_JQ_DEFS:-}" ]; then
+if [[ -z "${_REVIEW_CYCLE_JQ_DEFS:-}" ]]; then
   # shellcheck source=review-cycle.sh
   source "$_ADJ_LIB_DIR/review-cycle.sh"
 fi
@@ -40,13 +40,13 @@ ADJUDICATE_MARKER_PREFIX='<!-- pr-review-agent adjudicate v1 sha='
 # Per-section cap on the context inlined into the adjudication prompt.
 : "${ADJUDICATE_CONTEXT_MAX_CHARS:=40000}"
 # A non-numeric or zero cap would make `head -c` abort the review: fall back.
-case "$ADJUDICATE_CONTEXT_MAX_CHARS" in
-  ''|*[!0-9]*|0) ADJUDICATE_CONTEXT_MAX_CHARS=40000 ;;
-esac
+if [[ ! "$ADJUDICATE_CONTEXT_MAX_CHARS" =~ ^[1-9][0-9]*$ ]]; then
+  ADJUDICATE_CONTEXT_MAX_CHARS=40000
+fi
 
 # adjudicate_enabled — 0 only when PR_REVIEW_ADJUDICATE is the literal `true`.
 adjudicate_enabled() {
-  [ "${PR_REVIEW_ADJUDICATE:-false}" = "true" ]
+  [[ "${PR_REVIEW_ADJUDICATE:-false}" == "true" ]]
 }
 
 # adjudicate_escalates_to_human <decision> <risk>
@@ -55,10 +55,10 @@ adjudicate_enabled() {
 #   cycles left, risk not HIGH). The single source of that rule for both scripts.
 adjudicate_escalates_to_human() {
   local decision="${1:-}" risk="${2:-}"
-  [ "$decision" = "escalate" ] || return 1
-  if [ "${AI_DELEGATION_ENABLED:-false}" = "true" ] \
-     && [ "${REVIEW_CYCLE:-0}" -lt "${MAX_REVIEW_CYCLES:-3}" ] \
-     && [ "$risk" != "HIGH" ]; then
+  [[ "$decision" == "escalate" ]] || return 1
+  if [[ "${AI_DELEGATION_ENABLED:-false}" == "true" ]] \
+     && [[ "${REVIEW_CYCLE:-0}" -lt "${MAX_REVIEW_CYCLES:-3}" ]] \
+     && [[ "$risk" != "HIGH" ]]; then
     return 1
   fi
   return 0
@@ -75,7 +75,7 @@ _adj_bots_json() {
 #   at <sha>. A marker pasted by anyone else does not count.
 adjudicate_done_at_sha() {
   local items="${1:-[]}" sha="${2:-}"
-  [ -n "$sha" ] || return 1
+  [[ -n "$sha" ]] || return 1
   jq -e --argjson bots "$(_adj_bots_json)" --arg m "${ADJUDICATE_MARKER_PREFIX}${sha} " \
     "$_REVIEW_CYCLE_JQ_DEFS"'
     any(.[]; is_automation_author($bots) and ((.body // "") | contains($m)))
@@ -124,7 +124,7 @@ adjudicate_prior_reviews() {
 #   string and a findings array. Anything else is invalid and never approves.
 adjudicate_validate() {
   local f="${1:-}"
-  [ -f "$f" ] && [ ! -L "$f" ] && [ -s "$f" ] || return 1
+  [[ -f "$f" ]] && [[ ! -L "$f" ]] && [[ -s "$f" ]] || return 1
   jq -e '
     type == "object"
     and ((.decision // "") | IN("approve", "request_changes", "escalate"))
@@ -151,7 +151,7 @@ adjudicate_guard() {
 #   files are skipped.
 adjudicate_context_append() {
   local ctx="$1" label="$2" f="$3"
-  [ -s "$f" ] || return 0
+  [[ -s "$f" ]] || return 0
   {
     printf '### %s\n\n```\n' "$label"
     head -c "$ADJUDICATE_CONTEXT_MAX_CHARS" "$f"
@@ -185,12 +185,12 @@ run_adjudication() {
     source "$_ADJ_LIB_DIR/engine-models.sh"
   fi
   ADJ_MODEL="$(ai_model_for_family fable 2>/dev/null)" || ADJ_MODEL=""
-  if [ "${REVIEW_ENGINE:-claude}" != "claude" ]; then
+  if [[ "${REVIEW_ENGINE:-claude}" != "claude" ]]; then
     echo "    [tier4] Fable needs the claude engine (REVIEW_ENGINE=${REVIEW_ENGINE:-}) — not adjudicating"
     ADJ_OUTCOME="engine-unsupported"
     return 1
   fi
-  if [ -z "$ADJ_MODEL" ] || ! declare -F run_agentic >/dev/null 2>&1; then
+  if [[ -z "$ADJ_MODEL" ]] || ! declare -F run_agentic >/dev/null 2>&1; then
     echo "::warning::[tier4] could not resolve the Fable model or the engine is not loaded — not adjudicating"
     ADJ_OUTCOME="error"
     return 1
@@ -217,14 +217,14 @@ run_adjudication() {
   so="$(cat "$stdout_f" 2>/dev/null || true)"
   se="$(cat "$stderr_f" 2>/dev/null || true)"
 
-  if [ "$rc" -ne 0 ]; then
+  if [[ "$rc" -ne 0 ]]; then
     if _adj_is_rate_limited "$so" || _adj_is_rate_limited "$se"; then
       ADJ_OUTCOME="rate-limited"
     else
       ADJ_OUTCOME="error"
     fi
     echo "::warning::[tier4] adjudication run failed (exit $rc, $ADJ_OUTCOME) — falling back to human escalation"
-    [ -n "$se" ] && printf '    [tier4] stderr: %s\n' "${se:0:2000}"
+    [[ -n "$se" ]] && printf '    [tier4] stderr: %s\n' "${se:0:2000}"
     return 1
   fi
   if ! adjudicate_validate "$out"; then
@@ -272,9 +272,9 @@ adjudicate_note() {
   t="$(_adj_field "$rec" trigger)"; m="$(_adj_field "$rec" model)"
   o="$(_adj_field "$rec" outcome)"; d="$(_adj_field "$rec" decision)"
   ov="$(_adj_field "$rec" overrode)"; g="$(_adj_field "$rec" guard)"
-  [ "$ov" = "true" ] || ov="false"
+  [[ "$ov" == "true" ]] || ov="false"
   dw="${d:-none}"
-  [ "$ov" = "true" ] && yn="yes" || yn="no"
+  [[ "$ov" == "true" ]] && yn="yes" || yn="no"
   printf '%s%s trigger=%s outcome=%s decision=%s overrode=%s -->\n' \
     "$ADJUDICATE_MARKER_PREFIX" "$sha" "${t:-unknown}" "${o:-unknown}" "$dw" "$ov"
   case "$o" in
@@ -399,12 +399,23 @@ adjudicate_cascade_verdict() {
     adjudicate_context_append "$ctx" "${entry%%|*}" "${entry#*|}"
   done
   adjudicate_context_append "$ctx" "cascade verdict (would escalate to a human)" "$verdict"
-  [ -n "$diff" ] && adjudicate_context_append "$ctx" "PR diff (truncated to 3000 lines)" "$diff"
+  # Validate diff: reject empty or whitespace-only diff before calling run_adjudication
+  if [[ -n "$diff" ]] && [[ -s "$diff" ]] && grep -qvE '^[[:space:]]*$' "$diff" 2>/dev/null; then
+    adjudicate_context_append "$ctx" "PR diff (truncated to 3000 lines)" "$diff"
+  elif [[ -n "$diff" ]]; then
+    # Diff was empty or whitespace-only: context error
+    ADJ_MODEL="$(ai_model_for_family fable 2>/dev/null || true)"
+    rec=$(adjudicate_record_json cascade-escalate "$ADJ_MODEL" context-error "" false "")
+    echo "::warning::[tier4] PR diff is empty or whitespace-only — cannot adjudicate without context"
+    adjudicate_log_line "$rec"
+    adjudicate_attach "$verdict" "$rec" || true
+    return 0
+  fi
   if run_adjudication cascade-escalate "$ctx" "$out"; then
     raw=$(jq -r '.decision' "$out")
     final=$(adjudicate_guard "$raw" "$audit_risk")
-    [ "$raw" = "$final" ] || guard="audit-high"
-    if [ "$final" = "approve" ] || [ "$final" = "request_changes" ]; then
+    [[ "$raw" != "$final" ]] && guard="audit-high"
+    if [[ "$final" == "approve" ]] || [[ "$final" == "request_changes" ]]; then
       rec=$(adjudicate_record_json cascade-escalate "$ADJ_MODEL" ok "$final" true "")
       adjudicate_build_verdict "$out" "$final" "$rec" "${PR_HEAD_SHA:-}" "${FINAL_TIER:-single}" "$verdict"
       export FINAL_TIER="adjudicate"

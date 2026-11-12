@@ -128,8 +128,10 @@ maybe_adjudicate_verdict() {
   decision=$(jq -r '.decision // ""' "$verdict" 2>/dev/null || true)
   risk=$(jq -r '.risk // ""' "$verdict" 2>/dev/null || true)
   if adjudicate_escalates_to_human "$decision" "$risk"; then
-    adjudicate_cascade_verdict "$verdict" "$audit_risk" "$PR_ITEMS" \
-      /tmp/cascade/adjudicate-diff.txt ${ADJ_CONTEXT_FILES[@]+"${ADJ_CONTEXT_FILES[@]}"}
+    if [[ "${DRY_RUN:-false}" != "true" ]]; then
+      adjudicate_cascade_verdict "$verdict" "$audit_risk" "$PR_ITEMS" \
+        /tmp/cascade/adjudicate-diff.txt ${ADJ_CONTEXT_FILES[@]+"${ADJ_CONTEXT_FILES[@]}"}
+    fi
   fi
   return 0
 }
@@ -148,9 +150,10 @@ adjudicate_max_cycles() {
   rm -f "$diff" "$diff.full"
   adjudicate_prior_reviews "$PR_ITEMS" > "$prior"
   # The cap path has no audit of its own; a prior verdict that carried HIGH risk
-  # blocks an approve all the same (fail toward the human).
-  grep -Eq '<!-- decision=[a-z-]+ risk=HIGH -->|<!-- pr-review-agent v1 [^>]*risk=HIGH -->' "$prior" 2>/dev/null && audit_risk="HIGH"
-  if gh pr diff "$PR_URL" > "$diff.full" 2>/dev/null && [ -s "$diff.full" ]; then
+  # blocks an approve all the same (fail toward the human). Check ALL prior verdicts,
+  # not just those in the context (which is limited to 5 for the prompt).
+  grep -Eq '<!-- decision=[a-z-]+ risk=HIGH -->|<!-- pr-review-agent v1 [^>]*risk=HIGH -->' <<< "$PR_ITEMS" 2>/dev/null && audit_risk="HIGH"
+  if gh pr diff "$PR_URL" > "$diff.full" 2>/dev/null && [[ -s "$diff.full" ]]; then
     head -n 3000 "$diff.full" > "$diff"
     rm -f "$diff.full"
   else
@@ -168,8 +171,8 @@ adjudicate_max_cycles() {
   if run_adjudication max-cycles "$ctx" "$out"; then
     raw=$(jq -r '.decision' "$out")
     final=$(adjudicate_guard "$raw" "$audit_risk")
-    [ "$raw" = "$final" ] || guard="audit-high"
-    if [ "$final" = "approve" ] || [ "$final" = "request_changes" ]; then
+    [[ "$raw" != "$final" ]] && guard="audit-high"
+    if [[ "$final" == "approve" ]] || [[ "$final" == "request_changes" ]]; then
       rec=$(adjudicate_record_json max-cycles "$ADJ_MODEL" ok "$final" true "")
       adjudicate_build_verdict "$out" "$final" "$rec" "$PR_HEAD_SHA" "max-cycles" "$verdict"
       export FINAL_TIER="adjudicate"
