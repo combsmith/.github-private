@@ -81,6 +81,24 @@ jobs:
           echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
           npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
+      - name: Fetch and sanitize logs
+        if: steps.pr.outputs.skip == 'false' && steps.idem.outputs.exists == 'false'
+        id: logs
+        env:
+          RUN_ID: ${{ steps.pr.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          # Fetch logs only in the Actions environment (not passed to Claude).
+          # This prevents untrusted log content from reaching Claude's prompt.
+          if [[ -n "$RUN_ID" ]]; then
+            log_content=$(gh run view "$RUN_ID" --log-failed --repo "$REPO" 2>/dev/null | tail -200 || true)
+          else
+            log_content=$(gh pr diff "${{ steps.pr.outputs.pr_number }}" --repo "$REPO" 2>/dev/null | head -200 || true)
+          fi
+          # Sanitize: remove newlines and limit to safe characters to prevent injection
+          sanitized_logs=$(printf '%s' "$log_content" | tr '\n' ' ' | tr -d '\r' | cut -c1-2000)
+          printf 'logs=%s\n' "$sanitized_logs" >> "$GITHUB_OUTPUT"
+
       - name: Analyze failure and post comment
         if: steps.pr.outputs.skip == 'false' && steps.idem.outputs.exists == 'false'
         env:
@@ -88,8 +106,8 @@ jobs:
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           WORKFLOW_NAME: ${{ steps.pr.outputs.check_name }}
           DETAILS_URL: ${{ steps.pr.outputs.details_url }}
-          RUN_ID: ${{ steps.pr.outputs.run_id }}
           FAILED_JOBS: ${{ steps.pr.outputs.failed_jobs }}
+          LOG_EXCERPT: ${{ steps.logs.outputs.logs }}
         run: |
           set -euo pipefail
           export PATH="$HOME/.npm-global/bin:$PATH"
@@ -107,23 +125,19 @@ jobs:
           - Head SHA: $HEAD_SHA
           - Workflow/check name: $WORKFLOW_NAME
           - Details URL: $DETAILS_URL
-          - GitHub Actions run ID: $RUN_ID
           - Failed jobs (job / failing step): $FAILED_JOBS
 
-          Follow these steps in order:
+          Log excerpt (first 2000 chars):
+          $LOG_EXCERPT
 
-          ### 1. Fetch failure logs
-          If the run ID above is not empty, fetch the failed-step logs:
-            gh run view $RUN_ID --log-failed --repo $REPO 2>/dev/null | tail -200
-          If the run ID is empty (e.g. an external quality gate like SonarCloud), use the PR diff:
-            gh pr diff $PR_NUMBER --repo $REPO 2>/dev/null | head -200
+          Analyze the above information and follow these steps in order:
 
-          ### 2. Identify the failing step and error
-          From the logs, extract:
+          ### 1. Identify the failing step and error
+          From the log excerpt and failed jobs, extract:
           - The specific step name that failed
           - The key error message or assertion
 
-          ### 3. Classify the root cause into exactly one category:
+          ### 2. Classify the root cause into exactly one category:
           | Category      | Indicators |
           |---|---|
           | Test failure  | Assertion failed, FAIL, AssertionError, Expected...got... |
@@ -135,7 +149,7 @@ jobs:
 
           If the workflow name contains lint, shellcheck, markdownlint, yamllint, or similar -> must classify as Lint/style.
 
-          ### 4. Post a comment on PR #$PR_NUMBER using bash:
+          ### 3. Post a comment on PR #$PR_NUMBER using bash:
           gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
             -f body='<!-- ci-analyst sha=$HEAD_SHA -->
           ## CI Failure: $WORKFLOW_NAME
