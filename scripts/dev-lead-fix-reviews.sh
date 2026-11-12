@@ -430,7 +430,9 @@ if [ "${DEV_LEAD_DRY_RUN:-false}" = "false" ] && [ -n "${PR_NUMBER:-}" ]; then
   # dispatch job's (#2502). With its own later start, the sweep below took the
   # dispatch job's replies for an earlier pass's and, their commits not pushed yet,
   # retracted them as not-on-ref before the push. Empty skips the sweep.
-  [ "${DEV_LEAD_PHASE:-}" != "push" ] || PASS_START_ISO="${DEV_LEAD_PASS_START_ISO:-}"
+  if [ "${DEV_LEAD_PHASE:-}" = "push" ]; then
+    PASS_START_ISO="${DEV_LEAD_PASS_START_ISO:-}"
+  fi
   # Reply-id record for stamp_pass_replies (#2079 AC4): created empty here so a pass
   # that never runs the engine still has a (empty) record; the engine run installs the
   # recording gh shim that fills it. A missing record disables the no-change path.
