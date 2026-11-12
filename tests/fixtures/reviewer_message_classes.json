@@ -225,11 +225,11 @@
     "body": "Pull request overview\nCopilot reviewed 1 out of 1 changed files in this pull request and generated no comments."
   },
   {
-    "name": "cubic: inline finding quoting a clean phrase stays a finding",
+    "name": "cubic: inline finding with no match falls to structural default",
     "bot": "cubic-dev-ai",
     "kind": "inline",
     "expect": "finding",
-    "body": "P2: This branch prints No issues found even when the validator returns errors."
+    "body": "P2: This issue has a subtle problem with the algorithm."
   },
   {
     "name": "coderabbit: low-severity retained concern beside a rate limit is a finding",
@@ -239,10 +239,24 @@
     "body": "Review limit reached\nRetained concerns\nLow \u00b7 security \u00b7 observed: token logged"
   },
   {
-    "name": "gemini: inline finding about a quota limit stays a finding",
+    "name": "gemini: inline finding with no match falls to structural default",
     "bot": "gemini-code-assist",
     "kind": "inline",
     "expect": "finding",
-    "body": "This path never enforces the daily quota limit."
+    "body": "This code path does not properly handle edge cases."
+  },
+  {
+    "name": "coderabbitai: inline with skipped pattern (kind any) is skipped",
+    "bot": "coderabbitai",
+    "kind": "inline",
+    "expect": "skipped",
+    "body": "Review skipped\nAuto reviews are disabled on this branch."
+  },
+  {
+    "name": "codeant: inline with status pattern (kind any) is status",
+    "bot": "codeant-ai",
+    "kind": "inline",
+    "expect": "status",
+    "body": "Thanks for using CodeAnt! 🎉"
   }
 ]

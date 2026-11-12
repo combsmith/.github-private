@@ -30,7 +30,8 @@
 #
 # Matching order for one message:
 #   1. this bot's rows, top to bottom — the FIRST row that matches wins, so put the
-#      narrow rows (a refusal inside a summary, a finding marker) above the broad ones;
+#      narrow rows (a refusal inside a summary, a finding marker) above the broad ones.
+#      Bot rows of any class now apply to inline comments when kind is "inline" or "any".
 #   2. the shared refusal fallback — ADVISORY_RATE_LIMIT_RE from advisory-review-gate.sh
 #      plus its author-scoped cubic clause (never applied to inline comments);
 #   3. structural defaults in reviewer_report.sh — the first inline comment of a thread
