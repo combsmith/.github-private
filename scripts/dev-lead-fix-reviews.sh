@@ -2280,10 +2280,10 @@ resolve_dispositioned_comments() {
       # it. A human comment's reply stays visible: a later pass may re-answer it
       # with a corrected `fixed` (#2004), and the retry never acts on it.
       local rejected="false"
-      if [ "$is_human" != "true" ] && [ "$verified" != "true" ]; then
+      if [[ "$is_human" != "true" && "$verified" != "true" ]]; then
         rejected="true"
       fi
-      if { [ "$disposition" = "fixed" ] || [ "$rejected" = "true" ]; } && [ "$reverify" != "true" ]; then
+      if { [[ "$disposition" == "fixed" ]] || [[ "$rejected" == "true" ]]; } && [[ "$reverify" != "true" ]]; then
         # #2004: an unverified `fixed` is re-answered on later passes. Converge the
         # older replies to OUTDATED now, so the replies never stack (#1992).
         local usid
@@ -2296,12 +2296,22 @@ resolve_dispositioned_comments() {
           fi
         done
       fi
-      if [ "$rejected" = "true" ]; then
-        if gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' \
-            -f id="$chosen_reply_id" >/dev/null 2>&1; then
+      if [[ "$rejected" == "true" ]]; then
+        # Retry the minimize: a single transient failure would leave the rejected
+        # reply visible, and the bot-comment retry would read it as coverage.
+        local mattempt minimized_rejected="false"
+        for mattempt in 1 2 3; do
+          if gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' \
+              -f id="$chosen_reply_id" >/dev/null 2>&1; then
+            minimized_rejected="true"
+            break
+          fi
+          sleep "$mattempt"
+        done
+        if [[ "$minimized_rejected" == "true" ]]; then
           echo "::notice::minimized rejected disposition reply ${chosen_reply_id} OUTDATED — comment ${cid} needs a fresh disposition (#2507)"
         else
-          echo "::warning::failed to minimize rejected disposition reply ${chosen_reply_id} OUTDATED — the bot-comment retry still reads comment ${cid} as dispositioned (#2507)"
+          echo "::warning::failed to minimize rejected disposition reply ${chosen_reply_id} OUTDATED after 3 attempts — the bot-comment retry still reads comment ${cid} as dispositioned (#2507)"
         fi
       fi
       if [ "$reverify" = "true" ]; then

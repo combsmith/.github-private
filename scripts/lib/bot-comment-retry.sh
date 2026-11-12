@@ -229,7 +229,7 @@ _bcr_evaluate() {
            # A minimized disposition reply covers nothing (#2507): the resolver
            # minimizes a reply OUTDATED when it supersedes it or rejects it as
            # unverified, and the gate and the resolver ignore it the same way.
-           disp: (if (.isMinimized // false) == true then []
+           disp: (if .isMinimized then []
                   else markers("dev-lead:comment-disposition") end),
            pass: ($fr | map(select(attr("comment") != null))),
            hold: ($fr | map(select(attr("status") == "rate-limited" or attr("status") == "blocked"))
