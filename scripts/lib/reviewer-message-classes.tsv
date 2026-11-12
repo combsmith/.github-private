@@ -50,7 +50,7 @@ chatgpt-codex-connector	status	any	^\s*Codex Review Summary
 chatgpt-codex-connector	skipped	any	To use Codex here, (create an environment|\[create an environment)
 chatgpt-codex-connector	clean	any	(Didn.t|did not) find any major issues
 chatgpt-codex-connector	finding	any	Here are some automated review suggestions
-coderabbitai	finding	any	Retained concerns|Hardening Proposals|Actionable comments posted:\s*[1-9]|Outside diff range comments \(\s*[1-9]|Nitpick comments \(\s*[1-9]
+coderabbitai	finding	any	Retained concerns[\s\n]*(?:[-*]|Medium|High|Critical|Severity)|Hardening Proposals[\s\n]*(?:[-*]|proposed)|Actionable comments posted:\s*[1-9]|Outside diff range comments \(\s*[1-9]|Nitpick comments \(\s*[1-9]
 coderabbitai	clean	any	No actionable comments were generated|Actionable comments posted:\s*0
 coderabbitai	refused	any	Review limit reached|used all (of )?(your )?free (OSS )?reviews|rate limit exceeded
 coderabbitai	skipped	any	Review skipped|Auto reviews are disabled|Skipped review
