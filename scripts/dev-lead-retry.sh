@@ -1632,25 +1632,28 @@ scan_pr_for_qa_advisories() {
   fi
   now_iso="${NOW_ISO:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
   # Record the attempt BEFORE dispatching, so the next scan sees it as pending.
-  local marker_id="" marker_resp="" marker_login=""
+  local marker_id="" marker_resp="" marker_login="" marker_assoc="" marker_rest=""
   if [[ "$DRY_RUN" != "true" ]]; then
     if ! marker_resp=$(gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
          -f body="$(qa_advisory_retry_marker "$cid" "$attempt" "$now_iso")" \
-         --jq '"\(.id // "") \(.user.login // "")"' 2>/dev/null); then
+         --jq '"\(.id // "") \(.user.login // "-") \(.author_association // "-")"' 2>/dev/null); then
       marker_resp=""
     fi
     marker_id="${marker_resp%% *}"
-    marker_login="${marker_resp#* }"
+    marker_rest="${marker_resp#* }"
+    marker_login="${marker_rest%% *}"
+    marker_assoc="${marker_rest#* }"
     if [[ ! "$marker_id" =~ ^[0-9]+$ ]]; then
       echo "  [warn] qa-advisory retry: could not record the retry marker on PR ${pr_number} — not dispatching (dedup unavailable)" >&2
       echo "0"; return 0
     fi
-    # The next scan counts only markers from our automation logins. A marker
-    # posted under any other identity would never be counted, so the attempt
-    # bound would not hold: withdraw it and do not dispatch.
-    if ! jq -e -n --arg a "$automation" --arg l "$marker_login" \
-         '($a | split(",") | map(sub("\\[bot\\]$"; ""))) | index($l | sub("\\[bot\\]$"; "")) != null' >/dev/null 2>&1; then
-      echo "  [warn] qa-advisory retry: retry marker on PR ${pr_number} was posted as '${marker_login}', not a recognised automation login — withdrawing, not dispatching (attempt would be uncountable)" >&2
+    # The next scan counts only markers from our automation logins with a
+    # trusted association (qa_ours). A marker failing either test would never be
+    # counted, so the attempt bound would not hold: withdraw it, do not dispatch.
+    if ! jq -e -n --arg a "$automation" --arg l "$marker_login" --arg assoc "$marker_assoc" \
+         '(($a | split(",") | map(sub("\\[bot\\]$"; ""))) | index($l | sub("\\[bot\\]$"; "")) != null)
+          and (["OWNER","MEMBER","COLLABORATOR"] | index($assoc) != null)' >/dev/null 2>&1; then
+      echo "  [warn] qa-advisory retry: retry marker on PR ${pr_number} was posted as '${marker_login}' (association '${marker_assoc}'), not a recognised trusted automation login — withdrawing, not dispatching (attempt would be uncountable)" >&2
       withdraw_bot_comment_retry_marker "$repo" "$marker_id"
       echo "0"; return 0
     fi
