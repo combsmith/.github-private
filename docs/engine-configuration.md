@@ -226,6 +226,13 @@ gh variable set PR_REVIEW_ADJUDICATE --body true --repo combsmith/.github-privat
 gh variable delete PR_REVIEW_ADJUDICATE --repo combsmith/.github-private             # off
 ```
 
+These commands set the variable for this repository's own runs only. `pr-review.yml`
+can be called as a reusable workflow, and a called workflow reads `vars.*` from the
+**caller's** repository. A calling repository that has not set `PR_REVIEW_ADJUDICATE`
+keeps the `false` default, so tier 4 does not run for its PRs, with no error. Set the
+variable in each calling repository, or as an organization-level variable those
+repositories can read.
+
 - **Model.** `ai_model_for_family fable` resolves the model (default
   `claude-fable-5-2`). Tier 4 never hard-pins an id. It needs the claude engine. With
   any other engine it is skipped, and the PR escalates as before.

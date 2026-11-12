@@ -347,7 +347,10 @@ gh workflow run pr-review.yml --repo combsmith/.github-private -f dry_run=false
 - **Tier 4 adjudicate** — a Fable second opinion before any human escalation
   (off by default; see [Tier 4: adjudicate](#tier-4-adjudicate)):
   `gh variable set PR_REVIEW_ADJUDICATE --body true --repo combsmith/.github-private`
-  (turn off: `gh variable delete PR_REVIEW_ADJUDICATE --repo combsmith/.github-private`)
+  (turn off: `gh variable delete PR_REVIEW_ADJUDICATE --repo combsmith/.github-private`).
+  These commands cover this repository's own runs. A reusable-workflow call reads the
+  **caller's** variables, so set `PR_REVIEW_ADJUDICATE` in each calling repository, or
+  as an organization-level variable those repositories can read.
 - **Max PRs per run** — defaults to 10 per cron tick to stay within the 60-min
   job timeout. Override:
   `gh variable set MAX_PRS --body 15 --repo combsmith/.github-private`

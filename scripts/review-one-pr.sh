@@ -111,7 +111,7 @@ source "$SCRIPT_DIR/lib/adjudicate.sh"
 # never a stale one from another PR.
 ADJ_CONTEXT_FILES=()
 adj_context_add() {
-  [ -s "$2" ] && ADJ_CONTEXT_FILES+=("$1|$2")
+  [[ -s "$2" ]] && ADJ_CONTEXT_FILES+=("$1|$2")
   return 0
 }
 
@@ -123,7 +123,12 @@ maybe_adjudicate_verdict() {
   local verdict="$1" audit_risk="${2:-}" decision risk
   # Only tier 4 may attach an adjudication record; drop any the model wrote,
   # whether or not tier 4 is enabled.
-  adjudicate_strip "$verdict" || true
+  # If the strip fails the model's record could still be trusted downstream, so
+  # fail closed: force a human escalation with no adjudication record.
+  if ! adjudicate_strip "$verdict"; then
+    echo "::warning::[tier4] could not strip a model-written adjudication record — forcing escalation"
+    printf '%s\n' '{"decision":"escalate","risk":"HIGH"}' > "$verdict"
+  fi
   adjudicate_enabled || return 0
   decision=$(jq -r '.decision // ""' "$verdict" 2>/dev/null || true)
   risk=$(jq -r '.risk // ""' "$verdict" 2>/dev/null || true)
@@ -1055,7 +1060,7 @@ fi
 # with the needs-human-review label) and no-ops without spamming.
 # FORCE_REVIEW bypasses the cap: a mention-triggered run must deliver the
 # review it acknowledged, never silently no-op.
-if [ "${FORCE_REVIEW:-false}" != "true" ] && [ "$REVIEW_CYCLE" -ge "$MAX_CYCLES" ]; then
+if [[ "${FORCE_REVIEW:-false}" != "true" ]] && [[ "$REVIEW_CYCLE" -ge "$MAX_CYCLES" ]]; then
   echo "    cap: review cycle $REVIEW_CYCLE >= max $MAX_CYCLES — escalating to human"
   # Tier 4 (#2495): a Fable second opinion first. Never in a dry run (diagnose
   # mode must stay model-free), at most once per head SHA, and never again once
@@ -1063,7 +1068,7 @@ if [ "${FORCE_REVIEW:-false}" != "true" ] && [ "$REVIEW_CYCLE" -ge "$MAX_CYCLES"
   # goes straight to a human.
   CAP_ADJ_NOTE=""
   if adjudicate_enabled; then
-    if [ "${DRY_RUN:-false}" = "true" ]; then
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
       echo "    [tier4] DRY_RUN: would adjudicate this escalation with $(ai_model_for_family fable 2>/dev/null || echo fable) — no model runs in a dry run"
     elif adjudicate_done_at_sha "$PR_ITEMS" "$PR_HEAD_SHA" || adjudicate_since_reset "$PR_ITEMS"; then
       echo "    [tier4] adjudicate skipped: tier 4 already ran since the last reset (it never re-runs itself) — escalating to a human"
@@ -1079,7 +1084,7 @@ if [ "${FORCE_REVIEW:-false}" != "true" ] && [ "$REVIEW_CYCLE" -ge "$MAX_CYCLES"
     fi
   fi
   CAP_ADJ_SECTION=""
-  if [ -n "$CAP_ADJ_NOTE" ]; then
+  if [[ -n "$CAP_ADJ_NOTE" ]]; then
     CAP_ADJ_SECTION=$'\n'"$CAP_ADJ_NOTE"$'\n'
   fi
   if [ "${DRY_RUN:-false}" = "true" ]; then
