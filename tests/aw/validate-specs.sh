@@ -53,16 +53,16 @@ for wf in "${WORKFLOWS[@]}"; do
 
   # 1. Scenario spec exists and is non-empty
   spec="${REPO_ROOT}/tests/aw/${wf}/scenarios.md"
-  if [ -f "$spec" ] && [ -s "$spec" ]; then
+  if [[ -f "$spec" ]] && [[ -s "$spec" ]]; then
     ok "${wf}: scenario spec exists (tests/aw/${wf}/scenarios.md)"
-  elif [ ! -f "$spec" ]; then
+  elif [[ ! -f "$spec" ]]; then
     fail "${wf}: scenario spec missing" "tests/aw/${wf}/scenarios.md not found"
   else
     fail "${wf}: scenario spec empty" "tests/aw/${wf}/scenarios.md is zero bytes"
   fi
 
   # Scenario spec must have at least one "## Scenario" heading
-  if [ -f "$spec" ] && grep -q "^## Scenario" "$spec" 2>/dev/null; then
+  if [[ -f "$spec" ]] && grep -q "^## Scenario" "$spec" 2>/dev/null; then
     ok "${wf}: scenario spec has scenario headings"
   else
     fail "${wf}: scenario spec malformed" "no '## Scenario' headings found in tests/aw/${wf}/scenarios.md"
@@ -70,9 +70,9 @@ for wf in "${WORKFLOWS[@]}"; do
 
   # 2. Doc exists and is non-empty
   doc="${REPO_ROOT}/docs/aw/${wf}.md"
-  if [ -f "$doc" ] && [ -s "$doc" ]; then
+  if [[ -f "$doc" ]] && [[ -s "$doc" ]]; then
     ok "${wf}: doc exists (docs/aw/${wf}.md)"
-  elif [ ! -f "$doc" ]; then
+  elif [[ ! -f "$doc" ]]; then
     fail "${wf}: doc missing" "docs/aw/${wf}.md not found"
   else
     fail "${wf}: doc empty" "docs/aw/${wf}.md is zero bytes"
@@ -80,7 +80,7 @@ for wf in "${WORKFLOWS[@]}"; do
 
   # 3. Workflow YAML exists and is valid YAML
   yml="${REPO_ROOT}/.github/workflows/${wf}.yml"
-  if [ ! -f "$yml" ]; then
+  if [[ ! -f "$yml" ]]; then
     fail "${wf}: workflow YAML missing" ".github/workflows/${wf}.yml not found"
   else
     if python3 -c "
@@ -116,7 +116,7 @@ except Exception as e:
 
   # 6. Shell script exists and passes bash -n syntax check
   script="${REPO_ROOT}/scripts/aw-${wf}.sh"
-  if [ ! -f "$script" ]; then
+  if [[ ! -f "$script" ]]; then
     fail "${wf}: script missing" "scripts/aw-${wf}.sh not found"
   else
     if bash -n "$script" 2>/dev/null; then

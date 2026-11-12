@@ -75,7 +75,7 @@ pr_require_advisory() {
     return 2
   fi
   path="$(pr_advisory_prompt_path "$id")"
-  if [ ! -f "$root/$path" ]; then
+  if [[ ! -f "$root/$path" ]]; then
     echo "persona-runner: no advisory prompt at $path — persona '$id' has no runtime wired yet" >&2
     return 3
   fi
@@ -93,7 +93,7 @@ pr_comment_has_marker() {
   marker="$(pr_agent_marker "$id")"
   IFS= read -r first <<<"$body"
   first="${first%$'\r'}"
-  [ "$first" = "$marker" ]
+  [[ "$first" = "$marker" ]]
 }
 
 # pr_extract_advisory <agent-stdout> — emit the advisory body the agent placed
@@ -152,7 +152,7 @@ pr_write_handoff() {
   mkdir -p "$(dirname "$handoff")"
   {
     printf '%s\n' "$PR_ADVISORY_BEGIN"
-    if [ -n "$body" ]; then
+    if [[ -n "$body" ]]; then
       printf '%s\n' "$body" | redact_secrets
     fi
     printf '%s\n' "$PR_ADVISORY_END"
@@ -164,7 +164,7 @@ pr_write_handoff() {
 # $PR_HANDOFF_MAX_BYTES. Fails closed, and never prints the artifact's content.
 pr_validate_handoff() {
   local dir="$1" file="$1/$PR_HANDOFF_FILE" count size
-  if [ -L "$dir" ] || [ ! -d "$dir" ]; then
+  if [[ -L "$dir" ]] || [[ ! -d "$dir" ]]; then
     echo "::error::advisory handoff: '${dir}' is not a directory — nothing posted" >&2
     return 1
   fi
@@ -173,7 +173,7 @@ pr_validate_handoff() {
     echo "::error::advisory handoff: expected one file, found ${count// /} entries — nothing posted" >&2
     return 1
   fi
-  if [ -L "$file" ] || [ ! -f "$file" ]; then
+  if [[ -L "$file" ]] || [[ ! -f "$file" ]]; then
     echo "::error::advisory handoff: ${PR_HANDOFF_FILE} is not a regular file — nothing posted" >&2
     return 1
   fi
@@ -306,7 +306,7 @@ pr_valid_login() {
 #         one-line, redacted reason (it says why, it is never treated as a login).
 #   rc 2: nothing configured — GH_TOKEN is empty; gh is not called.
 pr_read_posting_login() {
-  if [ -z "${GH_TOKEN:-}" ]; then
+  if [[ -z "${GH_TOKEN:-}" ]]; then
     return 2
   fi
   local out err errfile rc=0
@@ -348,7 +348,7 @@ pr_verify_posting_identity() {
     login="$(pr_read_posting_login)" || rc=$?
     case "$rc" in
       0)
-        if [ "$login" = "$account" ]; then
+        if [[ "$login" = "$account" ]]; then
           return 0
         fi
         printf "::error::posting token authenticates as '%s', not the manifest identity '%s' (credential '%s') — refusing to post under the wrong identity\n" \
@@ -385,7 +385,7 @@ pr_run_post() {
   local persona="$1" source_repo="$2" item_number="$3" account="$4" credential="$5"
   local agent_out="$6" body_file="$7" summary_file="$8" body
   body="$(pr_extract_advisory "$(cat "$agent_out")")"
-  if [ -z "${body//[[:space:]]/}" ]; then
+  if [[ -z "${body//[[:space:]]/}" ]]; then
     echo "::warning::agent produced no advisory between the sentinels for ${source_repo}#${item_number} — nothing to post"
     return 0
   fi
@@ -405,7 +405,7 @@ pr_run_post() {
 
   pr_verify_posting_identity "$account" "$credential" || return 1
 
-  if [ -z "${item_number}" ]; then
+  if [[ -z "${item_number}" ]]; then
     echo "::notice::discussion advisory not yet supported by the runner post-path — skipping post for ${source_repo}"
     return 0
   fi

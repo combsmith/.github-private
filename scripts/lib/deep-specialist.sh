@@ -45,7 +45,7 @@ normalize_diff_type() {
   local raw="${1:-}" c
   raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
   for c in "${DEEP_SPECIALIST_CLASSES[@]}"; do
-    if [ "$raw" = "$c" ]; then
+    if [[ "$raw" = "$c" ]]; then
       printf '%s\n' "$c"
       return 0
     fi
@@ -77,7 +77,7 @@ resolve_deep_specialist() {
   fallback="${2:?resolve_deep_specialist: fallback prompt required}"
   root="${DEEP_SPECIALIST_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
-  if [ "$type" = "ambiguous" ]; then
+  if [[ "$type" = "ambiguous" ]]; then
     printf '%s\n' "$fallback"
     return 0
   fi
@@ -87,7 +87,7 @@ resolve_deep_specialist() {
     return 0
   }
 
-  if [ -n "$specialist" ] && [ -f "$root/$specialist" ]; then
+  if [[ -n "$specialist" ]] && [[ -f "$root/$specialist" ]]; then
     printf '%s\n' "$specialist"
   else
     printf '%s\n' "$fallback"

@@ -80,8 +80,8 @@ upstream_body="$(jq -c '.body // empty' <<<"$envelope" 2>/dev/null || printf '')
 # 2. Evaluate the shipped public gates (or degrade when they are unavailable).
 s_pct="" w_pct="" s_reset="" w_reset="" reason_override=""
 s_dec="unavailable" g_dec="unavailable" g_enabled="false"
-[ "$publish_failed" = "true" ] && reason_override="telemetry-publish-failed"
-if [ -r "$PUBLIC_LIB" ] && [ -r "$AGENT_RATE_LIMITS_CONFIG" ]; then
+[[ "$publish_failed" = "true" ]] && reason_override="telemetry-publish-failed"
+if [[ -r "$PUBLIC_LIB" ]] && [[ -r "$AGENT_RATE_LIMITS_CONFIG" ]]; then
   # shellcheck disable=SC1090
   source "$PUBLIC_LIB"
 
@@ -122,14 +122,14 @@ bp_append_record "$LOG_FILE" "$record" "${BUDGET_POLLER_MAX_RECORDS:-720}"
 
 line="$(jq -r '.line' <<<"$record")"
 decision="$(bp_decision_text "$record")"
-if [ "$(jq -r '.poll' <<<"$record")" = "ok" ]; then
+if [[ "$(jq -r '.poll' <<<"$record")" = "ok" ]]; then
   printf '%s\n' "$line"
 else
   printf '::warning::budget-poller: %s\n' "$line"
 fi
 printf 'budget-poller dry-run decision: %s\n' "$decision"
 
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
     printf '## Budget poller (dry-run)\n\n'
     printf '> **Dry-run only (#2029).** Logs what the token-budget breaker would do; no variable is set or cleared.\n\n'

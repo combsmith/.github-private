@@ -45,7 +45,7 @@ _ndg_resolve_base_sha() {
   git fetch --quiet origin "$base" 2>/dev/null || true
   local sha
   sha=$(git rev-parse --verify --quiet "FETCH_HEAD^{commit}" 2>/dev/null || true)
-  if [ -z "$sha" ]; then
+  if [[ -z "$sha" ]]; then
     # Fall back to the remote-tracking branch if FETCH_HEAD is not available.
     sha=$(git rev-parse --verify --quiet "${baseref}^{commit}" 2>/dev/null || true)
   fi
@@ -62,7 +62,7 @@ net_diff_is_empty() {
 
   local base_sha
   base_sha=$(_ndg_resolve_base_sha "$base")
-  if [ -z "$base_sha" ]; then
+  if [[ -z "$base_sha" ]]; then
     echo "::warning::net-diff guard: could not resolve ${baseref} to a commit — cannot verify net diff, proceeding" >&2
     return 1
   fi
@@ -79,7 +79,7 @@ net_diff_is_empty() {
     echo "::warning::net-diff guard: git diff against ${baseref} failed — proceeding" >&2
     return 1
   }
-  [ -z "$changed" ]
+  [[ -z "$changed" ]]
 }
 
 # net_diff_summary [base] — echo a compact, human-readable summary of the net
@@ -93,14 +93,14 @@ net_diff_summary() {
 
   local base_sha
   base_sha=$(_ndg_resolve_base_sha "$base")
-  if [ -z "$base_sha" ] || ! git merge-base "$base_sha" HEAD >/dev/null 2>&1; then
+  if [[ -z "$base_sha" ]] || ! git merge-base "$base_sha" HEAD >/dev/null 2>&1; then
     printf 'unknown (could not resolve %s)' "$baseref"
     return 0
   fi
 
   local numstat
   numstat=$(git diff --numstat "${base_sha}...HEAD" 2>/dev/null || true)
-  if [ -z "$numstat" ]; then
+  if [[ -z "$numstat" ]]; then
     printf '0 files, +0/-0 lines'
     return 0
   fi

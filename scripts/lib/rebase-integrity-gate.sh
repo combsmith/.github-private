@@ -42,7 +42,7 @@ _rig_excerpt() {
 rig_duplicate_decl_gate() {
   local gate="${1:-}" work_root="${2:-}" out="" rc=0
   RIG_DETAIL=""
-  if [ ! -x "$gate" ]; then
+  if [[ ! -x "$gate" ]]; then
     echo "::notice::integrity gate: the duplicate-declaration check could not be evaluated — ${gate} is missing or not executable; skipped (#2184)"
     return 0
   fi

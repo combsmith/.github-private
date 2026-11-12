@@ -80,7 +80,7 @@ classify_mcp_output() {
 # mcp_check_is_failure <status>
 # Exit 0 (alert/fail) for any status other than CONNECTED; exit 1 for CONNECTED.
 mcp_check_is_failure() {
-  [ "${1:-}" != "CONNECTED" ]
+  [[ "${1:-}" != "CONNECTED" ]]
 }
 
 # derive_allowed_tools <config>
@@ -88,7 +88,7 @@ mcp_check_is_failure() {
 # mcpServers keys (empty when there are no servers). Pure: reads only the file.
 derive_allowed_tools() {
   local cfg="${1:-}"
-  [ -n "$cfg" ] && [ -f "$cfg" ] || return 0
+  [[ -n "$cfg" ]] && [[ -f "$cfg" ]] || return 0
   jq -r '(.mcpServers // {}) | keys[] | "mcp__\(.)__*"' "$cfg" 2>/dev/null \
     | paste -sd, - || true
 }
@@ -97,7 +97,7 @@ derive_allowed_tools() {
 # Writes a Markdown alert/health body to stdout. Pure: no network.
 mcp_check_report() {
   local st="${1:-}" cfg="${2:-}" servers="${3:-}" today="${4:-}"
-  [ -n "$today" ] || today="$(date -u +%Y-%m-%d)"
+  [[ -n "$today" ]] || today="$(date -u +%Y-%m-%d)"
 
   local icon headline
   case "$st" in
@@ -113,11 +113,11 @@ mcp_check_report() {
   printf -- '- **Result:** %s — %s\n' "$st" "$headline"
   printf '\n'
 
-  if [ "$st" = "FAILED" ]; then
+  if [[ "$st" = "FAILED" ]]; then
     printf '> The configured MCP server(s) returned a connection/init failure. '
     printf 'Context7 (or the configured server) is unreachable — PR reviews will '
     printf 'silently fall back to the model'"'"'s base capabilities until restored.\n'
-  elif [ "$st" = "NO_HANDSHAKE" ]; then
+  elif [[ "$st" = "NO_HANDSHAKE" ]]; then
     printf '> The probe produced no `Successfully connected` handshake within the '
     printf 'timeout. Treated as unreachable: a durable monitor must not pass on the '
     printf 'mere absence of an error.\n'
@@ -130,14 +130,14 @@ mcp_check_report() {
 
 main() {
   local cfg
-  if [ -n "${REVIEW_MCP_CONFIG:-}" ]; then
+  if [[ -n "${REVIEW_MCP_CONFIG:-}" ]]; then
     cfg="$REVIEW_MCP_CONFIG"
   else
     cfg="$REVIEW_MCP_CONFIG_DEFAULT_PATH"
   fi
 
   # No-op when MCP isn't configured (no behavior change for non-MCP repos).
-  if [ ! -f "$cfg" ]; then
+  if [[ ! -f "$cfg" ]]; then
     echo "::notice::[mcp] no MCP config at '${cfg}' — connectivity assertion skipped (no-op for non-MCP repos)"
     return 0
   fi
@@ -154,7 +154,7 @@ main() {
 
   local allowed
   allowed="${REVIEW_MCP_ALLOWED_TOOLS:-$(derive_allowed_tools "$cfg")}"
-  if [ -z "$allowed" ]; then
+  if [[ -z "$allowed" ]]; then
     echo "::notice::[mcp] config '${cfg}' declares no servers — nothing to assert, skipping"
     return 0
   fi
@@ -186,13 +186,13 @@ main() {
   local report
   report="$(mcp_check_report "$status" "$cfg" "$servers" "$today")"
   printf '%s\n' "$report"
-  [ -n "${GITHUB_STEP_SUMMARY:-}" ] && printf '%s\n' "$report" >> "$GITHUB_STEP_SUMMARY"
-  [ -n "${MCP_CHECK_OUT:-}" ] && printf '%s\n' "$report" > "$MCP_CHECK_OUT"
+  [[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && printf '%s\n' "$report" >> "$GITHUB_STEP_SUMMARY"
+  [[ -n "${MCP_CHECK_OUT:-}" ]] && printf '%s\n' "$report" > "$MCP_CHECK_OUT"
 
-  [ -n "${GITHUB_ENV:-}" ] && echo "MCP_STATUS=${status}" >> "$GITHUB_ENV"
+  [[ -n "${GITHUB_ENV:-}" ]] && echo "MCP_STATUS=${status}" >> "$GITHUB_ENV"
 
   if mcp_check_is_failure "$status"; then
-    [ -n "${GITHUB_ENV:-}" ] && echo "MCP_FAILED=true" >> "$GITHUB_ENV"
+    [[ -n "${GITHUB_ENV:-}" ]] && echo "MCP_FAILED=true" >> "$GITHUB_ENV"
     # Surface the captured probe output so the outage is diagnosable in the log.
     echo "----- probe output -----" >&2
     printf '%s\n' "$out" >&2
@@ -211,6 +211,6 @@ main() {
 }
 
 # Only run main when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

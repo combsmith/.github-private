@@ -208,7 +208,7 @@ pr_review_aggregate_misses() {
 pr_review_render_miss_section() {
   local dir="$1"
   local files=("$dir"/*.jsonl) snap
-  if [ ! -e "${files[0]}" ]; then
+  if [[ ! -e "${files[0]}" ]]; then
     snap='{"prs_approved":0,"missed_findings":0,"caught_findings":0,"partial_evidence_approvals":0,"miss_rate_pct":0,"per_bot":{}}'
   else
     snap="$(cat "${files[@]}" 2>/dev/null | pr_review_aggregate_misses)"
@@ -234,12 +234,12 @@ pr_review_render_miss_section() {
   # Per-reviewer: which bot repeatedly finds what pr-review misses (a prompt gap).
   local bot_rows
   bot_rows="$(jq -r '.per_bot | to_entries | sort_by(-.value)[] | "\(.key)\t\(.value)"' <<<"$snap" 2>/dev/null)"
-  if [ -n "$bot_rows" ]; then
+  if [[ -n "$bot_rows" ]]; then
     printf '### Misses by reviewer (who found it first)\n\n'
     printf '| Reviewer | Accepted misses caught first |\n|---|---:|\n'
     local login count label
     while IFS=$'\t' read -r login count; do
-      [ -n "$login" ] || continue
+      [[ -n "$login" ]] || continue
       if declare -p REVIEWER_LABELS >/dev/null 2>&1; then
         label="${REVIEWER_LABELS[$login]:-$login}"
       else

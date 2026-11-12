@@ -25,7 +25,7 @@ EXPECTED_PROMPTS=(
 echo "Checking prompt files exist..."
 for prompt in "${EXPECTED_PROMPTS[@]}"; do
   path="$PROMPTS_DIR/$prompt"
-  if [ ! -f "$path" ]; then
+  if [[ ! -f "$path" ]]; then
     echo "  FAIL: missing prompt file: $path"
     FAILED=1
   else
@@ -39,12 +39,12 @@ echo ""
 echo "Checking variable declarations..."
 for prompt in "${EXPECTED_PROMPTS[@]}"; do
   path="$PROMPTS_DIR/$prompt"
-  [ -f "$path" ] || continue
+  [[ -f "$path" ]] || continue
 
   # Extract declared variables from <!-- VARIABLES: VAR1, VAR2, ... --> comment
   declared_line=$(grep -oP '(?<=<!-- VARIABLES: )[^>]+(?= -->)' "$path" 2>/dev/null | head -1 || true)
 
-  if [ -z "$declared_line" ]; then
+  if [[ -z "$declared_line" ]]; then
     echo "  FAIL: $prompt — missing <!-- VARIABLES: ... --> comment"
     FAILED=1
     continue
@@ -56,14 +56,14 @@ for prompt in "${EXPECTED_PROMPTS[@]}"; do
   # Extract ${VAR} style references used in file
   used_vars=$(grep -oP '\$\{[A-Z_]+\}' "$path" 2>/dev/null | sed 's/[${}]//g' | sort -u || true)
 
-  if [ -z "$used_vars" ]; then
+  if [[ -z "$used_vars" ]]; then
     echo "  ok: $prompt (no variables used)"
     continue
   fi
 
   prompt_failed=0
   while IFS= read -r var; do
-    [ -z "$var" ] && continue
+    [[ -z "$var" ]] && continue
     if ! echo "$declared_vars" | grep -qx "$var"; then
       echo "  FAIL: $prompt — \${$var} used but not declared in VARIABLES comment"
       FAILED=1
@@ -94,13 +94,13 @@ echo "Checking review prompts reply-with-specifics; resolution is harness-only..
 REVIEW_PROMPTS=("fix-reviews.md" "review-changes.md" "fix-bot-comment.md")
 for prompt in "${REVIEW_PROMPTS[@]}"; do
   path="$PROMPTS_DIR/$prompt"
-  [ -f "$path" ] || { echo "  FAIL: $prompt — missing"; FAILED=1; continue; }
+  [[ -f "$path" ]] || { echo "  FAIL: $prompt — missing"; FAILED=1; continue; }
   missing=""
   grep -q "addPullRequestReviewThreadReply" "$path" || missing="$missing reply-mutation"
   grep -qiE "specific(ally)?" "$path"               || missing="$missing specific-details"
   grep -qiE "harness resolves" "$path"              || missing="$missing harness-resolves"
   grep -qiE "must not call[^.]*resolveReviewThread" "$path" || missing="$missing forbid-resolve-mutation"
-  if [ -n "$missing" ]; then
+  if [[ -n "$missing" ]]; then
     echo "  FAIL: $prompt — missing:$missing"
     FAILED=1
   else
@@ -145,7 +145,7 @@ fi
 echo ""
 echo "Checking review-changes explains a failing-check fix (check vs. intent, #1468)..."
 rc_path="$PROMPTS_DIR/review-changes.md"
-if [ ! -f "$rc_path" ]; then
+if [[ ! -f "$rc_path" ]]; then
   echo "  FAIL: review-changes.md — missing"
   FAILED=1
 else
@@ -153,7 +153,7 @@ else
   # unrelated prompt text cannot mask a regression in the operative instruction.
   rc_section="$(sed -n '/^#### Reporting a failing-check fix/,/^###/p' "$rc_path")"
   rc_missing=""
-  [ -n "$rc_section" ] || rc_missing="$rc_missing reporting-section"
+  [[ -n "$rc_section" ]] || rc_missing="$rc_missing reporting-section"
   printf '%s' "$rc_section" | grep -qiE "what (the|a) (failing )?check verifies" || rc_missing="$rc_missing what-check-verifies"
   printf '%s' "$rc_section" | grep -qiE "why (this|the|your) diff (makes that true|satisfies)" || rc_missing="$rc_missing why-diff-satisfies"
   printf '%s' "$rc_section" | grep -qiE "not (just|merely) .*check (now )?passes" || rc_missing="$rc_missing not-just-passes"
@@ -162,7 +162,7 @@ else
   # fixture, expected output, or the assertion itself).
   grep -qiE "never make a check green by changing what it asserts" "$rc_path" || rc_missing="$rc_missing prohibition-no-assert-change"
   printf '%s' "$rc_section" | grep -qiE "change what the check asserts" || rc_missing="$rc_missing section-stop-condition"
-  if [ -n "$rc_missing" ]; then
+  if [[ -n "$rc_missing" ]]; then
     echo "  FAIL: review-changes.md — missing check-vs-intent statement:$rc_missing"
     FAILED=1
   else
@@ -183,7 +183,7 @@ fi
 echo ""
 echo "Checking no dev-lead prompt reintroduces the resolveReviewThread mutation (#1691)..."
 for path in "$PROMPTS_DIR"/*.md; do
-  [ -f "$path" ] || continue
+  [[ -f "$path" ]] || continue
   if grep -qE '(un)?resolveReviewThread[[:space:]]*\(' "$path"; then
     echo "  FAIL: $(basename "$path") — contains a resolveReviewThread mutation invocation; resolution is harness-only (#1691)"
     FAILED=1

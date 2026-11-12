@@ -85,7 +85,7 @@ fleet_pause_drop_runs() {
 #   `job-gate`, one file name per line. A missing registry prints nothing.
 fleet_pause_notice_workflows() {
   local registry="${1:-$(dirname "${BASH_SOURCE[0]}")/fleet-pause-registry.tsv}"
-  [ -f "$registry" ] || return 0
+  [[ -f "$registry" ]] || return 0
   awk -F'\t' '!/^#/ && $2 == "job-gate" { print $1 }' "$registry"
 }
 
@@ -123,15 +123,15 @@ fleet_pause_workflow_has_notice() {
 #   normal case: no pause in the window). Pure: no network.
 generate_fleet_paused_report() {
   local f="${1:-}"
-  [ -n "$f" ] && [ -s "$f" ] || return 0
+  [[ -n "$f" ]] && [[ -s "$f" ]] || return 0
   printf '## Fleet-paused runs\n\n'
   printf 'Runs that did no work because the agent fleet was paused (`AGENTS_PAUSED=true`): their `%s` notice job ran. ' "$FLEET_PAUSED_JOB"
   printf 'They are counted here only. They are not in the totals, the success or failure counts, the failure rates or the durations above.\n\n'
   printf '| Repo | Workflow | Paused runs |\n'
   printf '|---|---|---:|\n'
   local repo wf paused
-  sort -t$'\t' -k1,1 -k2,2 "$f" | while IFS=$'\t' read -r repo wf paused || [ -n "$repo" ]; do
-    [ -n "$repo" ] || continue
+  sort -t$'\t' -k1,1 -k2,2 "$f" | while IFS=$'\t' read -r repo wf paused || [[ -n "$repo" ]]; do
+    [[ -n "$repo" ]] || continue
     printf '| `%s` | `%s` | %s |\n' "$repo" "$wf" "$paused"
   done
   printf '\n'

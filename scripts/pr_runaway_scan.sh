@@ -40,7 +40,7 @@ echo ""
 # 0. Token selection — fall back to GH_PAT_FALLBACK if REPO is unreachable
 # ---------------------------------------------------------------------------
 if ! gh api "repos/${REPO}" >/dev/null 2>&1; then
-  if [ -n "${GH_PAT_FALLBACK:-}" ]; then
+  if [[ -n "${GH_PAT_FALLBACK:-}" ]]; then
     echo "::warning::GH_TOKEN cannot access ${REPO} — using GH_PAT_FALLBACK"
     export GH_TOKEN="$GH_PAT_FALLBACK"
     if ! gh api "repos/${REPO}" >/dev/null 2>&1; then
@@ -62,7 +62,7 @@ open_prs=$(gh api --paginate "repos/${REPO}/pulls?state=open&per_page=100" \
   exit 1
 }
 
-if [ -z "$open_prs" ]; then
+if [[ -z "$open_prs" ]]; then
   echo "No open PRs in ${REPO}."
 fi
 
@@ -78,7 +78,7 @@ now_epoch=$(date -u +%s)
 scanned=0
 
 while IFS= read -r pr; do
-  [ -n "$pr" ] || continue
+  [[ -n "$pr" ]] || continue
   scanned=$(( scanned + 1 ))
 
   # Single detail call gives commit/comment/file counts + created_at + link + title.
@@ -97,13 +97,13 @@ while IFS= read -r pr; do
   # smell (#949) in pure bash — avoids a per-PR subshell + sed fork.
   reasons_runaway=$(pr_runaway_reasons "$commits" "$comments" "$cycles" "$age_hours")
   reasons_smell=$(pr_rebase_smell "$commits" "$changed_files")
-  if [ -n "$reasons_runaway" ] && [ -n "$reasons_smell" ]; then
+  if [[ -n "$reasons_runaway" ]] && [[ -n "$reasons_smell" ]]; then
     reasons="${reasons_runaway}
 ${reasons_smell}"
   else
     reasons="${reasons_runaway:-$reasons_smell}"
   fi
-  if [ -n "$reasons" ]; then
+  if [[ -n "$reasons" ]]; then
     # Sanitize the title for a single markdown table cell: strip newlines/tabs
     # (the TSV delimiter) and pipes (the markdown column delimiter).
     safe_title=$(printf '%s' "$title" | tr '\n\t|' '   ')
@@ -130,9 +130,9 @@ echo "Scanned ${scanned} open PR(s); ${runaway_count} runaway candidate(s)."
   generate_runaway_report "$candidates_file"
 } > "$REPORT_FILE"
 
-[ -n "${GITHUB_STEP_SUMMARY:-}" ] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+[[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
 
-if [ -n "${GITHUB_ENV:-}" ]; then
+if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "RUNAWAY_COUNT=${runaway_count}" >> "$GITHUB_ENV"
   if [ "$runaway_count" -gt 0 ]; then
     echo "HAS_RUNAWAY=true" >> "$GITHUB_ENV"

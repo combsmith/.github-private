@@ -103,7 +103,7 @@
 # The gate's agent-marker regex and info-status registry reader — one source of
 # truth for "which comments need a disposition" (#1813 / #1918). Source the gate
 # library only if the caller has not already (its marker regex is readonly).
-if [ -z "${_MAINTAINER_GATE_AGENT_MARKERS:-}" ]; then
+if [[ -z "${_MAINTAINER_GATE_AGENT_MARKERS:-}" ]]; then
   # shellcheck source=maintainer-comment-gate.sh
   source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/maintainer-comment-gate.sh"
 fi
@@ -159,7 +159,7 @@ _bcr_evaluate() {
   local mode="$1"; shift
   local comments="${1:-}" trusted_csv="${2:-}" info_patterns="${3:-}" now_epoch="${4:-}"
   local automation_csv="${5:-}" run_states="${6:-}"
-  [ -n "$info_patterns" ] || info_patterns='{}'
+  [[ -n "$info_patterns" ]] || info_patterns='{}'
   # An unreadable run-state map is "no run is known" — never a reason to treat a
   # retry as lost.
   run_states=$(jq -ces 'select(length == 1) | .[0] | objects' <<< "$run_states" 2>/dev/null) \
@@ -435,7 +435,7 @@ _bcr_fetch_pr_comments_into() {
   }'
   local cursor="" prev_cursor="" has_next="true" page
   local cursor_args=()
-  while [ "$has_next" = "true" ]; do
+  while [[ "$has_next" = "true" ]]; do
     page=$(gh api graphql -f query="$query" -F owner="${repo%%/*}" -F repo="${repo##*/}" \
       -F pr="$pr" "${cursor_args[@]}" 2>/dev/null) || {
       echo "${warn} API request failed" >&2; return 1; }
@@ -455,11 +455,11 @@ _bcr_fetch_pr_comments_into() {
     case "$has_next" in true|false) ;; *)
       echo "${warn} invalid pagination info (hasNextPage)" >&2; return 1 ;;
     esac
-    if [ "$has_next" = "true" ] && [ -z "$cursor" ]; then
+    if [[ "$has_next" = "true" ]] && [[ -z "$cursor" ]]; then
       echo "${warn} invalid pagination info (no endCursor)" >&2; return 1
     fi
     # A cursor that did not advance would re-fetch the same page forever.
-    if [ "$has_next" = "true" ] && [ "$cursor" = "$prev_cursor" ]; then
+    if [[ "$has_next" = "true" ]] && [[ "$cursor" = "$prev_cursor" ]]; then
       echo "${warn} invalid pagination info (endCursor did not advance)" >&2; return 1
     fi
     prev_cursor="$cursor"

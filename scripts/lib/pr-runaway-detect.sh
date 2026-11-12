@@ -102,7 +102,7 @@ pr_runaway_reasons() {
 is_pr_runaway() {
   local reasons
   reasons=$(pr_runaway_reasons "$@")
-  [ -n "$reasons" ]
+  [[ -n "$reasons" ]]
 }
 
 # pr_rebase_smell <commits> <changed_files>
@@ -135,7 +135,7 @@ pr_age_hours() {
   [ "$now" -gt 0 ] || now=$(date -u +%s)
   local created_epoch
   created_epoch=$(date -u -d "$created" +%s 2>/dev/null || date -u -v0d -f "%Y-%m-%dT%H:%M:%SZ" "$created" +%s 2>/dev/null || true)
-  if [ -z "$created_epoch" ]; then
+  if [[ -z "$created_epoch" ]]; then
     echo 0
     return 0
   fi
@@ -167,7 +167,7 @@ generate_runaway_report() {
     "$smell_commits" "$smell_files"
   printf 'Detection only — no PR is mutated. See #948 / #949 / the #860 post-mortem.\n\n'
 
-  if [ -z "$f" ] || [ ! -s "$f" ]; then
+  if [[ -z "$f" ]] || [[ ! -s "$f" ]]; then
     printf '✅ No open PR crossed a runaway threshold.\n'
     return 0
   fi
@@ -176,7 +176,7 @@ generate_runaway_report() {
   printf '|---|---|---|\n'
   local num url title reasons
   while IFS=$'\t' read -r num url title reasons; do
-    [ -n "$num" ] || continue
+    [[ -n "$num" ]] || continue
     printf '| [#%s](%s) | %s | %s |\n' "$num" "$url" "$title" "$reasons"
   done < "$f"
 }

@@ -43,7 +43,7 @@ YAML_VALID=0
 # ---------------------------------------------------------------------------
 # Test 1: File exists
 # ---------------------------------------------------------------------------
-if [ -f "$WORKFLOW" ]; then
+if [[ -f "$WORKFLOW" ]]; then
   ok "copilot-setup-steps.yml exists"
 else
   fail "copilot-setup-steps.yml exists" "file not found at $WORKFLOW"
@@ -52,7 +52,7 @@ fi
 # ---------------------------------------------------------------------------
 # Test 1.5: YAML is valid
 # ---------------------------------------------------------------------------
-if [ -f "$WORKFLOW" ]; then
+if [[ -f "$WORKFLOW" ]]; then
   if python3 - "$WORKFLOW" << 'PY' 2>/dev/null
 import sys, yaml
 with open(sys.argv[1]) as f:
@@ -143,7 +143,7 @@ else:
     print(repr(perms))
 PY
 )
-  if [ "$PERMS" = "empty" ]; then
+  if [[ "$PERMS" = "empty" ]]; then
     ok "top-level permissions reset to {}"
   else
     fail "top-level permissions reset to {}" \

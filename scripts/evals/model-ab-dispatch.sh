@@ -70,12 +70,12 @@ mad_clamp_runs() {
   # Strip leading zeros so "003" is decimal 3 (not octal) and an all-zero string
   # collapses to "0" (clamped to the floor below).
   local stripped="${v#"${v%%[!0]*}"}"
-  [ -z "$stripped" ] && stripped="0"
+  [[ -z "$stripped" ]] && stripped="0"
   # Overflow guard (#1952): a digit-only value with MORE digits than MAD_RUNS_MAX
   # can only exceed the cap, so clamp WITHOUT arithmetic. `$((10#$v))` on a value
   # beyond the 64-bit range aborts the shell — crashing instead of degrading to the
   # documented max. Comparing digit-length first sidesteps that entirely.
-  if [ "${#stripped}" -gt "${#MAD_RUNS_MAX}" ]; then
+  if [[ "${#stripped}" -gt "${#MAD_RUNS_MAX}" ]]; then
     printf '%s\n' "$MAD_RUNS_MAX"
     return 0
   fi
@@ -90,13 +90,13 @@ mad_clamp_runs() {
 # offending set (or the empty-list reason) so the caller can name it in the error.
 mad_validate_sets() {
   local evals_dir="${1:-}"; shift || true
-  if [ "$#" -eq 0 ]; then
+  if [[ "$#" -eq 0 ]]; then
     echo "no sets requested"
     return 1
   fi
   local set
   for set in "$@"; do
-    if [ -z "$set" ] || [ ! -d "$evals_dir/$set/holdout" ]; then
+    if [[ -z "$set" ]] || [[ ! -d "$evals_dir/$set/holdout" ]]; then
       echo "$set"
       return 1
     fi
@@ -121,11 +121,11 @@ mad_validate_sets() {
 mad_incompatible_set() {
   local evals_dir="${1:-}" set="${2:-}" scorer engine
   scorer="$evals_dir/$set/scorer.json"
-  [ -f "$scorer" ] || return 0
+  [[ -f "$scorer" ]] || return 0
   if ! engine="$(jq -r '.engine // "triage"' "$scorer" 2>/dev/null)"; then
     engine=""
   fi
-  if [ "$engine" != "triage" ]; then
+  if [[ "$engine" != "triage" ]]; then
     printf '%s\n' "$set"
     return 1
   fi
@@ -145,16 +145,16 @@ mad_incompatible_set() {
 # cases_file / prompt_file_base / llm-judge resolution.
 mad_validate_set_prereqs() {
   local evals_dir="${1:-}" prompts_dir="${2:-}" set="${3:-}" scorer mode judge_rel
-  if [ ! -f "$evals_dir/$set/holdout/cases.jsonl" ]; then
+  if [[ ! -f "$evals_dir/$set/holdout/cases.jsonl" ]]; then
     echo "missing held-out cases ($evals_dir/$set/holdout/cases.jsonl)"
     return 1
   fi
-  if [ ! -f "$prompts_dir/$set.md" ] && [ ! -f "$prompts_dir/$set/advisory.md" ]; then
+  if [[ ! -f "$prompts_dir/$set.md" ]] && [[ ! -f "$prompts_dir/$set/advisory.md" ]]; then
     echo "missing skill prompt ($prompts_dir/$set.md or $prompts_dir/$set/advisory.md)"
     return 1
   fi
   scorer="$evals_dir/$set/scorer.json"
-  [ -f "$scorer" ] || return 0
+  [[ -f "$scorer" ]] || return 0
   if ! mode="$(jq -r '.mode // "deterministic"' "$scorer" 2>/dev/null)"; then
     echo "unreadable scorer.json ($scorer)"
     return 1
@@ -167,11 +167,11 @@ mad_validate_set_prereqs() {
     deterministic) ;;
     llm-judge)
       judge_rel="$(jq -r '.judge_prompt // ""' "$scorer" 2>/dev/null || true)"
-      if [ -z "$judge_rel" ]; then
+      if [[ -z "$judge_rel" ]]; then
         echo "scorer.json selects llm-judge but sets no judge_prompt ($scorer)"
         return 1
       fi
-      if [ ! -f "$evals_dir/$judge_rel" ]; then
+      if [[ ! -f "$evals_dir/$judge_rel" ]]; then
         echo "judge prompt not found ($evals_dir/$judge_rel)"
         return 1
       fi
@@ -205,16 +205,16 @@ main() {
   # Prompt root mirrors run-eval.sh's EVAL_PROMPTS_DIR so the offline prereq check
   # resolves the SAME skill-prompt tree the child will score against (#1952).
   local prompts_dir="${EVAL_PROMPTS_DIR:-$repo_root/prompts}"
-  while [ "$#" -gt 0 ]; do
+  while [[ "$#" -gt 0 ]]; do
     case "$1" in
       # Explicit arity check + die (exit 2), NOT ${2:?…}: the :? expansion aborts
       # with status 1, which would collide with model-ab.sh's "regression" exit.
-      --candidate) [ "$#" -ge 2 ] || die "--candidate needs a value"; candidate="$2"; shift 2 ;;
-      --incumbent) [ "$#" -ge 2 ] || die "--incumbent needs a value"; incumbent="$2"; shift 2 ;;
-      --sets)      [ "$#" -ge 2 ] || die "--sets needs a value";      sets_raw="$2";  shift 2 ;;
-      --runs)      [ "$#" -ge 2 ] || die "--runs needs a value";      runs_raw="$2";  shift 2 ;;
-      --evals-dir) [ "$#" -ge 2 ] || die "--evals-dir needs a directory"; evals_dir="$2"; shift 2 ;;
-      --out)       [ "$#" -ge 2 ] || die "--out needs a file";        out_file="$2";  shift 2 ;;
+      --candidate) [[ "$#" -ge 2 ]] || die "--candidate needs a value"; candidate="$2"; shift 2 ;;
+      --incumbent) [[ "$#" -ge 2 ]] || die "--incumbent needs a value"; incumbent="$2"; shift 2 ;;
+      --sets)      [[ "$#" -ge 2 ]] || die "--sets needs a value";      sets_raw="$2";  shift 2 ;;
+      --runs)      [[ "$#" -ge 2 ]] || die "--runs needs a value";      runs_raw="$2";  shift 2 ;;
+      --evals-dir) [[ "$#" -ge 2 ]] || die "--evals-dir needs a directory"; evals_dir="$2"; shift 2 ;;
+      --out)       [[ "$#" -ge 2 ]] || die "--out needs a file";        out_file="$2";  shift 2 ;;
       --validate-only) validate_only=true; shift ;;
       -h|--help)   grep '^#' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; return 0 ;;
       --) shift; break ;;
@@ -223,9 +223,9 @@ main() {
     esac
   done
 
-  [ -n "$candidate" ] || die "usage: model-ab-dispatch.sh --candidate M --incumbent M [--sets S] [--runs N]"
-  [ -n "$incumbent" ] || die "usage: model-ab-dispatch.sh --candidate M --incumbent M [--sets S] [--runs N]"
-  [ -n "$evals_dir" ] || die "evals_dir is empty — would check root directory; set EVALS_DIR or use --evals-dir"
+  [[ -n "$candidate" ]] || die "usage: model-ab-dispatch.sh --candidate M --incumbent M [--sets S] [--runs N]"
+  [[ -n "$incumbent" ]] || die "usage: model-ab-dispatch.sh --candidate M --incumbent M [--sets S] [--runs N]"
+  [[ -n "$evals_dir" ]] || die "evals_dir is empty — would check root directory; set EVALS_DIR or use --evals-dir"
 
   # model-ab scores each skill at its INCUMBENT prompt and supports no prompt
   # override (model-ab.sh leaves SKILL_PROMPT_FILE at run-eval.sh's default). But
@@ -234,7 +234,7 @@ main() {
   # preflight validated the per-set prompt tree under $prompts_dir — validation
   # would then disagree with what is actually scored. Reject the override outright
   # rather than silently diverge (#1952, cubic P2).
-  [ -z "${SKILL_PROMPT_FILE:-}" ] || die "SKILL_PROMPT_FILE is set ('${SKILL_PROMPT_FILE}') — model-ab scores each skill at its incumbent prompt and accepts no prompt override; unset it before dispatch"
+  [[ -z "${SKILL_PROMPT_FILE:-}" ]] || die "SKILL_PROMPT_FILE is set ('${SKILL_PROMPT_FILE}') — model-ab scores each skill at its incumbent prompt and accepts no prompt override; unset it before dispatch"
 
   # Each arm must name EXACTLY ONE model. A value with a comma or whitespace is
   # forwarded verbatim to model-ab.sh as CLAUDE_TRIAGE_MODEL_CHAIN, where
@@ -253,7 +253,7 @@ main() {
   # both arms' tokens on two nondeterministic runs of ONE model, and the score delta
   # is reported as accept OR regression despite providing no replacement evidence
   # (#1952, codex P2). Fail offline before either paid probe.
-  [ "$candidate" != "$incumbent" ] || die "candidate and incumbent are identical ('$candidate') — an A/B must compare two different models"
+  [[ "$candidate" != "$incumbent" ]] || die "candidate and incumbent are identical ('$candidate') — an A/B must compare two different models"
 
   # Reject multiline input outright: `read -ra <<<"$sets_raw"` consumes only the
   # FIRST line, so a value like $'triage\ndeep-review' would silently validate and
@@ -276,7 +276,7 @@ main() {
   local i j
   for (( i = 0; i < ${#sets[@]}; i++ )); do
     for (( j = i + 1; j < ${#sets[@]}; j++ )); do
-      [ "${sets[i]}" = "${sets[j]}" ] && die "duplicate set '${sets[i]}' in --sets — list each set at most once"
+      [[ "${sets[i]}" = "${sets[j]}" ]] && die "duplicate set '${sets[i]}' in --sets — list each set at most once"
     done
   done
 
@@ -288,7 +288,7 @@ main() {
   # Fail fast on an unknown set BEFORE any arm runs (AC #1) — no token is spent.
   local bad
   if ! bad="$(mad_validate_sets "$evals_dir" "${sets[@]}")"; then
-    if [ "$bad" = "no sets requested" ]; then
+    if [[ "$bad" = "no sets requested" ]]; then
       die "no sets requested — expected one or more of the evals/<set>/holdout sets"
     fi
     die "unknown set '$bad' — no evals/$bad/holdout under $evals_dir (frozen held-out sets only)"
@@ -318,7 +318,7 @@ main() {
   # --validate-only: the input checks above ARE the whole job. The workflow runs
   # this before the paid liveness/effort probe so an invalid dispatch spends zero
   # model tokens (#1952). Everything above has passed by here.
-  if [ "$validate_only" = true ]; then
+  if [[ "$validate_only" = true ]]; then
     echo "model-ab-dispatch: inputs valid (sets: ${sets[*]}; runs: $runs)"
     return 0
   fi
@@ -328,7 +328,7 @@ main() {
   # tests override with MODEL_AB_CMD, a single string we intentionally split on
   # whitespace into command+args.
   local -a ab_cmd_array
-  if [ -n "${MODEL_AB_CMD:-}" ]; then
+  if [[ -n "${MODEL_AB_CMD:-}" ]]; then
     read -ra ab_cmd_array <<<"$MODEL_AB_CMD"
   else
     ab_cmd_array=(bash "$script_dir/model-ab.sh")
@@ -356,7 +356,7 @@ main() {
     # dispatch would validate one corpus but score another — the child would fall
     # back to its own default, so the accept/regression verdict would describe a
     # different held-out set than the one we checked (#1952, codeant nitpick).
-    if [ -n "$token_log" ]; then
+    if [[ -n "$token_log" ]]; then
       attempt_log="${token_log}.attempt${attempt}"
       : >"$attempt_log"
       out="$(EVALS_DIR="$evals_dir" TOKEN_LOG_FILE="$attempt_log" "${ab_cmd_array[@]}" "$candidate" "$incumbent" "${sets[@]}")"
@@ -405,12 +405,12 @@ main() {
   # (#1952, codex P2). The per-attempt files are left in place for inspection; the
   # upload step globs only the canonical TOKEN_LOG_FILE. Skip an empty final log so
   # a run that logged nothing leaves no spurious (empty) artifact.
-  if [ -n "$token_log" ] && [ -n "$attempt_log" ] && [ -s "$attempt_log" ]; then
+  if [[ -n "$token_log" ]] && [[ -n "$attempt_log" ]] && [[ -s "$attempt_log" ]]; then
     cp -f "$attempt_log" "$token_log"
   fi
 
   # Pass the final evidence JSON through unchanged (stdout + optional --out).
-  if [ -n "$out_file" ]; then
+  if [[ -n "$out_file" ]]; then
     printf '%s\n' "$out" >"$out_file"
   fi
   printf '%s\n' "$out"
@@ -419,6 +419,6 @@ main() {
 }
 
 # Only run main when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

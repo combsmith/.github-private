@@ -29,7 +29,7 @@
 #   holdout/ path. This is the structural guard the harvester keys off.
 mh_assert_dev_path() {
   local path="${1:-}"
-  if [ -z "$path" ]; then
+  if [[ -z "$path" ]]; then
     echo "[miss-harvest] ERROR: no target path supplied" >&2
     return 1
   fi
@@ -80,7 +80,7 @@ _mh_deidentify() {
 #   The id is a stable content hash so re-harvesting the same miss is idempotent.
 mh_build_case() {
   local miss="${1:-}"
-  [ -n "$miss" ] || { echo "[miss-harvest] ERROR: no miss record supplied" >&2; return 1; }
+  [[ -n "$miss" ]] || { echo "[miss-harvest] ERROR: no miss record supplied" >&2; return 1; }
 
   local bot finding clean_finding id
   bot="$(jq -r '.bot // "advisory-bot"' <<<"$miss" 2>/dev/null)" || return 1
@@ -118,7 +118,7 @@ mh_harvest() {
 
   local case_line
   case_line="$(mh_build_case "$miss")" || return 1
-  [ -n "$case_line" ] || return 1
+  [[ -n "$case_line" ]] || return 1
 
   # The case id is a stable content hash, so harvesting is idempotent ONLY if we
   # skip cases already present. Without this the same production miss appends a
@@ -135,7 +135,7 @@ mh_harvest() {
   local lockfile="${target}.lock"
   (
     flock 9 || { echo "[miss-harvest] ERROR: could not acquire lock on $lockfile" >&2; exit 1; }
-    if [ -n "$case_id" ] && [ -f "$target" ] && grep -qF "$case_id" "$target" 2>/dev/null; then
+    if [[ -n "$case_id" ]] && [[ -f "$target" ]] && grep -qF "$case_id" "$target" 2>/dev/null; then
       echo "[miss-harvest] case $case_id already present in $target — skipping (idempotent)" >&2
       exit 0
     fi

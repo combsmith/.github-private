@@ -59,15 +59,15 @@ _dcg_cache_file() {
 }
 # _dcg_cache_get <kind> <key>: prints the cached value; returns 1 on a miss.
 _dcg_cache_get() {
-  [ -n "$DCG_CACHE_DIR" ] || return 1
+  [[ -n "$DCG_CACHE_DIR" ]] || return 1
   local f
   f="$(_dcg_cache_file "$1" "$2")"
-  [ -f "$f" ] || return 1
+  [[ -f "$f" ]] || return 1
   cat -- "$f"
 }
 # _dcg_cache_put <kind> <key> <value>
 _dcg_cache_put() {
-  [ -n "$DCG_CACHE_DIR" ] || return 0
+  [[ -n "$DCG_CACHE_DIR" ]] || return 0
   printf '%s' "$3" >"$(_dcg_cache_file "$1" "$2")" 2>/dev/null || true
 }
 
@@ -75,13 +75,13 @@ _dcg_cache_put() {
 # SWEEP_AGENT_REF is set but is not a channel tag (a configuration error).
 dcg_init() {
   DCG_SWEEP_REF=""
-  [ -n "${SWEEP_AGENT_REF:-}" ] || return 0
+  [[ -n "${SWEEP_AGENT_REF:-}" ]] || return 0
   if [[ ! "$SWEEP_AGENT_REF" =~ $DCG_CHANNEL_RE ]]; then
     echo "::error::[retry] SWEEP_AGENT_REF '${SWEEP_AGENT_REF}' is not a dev-lead channel tag (dev-lead/v<N>-next|ring0|ring1|stable)" >&2
     return 1
   fi
   DCG_SWEEP_REF="$SWEEP_AGENT_REF"
-  if [ -z "$DCG_CACHE_DIR" ]; then
+  if [[ -z "$DCG_CACHE_DIR" ]]; then
     DCG_CACHE_DIR="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/dcg.XXXXXX")" || return 1
   fi
 }
@@ -145,17 +145,17 @@ _dcg_fetch_at() {
 dcg_fields_read_at() {
   local ref="$1" src all="" lib
   if all="$(_dcg_cache_get fields "$ref")"; then
-    [ "$all" != "!" ] || return 1
-    [ -z "$all" ] || printf '%s\n' "$all"
+    [[ "$all" != "!" ]] || return 1
+    [[ -z "$all" ]] || printf '%s\n' "$all"
     return 0
   fi
   all=""
   local -a queue=("$DCG_PARSER") seen=()
-  while [ "${#queue[@]}" -gt 0 ]; do
+  while [[ "${#queue[@]}" -gt 0 ]]; do
     lib="${queue[0]}"; queue=("${queue[@]:1}")
     case " ${seen[*]} " in *" $lib "*) continue ;; esac
     seen+=("$lib")
-    if ! src="$(_dcg_fetch_at "$lib" "$ref")" || [ -z "$src" ]; then
+    if ! src="$(_dcg_fetch_at "$lib" "$ref")" || [[ -z "$src" ]]; then
       _dcg_cache_put fields "$ref" "!"
       return 1
     fi
@@ -166,7 +166,7 @@ dcg_fields_read_at() {
   done
   all="$(grep -oE '\.client_payload\.[A-Za-z_][A-Za-z0-9_]*' <<<"$all" \
            | sed 's/^\.client_payload\.//' | sort -u || true)"
-  [ -z "$all" ] || all+=$'\n'
+  [[ -z "$all" ]] || all+=$'\n'
   _dcg_cache_put fields "$ref" "$all"
   printf '%s' "$all"
 }
@@ -183,7 +183,7 @@ _dcg_warn_once() {
 # field (informational ones aside), or the gate is off; 1 to hold the payload.
 dcg_target_reads() {
   local repo="$1"; shift
-  [ -n "$DCG_SWEEP_REF" ] || return 0
+  [[ -n "$DCG_SWEEP_REF" ]] || return 0
   local pin rc=0
   pin="$(dcg_target_pin "$repo")" || rc=$?
   case "$rc" in
@@ -195,7 +195,7 @@ dcg_target_reads() {
       _dcg_warn_once "pin:${repo}" "[retry] holding retries for ${repo}: cannot read the ref its dev-lead.yml runs the harness at (agent_ref), so the fields its parser reads are unproven (#2086)"
       return 1 ;;
   esac
-  [ "$pin" != "$DCG_SWEEP_REF" ] || return 0
+  [[ "$pin" != "$DCG_SWEEP_REF" ]] || return 0
 
   local fields
   if ! fields="$(dcg_fields_read_at "$pin")"; then
@@ -204,13 +204,13 @@ dcg_target_reads() {
   fi
   local f info missing=()
   for f in "$@"; do
-    [ -n "$f" ] || continue
+    [[ -n "$f" ]] || continue
     for info in "${DCG_INFORMATIONAL_FIELDS[@]}"; do
-      [ "$f" != "$info" ] || continue 2
+      [[ "$f" != "$info" ]] || continue 2
     done
     grep -qxF -- "$f" <<<"$fields" || missing+=("$f")
   done
-  [ "${#missing[@]}" -eq 0 ] && return 0
+  [[ "${#missing[@]}" -eq 0 ]] && return 0
   _dcg_warn_once "miss:${repo}:${missing[*]}" "[retry] holding retries for ${repo}: it pins ${pin}, whose ${DCG_PARSER} does not read client_payload field(s) ${missing[*]} that the sweep at ${DCG_SWEEP_REF} sends (#2086). Repin it to a channel that reads them."
   echo "  [hold] ${repo} (${pin}) does not read: ${missing[*]}" >&2
   return 1
@@ -220,7 +220,7 @@ dcg_target_reads() {
 # client_payload keys of a repository_dispatch body.
 dcg_payload_allowed() {
   local repo="$1" body="$2" keys
-  [ -n "$DCG_SWEEP_REF" ] || return 0
+  [[ -n "$DCG_SWEEP_REF" ]] || return 0
   if ! keys="$(jq -r '.client_payload | keys[]' <<<"$body" 2>/dev/null)"; then
     echo "  [hold] ${repo}: unreadable retry payload (#2086)" >&2
     return 1
