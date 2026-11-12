@@ -6239,8 +6239,11 @@ _setup_2013() {
   T2013_PUSH="$BATS_TEST_TMPDIR/pushes"
   # Extra review comments (a JSON array) appended to the PR's listing (#2032).
   T2013_EXTRA="$BATS_TEST_TMPDIR/extra-comments.json"
+  # The PR's issue comments (a JSON array), for `fixed` disposition replies (#2502).
+  T2013_ISSUE="$BATS_TEST_TMPDIR/issue-comments.json"
   : > "$T2013_MUT"; : > "$T2013_PATCH"; : > "$T2013_PUSH"
   [ -s "$T2013_EXTRA" ] || echo '[]' > "$T2013_EXTRA"
+  [ -s "$T2013_ISSUE" ] || echo '[]' > "$T2013_ISSUE"
   mkdir -p "$T2013_DIR/tests"
   rm -f "$DEV_LEAD_SIDECAR_DIR/dev-lead-session-output.txt"
 
@@ -6271,11 +6274,18 @@ _setup_2013() {
 ARGS="\$*"
 sha="${claim_sha}"
 [ "\$sha" = "HEAD" ] && sha="\$(git rev-parse HEAD)"
+# A later job of the same pass cites the commit the work job made (#2502).
+[ -n "\${T2013_CLAIM_SHA:-}" ] && sha="\$T2013_CLAIM_SHA"
 reply="Fixed in fix.txt: added the fix. <!-- dev-lead:addressed -->\n<!-- dev-lead:claim {\\\\\"v\\\\\":1,\\\\\"sha\\\\\":\\\\\"\${sha}\\\\\",\\\\\"files\\\\\":[\\\\\"fix.txt\\\\\"]} -->"
 case "\$ARGS" in
-  *"PATCH"*"pulls/comments/"*)
+  *"PATCH"*"pulls/comments/"*|*"PATCH"*"issues/comments/"*)
     echo "\$*" >> "$T2013_PATCH"
     echo '{}'
+    ;;
+  # A commit the pass made but has not pushed yet is one GitHub has never seen (#2502).
+  *"commits/\${T2143_UNPUSHED:-none}"*)
+    echo "gh: No commit found for SHA: \$T2143_UNPUSHED (HTTP 422)" >&2
+    exit 1
     ;;
   # The earlier-claim sweep asks GitHub whether a not-on-ref commit exists (#2032).
   # GitHub has never seen 9313650…: the lookup fails as an unknown commit does.
@@ -6305,7 +6315,7 @@ case "\$ARGS" in
     echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[{"id":"PRRT_2013","isResolved":false,"isOutdated":false,"origin":{"nodes":[{"author":{"login":"coderabbitai[bot]","__typename":"Bot"}}]}}]}}}}}'
     ;;
   *"pulls/54/comments"*)
-    printf '%s\n' "[{\"id\":777,\"user\":{\"login\":\"donpetry-bot\"},\"created_at\":\"2099-01-01T00:00:00Z\",\"body\":\"\${reply}\"}]" \
+    printf '%s\n' "[{\"id\":777,\"user\":{\"login\":\"donpetry-bot\"},\"created_at\":\"\${T2013_REPLY_AT:-2099-01-01T00:00:00Z}\",\"body\":\"\${reply}\"}]" \
       | jq -c --slurpfile x "$T2013_EXTRA" '. + \$x[0]'
     ;;
   # Hold label (#2142): REST POST; T2013_LABEL_RC makes the API refuse it.
@@ -6322,6 +6332,7 @@ case "\$ARGS" in
   *"pulls/"*"reviews"*) echo '[]' ;;
   *"pulls/"*".base.ref"*) echo main ;;
   *"pulls/"*) echo '{"head":{"sha":"${T2013_BASE}"},"auto_merge":null}' ;;
+  *"issues/54/comments"*) cat "$T2013_ISSUE" ;;
   *"issues/"*"comments"*) echo '[]' ;;
   *"pr checkout"*) exit 0 ;;
   *"pr comment"*) echo "PR_COMMENT: \$*" ;;
@@ -6774,6 +6785,36 @@ _test_job() {
   [[ "$output" == *"the tested tree would be rebased"* ]]
   grep -q "pulls/comments/777" "$T2013_PATCH"
   [ ! -s "$T2013_MUT" ]
+}
+
+# #2502: on #2488 the push job retracted the dispatch job's `fixed` reply as
+# not-on-ref, then pushed the commit it cited. Its start-of-pass sweep took its own
+# later start as the pass boundary, so the dispatch job's replies looked like an
+# earlier pass's, and GitHub did not know their commit yet.
+@test "#2502: the push job keeps the replies the dispatch job posted before their commit was pushed" {
+  _setup_2143 "printf 'fixed\n' > fix.txt; : > new_test_marker; git add -A; git -c user.email=t@t -c user.name=T commit -q -m 'fix(reviews): x'"
+  _run_2143 work fix-reviews
+  [ "$status" -eq 0 ]
+  local result pass_start
+  result=$(tar -xOf "$T2143_HANDOFF/handoff.tar" ./state.json | jq -r .result_sha)
+  pass_start=$(sed -n 's/^pass_start_iso=//p' "$T2143_HANDOFF/outputs")
+  [ -n "$pass_start" ]
+  _test_job
+  [[ "$(jq -r .verdict <<<"$T2143_VERDICT")" == "green" ]]
+
+  # What the dispatch job posted during its pass: a thread claim and a `fixed`
+  # disposition reply, both citing its commit, which GitHub has not seen yet.
+  export T2013_REPLY_AT="$pass_start" T2013_CLAIM_SHA="$result" T2143_UNPUSHED="$result"
+  jq -cn --arg at "$pass_start" --arg sha "$result" '[{id: 888, user: {login: "donpetry-bot"}, created_at: $at,
+    body: ("Fixed.\n<!-- dev-lead:comment-disposition id=IC_2502 disposition=fixed sha=" + $sha + " -->")}]' > "$T2013_ISSUE"
+  # The push job starts in a later second than the dispatch job's pass.
+  sleep 1
+
+  _run_2143 push fix-reviews
+  [ "$status" -eq 0 ]
+  grep -qx "push ${result}" "$T2013_PUSH"
+  [ ! -s "$T2013_PATCH" ]
+  [[ "$output" != *"retracted \`fixed\` disposition reply 888"* ]]
 }
 
 @test "#2143: the 15a919e shape across the job boundary — the push job refuses, flags and retracts" {
