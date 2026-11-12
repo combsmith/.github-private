@@ -7035,6 +7035,23 @@ _succeed_fix_bot_comment() {
   [[ "$output" == *"resolve_dispositioned_comments: failed to unminimize"* ]]
 }
 
+@test "resolve_dispositioned_comments(#2507): a rejected post-edit disposition minimizes the superseded post-edit reply too" {
+  local nodes
+  nodes=$(jq -sc '.' \
+    <(_reverify_fixed_pair IC_ORIG R1 R2) \
+    <(_disp_reply "R0" "2026-09-26T21:45:00Z" "informational" "IC_ORIG"))
+  _setup_disposition_pass "$nodes"
+  _succeed_fix_bot_comment
+
+  run bash "$FIX_REVIEWS_SCRIPT" 2>&1
+
+  # R2 (the rejected latest) and R0 (an older post-edit reply) both go OUTDATED,
+  # so none of them reads as coverage; the comment is re-opened.
+  grep -Eq 'classifier:OUTDATED.*id=R2' "$MINLOG"
+  grep -Eq 'classifier:OUTDATED.*id=R0' "$MINLOG"
+  grep -Eq 'unminimizeComment.*id=IC_ORIG' "$MINLOG"
+}
+
 # ── open review threads are paginated and fail closed (#2056) ─────────────────
 # PR #1953: 66 threads, the one open Codex P1 at position 66. The unpaginated
 # reviewThreads(first:50) read never saw it, so the pass "addressed 0 threads".

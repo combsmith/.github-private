@@ -2290,7 +2290,9 @@ resolve_dispositioned_comments() {
       if [[ "$is_human" != "true" && "$verified" != "true" ]]; then
         rejected="true"
       fi
-      if { [[ "$disposition" == "fixed" ]] || [[ "$rejected" == "true" ]]; } && [[ "$reverify" != "true" ]]; then
+      # On a post-edit re-verification rejection the superseded replies are
+      # minimized too: a surviving post-edit reply would still read as coverage.
+      if { [[ "$disposition" == "fixed" ]] && [[ "$reverify" != "true" ]]; } || [[ "$rejected" == "true" ]]; then
         # #2004: an unverified `fixed` is re-answered on later passes. Converge the
         # older replies to OUTDATED now, so the replies never stack (#1992).
         local usid
