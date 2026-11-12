@@ -161,7 +161,7 @@ reviewer_sources_finding_section_pattern() {
 #   rows are still printed, so one bad row cannot blank every bot's classification.
 reviewer_sources_message_class_patterns() {
   local f="${REVIEWER_MESSAGE_CLASSES_FILE}"
-  if [ ! -f "$f" ]; then
+  if [[ ! -f "$f" ]]; then
     echo "reviewer_sources_message_class_patterns: sidecar file not found at $f" >&2
     return 1
   fi
