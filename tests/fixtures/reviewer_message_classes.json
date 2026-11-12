@@ -4,14 +4,14 @@
     "bot": "chatgpt-codex-connector",
     "kind": "issue",
     "expect": "status",
-    "body": "Codex Review Summary\n❌ Failed\nCodex could not complete this review. You have reached your Codex usage limits for code reviews."
+    "body": "Codex Review Summary\n\u274c Failed\nCodex could not complete this review. You have reached your Codex usage limits for code reviews."
   },
   {
     "name": "codex: Codex Review Summary (Completed) is status",
     "bot": "chatgpt-codex-connector",
     "kind": "issue",
     "expect": "status",
-    "body": "Codex Review Summary\n✅ Completed\nView the full review in the review thread."
+    "body": "Codex Review Summary\n\u2705 Completed\nView the full review in the review thread."
   },
   {
     "name": "codex: usage-limit notice is refused",
@@ -26,7 +26,7 @@
     "kind": "review",
     "state": "COMMENTED",
     "expect": "finding",
-    "body": "💡 Codex Review\nHere are some automated review suggestions for this pull request.\nReviewed commit: abc1234"
+    "body": "\ud83d\udca1 Codex Review\nHere are some automated review suggestions for this pull request.\nReviewed commit: abc1234"
   },
   {
     "name": "codex: no-major-issues review is clean",
@@ -34,7 +34,7 @@
     "kind": "review",
     "state": "COMMENTED",
     "expect": "clean",
-    "body": "Codex Review: Didn't find any major issues. 🚀"
+    "body": "Codex Review: Didn't find any major issues. \ud83d\ude80"
   },
   {
     "name": "gemini: daily quota limit notice is refused (shared pattern misses it)",
@@ -78,7 +78,7 @@
     "kind": "review",
     "state": "COMMENTED",
     "expect": "finding",
-    "body": "Actionable comments posted: 2\n🧹 Nitpick comments (1)"
+    "body": "Actionable comments posted: 2\n\ud83e\uddf9 Nitpick comments (1)"
   },
   {
     "name": "coderabbit: no actionable comments is clean",
@@ -86,14 +86,14 @@
     "kind": "review",
     "state": "COMMENTED",
     "expect": "clean",
-    "body": "Review details\nNo actionable comments were generated in the recent review. 🎉"
+    "body": "Review details\nNo actionable comments were generated in the recent review. \ud83c\udf89"
   },
   {
     "name": "codeant: Thanks for using CodeAnt is status",
     "bot": "codeant-ai",
     "kind": "issue",
     "expect": "status",
-    "body": "Thanks for using CodeAnt! 🎉\nWe're free for open-source projects."
+    "body": "Thanks for using CodeAnt! \ud83c\udf89\nWe're free for open-source projects."
   },
   {
     "name": "codeant: Review Status is status",
@@ -138,21 +138,21 @@
     "bot": "qodo-code-review",
     "kind": "issue",
     "expect": "refused",
-    "body": "ⓘ Qodo reviews are paused because your trial has ended. Ask your workspace admin to add credits to resume reviews."
+    "body": "\u24d8 Qodo reviews are paused because your trial has ended. Ask your workspace admin to add credits to resume reviews."
   },
   {
     "name": "qodo: recommended focus areas is a finding",
     "bot": "qodo-code-review",
     "kind": "issue",
     "expect": "finding",
-    "body": "PR Reviewer Guide 🔍\n⏱️ Estimated effort to review: 2\n⚡ Recommended focus areas for review\nPossible nil dereference"
+    "body": "PR Reviewer Guide \ud83d\udd0d\n\u23f1\ufe0f Estimated effort to review: 2\n\u26a1 Recommended focus areas for review\nPossible nil dereference"
   },
   {
     "name": "qodo: no major issues is clean",
     "bot": "qodo-code-review",
     "kind": "issue",
     "expect": "clean",
-    "body": "PR Reviewer Guide 🔍\n⏱️ Estimated effort to review: 1\n⚡ No major issues detected"
+    "body": "PR Reviewer Guide \ud83d\udd0d\n\u23f1\ufe0f Estimated effort to review: 1\n\u26a1 No major issues detected"
   },
   {
     "name": "graphite: neutral hourly-limit check run is refused",
@@ -223,5 +223,26 @@
     "state": "COMMENTED",
     "expect": "clean",
     "body": "Pull request overview\nCopilot reviewed 1 out of 1 changed files in this pull request and generated no comments."
+  },
+  {
+    "name": "cubic: inline finding quoting a clean phrase stays a finding",
+    "bot": "cubic-dev-ai",
+    "kind": "inline",
+    "expect": "finding",
+    "body": "P2: This branch prints No issues found even when the validator returns errors."
+  },
+  {
+    "name": "coderabbit: low-severity retained concern beside a rate limit is a finding",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "finding",
+    "body": "Review limit reached\nRetained concerns\nLow \u00b7 security \u00b7 observed: token logged"
+  },
+  {
+    "name": "gemini: inline finding about a quota limit stays a finding",
+    "bot": "gemini-code-assist",
+    "kind": "inline",
+    "expect": "finding",
+    "body": "This path never enforces the daily quota limit."
   }
 ]

@@ -811,21 +811,23 @@ JSON
 }
 
 @test "sidecar: every login is a registered reviewer source and every class/kind is valid" {
-  local logins login class kind
+  local logins login class kind rows
   logins="$(reviewer_sources_logins)"
+  rows="$(reviewer_sources_message_class_patterns)" || return 1
   while IFS=$'\t' read -r login class kind _; do
     grep -qx "$login" <<<"$logins" || { echo "unregistered login: $login"; return 1; }
     [[ "$class" =~ ^(finding|clean|refused|skipped|status)$ ]] || { echo "bad class: $class"; return 1; }
     [[ "$kind" =~ ^(any|review|inline|issue|check_run)$ ]] || { echo "bad kind: $kind"; return 1; }
-  done < <(reviewer_sources_message_class_patterns)
+  done <<<"$rows"
 }
 
 @test "sidecar: every pattern compiles as a jq regex" {
-  local login pattern
+  local login pattern rows
+  rows="$(reviewer_sources_message_class_patterns)" || return 1
   while IFS=$'\t' read -r login _ _ pattern; do
     jq -en --arg p "$pattern" '"" | test($p; "i") | . or true' >/dev/null \
       || { echo "bad regex for $login: $pattern"; return 1; }
-  done < <(reviewer_sources_message_class_patterns)
+  done <<<"$rows"
 }
 
 @test "sidecar: loader rejects a row with an unknown class" {

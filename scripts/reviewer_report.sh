@@ -267,8 +267,7 @@ _NORMALIZE_JQ='
         ( [ (class_rules[$m.bot] // [])[]
             | select(.kind == $m.kind
                      or (.kind == "any"
-                         and ($m.kind != "inline"
-                              or (.class == "finding" or .class == "clean"))))
+                         and ($m.kind != "inline" or .class == "finding")))
             | select(.pattern as $p | $b | test($p; "i"))
             | .class ] | first ) as $rule
         | if $rule != null then $rule
@@ -282,7 +281,8 @@ _NORMALIZE_JQ='
           elif $m.kind == "check_run" then
             if $concl == "success" or ($b | test("review ran"; "i")) then "clean"
             elif $concl == "skipped" and ($b | test("did not run|too large|declin|rate.?limit|quota|usage limit"; "i")) then "refused"
-            elif $concl == "skipped" and ($b | test("skip"; "i")) then "skipped"
+            elif $concl == "skipped" and ($b | test("^\\s*$")) then "status"
+            elif $concl == "skipped" then "skipped"
             elif ($b | test("^\\s*$")) then "status"
             else "unclassified" end
           else "unclassified" end
@@ -463,7 +463,11 @@ _prev_v2() {
   local f="${1:-}" bot="$2" field="$3"
   [ -n "$f" ] && [ -f "$f" ] || { printf ''; return 0; }
   jq -r --arg b "$bot" --arg k "$field" '
-    if ((.schema_version? // 1) | tonumber? // 1) >= 2 then (.bots?[$b]?[$k]? // (if $k == "no_response_prs" then .eligible_prs else 0 end)) else empty end
+    if ((.schema_version? // 1) | tonumber? // 1) >= 2 then
+      (.bots?[$b]? // null) as $bot
+      | if $bot == null then (if $k == "no_response_prs" then .eligible_prs else empty end)
+        else ($bot[$k]? // empty) end
+    else empty end
   ' "$f" 2>/dev/null || printf ''
 }
 
