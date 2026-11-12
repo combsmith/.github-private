@@ -63,10 +63,10 @@ Target type: `${TARGET_TYPE}`. Produce the complete, final Markdown body for thi
      Note: PR comments do not support bare `@<name>` invocation of custom agents (the profile selection
      mechanism only works in Copilot agents panel / IDE / CLI), so the heading describes the primary mechanism
      of agent discovery and invocation. Where an agent's own file documents a different invocation method
-     (agent selector in the Copilot agents panel, `bash scripts/pr-approval-diagnostic.sh <pr-url>` from
-     `.github-private` repository for `why-not-approved`, or similar), document that in the "Invoke with"
-     column. If the target README has no such column (e.g. `org-profile-member`), state the alternative
-     invocation in the agent's row instead.
+     (e.g., the `why-not-approved` agent in `.github-private` invoked with `bash
+     scripts/pr-approval-diagnostic.sh <pr-url>`, or the agent selector in the Copilot agents panel),
+     document that in the "Invoke with" column. If the target README has no such column (e.g.
+     `org-profile-member`), state the alternative invocation in the agent's row instead.
    - The facts bundle's *agentic workflows* are **autonomous GitHub Actions workflows** that run on
      events/schedules (dev-lead, PR review, triage, planners, etc.). The discovery gives each
      workflow's filename and one-line purpose but **not** which engine drives it, so do not attribute
