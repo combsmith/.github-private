@@ -286,5 +286,19 @@
     "kind": "issue",
     "expect": "refused",
     "body": "Review limit reached\n**Retained concerns**\nNo architecture-level concerns identified.\n<!-- architecture_review_end -->"
+  },
+  {
+    "name": "coderabbit: plain-text empty retained concerns before Security review details stays refused",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "refused",
+    "body": "Review limit reached\nRetained concerns\nNo architecture-level concerns identified.\n\nSecurity review details"
+  },
+  {
+    "name": "coderabbit: plain-text empty retained concerns then hardening heading stays refused",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "refused",
+    "body": "Review limit reached\nRetained concerns\nNo architecture-level concerns identified.\nHardening Proposals\nNo hardening proposals identified."
   }
 ]
