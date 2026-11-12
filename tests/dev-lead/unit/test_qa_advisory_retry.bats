@@ -268,7 +268,7 @@ case "$args" in
   *"/dispatches"*) cat > "$GH_LOG.payload"; [ -n "${DISPATCH_FAILS:-}" ] && exit 1; exit 0 ;;
   *"/labels"*) [ -n "${LABEL_FAILS:-}" ] && { echo "gh: Forbidden (HTTP 403)"; exit 1; }; echo "[]" ;;
   *"api graphql"*) printf '%s' "$COMMENTS_RESPONSE" ;;
-  *"--method POST"*"/comments"*) echo "888" ;;
+  *"--method POST"*"/comments"*) echo "888 ${MARKER_LOGIN:-don-petry}" ;;
   *"-X DELETE"*) exit 0 ;;
   *"/pulls/"*) printf '%s' "$PR_JSON" ;;
   *) echo "[]" ;;
@@ -410,6 +410,18 @@ teardown() {
   run scan_pr_for_qa_advisories "combsmith/.github-private" 180
   [ "${lines[-1]}" = "0" ]
   grep -q -- '-X DELETE.*comments/888' "$GH_LOG"
+}
+
+@test "sweep: a retry marker posted under an unrecognised login is withdrawn, not dispatched" {
+  export COMMENTS_RESPONSE
+  COMMENTS_RESPONSE="$(_comments_page "$(_adv)")"
+  export MARKER_LOGIN=stranger
+  _setup_sweep
+
+  run scan_pr_for_qa_advisories "combsmith/.github-private" 180
+  [ "${lines[-1]}" = "0" ]
+  grep -q -- '-X DELETE.*comments/888' "$GH_LOG"
+  if grep -q '/dispatches' "$GH_LOG"; then cat "$GH_LOG"; return 1; fi
 }
 
 @test "sweep: DRY_RUN posts no marker and sends no dispatch" {
