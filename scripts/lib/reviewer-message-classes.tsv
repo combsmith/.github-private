@@ -1,0 +1,77 @@
+# reviewer-message-classes.tsv — per-bot message classes for the reviewer scorecard (#2504).
+#
+# SCORECARD ONLY. Read by reviewer_sources_message_class_patterns (scripts/lib/reviewer-sources.sh)
+# and used by scripts/reviewer_report.sh alone. The advisory approval gate and the
+# maintainer-comment gate never read this file, so adding or changing a row here cannot
+# change who blocks or clears a merge.
+#
+# Why a sidecar and not a column in reviewer-sources.tsv: that registry has a fixed
+# positional schema (rationale is column 7) read by five consumers, both gates included,
+# and one row per bot. A bot here needs several patterns across several classes and
+# message kinds. The registry patterns also match the markdown `body`, but the scorecard
+# reads GraphQL `bodyText`, where HTML comments and markdown markup are already stripped.
+#
+# Columns (tab-separated, one pattern per row):
+#   login   — the bot's GraphQL App login (no "[bot]" suffix). Must be a registered
+#             reviewer source (tests/reviewer_report.bats checks it).
+#   class   — finding | clean | refused | skipped | status
+#               finding  — the bot raised at least one problem.
+#               clean    — the bot reviewed and found nothing.
+#               refused  — the bot declined because of quota, rate limit, trial or plan.
+#               skipped  — the bot did not review because of its own or the repo's config.
+#               status   — progress, summary, marketing or bookkeeping text; no verdict.
+#             (`unclassified` is never written here: it is what a message gets when no
+#             row, the shared fallback or a structural default matches it.)
+#   kind    — any | review | inline | issue | check_run — which message kind the row applies to.
+#               review = PR review body, inline = review-thread comment,
+#               issue = top-level PR comment, check_run = the check-run summary.
+#   pattern — a jq/Oniguruma regex, matched CASE-INSENSITIVELY against the message's
+#             bodyText (or a check run's output summary). Unanchored unless you anchor it.
+#
+# Matching order for one message:
+#   1. this bot's rows, top to bottom — the FIRST row that matches wins, so put the
+#      narrow rows (a refusal inside a summary, a finding marker) above the broad ones;
+#   2. the shared refusal fallback — ADVISORY_RATE_LIMIT_RE from advisory-review-gate.sh
+#      plus its author-scoped cubic clause (never applied to inline comments);
+#   3. structural defaults in reviewer_report.sh — the first inline comment of a thread
+#      is a finding, a later one is status; a CHANGES_REQUESTED review is a finding and an
+#      APPROVED one is clean; a successful check run is clean;
+#   4. otherwise `unclassified`. The report shows up to 3 samples per bot, so a new
+#      message shape is visible and can be given a row here.
+#
+# login	class	kind	pattern
+copilot-pull-request-reviewer	finding	review	generated [1-9][0-9]* (new )?comments?
+copilot-pull-request-reviewer	clean	review	generated (no|0) (new )?comments?
+copilot-pull-request-reviewer	status	any	(wasn.t|was not|was unable to|unable to) (able to )?review any files
+gemini-code-assist	refused	any	daily quota limit
+gemini-code-assist	status	any	Summary of Changes|I.m Gemini Code Assist|Gemini is currently reviewing|I.m currently reviewing
+gemini-code-assist	clean	review	I have no feedback to provide|no (further )?(feedback|comments|suggestions) (to provide|at this time)|did not find any (issues|problems)
+chatgpt-codex-connector	status	any	^\s*Codex Review Summary
+chatgpt-codex-connector	skipped	any	To use Codex here, (create an environment|\[create an environment)
+chatgpt-codex-connector	clean	any	(Didn.t|did not) find any major issues
+chatgpt-codex-connector	finding	any	Here are some automated review suggestions
+coderabbitai	finding	any	Retained concerns|Hardening Proposals|Actionable comments posted:\s*[1-9]|Outside diff range comments \(\s*[1-9]|Nitpick comments \(\s*[1-9]
+coderabbitai	clean	any	No actionable comments were generated|Actionable comments posted:\s*0
+coderabbitai	refused	any	Review limit reached|used all (of )?(your )?free (OSS )?reviews|rate limit exceeded
+coderabbitai	skipped	any	Review skipped|Auto reviews are disabled|Skipped review
+coderabbitai	status	any	Walkthrough|Summary by CodeRabbit|Currently processing new changes|review in progress|Thank you for using CodeRabbit|Finishing Touches
+sonarqubecloud	finding	any	Quality Gate failed|\b[1-9][0-9]* New issues?\b|\b[1-9][0-9]* Security Hotspots?\b
+sonarqubecloud	clean	any	Quality Gate passed
+qodo-code-review	clean	any	No code suggestions found
+qodo-code-review	finding	any	Recommended focus areas for review|PR Code Suggestions|Possible (issue|bug)
+qodo-code-review	refused	any	trial has ended|monthly usage limit
+qodo-code-review	clean	any	No major issues detected
+qodo-code-review	status	any	PR Description updated|Persistent review updated|Qodo is (reviewing|analyzing)
+codeant-ai	finding	any	Suggestion:
+codeant-ai	refused	any	(trial|monthly|usage) limit|trial has (ended|expired)
+codeant-ai	clean	any	No (issues|suggestions) (were )?found|found no issues
+codeant-ai	skipped	any	reviews? (has been |have been |was |were |is |are )?(skipped|disabled)|Skipping review
+codeant-ai	status	any	Thanks for using CodeAnt|Review Status|CodeAnt PR Risk|CodeAnt AI is (reviewing|running|analyzing)
+graphite-app	refused	check_run	hourly limit|daily limit|limit reached|too large
+graphite-app	finding	check_run	left [1-9][0-9]* comments?
+graphite-app	clean	check_run	left (0|no) comments?|review ran
+graphite-app	skipped	check_run	not enabled|disabled for this|skipped by (config|configuration|rule)
+graphite-app	status	issue	managed by Graphite|Graphite Merge Queue|graphite\.dev|How to use the Graphite
+cubic-dev-ai	finding	any	found [1-9][0-9]* (potential )?issues?
+cubic-dev-ai	clean	any	found (no|0) (potential )?issues?|No issues found
+cubic-dev-ai	status	any	cubic is (reviewing|analyzing)|Review in progress

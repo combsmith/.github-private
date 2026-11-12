@@ -1,0 +1,227 @@
+[
+  {
+    "name": "codex: Codex Review Summary (Failed) next to a usage-limit notice is status",
+    "bot": "chatgpt-codex-connector",
+    "kind": "issue",
+    "expect": "status",
+    "body": "Codex Review Summary\n❌ Failed\nCodex could not complete this review. You have reached your Codex usage limits for code reviews."
+  },
+  {
+    "name": "codex: Codex Review Summary (Completed) is status",
+    "bot": "chatgpt-codex-connector",
+    "kind": "issue",
+    "expect": "status",
+    "body": "Codex Review Summary\n✅ Completed\nView the full review in the review thread."
+  },
+  {
+    "name": "codex: usage-limit notice is refused",
+    "bot": "chatgpt-codex-connector",
+    "kind": "issue",
+    "expect": "refused",
+    "body": "You have reached your Codex usage limits for code reviews. You can see your limits in the Codex usage dashboard."
+  },
+  {
+    "name": "codex: review with suggestions is a finding",
+    "bot": "chatgpt-codex-connector",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "finding",
+    "body": "💡 Codex Review\nHere are some automated review suggestions for this pull request.\nReviewed commit: abc1234"
+  },
+  {
+    "name": "codex: no-major-issues review is clean",
+    "bot": "chatgpt-codex-connector",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "clean",
+    "body": "Codex Review: Didn't find any major issues. 🚀"
+  },
+  {
+    "name": "gemini: daily quota limit notice is refused (shared pattern misses it)",
+    "bot": "gemini-code-assist",
+    "kind": "issue",
+    "expect": "refused",
+    "body": "You have reached your daily quota limit. Please wait up to 24 hours and I will start processing your requests again!"
+  },
+  {
+    "name": "gemini: inline review comment is a finding",
+    "bot": "gemini-code-assist",
+    "kind": "inline",
+    "expect": "finding",
+    "body": "high\nThis loop never terminates when the input list is empty."
+  },
+  {
+    "name": "gemini: no-feedback review is clean",
+    "bot": "gemini-code-assist",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "clean",
+    "body": "Code Review\nThis pull request updates the README. I have no feedback to provide."
+  },
+  {
+    "name": "coderabbit: Review skipped is skipped",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "skipped",
+    "body": "Review skipped\nAuto reviews are disabled on base/target branches other than the default branch."
+  },
+  {
+    "name": "coderabbit: Auto reviews are disabled is skipped",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "skipped",
+    "body": "Auto reviews are disabled on this repository. Please check the settings in the CodeRabbit UI."
+  },
+  {
+    "name": "coderabbit: actionable comments posted is a finding",
+    "bot": "coderabbitai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "finding",
+    "body": "Actionable comments posted: 2\n🧹 Nitpick comments (1)"
+  },
+  {
+    "name": "coderabbit: no actionable comments is clean",
+    "bot": "coderabbitai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "clean",
+    "body": "Review details\nNo actionable comments were generated in the recent review. 🎉"
+  },
+  {
+    "name": "codeant: Thanks for using CodeAnt is status",
+    "bot": "codeant-ai",
+    "kind": "issue",
+    "expect": "status",
+    "body": "Thanks for using CodeAnt! 🎉\nWe're free for open-source projects."
+  },
+  {
+    "name": "codeant: Review Status is status",
+    "bot": "codeant-ai",
+    "kind": "issue",
+    "expect": "status",
+    "body": "Review Status\nCodeAnt AI is reviewing your PR."
+  },
+  {
+    "name": "codeant: CodeAnt PR Risk is status",
+    "bot": "codeant-ai",
+    "kind": "issue",
+    "expect": "status",
+    "body": "CodeAnt PR Risk\nPR Risk: Low Risk"
+  },
+  {
+    "name": "codeant: suggestion is a finding",
+    "bot": "codeant-ai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "finding",
+    "body": "Suggestion: Guard against a nil map before writing to it."
+  },
+  {
+    "name": "codeant: a suggestion that mentions a usage limit is still a finding",
+    "bot": "codeant-ai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "finding",
+    "body": "Suggestion: The retry loop should stop once the API usage limit is hit."
+  },
+  {
+    "name": "codeant: no-issues review is clean",
+    "bot": "codeant-ai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "clean",
+    "body": "CodeAnt AI finished reviewing your PR. No issues found."
+  },
+  {
+    "name": "qodo: trial has ended is refused",
+    "bot": "qodo-code-review",
+    "kind": "issue",
+    "expect": "refused",
+    "body": "ⓘ Qodo reviews are paused because your trial has ended. Ask your workspace admin to add credits to resume reviews."
+  },
+  {
+    "name": "qodo: recommended focus areas is a finding",
+    "bot": "qodo-code-review",
+    "kind": "issue",
+    "expect": "finding",
+    "body": "PR Reviewer Guide 🔍\n⏱️ Estimated effort to review: 2\n⚡ Recommended focus areas for review\nPossible nil dereference"
+  },
+  {
+    "name": "qodo: no major issues is clean",
+    "bot": "qodo-code-review",
+    "kind": "issue",
+    "expect": "clean",
+    "body": "PR Reviewer Guide 🔍\n⏱️ Estimated effort to review: 1\n⚡ No major issues detected"
+  },
+  {
+    "name": "graphite: neutral hourly-limit check run is refused",
+    "bot": "graphite-app",
+    "kind": "check_run",
+    "conclusion": "neutral",
+    "expect": "refused",
+    "body": "AI review skipped: hourly limit reached"
+  },
+  {
+    "name": "graphite: check run that left comments is a finding",
+    "bot": "graphite-app",
+    "kind": "check_run",
+    "conclusion": "success",
+    "expect": "finding",
+    "body": "AI review ran and left 2 comments"
+  },
+  {
+    "name": "graphite: clean-pass check run is clean",
+    "bot": "graphite-app",
+    "kind": "check_run",
+    "conclusion": "success",
+    "expect": "clean",
+    "body": "AI review ran and left 0 comments"
+  },
+  {
+    "name": "cubic: found issues is a finding",
+    "bot": "cubic-dev-ai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "finding",
+    "body": "cubic reviewed 3 files and found 1 potential issue."
+  },
+  {
+    "name": "cubic: found no issues is clean",
+    "bot": "cubic-dev-ai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "clean",
+    "body": "cubic reviewed 4 files and found no issues. Review PR in cubic.dev"
+  },
+  {
+    "name": "sonar: failed quality gate is a finding",
+    "bot": "sonarqubecloud",
+    "kind": "issue",
+    "expect": "finding",
+    "body": "Quality Gate failed\nFailed conditions\n3 New issues\n0 Security Hotspots"
+  },
+  {
+    "name": "sonar: passed quality gate with zero issues is clean",
+    "bot": "sonarqubecloud",
+    "kind": "issue",
+    "expect": "clean",
+    "body": "Quality Gate passed\nIssues\n0 New issues\n0 Accepted issues\nMeasures\n0 Security Hotspots"
+  },
+  {
+    "name": "copilot: overview that generated comments is a finding",
+    "bot": "copilot-pull-request-reviewer",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "finding",
+    "body": "Pull request overview\nCopilot reviewed 2 out of 2 changed files in this pull request and generated 3 comments."
+  },
+  {
+    "name": "copilot: overview that generated no comments is clean",
+    "bot": "copilot-pull-request-reviewer",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "clean",
+    "body": "Pull request overview\nCopilot reviewed 1 out of 1 changed files in this pull request and generated no comments."
+  }
+]

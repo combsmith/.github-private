@@ -15,8 +15,11 @@
 # Data source: ONE batched GraphQL query per repo (paginated over PRs, newest
 # first) returns each PR's reviews, review threads (with resolution state and
 # reactions), and issue comments in a single round-trip — far fewer calls than
-# per-PR REST. Bot identity comes from the shared advisory-review-gate registry;
-# rate-limit / out-of-quota notices are detected with its shared body pattern.
+# per-PR REST. Bot identity comes from the shared advisory-review-gate registry.
+# Every bot message gets one class — finding / clean / refused / skipped / status /
+# unclassified (#2504) — from the bot's rows in the scorecard-only sidecar
+# scripts/lib/reviewer-message-classes.tsv first, and the gate's shared rate-limit
+# pattern (the "refused" fallback) second. Only finding / clean count as a review.
 #
 # Layout (mirrors token_report.sh):
 #   * The render_* / aggregate helpers are PURE — they read a directory of
@@ -150,6 +153,30 @@ else
   CUBIC_LOGIN='cubic-dev-ai'
 fi
 
+# Per-bot message-class patterns (#2504) from the scorecard-only sidecar
+# scripts/lib/reviewer-message-classes.tsv, as a JSON map
+#   { "<login>": [ {class, kind, pattern}, ... in file order ] }.
+# It is spliced into _NORMALIZE_JQ as a literal (JSON is valid jq), so the worker
+# subshells and the unit tests need no extra --argjson. A row whose regex does not
+# compile is dropped here rather than breaking every PR (the bats suite fails on it).
+# `{}` when the loader is absent: every message then falls through to the shared
+# refusal fallback and the structural defaults.
+REVIEWER_MESSAGE_CLASS_JSON='{}'
+if declare -F reviewer_sources_message_class_patterns >/dev/null 2>&1; then
+  _mc_rows="$(reviewer_sources_message_class_patterns)" \
+    || echo "WARN: reviewer-message-classes.tsv has invalid rows — they are ignored (see above)" >&2
+  if [ -n "$_mc_rows" ]; then
+    REVIEWER_MESSAGE_CLASS_JSON="$(jq -Rsc '
+      split("\n") | map(select(length > 0) | split("\t")
+        | {login: .[0], class: .[1], kind: .[2], pattern: (.[3:] | join("\t"))})
+      | map(select(. as $r | try ("" | test($r.pattern; "i") | true) catch false))
+      | reduce .[] as $r ({}; .[$r.login] += [{class: $r.class, kind: $r.kind, pattern: $r.pattern}])
+    ' <<<"$_mc_rows" 2>/dev/null)" || REVIEWER_MESSAGE_CLASS_JSON='{}'
+    [ -n "$REVIEWER_MESSAGE_CLASS_JSON" ] || REVIEWER_MESSAGE_CLASS_JSON='{}'
+  fi
+  unset _mc_rows
+fi
+
 # ---------------------------------------------------------------------------
 # Pure rendering / aggregation helpers (unit-tested, no network)
 # ---------------------------------------------------------------------------
@@ -200,166 +227,220 @@ _delta_arrow() {
 # normalize_pr_node — jq filter (as a string) that turns one GraphQL PR node into
 # a stream of normalized JSONL records. Emits:
 #   {kind:"pr", repo, pr, created, merged, draft, author}         (denominator)
-#   {kind:"bot_pr", repo, pr, bot, created, first_at, latency_s,
-#      reviews, approved, changes_req, commented, dismissed, rate_limited,
-#      inline_comments, threads_total, threads_resolved, threads_outdated,
-#      thumbs_up, thumbs_down}                                     (participation)
+#   {kind:"bot_pr", repo, pr, bot, created, classes, real_responses, refusals,
+#      latency_s, reviews, approved, changes_req, inline_comments, threads_total,
+#      threads_resolved, findings_raised, thumbs_up, thumbs_down,
+#      unclassified_samples}                                       (participation)
 # Args: --arg repo, --argjson bots (login array), --arg rl (rate-limit regex).
-# A "bot_pr" record is emitted only for a bot that actually touched the PR.
+# A "bot_pr" record is emitted for every bot that left at least one message.
+#
+# Per-message classes (#2504). Every bot message — review, inline comment, issue
+# comment, completed check run — gets exactly ONE class:
+#   finding | clean | refused | skipped | status | unclassified
+# decided in this order (first hit wins):
+#   0. a check run with a failed conclusion is `status` (the job broke; whatever its
+#      summary says, it carries no review — #1913);
+#   1. the bot's own rows in reviewer-message-classes.tsv, top to bottom;
+#   2. the shared refusal fallback: $rl (ADVISORY_RATE_LIMIT_RE) or the author-scoped
+#      cubic clause → `refused`. Never applied to inline comments: a finding that talks
+#      about a rate limit is still a finding;
+#   3. structural defaults: the first comment of a review thread is a `finding` and a
+#      later one (a reply) is `status`; a CHANGES_REQUESTED review is a `finding`, an
+#      APPROVED one `clean`; a check run that succeeded (or says the review ran) is
+#      `clean`, one skipped with a decline reason `refused`, one with an empty summary
+#      `status`;
+#   4. otherwise `unclassified`.
+# A PR counts as reviewed by a bot only when it left a `finding` or `clean` message.
 # shellcheck disable=SC2089  # this is a jq program; embedded quotes are meant to be literal
 _NORMALIZE_JQ='
   def is_bot($login): ($login != null) and ($login | ascii_downcase) as $l
     | ($bots | map(ascii_downcase) | index($l)) != null;
-  # All submissions (reviews + inline thread comments + issue comments) by tracked
-  # bots, tagged with source so we can count verdicts vs comments separately.
+  def class_rules: '"$REVIEWER_MESSAGE_CLASS_JSON"';
+  def failed_conclusions: ["failure","cancelled","timed_out","action_required","stale","startup_failure"];
+  def classify:
+    . as $m
+    | ($m.body // "") as $b
+    | ((($m.conclusion // "") | ascii_downcase)) as $concl
+    | if $m.kind == "check_run" and (failed_conclusions | index($concl)) != null then "status"
+      else
+        ( [ (class_rules[$m.bot] // [])[]
+            | select(.kind == "any" or .kind == $m.kind)
+            | select(.pattern as $p | $b | test($p; "i"))
+            | .class ] | first ) as $rule
+        | if $rule != null then $rule
+          elif $m.kind != "inline"
+               and (($b | test($rl; "i"))
+                    or ($m.bot == "'"$CUBIC_LOGIN"'" and ($b | test("'"$CUBIC_RATE_LIMIT_RE"'"; "i"))))
+            then "refused"
+          elif $m.kind == "inline" then (if $m.first_in_thread then "finding" else "status" end)
+          elif $m.kind == "review" and $m.state == "CHANGES_REQUESTED" then "finding"
+          elif $m.kind == "review" and $m.state == "APPROVED" then "clean"
+          elif $m.kind == "check_run" then
+            if $concl == "success" or ($b | test("review ran"; "i")) then "clean"
+            elif $concl == "skipped" and ($b | test("did not run|too large|declin|skip|rate.?limit|quota|usage limit"; "i")) then "refused"
+            elif ($b | test("^\\s*$")) then "status"
+            else "unclassified" end
+          else "unclassified" end
+      end;
+  # A short, inert sample of an unclassified body for the report: URLs and backticks
+  # removed, whitespace collapsed, cut to 100 characters. Rendered inside a code span,
+  # so an @mention in it never notifies anyone.
+  def sample:
+    (.body // "") | gsub("https?://[^\\s)]+"; "[url]") | gsub("[`\\s]+"; " ")
+    | sub("^ "; "") | sub(" $"; "")
+    | if length > 100 then .[0:100] + "…" else . end;
   . as $pr
   | ([ (.reviews.nodes // [])[]
        | select(.author.login as $a | is_bot($a))
        | { bot: (.author.login|ascii_downcase), at: .submittedAt,
            kind: "review", state: (.state // "COMMENTED"),
-           body: (.bodyText // ""), reactions: 0, resolved: false, outdated: false } ]
+           body: (.bodyText // ""), reactions_up: 0, reactions_down: 0,
+           first_in_thread: false, resolved: false, outdated: false } ]
     + [ (.reviewThreads.nodes // [])[] as $t
-        | ($t.comments.nodes // [])[]
+        | ($t.comments.nodes // []) | to_entries[]
+        | .key as $idx | .value
         | select(.author.login as $a | is_bot($a))
         | { bot: (.author.login|ascii_downcase), at: .createdAt,
             kind: "inline", state: "COMMENTED", body: (.bodyText // ""),
             reactions_up: ([ (.reactionGroups // [])[] | select(.content=="THUMBS_UP") | .users.totalCount ] | add // 0),
             reactions_down: ([ (.reactionGroups // [])[] | select(.content=="THUMBS_DOWN") | .users.totalCount ] | add // 0),
+            first_in_thread: ($idx == 0),
             resolved: ($t.isResolved // false), outdated: ($t.isOutdated // false) } ]
     + [ (.comments.nodes // [])[]
         | select(.author.login as $a | is_bot($a))
         | { bot: (.author.login|ascii_downcase), at: .createdAt,
             kind: "issue", state: "COMMENTED", body: (.bodyText // ""),
-            reactions_up: 0, reactions_down: 0, resolved: false, outdated: false } ]
+            reactions_up: 0, reactions_down: 0, first_in_thread: false, resolved: false, outdated: false } ]
     # Check-run reviews (#1908): a bot that reports through a check run (Graphite)
     # posts each review as a `<name>` check run, not a PR review — a clean pass leaves
     # NO PR review, only a completed check run. The collector attaches the matched
-    # check runs under ._checkRuns. Classify each:
-    #   * completed AND (success OR summary says the review ran) → a REAL response,
-    #     even with zero comments (refusal:false). It adds 0 to the review-event count
-    #     (kind:"check_run", not "review"); latency is measured to completed_at.
-    #   * completed/skipped WITH a decline summary ("too large" / "did not run") →
-    #     a REFUSAL (refusal:true) — the bot itself declined. A run skipped for an
-    #     unrelated workflow reason (empty/neutral summary, e.g. an `if:`-gated job)
-    #     is NOT the bot declining, so it must NOT be counted as a rate-limited
-    #     refusal — it contributes nothing, just like a queued run.
-    #   * anything else (queued / in_progress / no run) contributes nothing → the bot
-    #     gets no submission here, so absent any PR review it buckets as no-response.
+    # check runs under ._checkRuns. Every COMPLETED run is a message and is classified
+    # like any other (#2504) — so a `neutral` "hourly limit reached" run is refused.
+    # A queued or in-progress run has no result yet and is not a message.
     + [ (.["_checkRuns"] // [])[]
         | select(.bot as $a | is_bot($a))
-        | (.status == "completed") as $done
-        | ((.conclusion // "") | ascii_downcase) as $concl
-        | (["failure","cancelled","timed_out","action_required","stale","startup_failure"] | index($concl)) as $failed
-        # The "review ran" summary substring only counts when the run did NOT fail — a
-        # failure/cancelled run whose summary happens to say "…review ran into an error…"
-        # is not a real review (#1913 review). A success conclusion always counts.
-        | ($done and ($failed == null)
-                 and ((.conclusion // "") == "success"
-                      or ((.summary // "") | test("review ran"; "i")))) as $ran
-        | ($done and ((.conclusion // "") == "skipped")
-                 and ((.summary // "") | test("did not run|too large|declin|skip|rate.?limit|quota|usage limit"; "i"))) as $refused
-        | select($ran or $refused)
+        | select(.status == "completed")
         | { bot: (.bot|ascii_downcase), at: (.completed_at // .completedAt),
-            kind: "check_run", state: (if $ran then "COMMENTED" else "SKIPPED" end),
-            body: (.summary // ""), refusal: $refused,
-            reactions_up: 0, reactions_down: 0, resolved: false, outdated: false } ]
+            kind: "check_run", state: "COMMENTED", conclusion: (.conclusion // ""),
+            body: (.summary // ""), reactions_up: 0, reactions_down: 0,
+            first_in_thread: false, resolved: false, outdated: false } ]
     ) as $subs
   | ( { kind: "pr", repo: $repo, pr: ($pr.url),
         created: $pr.createdAt, merged: ($pr.mergedAt // null),
         draft: ($pr.isDraft // false), author: ($pr.author.login // "") } ),
     ( $subs | group_by(.bot)[] as $grp
-      # Tag each submission as a refusal (an out-of-quota / rate-limit notice) vs a
-      # real response. A PR counts as "reviewed" if the bot gave ANY real response,
-      # even alongside a rate-limit notice; it counts as "refused" only when the
-      # bot'"'"'s SOLE action on the PR was to decline. This is the key correctness
-      # fix over the old "any rate-limit text present" flag.
-      # A check-run submission carries an explicit `refusal` boolean (a "too large"
-      # skip); preserve that pre-set flag. Otherwise derive refusal from the body:
-      # generic rate-limit markers apply to any bot, and the cubic clause is
-      # author-scoped (.bot is the ascii_downcased author) so a comment by another
-      # reviewer that merely mentions cubic'"'"'s trial is not counted as a refusal (#1903).
-      | ($grp | map(. + {refusal: (if (.refusal != null) then .refusal
-                                    else (((.body // "") | test($rl; "i")) or (.bot == "'"$CUBIC_LOGIN"'" and ((.body // "") | test("'"$CUBIC_RATE_LIMIT_RE"'"; "i")))) end)})) as $mine
-      | ($mine | map(select(.refusal | not))) as $real
-      | ($mine | map(select(.refusal)))       as $refd
+      | ($grp | map(. + {class: classify})) as $mine
+      | ($mine | map(select(.class == "finding" or .class == "clean"))) as $real
+      | ($mine | map(select(.class == "refused")))   as $refd
+      # Messages that are not refusals, skips or status notices: the legacy review /
+      # verdict counts are taken from these.
+      | ($mine | map(select(.class == "finding" or .class == "clean" or .class == "unclassified"))) as $substantive
       | ($real | map(.at) | min) as $first_real
-      | ($real | map(select(.kind=="review")) | length) as $rev_events
+      | ($substantive | map(select(.kind=="review")) | length) as $rev_events
+      # Threads this bot OPENED with a finding — reply comments are not new threads.
+      | ($mine | map(select(.kind=="inline" and .first_in_thread and .class=="finding"))) as $threads
+      | ($mine | map(select(.kind!="inline" and .class=="finding")) | length) as $body_findings
       | { kind: "bot_pr", repo: $repo, pr: ($pr.url),
           bot: $grp[0].bot, created: $pr.createdAt,
+          classes: (reduce ("finding","clean","refused","skipped","status","unclassified") as $c
+                      ({}; .[$c] = ($mine | map(select(.class == $c)) | length))),
           real_responses: ($real | length),
           refusals:       ($refd | length),
-          # Latency = time to first REAL response (null when the bot only refused,
-          # so refusals never pollute the latency percentiles).
+          # Latency = time to first finding/clean message (null when the bot never
+          # reviewed, so refusals and status notices never pollute the percentiles).
           latency_s: (if ($real | length) == 0 then null
                       else (($first_real | fromdateiso8601) - ($pr.createdAt | fromdateiso8601)) end),
-          # Reviews = formal review submissions. A bot that posts NO formal review
-          # but delivers its verdict as a top-level comment (e.g. SonarCloud'"'"'s
-          # quality-gate comment) has that comment counted as its review, so its
-          # work is not invisible. Bots that DO submit reviews are unaffected, so
-          # their extra summary comments are never double-counted. Refusals are
-          # already excluded ($real holds only non-refusal responses).
+          # Reviews (details section) = formal review submissions that are not a
+          # refusal, skip or status notice. A bot that posts NO formal review but
+          # delivers its verdict as a top-level comment (SonarCloud) has its finding /
+          # clean comments counted instead — never its status or quota comments.
           reviews:      (if $rev_events > 0 then $rev_events
                          else ($real | map(select(.kind=="issue")) | length) end),
-          approved:     ($real | map(select(.kind=="review" and .state=="APPROVED")) | length),
-          changes_req:  ($real | map(select(.kind=="review" and .state=="CHANGES_REQUESTED")) | length),
-          inline_comments:  ($real | map(select(.kind=="inline")) | length),
-          threads_total:    ($real | map(select(.kind=="inline")) | length),
-          threads_resolved: ($real | map(select(.kind=="inline" and .resolved)) | length),
-          thumbs_up:   ($real | map(.reactions_up // 0)   | add // 0),
-          thumbs_down: ($real | map(.reactions_down // 0) | add // 0) } )
+          approved:     ($substantive | map(select(.kind=="review" and .state=="APPROVED")) | length),
+          changes_req:  ($substantive | map(select(.kind=="review" and .state=="CHANGES_REQUESTED")) | length),
+          inline_comments:  ($mine | map(select(.kind=="inline" and .class=="finding")) | length),
+          threads_total:    ($threads | length),
+          threads_resolved: ($threads | map(select(.resolved)) | length),
+          # Findings raised = threads opened + findings in review/comment/check-run
+          # bodies. A body finding on a PR where the bot also opened threads is the
+          # summary of those threads, so it is not counted a second time.
+          findings_raised: (($threads | length) + (if ($threads | length) > 0 then 0 else $body_findings end)),
+          thumbs_up:   ($mine | map(.reactions_up // 0)   | add // 0),
+          thumbs_down: ($mine | map(.reactions_down // 0) | add // 0),
+          unclassified_samples: ($mine | map(select(.class == "unclassified") | sample) | .[0:3]) } )
 '
 
 # aggregate_snapshot <jsonl_dir> — PURE. Reads normalized JSONL and emits the
 # per-bot headline-metric snapshot as compact JSON (also the WoW artifact payload).
-# Every eligible (non-draft) PR falls into exactly one bucket PER BOT, and the three
-# buckets sum to eligible_prs:
-#   reviewed_prs     — the bot gave a real review/comment
-#   refused_prs      — the bot responded ONLY to decline (rate-limited / out of quota)
-#   no_response_prs  — the bot never appeared on the PR
-# reviews / refusal_events are EVENT counts (each submission counted, so a PR
-# re-reviewed across N commits contributes N reviews); the *_prs fields are PR
-# counts. reviewed_prs + refused_prs + no_response_prs == eligible_prs.
-#   { "eligible_prs": N, "total_prs": N,
-#     "bots": { "<login>": { reviewed_prs, refused_prs, no_response_prs, engaged_prs,
-#               reviews, refusal_events, approved, changes_req, inline_comments,
-#               threads_total, threads_resolved, thumbs_up, thumbs_down,
-#               latency_p50, latency_p95 } , ... } }
+# Every eligible (non-draft) PR falls into exactly one bucket PER BOT (#2504), first
+# match wins, and the five buckets sum to eligible_prs:
+#   with_findings_prs — the bot left at least one `finding` message
+#   clean_prs         — the bot left a `clean` message and no `finding`
+#   refused_prs       — no finding/clean, at least one `refused` message
+#   skipped_prs       — no finding/clean/refused, at least one `skipped` message
+#   no_response_prs   — everything else: the bot never appeared, or left only
+#                       `status` / `unclassified` messages
+# reviewed_prs = with_findings_prs + clean_prs. reviews / refusal_events and the
+# *_events class counts are EVENT counts (each message counted); *_prs are PR counts.
+# schema_version 2 marks a snapshot carrying these fields, so the week-over-week
+# diff never compares them against a v1 snapshot whose buckets meant something else.
+#   { "schema_version": 2, "eligible_prs": N, "total_prs": N,
+#     "bots": { "<login>": { with_findings_prs, clean_prs, refused_prs, skipped_prs,
+#               no_response_prs, reviewed_prs, engaged_prs, findings_raised,
+#               finding_events, clean_events, skipped_events, status_events,
+#               unclassified_events, reviews, refusal_events, approved, changes_req,
+#               inline_comments, threads_total, threads_resolved, thumbs_up,
+#               thumbs_down, latency_p50, latency_p95 } , ... } }
+# Unclassified sample bodies are deliberately NOT in the snapshot (see
+# _render_unclassified_samples) — the artifact holds numbers only.
 aggregate_snapshot() {
   local dir="$1"
   local files=("$dir"/*.jsonl)
-  [ -e "${files[0]}" ] || { echo '{"eligible_prs":0,"total_prs":0,"bots":{}}'; return 0; }
+  [ -e "${files[0]}" ] || { echo '{"schema_version":2,"eligible_prs":0,"total_prs":0,"bots":{}}'; return 0; }
   jq -s '
     (map(select(.kind=="pr"))) as $prs
     | (map(select(.kind=="bot_pr"))) as $bp
     | ($prs | length) as $total
-    # Bucket over ELIGIBLE (non-draft) PRs only, so the three buckets sum to eligible.
+    # Bucket over ELIGIBLE (non-draft) PRs only, so the buckets sum to eligible.
     | (reduce ($prs[] | select(.draft == false)) as $p ({}; .[$p.pr] = true)) as $elig_map
     | ($elig_map | length) as $eligible
     | ($bp | map(select($elig_map[.pr]))) as $bpe
     | ($bpe | group_by(.bot) | map(
         (.[0].bot) as $bot
         | (map(select((.real_responses // 0) > 0))) as $reviewed
+        | ($reviewed | map(select((.classes.finding // 0) > 0))) as $with_findings
         | (map(select((.real_responses // 0) == 0 and (.refusals // 0) > 0))) as $refused
+        | (map(select((.real_responses // 0) == 0 and (.refusals // 0) == 0
+                      and (.classes.skipped // 0) > 0))) as $skipped
         | ([.[].latency_s] | map(select(. != null)) | sort) as $lat
         | { key: $bot, value: {
-            reviewed_prs:     ($reviewed | length),
+            with_findings_prs: ($with_findings | length),
+            clean_prs:        (($reviewed | length) - ($with_findings | length)),
             refused_prs:      ($refused | length),
-            no_response_prs:  ($eligible - ($reviewed | length) - ($refused | length)),
+            skipped_prs:      ($skipped | length),
+            no_response_prs:  ($eligible - ($reviewed | length) - ($refused | length) - ($skipped | length)),
+            reviewed_prs:     ($reviewed | length),
             engaged_prs:      length,
-            reviews:          ([.[].reviews] | add),
-            refusal_events:   ([.[].refusals] | add),
-            approved:         ([.[].approved] | add),
-            changes_req:      ([.[].changes_req] | add),
-            inline_comments:  ([.[].inline_comments] | add),
-            threads_total:    ([.[].threads_total] | add),
-            threads_resolved: ([.[].threads_resolved] | add),
-            thumbs_up:        ([.[].thumbs_up] | add),
-            thumbs_down:      ([.[].thumbs_down] | add),
+            findings_raised:  ([.[].findings_raised // 0] | add),
+            finding_events:   ([.[].classes.finding // 0] | add),
+            clean_events:     ([.[].classes.clean // 0] | add),
+            skipped_events:   ([.[].classes.skipped // 0] | add),
+            status_events:    ([.[].classes.status // 0] | add),
+            unclassified_events: ([.[].classes.unclassified // 0] | add),
+            reviews:          ([.[].reviews // 0] | add),
+            refusal_events:   ([.[].refusals // 0] | add),
+            approved:         ([.[].approved // 0] | add),
+            changes_req:      ([.[].changes_req // 0] | add),
+            inline_comments:  ([.[].inline_comments // 0] | add),
+            threads_total:    ([.[].threads_total // 0] | add),
+            threads_resolved: ([.[].threads_resolved // 0] | add),
+            thumbs_up:        ([.[].thumbs_up // 0] | add),
+            thumbs_down:      ([.[].thumbs_down // 0] | add),
             latency_p50: (if ($lat|length)==0 then null else $lat[(((($lat|length)-1)*0.50)|floor)] end),
             latency_p95: (if ($lat|length)==0 then null else $lat[(((($lat|length)-1)*0.95)|round)] end)
           } } ) | from_entries) as $bots
-    | { eligible_prs: $eligible, total_prs: $total, bots: $bots }
-  ' "${files[@]}" 2>/dev/null || echo '{"eligible_prs":0,"total_prs":0,"bots":{}}'
+    | { schema_version: 2, eligible_prs: $eligible, total_prs: $total, bots: $bots }
+  ' "${files[@]}" 2>/dev/null || echo '{"schema_version":2,"eligible_prs":0,"total_prs":0,"bots":{}}'
 }
 
 # _prev <snapshot_json_file> <bot> <field> — prior-week scalar or "" when absent.
@@ -367,6 +448,23 @@ _prev() {
   local f="${1:-}" bot="$2" field="$3"
   [ -n "$f" ] && [ -f "$f" ] || { printf ''; return 0; }
   jq -r --arg b "$bot" --arg k "$field" '.bots?[$b]?[$k]? // empty' "$f" 2>/dev/null || printf ''
+}
+
+# _prev_v2 <snapshot_json_file> <bot> <field> — like _prev, but "" unless the prior
+# snapshot is schema_version >= 2 (#2504). A v1 snapshot has no with_findings_prs /
+# skipped_prs, and its refused_prs / no_response_prs were counted under the old
+# rules, so a headline delta against it would be wrong. No delta is shown instead.
+_prev_v2() {
+  local f="${1:-}" bot="$2" field="$3"
+  [ -n "$f" ] && [ -f "$f" ] || { printf ''; return 0; }
+  jq -r --arg b "$bot" --arg k "$field" '
+    if ((.schema_version? // 1) | tonumber? // 1) >= 2 then (.bots?[$b]?[$k]? // empty) else empty end
+  ' "$f" 2>/dev/null || printf ''
+}
+
+# _pct_num <numerator> <denominator> — integer percent, "" when denom is 0 (for deltas).
+_pct_num() {
+  awk -v a="${1:-0}" -v b="${2:-0}" 'BEGIN { if (b <= 0) print ""; else printf "%d", (a / b * 100) + 0.5 }'
 }
 
 # _render_collection_health <jsonl_dir> <repo_count> — PURE. Prints a PROMINENT
@@ -420,6 +518,47 @@ _render_collection_health() {
   return 0
 }
 
+# _render_unclassified_samples <jsonl_dir> — PURE (#2504). For each tracked bot that
+# left `unclassified` messages on eligible PRs, prints its count and up to 3 truncated
+# sample bodies, so a new message shape is visible and can be given a pattern in
+# scripts/lib/reviewer-message-classes.tsv. Prints NOTHING when every message was
+# classified. Samples are already made inert at normalization (URLs and backticks
+# removed, 100 characters max) and are printed inside code spans, so an @mention in a
+# bot body never notifies anyone from the report comment.
+_render_unclassified_samples() {
+  local dir="$1"
+  local files=("$dir"/*.jsonl)
+  [ -e "${files[0]}" ] || return 0
+  local data
+  data="$(jq -sc '
+    (reduce (.[] | select(.kind=="pr" and .draft == false)) as $p ({}; .[$p.pr] = true)) as $elig
+    | [ .[] | select(.kind=="bot_pr" and $elig[.pr] and ((.classes.unclassified // 0) > 0)) ]
+    | group_by(.bot)
+    | map({ key: .[0].bot,
+            value: { count: ([.[].classes.unclassified] | add),
+                     samples: ([.[].unclassified_samples // [] | .[]] | .[0:3]) } })
+    | from_entries' "${files[@]}" 2>/dev/null || printf '{}')"
+  { [ -z "$data" ] || [ "$data" = "{}" ]; } && return 0
+
+  printf '## Unclassified messages\n\n'
+  printf 'Bot messages that no pattern recognized. They count toward no column above. '
+  printf 'Add a row to `scripts/lib/reviewer-message-classes.tsv` for each new shape (see `docs/reviewer-report.md`).\n\n'
+  local bot label lines
+  for bot in "${REVIEWER_BOTS[@]}"; do
+    lines="$(jq -r --arg b "$bot" '
+      .[$b] // empty
+      | "**\(.count)** unclassified message\(if .count == 1 then "" else "s" end)",
+        (.samples[] | gsub("https?://[^\\s)]+"; "[url]") | gsub("[`\\s]+"; " ") | .[0:101]
+                    | "  - `\(.)`")' <<<"$data" 2>/dev/null || true)"
+    [ -n "$lines" ] || continue
+    label="${REVIEWER_LABELS[$bot]:-$bot}"
+    printf -- '- **%s** — %s\n' "$label" "${lines%%$'\n'*}"
+    if [ "$lines" != "${lines%%$'\n'*}" ]; then printf '%s\n' "${lines#*$'\n'}"; fi
+  done
+  printf '\n'
+  return 0
+}
+
 # render_reviewer_report <jsonl_dir> <lookback> <repo_count> [generated_at]
 # Writes the full Markdown report to stdout. PURE: no network. Optional prior
 # snapshot for WoW deltas via REVIEWER_PREV_SNAPSHOT.
@@ -455,57 +594,110 @@ render_reviewer_report() {
 
   printf 'Deterministic report — every figure is computed with `jq`/`awk` from GitHub review data; '
   printf 'no LLM is involved. Bots are identified by their GraphQL App login '
-  printf '(`scripts/lib/advisory-review-gate.sh`); rate-limit/out-of-quota notices are detected by body text. '
-  printf '**Reviews** and **Refused** count *every event*, not distinct PRs — a PR re-reviewed across N commits contributes N reviews. '
-  printf '**No response** counts eligible PRs the reviewer never engaged with at all. '
-  printf '_Latency_ = time from PR creation to the bot'"'"'s first **real** review (refusals excluded). '
+  printf '(`scripts/lib/advisory-review-gate.sh`). Every bot message — review, inline comment, top-level comment, check run — '
+  printf 'gets exactly one class (`finding`, `clean`, `refused`, `skipped`, `status` or `unclassified`) from that bot'"'"'s patterns '
+  printf '(`scripts/lib/reviewer-message-classes.tsv`) first and the shared rate-limit pattern second. '
+  printf 'A PR counts as **reviewed** only when the bot left a `finding` or `clean` message on it; status notices and unclassified messages never count. '
+  printf 'Each eligible PR lands in exactly one bucket per bot, so the five PR columns sum to **Total PRs**. '
+  printf '_Latency_ = time from PR creation to the bot'"'"'s first `finding` or `clean` message. '
   printf 'Deltas (▲/▼) are vs the prior week and directional only.\n\n'
 
-  # ---- Scorecard table -----------------------------------------------------
+  # ---- Scorecard table (#2504) ---------------------------------------------
   printf '## Scorecard\n\n'
-  printf '| Reviewer | Total PRs | Reviews | ✅ / 🔄 | Refused | No response | Latency p50 | Latency p95 |\n'
-  printf '|---|---:|---:|:--:|---:|---:|---:|---:|\n'
+  printf '| Reviewer | Total PRs | With findings | Clean | Refused | Skipped | No response | Findings raised | Resolved %% | Latency p50 | Latency p95 |\n'
+  printf '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n'
 
-  local bot label reviews refusal_events no_resp approved changes_req p50 p95
+  local bot label wf clean refused skipped no_resp findings thr_total thr_res p50 p95
+  local f pv pct prev_pct prev_tt prev_tr
   for bot in "${REVIEWER_BOTS[@]}"; do
     label="${REVIEWER_LABELS[$bot]:-$bot}"
     # Pull this bot's aggregates out of the snapshot (0 when absent this week).
     # IFS=tab preserves empty latency fields (a missing percentile must not shift
     # the remaining columns left — that was a field-misalignment bug).
-    IFS=$'\t' read -r reviews refusal_events no_resp approved changes_req p50 p95 <<<"$(
+    IFS=$'\t' read -r wf clean refused skipped no_resp findings thr_total thr_res p50 p95 <<<"$(
       jq -r --arg b "$bot" --argjson elig "${eligible:-0}" '
         (.bots?[$b] // {}) as $x
-        | [ ($x.reviews // 0), ($x.refusal_events // 0),
-            ($x.no_response_prs // $elig),
-            ($x.approved // 0), ($x.changes_req // 0),
+        | [ ($x.with_findings_prs // 0), ($x.clean_prs // 0), ($x.refused_prs // 0),
+            ($x.skipped_prs // 0), ($x.no_response_prs // $elig), ($x.findings_raised // 0),
+            ($x.threads_total // 0), ($x.threads_resolved // 0),
             (if $x.latency_p50 == null then "" else $x.latency_p50 end),
             (if $x.latency_p95 == null then "" else $x.latency_p95 end) ]
         | @tsv' <<<"$snap"
     )"
 
-    local prev_reviews prev_refusals
-    prev_reviews="$(_prev "$prev" "$bot" reviews)"
-    prev_refusals="$(_prev "$prev" "$bot" refusal_events)"
-    printf '| %s | %s | %s %s | %s / %s | %s %s | %s | %s | %s |\n' \
-      "$label" \
-      "$(_fmt_int "$eligible")" \
-      "$(_fmt_int "$reviews")" "$(_delta_arrow "$reviews" "$prev_reviews")" \
-      "$(_fmt_int "$approved")" "$(_fmt_int "$changes_req")" \
-      "$(_fmt_int "$refusal_events")" "$(_delta_arrow "$refusal_events" "$prev_refusals")" \
-      "$(_fmt_int "$no_resp")" \
-      "$(_fmt_dur "$p50")" "$(_fmt_dur "$p95")"
+    # "<value> <delta>" for each new count column; the delta is blank unless the
+    # prior snapshot carries the #2504 fields (schema_version >= 2).
+    local -a cells=()
+    for f in "with_findings_prs:$wf" "clean_prs:$clean" "refused_prs:$refused" \
+             "skipped_prs:$skipped" "no_response_prs:$no_resp" "findings_raised:$findings"; do
+      pv="$(_prev_v2 "$prev" "$bot" "${f%%:*}")"
+      cells+=("$(_fmt_int "${f#*:}") $(_delta_arrow "${f#*:}" "$pv")")
+    done
+    # Resolved % with a percentage-point delta (blank when either week had no threads).
+    pct="$(_pct_num "$thr_res" "$thr_total")"
+    prev_tt="$(_prev_v2 "$prev" "$bot" threads_total)"
+    prev_tr="$(_prev_v2 "$prev" "$bot" threads_resolved)"
+    prev_pct=""
+    [ -n "$prev_tt" ] && prev_pct="$(_pct_num "${prev_tr:-0}" "$prev_tt")"
+    if [ -n "$pct" ] && [ -n "$prev_pct" ]; then
+      cells+=("$(_fmt_pct "$thr_res" "$thr_total") $(_delta_arrow "$pct" "$prev_pct")")
+    else
+      cells+=("$(_fmt_pct "$thr_res" "$thr_total") ")
+    fi
+
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+      "$label" "$(_fmt_int "$eligible")" "${cells[@]}" "$(_fmt_dur "$p50")" "$(_fmt_dur "$p95")"
   done
   printf '\n'
   printf -- '- **Total PRs** — review-eligible (non-draft) PRs in the window; the denominator each row is measured against.\n'
-  printf -- '- **Reviews** — count of reviews the bot submitted, **each occurrence** (a PR re-reviewed on 5 commits = 5). A bot that posts no formal review but delivers its verdict as a comment (e.g. SonarCloud'"'"'s quality-gate comment) has that comment counted as its review. Rate-limit notices are never counted.\n'
+  printf -- '- **With findings** — PRs where the bot left at least one `finding` message (an inline thread, a review that requests changes, a body that reports issues).\n'
+  printf -- '- **Clean** — PRs where the bot reviewed and reported nothing: at least one `clean` message and no `finding`.\n'
+  printf -- '- **Refused** — PRs where the bot only declined for quota, rate limit, trial or plan reasons (no finding or clean message).\n'
+  printf -- '- **Skipped** — PRs where the bot only reported that it skipped the review because of configuration (for example auto review turned off).\n'
+  printf -- '- **No response** — every other eligible PR: the bot never appeared, or left only `status` or `unclassified` messages.\n'
+  printf -- '- **Findings raised** — review threads the bot opened plus findings in its review, comment or check-run bodies (a body that only introduces the bot'"'"'s own threads is not counted twice).\n'
+  printf -- '- **Resolved %%** — threads the bot opened that are resolved, out of all threads it opened.\n\n'
+
+  # ---- Details (#2504) — the old event counts, verdicts and reactions --------
+  printf '## Details\n\n'
+  printf '| Reviewer | Reviews | ✅ / 🔄 | Refusal events | 👍 / 👎 | Status messages | Unclassified messages |\n'
+  printf '|---|---:|:--:|---:|:--:|---:|---:|\n'
+  local reviews refusal_events approved changes_req up down st_ev uc_ev prev_reviews prev_refusals
+  for bot in "${REVIEWER_BOTS[@]}"; do
+    label="${REVIEWER_LABELS[$bot]:-$bot}"
+    IFS=$'\t' read -r reviews refusal_events approved changes_req up down st_ev uc_ev <<<"$(
+      jq -r --arg b "$bot" '
+        (.bots?[$b] // {}) as $x
+        | [ ($x.reviews // 0), ($x.refusal_events // 0), ($x.approved // 0), ($x.changes_req // 0),
+            ($x.thumbs_up // 0), ($x.thumbs_down // 0), ($x.status_events // 0),
+            ($x.unclassified_events // 0) ]
+        | @tsv' <<<"$snap"
+    )"
+    prev_reviews="$(_prev "$prev" "$bot" reviews)"
+    prev_refusals="$(_prev "$prev" "$bot" refusal_events)"
+    printf '| %s | %s %s | %s / %s | %s %s | %s / %s | %s | %s |\n' \
+      "$label" \
+      "$(_fmt_int "$reviews")" "$(_delta_arrow "$reviews" "$prev_reviews")" \
+      "$(_fmt_int "$approved")" "$(_fmt_int "$changes_req")" \
+      "$(_fmt_int "$refusal_events")" "$(_delta_arrow "$refusal_events" "$prev_refusals")" \
+      "$(_fmt_int "$up")" "$(_fmt_int "$down")" \
+      "$(_fmt_int "$st_ev")" "$(_fmt_int "$uc_ev")"
+  done
+  printf '\n'
+  printf -- '- **Reviews** — formal reviews the bot submitted, **each occurrence** (a PR re-reviewed on 5 commits = 5), leaving out refusals, skips and status notices. A bot that posts no formal review but delivers its verdict as a comment (e.g. SonarCloud'"'"'s quality-gate comment) has its `finding` / `clean` comments counted instead.\n'
   printf -- '- **✅ / 🔄** — of those reviews, how many were APPROVED / CHANGES_REQUESTED (comment-only responses carry no verdict).\n'
-  printf -- '- **Refused** — count of refusal events: out-of-quota / rate-limit notices AND a check-run reporter'"'"'s own decline (a "too large" / "did not run" skip), each occurrence.\n'
-  printf -- '- **No response** — eligible PRs the bot never engaged with at all (no review, comment, or refusal).\n\n'
+  printf -- '- **Refusal events** — every `refused` message, each occurrence.\n'
+  printf -- '- **👍 / 👎** — reactions on the bot'"'"'s inline comments.\n'
+  printf -- '- **Status / Unclassified messages** — message counts; neither ever makes a PR count as reviewed.\n\n'
+
+  _render_unclassified_samples "$dir"
 
   # ---- Coverage / overlap --------------------------------------------------
+  # Only bots that actually REVIEWED (a finding or clean message) count toward
+  # overlap — a status notice or refusal is not coverage (#2504).
   local co_review multi_bot
   co_review="$(jq -s '
-    [ .[] | select(.kind=="bot_pr") ] | group_by(.pr)
+    [ .[] | select(.kind=="bot_pr" and (.real_responses // 0) > 0) ] | group_by(.pr)
     | map(select(length >= 2)) | length
   ' "$dir"/*.jsonl 2>/dev/null || echo 0)"
   multi_bot="$(_fmt_pct "$co_review" "$eligible")"

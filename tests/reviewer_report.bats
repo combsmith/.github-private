@@ -82,7 +82,9 @@ JSON
  "comments":{"nodes":[{"author":{"login":"chatgpt-codex-connector"},"createdAt":"2026-07-10T10:01:00Z","bodyText":"The cubic free trial ended handling is too broad."}]}}
 JSON
   run jq -c --arg repo "r" --argjson bots "$newbots" --arg rl "$RATE_LIMIT_RE" "[ $_NORMALIZE_JQ ]" "$tmp"
-  echo "$output" | jq -e '.[] | select(.kind=="bot_pr" and .bot=="chatgpt-codex-connector") | .real_responses>=1 and .refusals==0'
+  # Not refused. (#2504: a comment that matches no pattern is `unclassified`, which no
+  # longer counts as a review either — it only must not be read as a refusal.)
+  echo "$output" | jq -e '.[] | select(.kind=="bot_pr" and .bot=="chatgpt-codex-connector") | .refusals==0 and .classes.refused==0'
 }
 
 @test "REVIEWER_LABELS: Graphite has display name (issue #1401)" {
@@ -263,8 +265,9 @@ JSON
  "_checkRuns":[{"bot":"graphite-app","status":"completed","conclusion":"failure","summary":"AI review ran into an error and did not complete.","completed_at":"2026-09-23T10:04:00Z"}]}
 JSON
   run jq -c --arg repo "r" --argjson bots "$gbots" --arg rl "$RATE_LIMIT_RE" "[ $_NORMALIZE_JQ ]" "$tmp"
-  # A failed run is neither a real response nor a refusal → no bot_pr record at all.
-  echo "$output" | jq -e 'map(select(.kind=="bot_pr" and .bot=="graphite-app")) | length == 0'
+  # A failed run is neither a real response nor a refusal. #2504 gives every completed
+  # check run a class: a failed one is `status`, which buckets as No response.
+  echo "$output" | jq -e '.[] | select(.kind=="bot_pr" and .bot=="graphite-app") | .real_responses==0 and .refusals==0 and .classes.status==1'
 }
 
 @test "check-run: a skip with an unrelated/empty summary is NOT a refusal" {
@@ -280,8 +283,8 @@ JSON
  "_checkRuns":[{"bot":"graphite-app","status":"completed","conclusion":"skipped","summary":"","completed_at":"2026-09-23T10:04:00Z"}]}
 JSON
   run jq -c --arg repo "r" --argjson bots "$gbots" --arg rl "$RATE_LIMIT_RE" "[ $_NORMALIZE_JQ ]" "$tmp"
-  # No bot_pr record → aggregator buckets it as no-response, not a refusal.
-  echo "$output" | jq -e 'map(select(.kind=="bot_pr" and .bot=="graphite-app")) | length == 0'
+  # Not a refusal: an empty-summary skip is `status` (#2504), so it buckets as no-response.
+  echo "$output" | jq -e '.[] | select(.kind=="bot_pr" and .bot=="graphite-app") | .real_responses==0 and .refusals==0 and .classes.status==1'
 }
 
 @test "check-run: a queued suite (no completed check run, no review) is no response" {
@@ -476,9 +479,10 @@ JSON
   echo "$output" | grep -q "PRs reviewed by ≥2 bots:\*\* 2 of 2"
 }
 
-@test "render: scorecard exposes the event-count columns" {
+@test "render: the event-count columns live in the details section (#2504)" {
   run render_reviewer_report "$FIXTURES" 7 12 2026-07-13
-  echo "$output" | grep -q "| Reviewer | Total PRs | Reviews | ✅ / 🔄 | Refused | No response |"
+  echo "$output" | grep -q "^## Details"
+  echo "$output" | grep -q "| Reviewer | Reviews | ✅ / 🔄 | Refusal events |"
 }
 
 @test "render: empty dir yields a no-data message" {
@@ -552,4 +556,283 @@ JSON
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "Agent comment noise"
   echo "$output" | grep -q "No-action comments"
+}
+
+# ---------------------------------------------------------------------------
+# Per-message classes (issue #2504)
+# ---------------------------------------------------------------------------
+
+CLASS_FIXTURES="${BATS_TEST_DIRNAME}/fixtures/reviewer_message_classes.json"
+
+# _case_node <case_json> — build one GraphQL PR node holding a single bot message
+# described by a reviewer_message_classes.json case.
+_case_node() {
+  jq -c '. as $c
+    | ($c.kind) as $k
+    | { url: "https://github.com/o/r/pull/1", createdAt: "2026-11-10T10:00:00Z",
+        updatedAt: "2026-11-10T10:00:00Z", mergedAt: null, isDraft: false, author: {login: "h"},
+        reviews: {nodes: (if $k == "review" then [{author: {login: $c.bot}, state: ($c.state // "COMMENTED"),
+                    submittedAt: "2026-11-10T10:05:00Z", bodyText: $c.body}] else [] end)},
+        reviewThreads: {nodes: (if $k == "inline" then [{isResolved: false, isOutdated: false,
+                    comments: {nodes: [{author: {login: $c.bot}, createdAt: "2026-11-10T10:05:00Z",
+                    bodyText: $c.body, path: "a.py", reactionGroups: []}]}}] else [] end)},
+        comments: {nodes: (if $k == "issue" then [{author: {login: $c.bot}, createdAt: "2026-11-10T10:05:00Z",
+                    bodyText: $c.body}] else [] end)},
+        _checkRuns: (if $k == "check_run" then [{bot: $c.bot, status: "completed", conclusion: $c.conclusion,
+                    summary: $c.body, completed_at: "2026-11-10T10:05:00Z"}] else [] end) }' <<<"$1"
+}
+
+_all_bots_json() { printf '%s\n' "${REVIEWER_BOTS[@]}" | jq -R . | jq -sc .; }
+
+# _normalize_node <node_json> — run _NORMALIZE_JQ over one node; prints a JSON array.
+_normalize_node() {
+  jq -c --arg repo "o/r" --argjson bots "$(_all_bots_json)" --arg rl "$RATE_LIMIT_RE" "[ $_NORMALIZE_JQ ]" <<<"$1"
+}
+
+@test "classes: every fixture message lands in its expected class (#2504)" {
+  local n fails=0 i c node out got
+  n="$(jq 'length' "$CLASS_FIXTURES")"
+  [ "$n" -gt 0 ]
+  for ((i = 0; i < n; i++)); do
+    c="$(jq -c ".[$i]" "$CLASS_FIXTURES")"
+    node="$(_case_node "$c")"
+    out="$(_normalize_node "$node")"
+    got="$(jq -r --arg b "$(jq -r .bot <<<"$c")" '
+      [ .[] | select(.kind=="bot_pr" and .bot==$b) | .classes | to_entries[] | select(.value > 0) | .key ]
+      | join(",")' <<<"$out")"
+    if [ "$got" != "$(jq -r .expect <<<"$c")" ]; then
+      echo "FAIL: $(jq -r .name <<<"$c") — expected $(jq -r .expect <<<"$c"), got '${got}'"
+      fails=$((fails + 1))
+    fi
+  done
+  [ "$fails" -eq 0 ]
+}
+
+@test "classes: fixtures cover a finding and a clean pass for every tracked bot (#2504)" {
+  local bot
+  for bot in "${REVIEWER_BOTS[@]}"; do
+    jq -e --arg b "$bot" 'any(.[]; .bot==$b and .expect=="finding")' "$CLASS_FIXTURES" >/dev/null \
+      || { echo "no finding fixture for $bot"; return 1; }
+    jq -e --arg b "$bot" 'any(.[]; .bot==$b and .expect=="clean")' "$CLASS_FIXTURES" >/dev/null \
+      || { echo "no clean fixture for $bot"; return 1; }
+  done
+}
+
+@test "classes: the Graphite neutral hourly-limit check run is refused (#2504)" {
+  local node out
+  node="$(_case_node '{"bot":"graphite-app","kind":"check_run","conclusion":"neutral","body":"AI review skipped: hourly limit reached"}')"
+  out="$(_normalize_node "$node")"
+  echo "$out" | jq -e '.[] | select(.bot=="graphite-app") | .classes.refused==1 and .refusals==1 and .real_responses==0'
+}
+
+@test "classes: each message gets exactly one class (#2504)" {
+  local tmp out
+  tmp="$(mktemp "$BATS_TEST_TMPDIR/tmp.XXXXXX")"
+  cat > "$tmp" <<'JSON'
+{"url":"u","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
+ "reviews":{"nodes":[{"author":{"login":"coderabbitai"},"state":"COMMENTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"Actionable comments posted: 1"}]},
+ "reviewThreads":{"nodes":[{"isResolved":true,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"},"createdAt":"2026-11-10T10:05:00Z","bodyText":"Possible nil deref.","reactionGroups":[]}]}}]},
+ "comments":{"nodes":[
+   {"author":{"login":"coderabbitai"},"createdAt":"2026-11-10T10:01:00Z","bodyText":"Review skipped\nAuto reviews are disabled on this repository."},
+   {"author":{"login":"coderabbitai"},"createdAt":"2026-11-10T10:02:00Z","bodyText":"Something nobody has a pattern for yet."}]}}
+JSON
+  out="$(jq -c --arg repo "r" --argjson bots "$(_all_bots_json)" --arg rl "$RATE_LIMIT_RE" "[ $_NORMALIZE_JQ ]" "$tmp")"
+  echo "$out" | jq -e '.[] | select(.bot=="coderabbitai")
+    | (.classes | [.[]] | add) == 4
+      and .classes.finding == 2 and .classes.skipped == 1 and .classes.unclassified == 1'
+}
+
+@test "classes: the shared fallback refuses a notice the bot has no pattern for (#2504)" {
+  local node out
+  node="$(_case_node '{"bot":"copilot-pull-request-reviewer","kind":"issue","body":"Copilot is rate limited. Too many requests; try again later."}')"
+  out="$(_normalize_node "$node")"
+  echo "$out" | jq -e '.[] | select(.bot=="copilot-pull-request-reviewer") | .classes.refused==1'
+}
+
+@test "classes: an inline comment that mentions a rate limit is still a finding (#2504)" {
+  local node out
+  node="$(_case_node '{"bot":"gemini-code-assist","kind":"inline","body":"This retry loop ignores the rate limit header."}')"
+  out="$(_normalize_node "$node")"
+  echo "$out" | jq -e '.[] | select(.bot=="gemini-code-assist") | .classes.finding==1 and .refusals==0'
+}
+
+@test "classes: a bot reply inside a thread someone else opened is status, not a new finding (#2504)" {
+  local tmp out
+  tmp="$(mktemp "$BATS_TEST_TMPDIR/tmp.XXXXXX")"
+  cat > "$tmp" <<'JSON'
+{"url":"u","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
+ "reviews":{"nodes":[]},
+ "reviewThreads":{"nodes":[{"isResolved":false,"isOutdated":false,"comments":{"nodes":[
+   {"author":{"login":"alice"},"createdAt":"2026-11-10T10:01:00Z","bodyText":"@coderabbitai why?","reactionGroups":[]},
+   {"author":{"login":"coderabbitai"},"createdAt":"2026-11-10T10:02:00Z","bodyText":"Thanks for asking — here is the context.","reactionGroups":[]}]}}]},
+ "comments":{"nodes":[]}}
+JSON
+  out="$(jq -c --arg repo "r" --argjson bots "$(_all_bots_json)" --arg rl "$RATE_LIMIT_RE" "[ $_NORMALIZE_JQ ]" "$tmp")"
+  echo "$out" | jq -e '.[] | select(.bot=="coderabbitai") | .classes.status==1 and .classes.finding==0 and .threads_total==0'
+}
+
+@test "classes: a PR with only status messages is not reviewed (#2504)" {
+  local dir node
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/st.XXXXXX")"
+  node="$(_case_node '{"bot":"codeant-ai","kind":"issue","body":"Thanks for using CodeAnt! 🎉"}')"
+  _normalize_node "$node" | jq -c '.[]' > "$dir/r.jsonl"
+  run aggregate_snapshot "$dir"
+  echo "$output" | jq -e '.bots["codeant-ai"] | .reviewed_prs==0 and .with_findings_prs==0 and .clean_prs==0 and .no_response_prs==1'
+}
+
+@test "classes: a PR with only unclassified messages is not reviewed (#2504)" {
+  local dir node
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/uc.XXXXXX")"
+  node="$(_case_node '{"bot":"cubic-dev-ai","kind":"issue","body":"A brand new message shape nobody has seen before."}')"
+  _normalize_node "$node" | jq -c '.[]' > "$dir/r.jsonl"
+  run aggregate_snapshot "$dir"
+  echo "$output" | jq -e '.bots["cubic-dev-ai"] | .reviewed_prs==0 and .no_response_prs==1 and .unclassified_events==1'
+}
+
+@test "classes: a skipped-only PR fills the Skipped bucket and the five buckets sum to eligible (#2504)" {
+  local dir
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/sk.XXXXXX")"
+  _normalize_node "$(_case_node '{"bot":"coderabbitai","kind":"issue","body":"Review skipped\nAuto reviews are disabled on this repository."}')" \
+    | jq -c '.[]' > "$dir/a.jsonl"
+  _normalize_node "$(_case_node '{"bot":"coderabbitai","kind":"review","body":"Actionable comments posted: 3"}' | jq -c '.url="https://github.com/o/r/pull/2"')" \
+    | jq -c '.[]' > "$dir/b.jsonl"
+  run aggregate_snapshot "$dir"
+  echo "$output" | jq -e '.bots["coderabbitai"] | .skipped_prs==1 and .with_findings_prs==1 and .clean_prs==0 and .refused_prs==0 and .no_response_prs==0'
+  echo "$output" | jq -e '.eligible_prs as $e | .bots | to_entries
+    | all(.value | .with_findings_prs + .clean_prs + .refused_prs + .skipped_prs + .no_response_prs == $e)'
+}
+
+@test "classes: findings raised = inline threads plus review-body findings; resolved % from threads (#2504)" {
+  local dir
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/fr.XXXXXX")"
+  # PR 1: two inline threads opened by gemini (one resolved) and its summary review.
+  # The summary only introduces those threads, so it adds no extra finding.
+  cat > "$dir/n1.json" <<'JSON'
+{"url":"https://github.com/o/r/pull/1","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
+ "reviews":{"nodes":[{"author":{"login":"gemini-code-assist"},"state":"CHANGES_REQUESTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"Code Review\nTwo issues below."}]},
+ "reviewThreads":{"nodes":[
+   {"isResolved":true,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"gemini-code-assist"},"createdAt":"2026-11-10T10:05:00Z","bodyText":"Off by one.","reactionGroups":[{"content":"THUMBS_UP","users":{"totalCount":1}}]}]}},
+   {"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"gemini-code-assist"},"createdAt":"2026-11-10T10:05:00Z","bodyText":"Leak.","reactionGroups":[]}]}}]},
+ "comments":{"nodes":[]}}
+JSON
+  # PR 2: a finding delivered only in a review body (no inline thread) counts once.
+  cat > "$dir/n2.json" <<'JSON'
+{"url":"https://github.com/o/r/pull/2","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
+ "reviews":{"nodes":[{"author":{"login":"gemini-code-assist"},"state":"CHANGES_REQUESTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"Please fix the migration order."}]},
+ "reviewThreads":{"nodes":[]},
+ "comments":{"nodes":[]}}
+JSON
+  _normalize_node "$(cat "$dir/n1.json")" | jq -c '.[]' > "$dir/a.jsonl"
+  _normalize_node "$(cat "$dir/n2.json")" | jq -c '.[]' > "$dir/b.jsonl"
+  run aggregate_snapshot "$dir"
+  echo "$output" | jq -e '.bots["gemini-code-assist"] | .findings_raised==3 and .threads_total==2 and .threads_resolved==1 and .thumbs_up==1'
+  run render_reviewer_report "$dir" 7 1 2026-11-12
+  echo "$output" | grep -E '^\| Gemini Code Assist \| 2 \| 2 +\| 0 +\| 0 +\| 0 +\| 0 +\| 3 +\| 50% +\|'
+}
+
+@test "render: headline table has the #2504 columns" {
+  run render_reviewer_report "$FIXTURES" 7 12 2026-07-13
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -qF "| Reviewer | Total PRs | With findings | Clean | Refused | Skipped | No response | Findings raised | Resolved % | Latency p50 | Latency p95 |"
+}
+
+@test "render: details section shows reviews, verdicts and reactions (#2504)" {
+  run render_reviewer_report "$FIXTURES" 7 12 2026-07-13
+  # copilot: 2 review events, 0 approved / 1 changes requested, 2 👍 / 1 👎.
+  echo "$output" | grep -E '^\| GitHub Copilot \| 2 +\| 0 / 1 \| 0 +\| 2 / 1 \|'
+}
+
+@test "render: lists up to 3 truncated unclassified samples per bot (#2504)" {
+  local dir i body
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/samp.XXXXXX")"
+  for i in 1 2 3 4; do
+    body="Unknown shape number ${i} $(printf 'x%.0s' $(seq 1 200))"
+    _normalize_node "$(_case_node "$(jq -cn --arg b "$body" --arg i "$i" \
+      '{bot:"cubic-dev-ai",kind:"issue",body:$b}')" | jq -c --arg i "$i" '.url="https://github.com/o/r/pull/\($i)"')" \
+      | jq -c '.[]' > "$dir/$i.jsonl"
+  done
+  run render_reviewer_report "$dir" 7 1 2026-11-12
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q "^## Unclassified messages"
+  [ "$(echo "$output" | grep -c 'Unknown shape number')" -eq 3 ]
+  # Truncated: no sample line carries the full 200-char tail.
+  [ "$(echo "$output" | grep 'Unknown shape number' | awk '{ if (length($0) > 200) c++ } END { print c+0 }')" -eq 0 ]
+  echo "$output" | grep -q 'Unknown shape number 1 xxx.*…'
+}
+
+@test "render: no unclassified section when every message was classified (#2504)" {
+  run render_reviewer_report "$FIXTURES" 7 12 2026-07-13
+  [ "$status" -eq 0 ]
+  run grep -q "^## Unclassified messages" <<<"$output"
+  [ "$status" -ne 0 ]
+}
+
+@test "render: WoW deltas cover the new columns against a v2 snapshot (#2504)" {
+  local prev
+  prev="$(mktemp "$BATS_TEST_TMPDIR/prev.XXXXXX")"
+  cat > "$prev" <<'JSON'
+{"schema_version":2,"eligible_prs":2,"total_prs":3,"bots":{"chatgpt-codex-connector":{"with_findings_prs":0,"clean_prs":0,"refused_prs":2,"skipped_prs":0,"no_response_prs":0,"findings_raised":0,"threads_total":0,"threads_resolved":0}}}
+JSON
+  REVIEWER_PREV_SNAPSHOT="$prev" run render_reviewer_report "$FIXTURES" 7 12 2026-07-13
+  [ "$status" -eq 0 ]
+  # Codex refused 2 → 1 and no-response 0 → 1.
+  echo "$output" | grep -E '^\| Codex \| 2 \| 0 \(±0\) \| 0 \(±0\) \| 1 \(▼ -1\) \| 0 \(±0\) \| 1 \(▲ \+1\) \|'
+}
+
+@test "render: a prior snapshot without the new fields shows no headline delta and does not fail (#2504)" {
+  local prev
+  prev="$(mktemp "$BATS_TEST_TMPDIR/prev.XXXXXX")"
+  cat > "$prev" <<'JSON'
+{"eligible_prs":2,"total_prs":3,"bots":{"chatgpt-codex-connector":{"reviewed_prs":5,"refused_prs":4,"no_response_prs":9,"reviews":3}}}
+JSON
+  REVIEWER_PREV_SNAPSHOT="$prev" run render_reviewer_report "$FIXTURES" 7 12 2026-07-13
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -E '^\| Codex \| 2 \| 0 +\| 0 +\| 1 +\| 0 +\| 1 +\| 0 +\| n/a +\|'
+}
+
+@test "snapshot: carries schema_version 2 and never the unclassified sample bodies (#2504)" {
+  local out
+  out="$(mktemp "$BATS_TEST_TMPDIR/out.XXXXXX")"
+  REVIEWER_SNAPSHOT_OUT="$out" run render_reviewer_report "$FIXTURES" 7 12 2026-07-13
+  jq -e '.schema_version == 2' "$out"
+  run grep -q "unclassified_samples" "$out"
+  [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Message-class sidecar (scripts/lib/reviewer-message-classes.tsv, #2504)
+# ---------------------------------------------------------------------------
+
+@test "sidecar: loader emits login/class/kind/pattern rows" {
+  run reviewer_sources_message_class_patterns
+  [ "$status" -eq 0 ]
+  echo "$output" | awk -F'\t' 'NF != 4 { bad++ } END { exit bad ? 1 : 0 }'
+  echo "$output" | grep -q $'^gemini-code-assist\trefused\t'
+}
+
+@test "sidecar: every login is a registered reviewer source and every class/kind is valid" {
+  local logins login class kind
+  logins="$(reviewer_sources_logins)"
+  while IFS=$'\t' read -r login class kind _; do
+    grep -qx "$login" <<<"$logins" || { echo "unregistered login: $login"; return 1; }
+    [[ "$class" =~ ^(finding|clean|refused|skipped|status)$ ]] || { echo "bad class: $class"; return 1; }
+    [[ "$kind" =~ ^(any|review|inline|issue|check_run)$ ]] || { echo "bad kind: $kind"; return 1; }
+  done < <(reviewer_sources_message_class_patterns)
+}
+
+@test "sidecar: every pattern compiles as a jq regex" {
+  local login pattern
+  while IFS=$'\t' read -r login _ _ pattern; do
+    jq -en --arg p "$pattern" '"" | test($p; "i") | . or true' >/dev/null \
+      || { echo "bad regex for $login: $pattern"; return 1; }
+  done < <(reviewer_sources_message_class_patterns)
+}
+
+@test "sidecar: loader rejects a row with an unknown class" {
+  local bad
+  bad="$(mktemp "$BATS_TEST_TMPDIR/bad.XXXXXX")"
+  printf 'gemini-code-assist\treview\tany\tfoo\n' > "$bad"
+  REVIEWER_MESSAGE_CLASSES_FILE="$bad" run reviewer_sources_message_class_patterns
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -q "unknown class"
 }
