@@ -86,6 +86,7 @@ jobs:
         id: logs
         env:
           RUN_ID: ${{ steps.pr.outputs.run_id }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
         run: |
           set -euo pipefail
           # Fetch logs only in the Actions environment (not passed to Claude).
@@ -93,10 +94,10 @@ jobs:
           if [[ -n "$RUN_ID" ]]; then
             log_content=$(gh run view "$RUN_ID" --log-failed --repo "$REPO" 2>/dev/null | tail -200 || true)
           else
-            log_content=$(gh pr diff "${{ steps.pr.outputs.pr_number }}" --repo "$REPO" 2>/dev/null | head -200 || true)
+            log_content=$(gh pr diff "$PR_NUMBER" --repo "$REPO" 2>/dev/null | head -200 || true)
           fi
-          # Sanitize: remove newlines and limit to safe characters to prevent injection
-          sanitized_logs=$(printf '%s' "$log_content" | tr '\n' ' ' | tr -d '\r' | cut -c1-2000)
+          # Sanitize: remove newlines and keep the LAST 2000 chars (where the failure usually is)
+          sanitized_logs=$(printf '%s' "$log_content" | tr '\n' ' ' | tr -d '\r' | tail -c 2000)
           printf 'logs=%s\n' "$sanitized_logs" >> "$GITHUB_OUTPUT"
 
       - name: Analyze failure and post comment
@@ -127,7 +128,7 @@ jobs:
           - Details URL: $DETAILS_URL
           - Failed jobs (job / failing step): $FAILED_JOBS
 
-          Log excerpt (first 2000 chars):
+          Log excerpt (last 2000 chars):
           $LOG_EXCERPT
 
           Analyze the above information and follow these steps in order:
