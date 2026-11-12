@@ -218,7 +218,7 @@ EOF
 }
 
 @test "DRY_RUN never runs tier 4 at the cap (diagnose stays model-free)" {
-  export PR_REVIEW_ADJUDICATE=true CLAUDE_MODE=approve DRY_RUN=true
+  export PR_REVIEW_ADJUDICATE=true CLAUDE_MODE=approve DRY_RUN=true PR_REVIEW_DIAGNOSE=true
   run bash "$REVIEW_SCRIPT" "$PR_URL"
   echo "$output" >&2
   [ "$status" -eq 100 ]

@@ -51,7 +51,7 @@ and **Copilot**.
      AI delegation is off, the cycle budget is spent, or the risk is HIGH.
    - **Cycle cap.** The PR reached `MAX_REVIEW_CYCLES` without converging.
 
-   Fable (resolved with `ai_model_for_family fable`, never hard-pinned) gets the PR
+   Fable (Claude engine only: with `REVIEW_ENGINE=copilot` the opt-in falls back to human escalation; resolved with `ai_model_for_family fable`, never hard-pinned) gets the PR
    diff and every prior tier's output from `prompts/adjudicate.md`. On a cascade
    escalation that means triage, deep review, the rubber duck, the synthesis, the
    security audit when it ran, and the final cascade verdict. At the cycle cap it

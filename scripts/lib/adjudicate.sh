@@ -39,6 +39,10 @@ ADJUDICATE_MARKER_PREFIX='<!-- pr-review-agent adjudicate v1 sha='
 : "${ADJUDICATE_PROMPT:=$_ADJ_LIB_DIR/../../prompts/adjudicate.md}"
 # Per-section cap on the context inlined into the adjudication prompt.
 : "${ADJUDICATE_CONTEXT_MAX_CHARS:=40000}"
+# A non-numeric or zero cap would make `head -c` abort the review: fall back.
+case "$ADJUDICATE_CONTEXT_MAX_CHARS" in
+  ''|*[!0-9]*|0) ADJUDICATE_CONTEXT_MAX_CHARS=40000 ;;
+esac
 
 # adjudicate_enabled — 0 only when PR_REVIEW_ADJUDICATE is the literal `true`.
 adjudicate_enabled() {
@@ -110,7 +114,7 @@ adjudicate_prior_reviews() {
   jq -r --argjson bots "$(_adj_bots_json)" "$_REVIEW_CYCLE_JQ_DEFS$_ADJ_RESET_JQ"'
     | [.[] | select(is_automation_author($bots) and has_marker and (.when > $reset))]
     | sort_by(.when) | .[-5:] | .[]
-    | "--- \(.when) ---\n\((.body // "")[0:6000])\n"
+    | "--- \(.when) ---\n\((.body // "") | .[0:6000])\n"
   ' <<<"$items" 2>/dev/null || true
 }
 
@@ -255,7 +259,7 @@ adjudicate_record_json() {
 # _adj_field <record_json> <field>
 _adj_field() {
   local v
-  v="$(jq -r --arg f "$2" '.[$f] // "" | tostring' <<<"$1" 2>/dev/null || true)"
+  v="$(jq -r --arg f "$2" '.[$f] | if . == null then "" else tostring end' <<<"$1" 2>/dev/null || true)"
   _adj_safe "$v"
 }
 

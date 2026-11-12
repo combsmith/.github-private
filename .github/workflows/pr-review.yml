@@ -289,6 +289,7 @@ jobs:
       # escalation. Off by default — set the repo variable PR_REVIEW_ADJUDICATE=true
       # to turn it on, anything else (or unset) to turn it off. Guide:
       # docs/pr-review-agent/pr-review-agent.md ("Tier 4: adjudicate").
+      CLAUDE_FABLE_MODEL_CHAIN: ${{ vars.CLAUDE_FABLE_MODEL_CHAIN || '' }}
       PR_REVIEW_ADJUDICATE: ${{ vars.PR_REVIEW_ADJUDICATE || 'false' }}
       # Pin via vars.CLAUDE_CODE_VERSION for fully reproducible caching; default
       # 'latest' caches an install indefinitely under that key — flush via the

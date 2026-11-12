@@ -424,14 +424,21 @@ STUB
 }
 
 @test "#2495: a tier-4 adjudication record survives, reduced to known fields of known shape" {
-  local vf; vf=$(verdict '{"decision":"escalate","risk":"LOW","body":"x","adjudication":{"trigger":"cascade-escalate","model":"claude-fable-5-2 --> <b>","outcome":"ok","decision":"request_changes","overrode":"true","guard":"nope","extra":"y"}}')
+  local vf; vf=$(verdict '{"decision":"escalate","risk":"LOW","body":"x","adjudication":{"trigger":"cascade-escalate","model":"claude-fable-5-2","outcome":"ok","decision":"request_changes","overrode":"true","guard":"nope","extra":"y"}}')
   model_sandbox_validate_verdict "$vf" "$SHA"
   [ "$(jq -r .adjudication.trigger "$vf")" = "cascade-escalate" ]
   [ "$(jq -r .adjudication.decision "$vf")" = "request_changes" ]
-  [ "$(jq -r .adjudication.model "$vf")" = "" ]
+  [ "$(jq -r .adjudication.model "$vf")" = "claude-fable-5-2" ]
+  [ "$(jq -r .adjudication.outcome "$vf")" = "ok" ]
   [ "$(jq -r .adjudication.overrode "$vf")" = "false" ]
   [ "$(jq -r .adjudication.guard "$vf")" = "" ]
   [ "$(jq '.adjudication | has("extra")' "$vf")" = "false" ]
+}
+
+@test "#2495: a tier-4 model with markup is dropped" {
+  local vf; vf=$(verdict '{"decision":"escalate","risk":"LOW","body":"x","adjudication":{"trigger":"cascade-escalate","model":"claude-fable-5-2 --> <b>","outcome":"ok"}}')
+  model_sandbox_validate_verdict "$vf" "$SHA"
+  [ "$(jq -r .adjudication.model "$vf")" = "" ]
 }
 
 @test "#2495: a verdict without an adjudication record gains none" {

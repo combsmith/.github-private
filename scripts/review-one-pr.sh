@@ -149,7 +149,7 @@ adjudicate_max_cycles() {
   adjudicate_prior_reviews "$PR_ITEMS" > "$prior"
   # The cap path has no audit of its own; a prior verdict that carried HIGH risk
   # blocks an approve all the same (fail toward the human).
-  grep -q 'risk=HIGH' "$prior" 2>/dev/null && audit_risk="HIGH"
+  grep -Eq '<!-- decision=[a-z-]+ risk=HIGH -->|<!-- pr-review-agent v1 [^>]*risk=HIGH -->' "$prior" 2>/dev/null && audit_risk="HIGH"
   if gh pr diff "$PR_URL" > "$diff.full" 2>/dev/null && [ -s "$diff.full" ]; then
     head -n 3000 "$diff.full" > "$diff"
     rm -f "$diff.full"
@@ -1064,6 +1064,13 @@ if [ "${FORCE_REVIEW:-false}" != "true" ] && [ "$REVIEW_CYCLE" -ge "$MAX_CYCLES"
       echo "    [tier4] DRY_RUN: would adjudicate this escalation with $(ai_model_for_family fable 2>/dev/null || echo fable) — no model runs in a dry run"
     elif adjudicate_done_at_sha "$PR_ITEMS" "$PR_HEAD_SHA" || adjudicate_since_reset "$PR_ITEMS"; then
       echo "    [tier4] adjudicate skipped: tier 4 already ran since the last reset (it never re-runs itself) — escalating to a human"
+    elif ! _adj_budget_events=$(gather_pr_automation_events \
+        "$(echo "$PR_URL" | sed -E 's|.*/pull/([0-9]+).*|\1|')" \
+        "$(echo "$PR_URL" | sed -E 's|https://github.com/([^/]+/[^/]+)/pull/.*|\1|')") \
+        || pr_budget_exhausted "$_adj_budget_events"; then
+      # The cap path exits before enforce_pr_budget: never let tier 4 post an
+      # automated disposition on a PR whose automation budget is spent (or unreadable).
+      echo "    [tier4] adjudicate skipped: per-PR automation budget exhausted or unreadable — escalating to a human"
     else
       adjudicate_max_cycles
     fi
