@@ -93,7 +93,7 @@ _QA_ADVISORY_JQ_DEFS='
   def qa_escalate: any(qa_lines[]; test("^\\s*\\*\\*Escalate\\?\\*\\*\\s*yes\\b"; "i"));
   def qa_disposes($id):
     qa_ours
-    and ((.body // "") | (contains($dprefix + $id + " ") or contains($dprefix + $id + "-->")))
+    and ((.body // "") | test("<!-- dev-lead:advisory-disposition id=" + $id + " outcome=(handled|escalated)"))
     and ((.body // "") | contains("<!-- dev-lead:retracted") | not);
   def qa_open($all):
     [ $all[] | objects | select(qa_is_advisory) | select(qa_item_count > 0)

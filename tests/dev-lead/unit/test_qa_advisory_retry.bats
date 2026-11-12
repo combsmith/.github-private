@@ -99,6 +99,12 @@ _decide() { qa_advisory_decisions "$1" "$NOW_EPOCH" "$AUTOMATION"; }
   [ "$(jq -r '.[0].decision' <<< "$output")" = "dispatch" ]
 }
 
+@test "qa: a disposition without outcome= does not cover the advisory" {
+  disp=$(_c IC_d '<!-- dev-lead:advisory-disposition id=IC_adv -->')
+  run _decide "$(_list "$(_adv)" "$disp")"
+  [ "$(jq -r '.[0].decision' <<< "$output")" = "dispatch" ]
+}
+
 @test "qa: a retracted disposition (its claim did not land) re-opens the advisory" {
   disp=$(_c IC_d '**⚠️ Retracted by the dev-lead harness (`not-on-ref`).**
 
@@ -209,7 +215,7 @@ _decide() { qa_advisory_decisions "$1" "$NOW_EPOCH" "$AUTOMATION"; }
 }
 
 @test "qa_advisory_open: lists open, non-escalated advisories for the pass, without dispositioned ones" {
-  disp=$(_c IC_d '<!-- dev-lead:advisory-disposition id=IC_done -->')
+  disp=$(_c IC_d '<!-- dev-lead:advisory-disposition id=IC_done outcome=handled -->')
   run qa_advisory_open "$(_list \
     "$(_adv)" \
     "$(_c IC_done "$(_advisory_body no 'x')")" \
