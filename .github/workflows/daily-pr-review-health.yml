@@ -105,6 +105,11 @@ jobs:
           # Export the model override variable so ai_model_for_family honours
           # operator-configured model chains (vars.AI_MODELS_CLAUDE).
           AI_MODELS_CLAUDE: ${{ vars.AI_MODELS_CLAUDE }}
+          # The other break-glass overrides, so the report lists every one that
+          # differs from config/ai-engines.json (#1973).
+          AI_MODELS_GEMINI: ${{ vars.AI_MODELS_GEMINI }}
+          AI_MODELS_COPILOT: ${{ vars.AI_MODELS_COPILOT }}
+          AI_ENGINES: ${{ vars.AI_ENGINES || vars.DEV_LEAD_ENGINES || '' }}
         run: bash scripts/pr_review_health.sh
 
       - name: Truncate report if needed

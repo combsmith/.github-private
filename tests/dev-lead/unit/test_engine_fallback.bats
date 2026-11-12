@@ -89,6 +89,19 @@ STUBEOF
   [ "$status" -eq 0 ]
 }
 
+@test "fallback: tokenless claude (CLAUDE_UNAVAILABLE=1) is skipped, a later engine runs" {
+  _make_stub "claude" 1
+  _make_stub "gemini" 0
+  export COPILOT_GITHUB_TOKEN="ghp_stub"
+  export CLAUDE_UNAVAILABLE=1
+  _source_engine "claude"
+
+  run run_writer_with_fallback "$TEST_PROMPT"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Skipping claude fallback"* ]]
+}
+
 @test "fallback: primary exits 2 → tries next engine" {
   # claude exits 2 (rate-limited), gemini exits 0. Copilot is forced to skip via a
   # classic-PAT token so gemini remains the tested fallback.
