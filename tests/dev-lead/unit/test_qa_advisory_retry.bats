@@ -483,7 +483,7 @@ teardown() {
   done
   list+=("$(_c IC_esc "$(_advisory_body yes 'x')")")
   list+=("$(_c IC_done "$(_advisory_body no 'x')")")
-  list+=("$(_c IC_d '<!-- dev-lead:advisory-disposition id=IC_done -->')")
+  list+=("$(_c IC_d '<!-- dev-lead:advisory-disposition id=IC_done outcome=handled -->')")
   COMMENTS="$(_list "${list[@]}")"
   bcr_fetch_pr_comments() { printf '%s' "$COMMENTS"; }
   dev_lead_identity() { echo "don-petry"; }
