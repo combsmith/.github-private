@@ -23,18 +23,14 @@ setup() {
 #!/usr/bin/env bash
 ARGS="$*"
 case "$ARGS" in
-  *"issue comment"*|*"pr comment"*|*"-X PATCH"*|*"-X PUT"*|*"-X POST"*|*"-X DELETE"*|*"pr review"*|*"pr edit"*|*"issue edit"*|*"pr merge"*)
+  *"issue comment"*|*"pr comment"*|*"-X PATCH"*|*"-X PUT"*|*"-X POST"*|*"-X DELETE"*|*"pr review"*|*"pr edit"*|*"issue edit"*|*"pr merge"*|*"mutation"*)
     cat >/dev/null 2>&1 </dev/null || true
     echo "$ARGS" >> "$GH_LOG"; exit 0 ;;
-  *"graphql"*"mutation"*)
-    cat >/dev/null 2>&1 </dev/null || true
-    echo "$ARGS" >> "$GH_LOG"
+  *"graphql"*)
     echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}' ;;
   *"issues/comments/"*) printf '<!-- dev-lead-hold-notice label=old-label -->\nold' ;;
   *"issues/"*"/comments"*)
     echo '[{"id":7,"user":{"login":"bot"},"body":"<!-- dev-lead-hold-notice label=old-label -->\nold"}]' ;;
-  *"graphql"*)
-    echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}' ;;
   *"pr view"*"isCrossRepository"*) echo '{"isCrossRepository":false}' ;;
   *) echo "{}" ;;
 esac
