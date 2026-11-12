@@ -838,3 +838,11 @@ JSON
   [ "$status" -ne 0 ]
   echo "$output" | grep -q "unknown class"
 }
+
+@test "normalize: a CHANGES_REQUESTED review matching a per-bot refused row stays a finding" {
+  run _normalize_node '{"url":"https://github.com/o/r/pull/9","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
+ "reviews":{"nodes":[{"author":{"login":"coderabbitai"},"state":"CHANGES_REQUESTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"The handler mishandles rate limit exceeded responses."}]},
+ "reviewThreads":{"nodes":[]},"comments":{"nodes":[]}}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '[.[] | select(.class=="refused")] | length == 0'
+}
