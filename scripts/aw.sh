@@ -88,18 +88,18 @@ for field in ("name", "trigger", "engine", "permissions"):
     if field not in fm:
         errors.append(f"missing required field: {field!r}")
 
-# Validate engine — accept a model FAMILY (opus|sonnet|haiku), resolved to the
+# Validate engine — accept a model FAMILY (opus|sonnet|haiku|fable), resolved to the
 # current id at run time by ai_model_for_family (#1979), or any concrete claude-*
 # id an operator pins deliberately. Warn (never fail) on anything else so a new
 # provider can be added without a code change.
-families = {"opus", "sonnet", "haiku"}
+families = {"opus", "sonnet", "haiku", "fable"}
 engine = fm.get("engine", "")
 if not isinstance(engine, str):
     # `aw run` cannot use a non-string engine (it keys models.<engine> by it), so
     # this is an error, not a warning. No truth check: null/0/false fail too.
     errors.append(f"engine must be a string, got {type(engine).__name__}")
 elif engine and engine not in families and not engine.startswith("claude"):
-    print(f"aw compile: {path}: warning: unknown engine {engine!r} (name a family: opus|sonnet|haiku)", file=sys.stderr)
+    print(f"aw compile: {path}: warning: unknown engine {engine!r} (name a family: opus|sonnet|haiku|fable)", file=sys.stderr)
 
 # The `claude` runner takes its model from models.claude; `aw run` hard-fails
 # without one, so fail compile the same way. The model itself must be a family or
@@ -113,7 +113,7 @@ if engine == "claude":
     if not val:
         errors.append(f"engine {engine!r} needs a model: set models.{engine}: [<family>]")
     elif not isinstance(val, str) or not (val in families or val.startswith("claude-")):
-        errors.append(f"models.{engine} must be a family (opus|sonnet|haiku) or a claude-* id, got {val!r}")
+        errors.append(f"models.{engine} must be a family (opus|sonnet|haiku|fable) or a claude-* id, got {val!r}")
 
 # Validate output mode if present
 output_mode = fm.get("output")
@@ -326,7 +326,7 @@ PYEOF
   local want="$model"
   if [[ -z "$want" ]]; then
     case "$engine" in
-      opus|sonnet|haiku|claude-*) want="$engine" ;;
+      opus|sonnet|haiku|fable|claude-*) want="$engine" ;;
       *)
         echo "aw run: no model configured for engine '$engine' (set models.$engine: [<family>])" >&2
         exit 1
@@ -340,12 +340,12 @@ PYEOF
     exit 1
   fi
 
-  # Resolve a model FAMILY (opus|sonnet|haiku) to the current concrete id at run
+  # Resolve a model FAMILY (opus|sonnet|haiku|fable) to the current concrete id at run
   # time, so the workflow names a family and never pins a version (#1979). A
   # concrete id (claude-*) an operator set is passed through unchanged.
   local engine_model="$want"
   case "$want" in
-    opus|sonnet|haiku)
+    opus|sonnet|haiku|fable)
       # shellcheck source=lib/engine-models.sh
       source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/engine-models.sh"
       engine_model="$(ai_model_for_family "$want")"

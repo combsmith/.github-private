@@ -49,6 +49,10 @@ Every provider takes the same six keys, one per task:
 | `single` | single-reviewer mode |
 | `duck` | the model used when this provider is the rubber duck (one model) |
 
+`AI_MODELS_CLAUDE` also takes `fable`, the model `ai_model_for_family fable`
+returns (one model). No engine task runs it; see
+[Model selection](#model-selection--name-a-family-never-pin-a-version).
+
 `duck` takes one model on every provider. Copilot takes one model for every key,
 because its GitHub Models client has no chain. A key limited to one model that is
 given several warns and uses the first.
@@ -63,6 +67,7 @@ Defaults:
 | `action` | `claude-sonnet-5-5,claude-sonnet-5,claude-opus-5-5` | `gemini-3.8-flash,gemini-3.1-pro-preview` | `openai/o4-mini` |
 | `single` | `claude-opus-5-5,claude-opus-4-8,claude-opus-4-7` | `gemini-3.1-pro-preview,gemini-3.8-flash` | `openai/o4-mini` |
 | `duck` | `claude-sonnet-5-5` | the first `triage` model | the `triage` model |
+| `fable` | `claude-fable-5-2` | — | — |
 
 Example, Claude with two tasks changed (the others keep their defaults):
 
@@ -102,7 +107,7 @@ example `deep: opus 5.5 [opus 4.8, sonnet 5.5]`.
 
 The org standard (#1979, companion
 [`combsmith/.github#1199`](https://github.com/combsmith/.github/issues/1199)):
-callers name a model **family** — `opus`, `sonnet`, or `haiku` — and let the
+callers name a model **family** — `opus`, `sonnet`, `haiku`, or `fable` — and let the
 resolver return the current concrete id. A model swap is then one edit to the
 chains above, not a hunt for hard-coded ids across the tree.
 
@@ -116,6 +121,14 @@ the chains stay the single source of truth:
 | `opus` | `deep` |
 | `sonnet` | `action` |
 | `haiku` | `triage` |
+| `fable` | none — the `AI_MODELS_CLAUDE` key `fable` |
+
+`fable` names no engine tier: no tier defaults to Fable (audit and single stay on
+opus 5.5, #1901), so it runs only where a caller names the family. It resolves to
+`CLAUDE_FABLE_MODEL_CHAIN`'s first model when set, else the `fable=` entry of
+`AI_MODELS_CLAUDE` (one model), else the default `claude-fable-5-2` — Fable 5.2,
+the preferred Fable. A chain that still names
+`claude-fable-5` or `claude-fable-5-1` is honoured but warns once per run.
 
 Overrides are honoured with the same precedence engine.sh uses: the per-tier
 `CLAUDE_<TIER>_MODEL_CHAIN` env first, then `AI_MODELS_CLAUDE`, then the built-in
