@@ -65,6 +65,7 @@ qodo-code-review	refused	any	trial has ended|monthly usage limit
 qodo-code-review	clean	any	No major issues detected
 qodo-code-review	status	any	PR Description updated|Persistent review updated|Qodo is (reviewing|analyzing)
 codeant-ai	finding	any	Suggestion:
+codeant-ai	finding	any	[1-9][0-9]* code suggestions?\b
 codeant-ai	refused	any	(trial|monthly|usage) limit|trial has (ended|expired)
 codeant-ai	clean	any	No (issues|suggestions) (were )?found|found no issues
 codeant-ai	skipped	any	reviews? (has been |have been |was |were |is |are )?(skipped|disabled)|Skipping review

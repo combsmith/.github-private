@@ -118,6 +118,13 @@
     "body": "Suggestion: Guard against a nil map before writing to it."
   },
   {
+    "name": "codeant: a CodeAnt Nitpicks code suggestion list is a finding",
+    "bot": "codeant-ai",
+    "kind": "issue",
+    "expect": "finding",
+    "body": "CodeAnt Nitpicks\n1 code suggestion\n#### 1. This assertion never verifies the no-ADR branch says `escalate = no`."
+  },
+  {
     "name": "codeant: a suggestion that mentions a usage limit is still a finding",
     "bot": "codeant-ai",
     "kind": "review",
