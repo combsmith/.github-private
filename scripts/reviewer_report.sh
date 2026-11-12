@@ -272,6 +272,7 @@ _NORMALIZE_JQ='
             | .class ] | first ) as $rule
         | if $rule != null then $rule
           elif $m.kind != "inline"
+               and ($m.state != "CHANGES_REQUESTED")
                and (($b | test($rl; "i"))
                     or ($m.bot == "'"$CUBIC_LOGIN"'" and ($b | test("'"$CUBIC_RATE_LIMIT_RE"'"; "i"))))
             then "refused"
