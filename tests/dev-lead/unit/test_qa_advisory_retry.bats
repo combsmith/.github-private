@@ -269,6 +269,12 @@ GHEOF
   pr_resume_suppressed() { return 1; }
 }
 
+teardown() {
+  if [ -n "${MOCK_BIN:-}" ] && [ -d "$MOCK_BIN" ]; then
+    rm -rf "$MOCK_BIN" || true
+  fi
+}
+
 @test "sweep: an undispositioned advisory dispatches exactly one review-changes retry, marker first" {
   export COMMENTS_RESPONSE
   COMMENTS_RESPONSE="$(_comments_page "$(_adv)")"

@@ -160,7 +160,7 @@ qa_advisory_decisions() {
     if type != "array" then error("not an array") else . end
     | . as $all
     | [ $all[] | objects | select(qa_ours) ] as $ours
-    | ([ $ours[] | select((.body // "") | test("<!-- dev-lead-bot-(comment-retry id=|thread-retry threads=)"))
+    | ([ $ours[] | select((.body // "") | test("<!-- dev-lead-bot-(comment-retry id=|thread-retry threads=|qa-advisory-retry id=)"))
          | select(($now - at_epoch) < $lane) ] | length > 0) as $lane_busy
     | ($all | map(objects | select(qa_is_advisory) | select(qa_item_count > 0))
             | sort_by(.createdAt // "")) as $advs
@@ -169,14 +169,15 @@ qa_advisory_decisions() {
         | ([ $ours[] | select((.body // "") | contains("<!-- " + $rname + " id=" + $id + " attempt=")) ]) as $tries
         | ($tries | length) as $n
         | ([ $tries[] | at_epoch ] | max // 0) as $last
+        | ([ $tries[] | select(($now - at_epoch) >= $pending) ] | length) as $completed_n
         | if (any($open[]; .id == $id) | not) then
             {id: $id, decision: "skip", reason: "dispositioned", attempt: $n}
           elif qa_escalate then
             {id: $id, decision: "escalate", reason: "escalate-yes", attempt: $n}
-          elif $n >= $max then
-            {id: $id, decision: "skip", reason: "retry-attempts-exhausted", attempt: $n}
           elif $n > 0 and ($now - $last) < $pending then
             {id: $id, decision: "skip", reason: "retry-pending", attempt: $n}
+          elif $completed_n >= $max then
+            {id: $id, decision: "skip", reason: "retry-attempts-exhausted", attempt: $n}
           elif $lane_busy then
             {id: $id, decision: "skip", reason: "lane-busy", attempt: $n}
           else
