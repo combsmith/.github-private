@@ -24,7 +24,12 @@
 #   a fix-bot-comment retry now. A comment's VERSION is lastEditedAt // createdAt;
 #   all coverage checks are against the current version, so an edit re-opens it.
 #     dispositioned            a `dev-lead:comment-disposition id=<id>` reply exists
-#                              at/after the version → covered, nothing to do
+#                              at/after the version and is not minimized →
+#                              covered, nothing to do. A reply the resolver
+#                              rejected as unverified is minimized OUTDATED
+#                              (#2507), like a superseded one (#1992), so it no
+#                              longer covers: the comment falls through to a
+#                              retry under the attempt bounds below
 #     pass-completed           a fix-bot-comment pass already ended on this version
 #                              (its terminal marker carries `comment=<id>` and the
 #                              `version=` it processed) without a disposition → do
@@ -221,7 +226,11 @@ _bcr_evaluate() {
         | select(((.authorAssociation // "") as $a | ["OWNER","MEMBER","COLLABORATOR"] | index($a)) != null)
         | (markers("dev-lead-fix-reviews") | map(select(attr("intent") == "fix-bot-comment"))) as $fr
         | {t: (.createdAt | epoch),
-           disp: markers("dev-lead:comment-disposition"),
+           # A minimized disposition reply covers nothing (#2507): the resolver
+           # minimizes a reply OUTDATED when it supersedes it or rejects it as
+           # unverified, and the gate and the resolver ignore it the same way.
+           disp: (if (.isMinimized // false) == true then []
+                  else markers("dev-lead:comment-disposition") end),
            pass: ($fr | map(select(attr("comment") != null))),
            hold: ($fr | map(select(attr("status") == "rate-limited" or attr("status") == "blocked"))
                       | map(attr("reset") | vepoch)),

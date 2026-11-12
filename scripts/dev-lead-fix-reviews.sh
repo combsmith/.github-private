@@ -2272,7 +2272,18 @@ resolve_dispositioned_comments() {
 
     if ! cdv_authorize "$disposition" "$is_human" "$verified"; then
       echo "::notice::skipping comment ${cid} — disposition '${disposition}' not authorized to resolve (is_human=${is_human} verified=${verified}); leaving open (#1813)"
-      if [ "$disposition" = "fixed" ] && [ "$reverify" != "true" ]; then
+      # #2507: a bot comment whose disposition did not verify is not dispositioned.
+      # The gate and this resolver already ignore a minimized reply, so minimize
+      # the rejected one OUTDATED. The bot-comment retry reads the same signal and
+      # dispatches a pass that posts a fresh disposition. Without this, the retry
+      # counted the visible reply as covering the comment and nothing re-answered
+      # it. A human comment's reply stays visible: a later pass may re-answer it
+      # with a corrected `fixed` (#2004), and the retry never acts on it.
+      local rejected="false"
+      if [ "$is_human" != "true" ] && [ "$verified" != "true" ]; then
+        rejected="true"
+      fi
+      if { [ "$disposition" = "fixed" ] || [ "$rejected" = "true" ]; } && [ "$reverify" != "true" ]; then
         # #2004: an unverified `fixed` is re-answered on later passes. Converge the
         # older replies to OUTDATED now, so the replies never stack (#1992).
         local usid
@@ -2284,6 +2295,14 @@ resolve_dispositioned_comments() {
             echo "::warning::failed to minimize superseded disposition reply ${usid} OUTDATED"
           fi
         done
+      fi
+      if [ "$rejected" = "true" ]; then
+        if gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' \
+            -f id="$chosen_reply_id" >/dev/null 2>&1; then
+          echo "::notice::minimized rejected disposition reply ${chosen_reply_id} OUTDATED — comment ${cid} needs a fresh disposition (#2507)"
+        else
+          echo "::warning::failed to minimize rejected disposition reply ${chosen_reply_id} OUTDATED — the bot-comment retry still reads comment ${cid} as dispositioned (#2507)"
+        fi
       fi
       if [ "$reverify" = "true" ]; then
         # Fail closed: the fresh disposition answering the edit did not verify,

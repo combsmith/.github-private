@@ -361,6 +361,70 @@ $(_ours '<!-- dev-lead-bot-comment-retry id=IC_cr version=2026-10-01T23:05:43Z a
   [ "$(_reason_for "$out" IC_cr)" != "pass-completed" ]
 }
 
+# ── #2507: a disposition the resolver rejected does not cover the comment ────
+# The resolver minimizes a disposition reply OUTDATED when it rejects it as
+# unverified (fixed-unverified:*, an `informational` that is verified=false).
+# The gate and the resolver already ignore minimized replies. Before this change
+# the retry still counted them, so it skipped the comment as `dispositioned` and
+# no pass ever posted a fresh disposition.
+
+# _rejected <ours-json> — that reply as the resolver leaves it after a rejection.
+_rejected() { jq -c '.isMinimized = true | .minimizedReason = "OUTDATED"' <<< "$1"; }
+
+_2507_FIXED='<!-- dev-lead:comment-disposition id=IC_ca disposition=fixed sha=43656e0caaaad717ce80cff3cc7354fdfa0d6a09 -->
+Fixed in canary-rollout.sh.'
+
+@test "bcr(#2507): a fixed disposition the resolver has not judged yet still covers the comment" {
+  out="$(_decide \
+    "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63 at canary-rollout.sh:264')" \
+    "$(_ours "$_2507_FIXED")")"
+  [ "$(_dispatches "$out")" = "0" ]
+  [ "$(_reason_for "$out" IC_ca)" = "dispositioned" ]
+}
+
+@test "bcr(#2507): an unverified fixed disposition on a still-open bot comment is retried" {
+  out="$(_decide \
+    "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63 at canary-rollout.sh:264')" \
+    "$(_rejected "$(_ours "$_2507_FIXED")")")"
+  [ "$(_dispatches "$out")" = "1" ]
+  [ "$(_reason_for "$out" IC_ca)" = "undispositioned" ]
+  [ "$(jq -r '.[0].attempt' <<< "$out")" = "1" ]
+}
+
+@test "bcr(#2507): an informational disposition rejected as verified=false is retried" {
+  out="$(_decide \
+    "$(_bot IC_cr coderabbitai 'Walkthrough')" \
+    "$(_rejected "$(_ours '<!-- dev-lead:comment-disposition id=IC_cr disposition=informational -->')")")"
+  [ "$(_dispatches "$out")" = "1" ]
+}
+
+@test "bcr(#2507): a fresh disposition after a rejected one covers the comment again" {
+  out="$(_decide \
+    "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
+    "$(_rejected "$(_ours "$_2507_FIXED" 2026-10-01T23:30:00Z)")" \
+    "$(_ours '<!-- dev-lead:comment-disposition id=IC_ca disposition=invalid -->
+The value is bounded by the caller.' 2026-10-02T00:10:00Z)")"
+  [ "$(_dispatches "$out")" = "0" ]
+  [ "$(_reason_for "$out" IC_ca)" = "dispositioned" ]
+}
+
+@test "bcr(#2507): retries of a rejected disposition stay bounded by MAX_ATTEMPTS" {
+  out="$(_decide \
+    "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
+    "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=1 at=2026-10-01T20:00:00Z -->' 2026-10-01T20:00:00Z)" \
+    "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=2 at=2026-10-01T21:00:00Z -->' 2026-10-01T21:00:00Z)" \
+    "$(_rejected "$(_ours "$_2507_FIXED")")")"
+  [ "$(_dispatches "$out")" = "0" ]
+  [ "$(_reason_for "$out" IC_ca)" = "retry-attempts-exhausted" ]
+}
+
+@test "bcr(#2507): a retry marker on a minimized comment still counts (only dispositions are dropped)" {
+  out="$(_decide \
+    "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
+    "$(_rejected "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=1 at=2026-10-02T00:30:00Z -->' 2026-10-02T00:30:00Z)")")"
+  [ "$(_reason_for "$out" IC_ca)" = "retry-pending" ]
+}
+
 # ── bcr_fetch_pr_comments: fails closed on a partial snapshot ────────────────
 
 @test "bcr_fetch_pr_comments: a GraphQL response carrying errors fails closed" {
