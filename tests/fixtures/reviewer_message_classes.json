@@ -265,5 +265,26 @@
     "kind": "inline",
     "expect": "status",
     "body": "Thanks for using CodeAnt! 🎉"
+  },
+  {
+    "name": "coderabbit: numbered retained concern beside a rate limit is a finding",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "finding",
+    "body": "Review limit reached\nRetained concerns\n1. The lookup trusts an unvalidated name."
+  },
+  {
+    "name": "coderabbit: prose hardening proposal beside a rate limit is a finding",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "finding",
+    "body": "Review limit reached\n**Hardening Proposals**\nValidate the lookup name before use."
+  },
+  {
+    "name": "coderabbit: empty retained concerns beside a rate limit stays refused",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "refused",
+    "body": "Review limit reached\n**Retained concerns**\nNo architecture-level concerns identified.\n<!-- architecture_review_end -->"
   }
 ]

@@ -53,6 +53,7 @@ chatgpt-codex-connector	clean	any	(Didn.t|did not) find any major issues
 chatgpt-codex-connector	finding	any	Here are some automated review suggestions
 coderabbitai	finding	any	Security architecture risk.*?(Low|Medium|Moderate|Elevated|High|Critical|Severe)
 coderabbitai	finding	any	Retained concerns[\s\n]*(?:[-*]|Low|Medium|High|Critical|Severity)|Hardening Proposals[\s\n]*(?:[-*]|proposed)|Actionable comments posted:\s*[1-9]|Outside diff range comments \(\s*[1-9]|Nitpick comments \(\s*[1-9]
+coderabbitai	finding	any	(?:Retained concerns|Hardening Proposals)\**[ \t]*(?:\r?\n[ \t]*)+(?!No (?:[a-z-]+ ){0,2}(?:concerns?|proposals?|issues?|findings?|risks?)(?: (?:were|are|have been))?(?: (?:identified|found|raised|retained|proposed|noted))?\.?[ \t]*(?:\r?\n[ \t]*)*(?:<|\*\*|\z))(?!<|\*\*|\z)\S
 coderabbitai	clean	any	No actionable comments were generated|Actionable comments posted:\s*0
 coderabbitai	refused	any	Review limit reached|used all (of )?(your )?free (OSS )?reviews|rate limit exceeded
 coderabbitai	skipped	any	Review skipped|Auto reviews are disabled|Skipped review
