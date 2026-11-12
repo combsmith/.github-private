@@ -81,24 +81,6 @@ jobs:
           echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
           npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
-      - name: Fetch and sanitize logs
-        if: steps.pr.outputs.skip == 'false' && steps.idem.outputs.exists == 'false'
-        id: logs
-        env:
-          RUN_ID: ${{ steps.pr.outputs.run_id }}
-          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
-        run: |
-          set -euo pipefail
-          # Fetch logs only in the Actions environment (not passed to Claude).
-          # This prevents untrusted log content from reaching Claude's prompt.
-          if [[ -n "$RUN_ID" ]]; then
-            log_content=$(gh run view "$RUN_ID" --log-failed --repo "$REPO" 2>/dev/null | tail -200 || true)
-          else
-            log_content=$(gh pr diff "$PR_NUMBER" --repo "$REPO" 2>/dev/null | head -200 || true)
-          fi
-          # Sanitize: remove newlines and keep the LAST 2000 chars (where the failure usually is)
-          sanitized_logs=$(printf '%s' "$log_content" | tr '\n' ' ' | tr -d '\r' | tail -c 2000)
-          printf 'logs=%s\n' "$sanitized_logs" >> "$GITHUB_OUTPUT"
 
       - name: Analyze failure and post comment
         if: steps.pr.outputs.skip == 'false' && steps.idem.outputs.exists == 'false'
@@ -108,7 +90,6 @@ jobs:
           WORKFLOW_NAME: ${{ steps.pr.outputs.check_name }}
           DETAILS_URL: ${{ steps.pr.outputs.details_url }}
           FAILED_JOBS: ${{ steps.pr.outputs.failed_jobs }}
-          LOG_EXCERPT: ${{ steps.logs.outputs.logs }}
         run: |
           set -euo pipefail
           export PATH="$HOME/.npm-global/bin:$PATH"
@@ -128,13 +109,10 @@ jobs:
           - Details URL: $DETAILS_URL
           - Failed jobs (job / failing step): $FAILED_JOBS
 
-          Log excerpt (last 2000 chars):
-          $LOG_EXCERPT
-
           Analyze the above information and follow these steps in order:
 
           ### 1. Identify the failing step and error
-          From the log excerpt and failed jobs, extract:
+          From the failed jobs information, extract:
           - The specific step name that failed
           - The key error message or assertion
 
