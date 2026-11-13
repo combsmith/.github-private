@@ -42,6 +42,21 @@ case "$1" in
     printf '%s\n' "$*" >> "$GH_LOG"
     exit 0
     ;;
+  api)
+    # Dependabot provenance reads (#2481): serve pulls_<N>.json / commits_<N>.json
+    # when the test wrote them. Every other api read keeps the empty default.
+    case "$2" in
+      repos/*/pulls/*/commits*)
+        num="${2%/commits*}"; num="${num##*/}"
+        f="$FIXTURE_DIR/commits_${num}.json"; [ -f "$f" ] && { cat "$f"; exit 0; }
+        exit 1 ;;
+      repos/*/pulls/*)
+        num="${2##*/}"
+        printf 'api pulls %s\n' "$num" >> "$FIXTURE_DIR/api.log"
+        f="$FIXTURE_DIR/pulls_${num}.json"; [ -f "$f" ] && { cat "$f"; exit 0; }
+        exit 1 ;;
+    esac
+    ;;
 esac
 exit 0
 EOF
@@ -996,4 +1011,129 @@ rl_and_escalation() {
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   [ ! -s "$GH_LOG" ]
+}
+
+# ───────────────────────────────────────────────────────────────────────────
+# Dependabot PRs (#2481). Nothing else reviews them: Dependabot-triggered events
+# carry no secrets, and the consumer pr-auto-review stub skips Dependabot. So
+# the cron sweep owns a Dependabot PR even when every check is eventable, and
+# dispatches it once its required checks pass and every commit passes the
+# Dependabot provenance rule (scripts/lib/dependabot-provenance.sh).
+# ───────────────────────────────────────────────────────────────────────────
+
+DB_HEAD=1111111111111111111111111111111111111111
+
+# write_dependabot_pr <num> <rollup> [commit_author] [verified] — a REVIEW_REQUIRED
+# PR opened by Dependabot (gh's `app/dependabot`), with the REST PR object and a
+# one-commit list for the provenance read.
+write_dependabot_pr() {
+  local num="$1" rollup="$2" author="${3:-dependabot[bot]}" verified="${4:-true}"
+  write_pr "$num" "REVIEW_REQUIRED" "$rollup" "$DB_HEAD"
+  jq '.author = {login:"app/dependabot", is_bot:true}' "$FIXTURE_DIR/pr_${num}.json" > "$FIXTURE_DIR/tmp.json"
+  mv "$FIXTURE_DIR/tmp.json" "$FIXTURE_DIR/pr_${num}.json"
+  jq -n --arg h "$DB_HEAD" '{head:{sha:$h}, commits:1, user:{login:"dependabot[bot]"}}' > "$FIXTURE_DIR/pulls_${num}.json"
+  jq -n --arg h "$DB_HEAD" --arg a "$author" --argjson v "$verified" \
+    '[[{sha:$h, author:{login:$a}, committer:{login:"web-flow"}, commit:{verification:{verified:$v}}, parents:[{sha:"p"}]}]]' \
+    > "$FIXTURE_DIR/commits_${num}.json"
+}
+
+@test "#2481 scheduled: a green Dependabot PR with only eventable checks IS dispatched" {
+  write_dependabot_pr 2481 "$ROLLUP_PASS_EVENTABLE"
+  url_for 2481 > "$SWEEP_PRS_FILE"
+  export GITHUB_EVENT_NAME=schedule
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "-f pr_url=$(url_for 2481)" "$GH_LOG"
+  [[ "$output" == *"dependabot"* ]]
+  # A normal stuck-green dispatch: no force_review.
+  run grep -qF -- "force_review" "$GH_LOG"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2481 scheduled: the same eventable-only PR NOT opened by Dependabot is still left to the fast path" {
+  write_pr 2482 "REVIEW_REQUIRED" "$ROLLUP_PASS_EVENTABLE" "$DB_HEAD"
+  url_for 2482 > "$SWEEP_PRS_FILE"
+  export GITHUB_EVENT_NAME=schedule
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  # And no provenance read was spent on it.
+  [ ! -f "$FIXTURE_DIR/api.log" ]
+}
+
+@test "#2481: a Dependabot PR with a failing required check is NOT dispatched (and no provenance read)" {
+  write_dependabot_pr 2483 "$ROLLUP_FAIL"
+  url_for 2483 > "$SWEEP_PRS_FILE"
+  export GITHUB_EVENT_NAME=schedule
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"CI 'failing'"* ]]
+  [ ! -f "$FIXTURE_DIR/api.log" ]
+}
+
+@test "#2481: a green Dependabot PR with a commit from anyone else is NOT dispatched" {
+  write_dependabot_pr 2484 "$ROLLUP_PASS_EVENTABLE" don-petry
+  url_for 2484 > "$SWEEP_PRS_FILE"
+  export GITHUB_EVENT_NAME=schedule
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"provenance"* ]]
+  [[ "$output" == *"not from Dependabot"* ]]
+}
+
+@test "#2481: a green Dependabot PR with an unverified commit is NOT dispatched" {
+  write_dependabot_pr 2485 "$ROLLUP_PASS_UNEVENTABLE" 'dependabot[bot]' false
+  url_for 2485 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"Dependabot provenance"* ]]
+  [[ "$output" == *"unverified"* ]]
+}
+
+@test "#2481: a green Dependabot PR whose commits cannot be read is NOT dispatched (fail closed)" {
+  write_dependabot_pr 2486 "$ROLLUP_PASS_UNEVENTABLE"
+  rm -f "$FIXTURE_DIR/commits_2486.json"
+  url_for 2486 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"could not read"* ]]
+}
+
+@test "#2481: a Dependabot PR already approved at head is NOT re-dispatched" {
+  write_dependabot_pr 2487 "$ROLLUP_PASS_EVENTABLE"
+  jq '.reviewDecision = "APPROVED"' "$FIXTURE_DIR/pr_2487.json" > "$FIXTURE_DIR/tmp.json"
+  mv "$FIXTURE_DIR/tmp.json" "$FIXTURE_DIR/pr_2487.json"
+  url_for 2487 > "$SWEEP_PRS_FILE"
+  export GITHUB_EVENT_NAME=schedule
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+}
+
+@test "#2481 scheduled: an elapsed rate-limit retry on an eventable-only Dependabot PR IS dispatched" {
+  write_dependabot_pr 2488 "$ROLLUP_PASS_EVENTABLE"
+  jq --arg h "$DB_HEAD" '.comments = [{body:("<!-- pr-review-agent rate-limited v1 sha=" + $h + " status=rate-limited reset=2020-01-01T00:00:00Z -->")}]' \
+    "$FIXTURE_DIR/pr_2488.json" > "$FIXTURE_DIR/tmp.json"
+  mv "$FIXTURE_DIR/tmp.json" "$FIXTURE_DIR/pr_2488.json"
+  url_for 2488 > "$SWEEP_PRS_FILE"
+  export GITHUB_EVENT_NAME=schedule
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "-f pr_url=$(url_for 2488)" "$GH_LOG"
+}
+
+@test "#2481: the sweep's PR snapshot reads the author" {
+  grep -qE -- '--json [a-zA-Z,]*\bauthor\b' "$SCRIPT"
 }

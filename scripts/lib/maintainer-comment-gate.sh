@@ -189,6 +189,15 @@ readonly _MAINTAINER_GATE_INFO_JQ_DEFS='
 #                    follow-ups, so it is not cleared), exactly one
 #                    `final_review_risk_coverage` JSON with kind "reviewed", and
 #                    pre-merge check badges that are all "passed" (at least one).
+#   coderabbit_skip_notice — CodeRabbit's "Review skipped" notice (#2481), posted
+#                    in place of a review (e.g. "Bot user detected" on a
+#                    Dependabot PR): the body opens (after the optional
+#                    `coderabbit-ai-generated:v1` and summarize markers) with the
+#                    `skip review by coderabbit.ai` marker, carries that marker
+#                    and its closing `end of auto-generated comment` marker
+#                    exactly once each, and carries no `final_review_risk_label`
+#                    (a reviewed summary is coderabbit_no_finding's to judge).
+#                    The prose is never matched.
 #   no_finding_summary   — ALL of: a GitHub App author (author.__typename "Bot",
 #                    as info_status_clear requires); its bare login is the bot the
 #                    recognizer belongs to; the recognizer matches; and the body
@@ -230,12 +239,18 @@ readonly _MAINTAINER_GATE_NO_FINDING_JQ_DEFS='
            | (type == "object") and .kind == "reviewed"
              and (.sourceCommitId | nf_sha) and (.coveredCommitId | nf_sha))
       and ([$b | scan("pre-merge-checks-(?:counter-)?([a-z]+)[-.]") | .[0]] | unique) == ["passed"];
+  def coderabbit_skip_notice:
+    ((.body // "") | tostring) as $b
+    | ($b | test("\\A(?:<!-- coderabbit-ai-generated:v1 -->\\s*)?(?:<!-- This is an auto-generated comment: summarize by coderabbit\\.ai -->\\s*)?<!-- This is an auto-generated comment: skip review by coderabbit\\.ai -->"))
+      and ([$b | scan("<!-- This is an auto-generated comment: skip review by coderabbit\\.ai -->")] | length) == 1
+      and ([$b | scan("<!-- end of auto-generated comment: skip review by coderabbit\\.ai -->")] | length) == 1
+      and (($b | contains("final_review_risk_label")) | not);
   def no_finding_summary:
     ((.author?.__typename // "") == "Bot")
     and (((.body // "") | tostring | test($findre)) | not)
     and ((.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $l
          | ($l == "chatgpt-codex-connector" and codex_no_finding)
-           or ($l == "coderabbitai" and coderabbit_no_finding));
+           or ($l == "coderabbitai" and (coderabbit_no_finding or coderabbit_skip_notice)));
 '
 
 # This library's own directory, resolved ONCE at source time. dev-lead-fix-reviews.sh

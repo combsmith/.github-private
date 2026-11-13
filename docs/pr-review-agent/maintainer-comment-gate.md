@@ -155,6 +155,16 @@ minimized with classifier `RESOLVED`. In practice:
   kind `reviewed`, and only `passed` pre-merge check badges. The author must be the
   GitHub App (`Bot`), and a finding-bearing section still blocks. Any other state —
   failed, in progress, findings, unparseable, a second state block — still blocks.
+- **CodeRabbit's "Review skipped" notice (#2481).** On a Dependabot PR CodeRabbit
+  posts "Review skipped — Bot user detected" instead of a review. dev-lead never
+  dispositions comments on a Dependabot PR, so the notice deadlocked the gate. It
+  now needs no disposition when the author is the `coderabbitai` GitHub App (`Bot`),
+  the body opens with the `<!-- This is an auto-generated comment: skip review by
+  coderabbit.ai -->` marker (after CodeRabbit's optional header markers) and carries
+  it and its closing marker exactly once, and the body has no
+  `final_review_risk_label` and no finding-bearing section. The prose is never
+  matched. The same marker from a User account, another bot, below other text, or
+  beside a finding still blocks.
 - **A maintainer clears it without dev-lead (#1910/#1918).** When dev-lead is
   suppressed, rate-limited, cancelled, or never dispatched, a maintainer can run
   [`scripts/maintainer-resolve-comment.sh`](../../scripts/maintainer-resolve-comment.sh)

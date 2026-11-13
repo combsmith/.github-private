@@ -262,6 +262,12 @@ source "$SCRIPT_DIR/lib/pr-metadata-digest.sh"
 # shellcheck source=lib/self-dismissed-approval.sh
 source "$SCRIPT_DIR/lib/self-dismissed-approval.sh"
 
+# Dependabot commit-provenance rule (#2481): dependabot_is_author /
+# dependabot_provenance_check, the gate pr-review applies before reviewing a PR
+# opened by Dependabot.
+# shellcheck source=lib/dependabot-provenance.sh
+source "$SCRIPT_DIR/lib/dependabot-provenance.sh"
+
 # Per-PR review-claim primitive (issue #1589, slice 1 — OBSERVE-ONLY). Provides
 # the claim key = (head SHA, metadata digest), the claim marker format, and
 # concurrent_claim_present so the #1551 same-SHA re-review race is observable
@@ -432,7 +438,7 @@ echo "    output_channel=$REVIEW_OUTPUT_CHANNEL"
 #                NEUTRAL covers informational checks that don't gate merging.
 #      failing — anything else (FAILURE, ACTION_REQUIRED, TIMED_OUT, CANCELLED,
 #                STALE, STARTUP_FAILURE, or unknown conclusions)
-PR_SNAPSHOT=$(gh pr view "$PR_URL" --json headRefOid,baseRefName,statusCheckRollup,reviewDecision,reviews,labels,comments,body,closingIssuesReferences)
+PR_SNAPSHOT=$(gh pr view "$PR_URL" --json headRefOid,baseRefName,statusCheckRollup,reviewDecision,reviews,labels,comments,body,closingIssuesReferences,author)
 PR_HEAD_SHA=$(echo "$PR_SNAPSHOT" | jq -r '.headRefOid')
 export PR_HEAD_SHA
 echo "    head SHA: $PR_HEAD_SHA"
@@ -549,7 +555,7 @@ if [ "$CI_STATUS" = "pending" ]; then
       echo "    force-review: CI pending, waiting ${_FORCE_POLL_SEC}s for checks to settle (attempt ${_poll}/${_FORCE_POLL_MAX})"
       sleep "$_FORCE_POLL_SEC"
       _gh_poll_err=$(mktemp 2>/dev/null || echo "/tmp/cascade/gh-poll-$$.err")
-      if ! PR_SNAPSHOT=$(gh pr view "$PR_URL" --json headRefOid,baseRefName,statusCheckRollup,reviewDecision,reviews,labels,comments,body,closingIssuesReferences 2>"$_gh_poll_err"); then
+      if ! PR_SNAPSHOT=$(gh pr view "$PR_URL" --json headRefOid,baseRefName,statusCheckRollup,reviewDecision,reviews,labels,comments,body,closingIssuesReferences,author 2>"$_gh_poll_err"); then
         _gh_poll_err_content=$(cat "$_gh_poll_err" 2>/dev/null || true)
         rm -f "$_gh_poll_err"
         if is_rate_limited "$_gh_poll_err_content"; then
@@ -629,6 +635,34 @@ NON_REQUIRED_CI_FAILURES=$(
 if [ -n "$NON_REQUIRED_CI_FAILURES" ]; then
   echo "::notice::proceeding past non-required failing check(s) the branch ruleset does not require: ${NON_REQUIRED_CI_FAILURES} — the merge gate still blocks on any failing REQUIRED check (#1795)"
   export NON_REQUIRED_CI_FAILURES
+fi
+
+# Dependabot provenance gate (#2481). pr-review approves Dependabot PRs (the
+# sweep dispatches them, since nothing else reviews them), so it keeps the rule
+# dependabot-automerge applies before approving (#1400): every commit on a PR
+# opened by Dependabot is Dependabot's, or the automerge App's update-branch
+# merge. A commit pushed by anyone else gets no approval from here; a human
+# code owner reviews it instead. No bypass: FORCE_REVIEW does not apply, as the
+# automerge rule has none. An unreadable commit list fails closed (exit 1, the
+# next sweep retries). It runs after the CI gate, so a failing required check
+# skips first and costs no read.
+if dependabot_is_author "$(jq -r '.author.login // ""' <<< "$PR_SNAPSHOT" 2>/dev/null || true)"; then
+  _dp_rc=0
+  _dp_num=""
+  [[ "$PR_URL" =~ /pull/([0-9]+) ]] && _dp_num="${BASH_REMATCH[1]}"
+  dependabot_provenance_check "$_OWNER_REPO" "$_dp_num" "$PR_HEAD_SHA" || _dp_rc=$?
+  if (( _dp_rc == 0 )); then
+    echo "    Dependabot provenance: $DEPENDABOT_GATE_REASON"
+  elif (( _dp_rc == 1 )); then
+    echo "    skip: Dependabot provenance — $DEPENDABOT_GATE_REASON (#2481)"
+    emit_verdict skip dependabot-provenance "every commit on the PR is Dependabot's or an automerge update-branch merge (Dependabot recreates the PR), or a human code owner reviews it"
+    exit 100
+  else
+    echo "    error: Dependabot provenance could not be read — $DEPENDABOT_GATE_REASON; failing closed (#2481)"
+    emit_verdict error dependabot-provenance-unreadable "the PR and its full commit list can be read at one head; the next scheduled pr-review sweep retries this PR"
+    exit 1
+  fi
+  unset _dp_rc _dp_num
 fi
 
 # Advisory bot review gate — instant check for advisory bot reviews (Gemini, Copilot, SonarCloud, Codex)
