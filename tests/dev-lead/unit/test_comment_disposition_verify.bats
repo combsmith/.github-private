@@ -765,3 +765,33 @@ scripts/new.sh" "scripts/old.sh"
   _fixed_verdict true false 1 "2026-10-10T21:34:01Z" "2026-10-10T16:58:23Z" content-no-token-removed false true
   [ "$status" -eq 1 ]
 }
+
+# ── #2521: a rejected reply carries the reason the next pass is told ──────────
+_tag() {
+  run bash -c "source '$LIB'; cdv_tag_rejected \"\$1\" \"\$2\" \"\$3\"" _ "$1" "$2" "$3"
+}
+
+@test "cdv_tag_rejected(#2521): appends one rejection marker naming the comment and the reason" {
+  _tag $'Fixed.\n<!-- dev-lead:comment-disposition id=IC_A disposition=fixed sha=c293899b7406de4dc221b3ae14ba2a4a98a5d285 -->' \
+    IC_A "fixed-unverified:content-no-token-removed"
+  [ "$status" -eq 0 ]
+  [[ "$output" == $'Fixed.\n<!-- dev-lead:comment-disposition id=IC_A disposition=fixed sha=c293899b7406de4dc221b3ae14ba2a4a98a5d285 -->\n\n<!-- dev-lead:disposition-rejected id=IC_A reason=fixed-unverified:content-no-token-removed -->' ]]
+}
+
+@test "cdv_tag_rejected(#2521): a body already tagged for that comment is left unchanged" {
+  local body=$'No finding.\n\n<!-- dev-lead:disposition-rejected id=IC_A reason=no-evidence -->'
+  _tag "$body" IC_A "informational-on-findings"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$body" ]
+}
+
+@test "cdv_tag_rejected(#2521): a malformed id or reason writes nothing" {
+  _tag "body" 'IC A' "no-evidence"
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+  _tag "body" IC_A 'no evidence -->'
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+  _tag "body" IC_A ""
+  [ "$status" -eq 1 ]
+}

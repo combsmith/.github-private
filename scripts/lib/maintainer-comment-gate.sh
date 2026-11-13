@@ -594,6 +594,74 @@ maintainer_gate_stale_disposition_facts() {
   ' 2>/dev/null
 }
 
+# maintainer_gate_rejected_dispositions <comments_array_json> [bot_user]
+#   The bot comments still open whose newest disposition reply the resolver
+#   rejected (#2521). The resolver tags a rejected reply
+#     <!-- dev-lead:disposition-rejected id=<comment id> reason=<code> -->
+#   and minimizes it OUTDATED (#2507). A comment is listed when its newest tagged
+#   reply is newer than every visible disposition covering it, so a fresh answer
+#   posted since takes it off the list. A comment minimized RESOLVED is done and
+#   never listed. Only a minimized reply that is ours (bot_user, or an OWNER /
+#   MEMBER / COLLABORATOR, as trusted_reply) is read: anyone else's marker never
+#   counts. Echoes a compact JSON array of
+#     {id, login, reason, disposition, sha, rejectedReplyAt}
+#   oldest reply first. Unreadable input echoes nothing and returns non-zero.
+maintainer_gate_rejected_dispositions() {
+  local comments="${1:-}" bot_user="${2:-donpetry-bot}"
+  printf '%s' "$comments" | jq -c \
+    --arg botuser "$bot_user" "$_MAINTAINER_GATE_DISP_JQ_DEFS"'
+    def ours_hidden:
+      (.isMinimized == true)
+      and ((.createdAt // "") | tostring | iso)
+      and (
+        ((.author?.login // "") as $l | $l == $botuser or $l == bot_stripped)
+        or (((.authorAssociation // "") | tostring | ascii_upcase) as $a
+            | ["OWNER", "MEMBER", "COLLABORATOR"] | index($a) != null)
+      );
+    . as $all
+    | if type != "array" then error("not an array") else . end
+    | [ $all[] | objects | select(ours_hidden)
+        | (.body // "" | tostring) as $b
+        | .createdAt as $c
+        | ([$b | scan("<!-- dev-lead:comment-disposition ([^>]*?) -->") | .[0]] | first // "") as $d
+        | $b | scan("<!-- dev-lead:disposition-rejected ([^>]*?) -->") | .[0]
+        | {cid: attr("id"), reason: attr("reason"), at: $c,
+           disposition: ($d | attr("disposition")), sha: ($d | attr("sha"))}
+        | select(.cid != "" and .reason != "") ] as $rej
+    | [ $all[] | objects
+        | (.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $lbare
+        | select((.author?.__typename // "") == "Bot")
+        | select((((.isMinimized // false) == true)
+                  and (((.minimizedReason // "") | ascii_downcase) == "resolved")) | not)
+        | (.id // "") as $cid
+        | select($cid != "")
+        | ([ $rej[] | select(.cid == $cid) ] | sort_by(.at) | last) as $r
+        | select($r != null)
+        | latest_cover($all; $cid) as $cov
+        | select($cov == null or $cov.createdAt <= $r.at)
+        | {id: $cid, login: $lbare, reason: $r.reason, disposition: $r.disposition,
+           sha: $r.sha, rejectedReplyAt: $r.at} ]
+    | sort_by(.rejectedReplyAt)
+  ' 2>/dev/null
+}
+
+# maintainer_gate_rejected_disposition_facts <comments_array_json> [bot_user]
+#   maintainer_gate_rejected_dispositions as facts for a dev-lead prompt (#2521),
+#   one markdown bullet per comment: its id and author, the rejected reply's
+#   disposition (and sha, for `fixed`), when it was posted, and the reason code.
+#   Echoes nothing when none is listed. Unreadable input echoes nothing and
+#   returns 1, so the caller never tells the model "none" on a guess.
+maintainer_gate_rejected_disposition_facts() {
+  local rejected
+  rejected=$(maintainer_gate_rejected_dispositions "${1:-}" "${2:-donpetry-bot}") || return 1
+  [[ -n "$rejected" ]] || return 1
+  printf '%s' "$rejected" | jq -r '
+    .[] | "- `\(.id)` (\(.login)): your `\(if .disposition == "" then "?" else .disposition end)` reply"
+          + (if .sha != "" then " citing `\(.sha)`" else "" end)
+          + ", posted \(.rejectedReplyAt), was rejected: `\(.reason)`."
+  ' 2>/dev/null
+}
+
 # maintainer_gate_head_committer_date <pr_url>
 #   Echo the committer.date of the PR's head commit via a single GraphQL query.
 #   Uses committer.date (not the deprecated, now-null push timestamp) so a cherry-pick

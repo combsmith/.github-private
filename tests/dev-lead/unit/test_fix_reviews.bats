@@ -5692,6 +5692,10 @@ _setup_disposition_pass() {
   export COMMENTS_NODES="$1"
   export MINLOG="$BATS_TEST_TMPDIR/minimize.log"
   : > "$MINLOG"
+  # #2521: the rejection-reason edits, kept apart from MINLOG because the edited
+  # body names the original comment's id.
+  export EDITLOG="$BATS_TEST_TMPDIR/edit.log"
+  : > "$EDITLOG"
 
   DISP_REPO="$BATS_TEST_TMPDIR/disp_repo"
   mkdir -p "$DISP_REPO"
@@ -5717,6 +5721,10 @@ STUB
 #!/usr/bin/env bash
 ARGS="$*"
 case "$ARGS" in
+  *"updateIssueComment"*)
+    echo "$ARGS" >> "$EDITLOG"
+    [ "${EDIT_FAIL:-}" = "1" ] && exit 1
+    printf '%s' '{"data":{"updateIssueComment":{"issueComment":{"id":"x"}}}}'; exit 0 ;;
   *"unminimizeComment"*)
     # #2037: log every unminimize call, then simulate an API failure for the
     # one configured comment id.
@@ -5976,6 +5984,65 @@ _resolved_bot_comment() {
   [[ "$output" == *"verified=false"* ]]
   grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
   ! grep -q 'id=IC_ORIG' "$MINLOG" || false
+}
+
+@test "resolve_dispositioned_comments(#2521): an evidence-less disposition is tagged reason=no-evidence" {
+  local bare nodes
+  bare=$(jq -nc '{id:"R1", author:{login:"donpetry-bot", __typename:"User"},
+    body:"<!-- dev-lead:comment-disposition id=IC_ORIG disposition=informational -->",
+    isMinimized:false, minimizedReason:null, createdAt:"2026-09-26T21:00:00Z"}')
+  nodes=$(jq -sc '.' <(_orig_comment) <(echo "$bare"))
+  _setup_disposition_pass "$nodes"
+
+  run bash "$FIX_REVIEWS_SCRIPT" 2>&1
+
+  [ "$status" -eq 1 ]
+  grep -q 'id=R1' "$EDITLOG"
+  grep -q '<!-- dev-lead:disposition-rejected id=IC_ORIG reason=no-evidence -->' "$EDITLOG"
+  grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
+}
+
+@test "resolve_dispositioned_comments(#2521): \`informational\` on a finding-bearing body is tagged reason=informational-on-findings" {
+  local orig nodes
+  orig=$(jq -nc --arg b "$(_cr_fixture pr2000-ratelimited-with-security-finding.md)" '{id:"IC_ORIG", author:{login:"coderabbitai", __typename:"Bot"},
+    body:$b, isMinimized:false, minimizedReason:null, createdAt:"2026-09-26T20:00:00Z", lastEditedAt:"2026-09-26T20:35:00Z"}')
+  nodes=$(jq -sc '.' <(echo "$orig") <(_disp_reply "R1" "2026-09-26T21:00:00Z" "informational" "IC_ORIG"))
+  _setup_disposition_pass "$nodes"
+
+  run bash "$FIX_REVIEWS_SCRIPT" 2>&1
+
+  [ "$status" -eq 1 ]
+  grep -q '<!-- dev-lead:disposition-rejected id=IC_ORIG reason=informational-on-findings -->' "$EDITLOG"
+  grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
+}
+
+@test "resolve_dispositioned_comments(#2521): a failed tag edit still minimizes the rejected reply" {
+  local bare nodes
+  bare=$(jq -nc '{id:"R1", author:{login:"donpetry-bot", __typename:"User"},
+    body:"<!-- dev-lead:comment-disposition id=IC_ORIG disposition=informational -->",
+    isMinimized:false, minimizedReason:null, createdAt:"2026-09-26T21:00:00Z"}')
+  nodes=$(jq -sc '.' <(_orig_comment) <(echo "$bare"))
+  _setup_disposition_pass "$nodes"
+  export EDIT_FAIL=1
+
+  run bash "$FIX_REVIEWS_SCRIPT" 2>&1
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"could not tag rejected disposition reply R1"* ]]
+  grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
+}
+
+@test "resolve_dispositioned_comments(#2521): a verified disposition is never tagged" {
+  local orig nodes
+  orig=$(jq -nc --arg b "$(_cr_fixture summary-clean.md)" '{id:"IC_ORIG", author:{login:"coderabbitai", __typename:"Bot"},
+    body:$b, isMinimized:false, minimizedReason:null, createdAt:"2026-09-26T20:00:00Z", lastEditedAt:null}')
+  nodes=$(jq -sc '.' <(echo "$orig") <(_disp_reply "R1" "2026-09-26T21:00:00Z" "informational" "IC_ORIG"))
+  _setup_disposition_pass "$nodes"
+
+  run bash "$FIX_REVIEWS_SCRIPT" 2>&1
+
+  [ "$status" -eq 1 ]
+  [ ! -s "$EDITLOG" ]
 }
 
 @test "resolve_dispositioned_comments(#2008): a clean CodeRabbit summary dispositioned \`informational\` still resolves" {
@@ -7213,7 +7280,8 @@ _2004_commit() {
 _setup_2004() {
   T2004_REPO="$BATS_TEST_TMPDIR/repo2004"
   export MINLOG="$BATS_TEST_TMPDIR/minimize.log" POSTLOG="$BATS_TEST_TMPDIR/posts.log"
-  : > "$MINLOG"; : > "$POSTLOG"
+  export EDITLOG="$BATS_TEST_TMPDIR/edit.log"
+  : > "$MINLOG"; : > "$POSTLOG"; : > "$EDITLOG"
   mkdir -p "$T2004_REPO/scripts"
   git -C "$T2004_REPO" init -q
   printf '#!/usr/bin/env bash\n# modes:\n' > "$T2004_REPO/scripts/template_stub_drift.sh"
@@ -7233,6 +7301,9 @@ _setup_2004() {
 #!/usr/bin/env bash
 ARGS="$*"
 case "$ARGS" in
+  *"updateIssueComment"*)
+    echo "$ARGS" >> "$EDITLOG"
+    printf '%s' '{"data":{"updateIssueComment":{"issueComment":{"id":"x"}}}}'; exit 0 ;;
   *"minimizeComment"*)
     echo "$ARGS" >> "$MINLOG"
     printf '%s' '{"data":{"minimizeComment":{"minimizedComment":{"isMinimized":true}}}}'; exit 0 ;;
@@ -7449,6 +7520,46 @@ _run_2004() {
   [ "$status" -eq 0 ]
   grep -Eq 'classifier:RESOLVED.*id=IC_FIND' "$MINLOG"
   [[ "$output" != *"minimized rejected disposition reply"* ]]
+}
+
+# ── #2521: a rejected reply is tagged with its reason before it is hidden ─────
+# The next pass reads the reason (export_rejected_dispositions) and is told what
+# to answer instead of re-posting the answer that was rejected.
+
+@test "#2521: an unverified \`fixed\` on a bot comment is tagged with its reason, then minimized" {
+  _setup_2004
+  _2004_nodes "$_2004_FINDING" <(_2004_fixed_reply R1 "2026-10-01T13:30:00Z" "$SHA_B")
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  grep -q 'updateIssueComment' "$EDITLOG"
+  grep -q 'id=R1' "$EDITLOG"
+  grep -q '<!-- dev-lead:disposition-rejected id=IC_FIND reason=fixed-unverified:content-no-token-removed -->' "$EDITLOG"
+  # The original reply, disposition marker included, is kept above the tag.
+  grep -q "dev-lead:comment-disposition id=IC_FIND disposition=fixed sha=${SHA_B}" "$EDITLOG"
+  grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
+  [[ "$output" == *"tagged rejected disposition reply R1 with reason=fixed-unverified:content-no-token-removed"* ]]
+}
+
+@test "#2521: an unverified \`fixed\` on a HUMAN comment is not tagged" {
+  _setup_2004
+  _2004_nodes "$_2004_FINDING" <(_2004_fixed_reply R1 "2026-10-01T13:30:00Z" "$SHA_B")
+  jq -c '.[0].author = {login:"alice", __typename:"User"}' "$NODES_FILE" > "$NODES_FILE.tmp"
+  mv "$NODES_FILE.tmp" "$NODES_FILE"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [ ! -s "$EDITLOG" ]
+}
+
+@test "#2521: a corrected \`fixed\` that verifies tags nothing" {
+  _setup_2004
+  _2004_land_fix
+  _2004_nodes "$_2004_FINDING" <(_2004_fixed_reply R1 "2026-10-01T14:30:00Z" "$SHA_B")
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [ ! -s "$EDITLOG" ]
 }
 
 # ── #2269: an additive fix to a finding that names a token ───────────────────
@@ -7926,6 +8037,91 @@ _stale_nodes() {
     out=$(STALE_DISPOSITIONS='- `IC_stale_marker`' envsubst "$vars" < "$SCRIPT_DIR/prompts/dev-lead/${tmpl}.md")
     [[ "$out" == *'- `IC_stale_marker`'* ]]
     [[ "$out" != *'${STALE_DISPOSITIONS}'* ]]
+  done
+}
+
+# ── #2521: the next pass is told which answers were rejected, and why ─────────
+
+# _rejected_env <comments-json|FAIL>: run export_rejected_dispositions against a
+# gh stub whose comment read returns <comments-json> (or fails); print the result.
+_rejected_env() {
+  export STALE_COMMENTS="$1"
+  cat > "$STUB_BIN_DIR/gh" <<'GHEOF'
+#!/usr/bin/env bash
+[ "$STALE_COMMENTS" = "FAIL" ] && exit 1
+jq -nc --argjson n "$STALE_COMMENTS" \
+  '{data:{repository:{pullRequest:{comments:{pageInfo:{hasNextPage:false,endCursor:null},nodes:$n}}}}}'
+GHEOF
+  chmod +x "$STUB_BIN_DIR/gh"
+  run bash -c "
+    export PATH='$STUB_BIN_DIR':\"\$PATH\" REPO=o/r PR_NUMBER=54
+    source '$SCRIPT_DIR/scripts/lib/maintainer-comment-gate.sh'
+    source '$SCRIPT_DIR/scripts/lib/bot-comment-retry.sh'
+    eval \"\$(sed -n '/^export_rejected_dispositions()/,/^}/p' '$FIX_REVIEWS_SCRIPT')\"
+    export_rejected_dispositions >/dev/null 2>&1
+    printf '%s' \"\$REJECTED_DISPOSITIONS\"
+  "
+}
+
+# _rejected_nodes [fresh answer createdAt]: the .github PR 1503 shape. CodeAnt's
+# finding, and dev-lead's `fixed` reply citing c293899, rejected and tagged.
+_rejected_nodes() {
+  jq -nc --arg f "${1:-}" '
+    [{id:"IC_kwDORyesfc8AAAABlGA5pw", author:{login:"codeant-ai", __typename:"Bot"}, authorAssociation:"NONE",
+      body:"1. A valid version component wraps here, so `max_semver` can select a lower release.",
+      createdAt:"2026-11-11T01:30:18Z", lastEditedAt:null, isMinimized:false, minimizedReason:null},
+     {id:"IC_r", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+      body:"Fixed in commit c293899.\n\n<!-- dev-lead:comment-disposition id=IC_kwDORyesfc8AAAABlGA5pw disposition=fixed sha=c293899b7406de4dc221b3ae14ba2a4a98a5d285 -->\n\n<!-- dev-lead:disposition-rejected id=IC_kwDORyesfc8AAAABlGA5pw reason=fixed-unverified:content-no-token-removed -->",
+      createdAt:"2026-11-13T07:08:23Z", lastEditedAt:"2026-11-13T07:20:00Z", isMinimized:true, minimizedReason:"OUTDATED"}]
+    + (if $f == "" then [] else
+       [{id:"IC_f", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+         body:"_semver_gt now compares by string.\n<!-- dev-lead:comment-disposition id=IC_kwDORyesfc8AAAABlGA5pw disposition=answered -->",
+         createdAt:$f, lastEditedAt:null, isMinimized:false, minimizedReason:null}] end)'
+}
+
+@test "fix-reviews(#2521): a rejected answer is stated with the comment, the answer, the sha and the reason" {
+  _rejected_env "$(_rejected_nodes)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'`IC_kwDORyesfc8AAAABlGA5pw` (codeant-ai)'* ]]
+  [[ "$output" == *'`fixed` reply citing `c293899b7406de4dc221b3ae14ba2a4a98a5d285`'* ]]
+  [[ "$output" == *'`fixed-unverified:content-no-token-removed`'* ]]
+  [[ "$output" == *"Never post the rejected answer again"* ]]
+}
+
+@test "fix-reviews(#2521): a fresh answer after the rejection leaves nothing listed" {
+  _rejected_env "$(_rejected_nodes 2026-11-13T09:00:00Z)"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "None."* ]]
+}
+
+@test "fix-reviews(#2521): an unreadable comment list is reported as undetermined, never as none" {
+  _rejected_env FAIL
+  [ "$status" -eq 0 ]
+  [[ "$output" == "Could not be determined"* ]]
+  [[ "$output" != *"None."* ]]
+}
+
+@test "fix-reviews(#2521): fix-reviews and fix-bot-comment compute rejected dispositions before the model runs" {
+  local intent block
+  for intent in fix-reviews fix-bot-comment; do
+    block="$(sed -n "/^  ${intent})\$/,/build_and_run \"${intent}\"/p" "$FIX_REVIEWS_SCRIPT")"
+    [[ "$block" == *"export_rejected_dispositions"* ]]
+  done
+}
+
+@test "fix-reviews(#2521): both prompts declare REJECTED_DISPOSITIONS, render it, and map each reason to an answer" {
+  local tmpl vars out
+  for tmpl in fix-reviews fix-bot-comment; do
+    head -1 "$SCRIPT_DIR/prompts/dev-lead/${tmpl}.md" | grep -q 'REJECTED_DISPOSITIONS'
+    vars=$(head -1 "$SCRIPT_DIR/prompts/dev-lead/${tmpl}.md" | sed 's/<!-- VARIABLES: //; s/ -->//' \
+      | tr ',' '\n' | awk '{gsub(/^ +| +$/, ""); if (length) printf "${%s}", $0}')
+    out=$(REJECTED_DISPOSITIONS='- `IC_rejected_marker`' envsubst "$vars" < "$SCRIPT_DIR/prompts/dev-lead/${tmpl}.md")
+    [[ "$out" == *'- `IC_rejected_marker`'* ]]
+    [[ "$out" != *'${REJECTED_DISPOSITIONS}'* ]]
+    [[ "$out" == *'`fixed-unverified:content-no-token-removed`'*'answer `answered`'* ]]
+    [[ "$out" == *'`informational-on-findings`'* ]]
+    [[ "$out" == *'`no-evidence`'* ]]
+    [[ "$out" == *'`out-of-scope-ref-missing`'* ]]
   done
 }
 

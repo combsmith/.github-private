@@ -600,3 +600,24 @@ cdv_reply_needs_response() {
   [[ "$ack_rc" -eq 1 ]] && return 0
   return 1
 }
+
+# cdv_tag_rejected <reply_body> <comment_node_id> <reason>
+#   The body a rejected disposition reply is edited to before the resolver
+#   minimizes it OUTDATED (#2521): <reply_body> with one trailing
+#     <!-- dev-lead:disposition-rejected id=<comment_node_id> reason=<reason> -->
+#   The next pass reads the reason (maintainer_gate_rejected_disposition_facts) and
+#   is told what to answer instead. Without it the retry pass re-posted the same
+#   rejected answer until its attempts ran out. Idempotent: a body that already
+#   carries a rejection marker for that id is echoed unchanged. Returns 1 (echoes
+#   nothing) when the id or reason is malformed, so the caller never writes a
+#   marker the reader cannot parse. Pure.
+cdv_tag_rejected() {
+  local body="${1:-}" cid="${2:-}" reason="${3:-}"
+  [[ "$cid" =~ ^[-A-Za-z0-9_+/=]+$ ]] || return 1
+  [[ "$reason" =~ ^[a-z][a-z0-9:-]*$ ]] || return 1
+  if [[ "$body" == *"<!-- dev-lead:disposition-rejected id=${cid} "* ]]; then
+    printf '%s' "$body"
+    return 0
+  fi
+  printf '%s\n\n<!-- dev-lead:disposition-rejected id=%s reason=%s -->' "$body" "$cid" "$reason"
+}

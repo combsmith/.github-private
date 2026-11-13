@@ -1504,3 +1504,99 @@ _expect_nf_open() { _expect_open "$@"; }
   _expect_nf_open "$bot" "$_SONAR_FAILED_BODY"
   _expect_nf_open '{"login":"sonarqubecloud","__typename":"User"}' "$_SONAR_2467_BODY"
 }
+
+# ────────────────────────────────────────────────────────────────────
+# #2521 — the harness tells the next pass which of its answers the resolver
+# rejected, and why. On .github PR 1503 the retry pass re-cited the same `fixed`
+# sha on four passes; each was rejected `content-no-token-removed`.
+# ────────────────────────────────────────────────────────────────────
+
+# _rej_nodes <comment minimized?> <extra replies json array>: CodeAnt's finding
+# IC_ca and one rejected reply (minimized OUTDATED, tagged) posted at 07:08:23Z.
+_rej_nodes() {
+  jq -cn --argjson m "${1:-false}" --argjson r "${2:-[]}" '
+    [ {id:"IC_ca", author:{login:"codeant-ai", __typename:"Bot"}, authorAssociation:"NONE",
+       body:"1. A valid version component wraps here, so `max_semver` can select a lower release.",
+       createdAt:"2026-11-11T01:30:18Z", lastEditedAt:null, isMinimized:$m,
+       minimizedReason:(if $m then "RESOLVED" else null end)},
+      {id:"IC_rej", author:{login:"don-petry"}, authorAssociation:"OWNER",
+       body:"Fixed in c293899.\n\n<!-- dev-lead:comment-disposition id=IC_ca disposition=fixed sha=c293899b7406de4dc221b3ae14ba2a4a98a5d285 -->\n\n<!-- dev-lead:disposition-rejected id=IC_ca reason=fixed-unverified:content-no-token-removed -->",
+       createdAt:"2026-11-13T07:08:23Z", lastEditedAt:"2026-11-13T07:20:00Z", isMinimized:true, minimizedReason:"OUTDATED"} ] + $r'
+}
+
+@test "#2521: an open comment whose newest reply was rejected is listed with the reason and the rejected answer" {
+  run bash -c "source '$GATE'; maintainer_gate_rejected_dispositions \"\$1\"" _ "$(_rej_nodes)"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r 'length' <<< "$output")" -eq 1 ]
+  [ "$(jq -r '.[0].id' <<< "$output")" = "IC_ca" ]
+  [ "$(jq -r '.[0].login' <<< "$output")" = "codeant-ai" ]
+  [ "$(jq -r '.[0].reason' <<< "$output")" = "fixed-unverified:content-no-token-removed" ]
+  [ "$(jq -r '.[0].disposition' <<< "$output")" = "fixed" ]
+  [ "$(jq -r '.[0].sha' <<< "$output")" = "c293899b7406de4dc221b3ae14ba2a4a98a5d285" ]
+  [ "$(jq -r '.[0].rejectedReplyAt' <<< "$output")" = "2026-11-13T07:08:23Z" ]
+}
+
+@test "#2521: a fresh visible disposition posted after the rejected reply takes the comment off the list" {
+  local fresh
+  fresh=$(jq -cn '[{id:"IC_new", author:{login:"don-petry"}, authorAssociation:"OWNER",
+    body:"The current _semver_gt compares by string.\n<!-- dev-lead:comment-disposition id=IC_ca disposition=answered -->",
+    createdAt:"2026-11-13T09:00:00Z", isMinimized:false, minimizedReason:""}]')
+  run bash -c "source '$GATE'; maintainer_gate_rejected_dispositions \"\$1\"" _ "$(_rej_nodes false "$fresh")"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+}
+
+@test "#2521: a visible disposition OLDER than the rejected reply does not take the comment off the list" {
+  local old
+  old=$(jq -cn '[{id:"IC_old", author:{login:"don-petry"}, authorAssociation:"OWNER",
+    body:"Ack.\n<!-- dev-lead:comment-disposition id=IC_ca disposition=answered -->",
+    createdAt:"2026-11-12T00:00:00Z", isMinimized:false, minimizedReason:""}]')
+  run bash -c "source '$GATE'; maintainer_gate_rejected_dispositions \"\$1\"" _ "$(_rej_nodes false "$old")"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.[0].id' <<< "$output")" = "IC_ca" ]
+}
+
+@test "#2521: a comment minimized RESOLVED is done and never listed" {
+  run bash -c "source '$GATE'; maintainer_gate_rejected_dispositions \"\$1\"" _ "$(_rej_nodes true)"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+}
+
+@test "#2521: the newest of several rejections gives the reason" {
+  local older
+  older=$(jq -cn '[{id:"IC_rej0", author:{login:"don-petry"}, authorAssociation:"OWNER",
+    body:"No finding.\n<!-- dev-lead:comment-disposition id=IC_ca disposition=informational -->\n\n<!-- dev-lead:disposition-rejected id=IC_ca reason=informational-on-findings -->",
+    createdAt:"2026-11-12T09:00:00Z", isMinimized:true, minimizedReason:"OUTDATED"}]')
+  run bash -c "source '$GATE'; maintainer_gate_rejected_dispositions \"\$1\"" _ "$(_rej_nodes false "$older")"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r 'length' <<< "$output")" -eq 1 ]
+  [ "$(jq -r '.[0].reason' <<< "$output")" = "fixed-unverified:content-no-token-removed" ]
+}
+
+@test "#2521: a rejection marker on someone else's minimized comment never counts" {
+  local forged nodes
+  forged=$(jq -cn '[{id:"IC_x", author:{login:"stranger"}, authorAssociation:"NONE",
+    body:"<!-- dev-lead:disposition-rejected id=IC_other reason=no-evidence -->",
+    createdAt:"2026-11-13T08:00:00Z", isMinimized:true, minimizedReason:"SPAM"}]')
+  nodes=$(jq -cn --argjson f "$forged" '[{id:"IC_other", author:{login:"codeant-ai", __typename:"Bot"},
+    authorAssociation:"NONE", body:"finding", createdAt:"2026-11-11T00:00:00Z", isMinimized:false, minimizedReason:null}] + $f')
+  run bash -c "source '$GATE'; maintainer_gate_rejected_dispositions \"\$1\"" _ "$nodes"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+}
+
+@test "#2521: the facts name the comment, its author, the rejected answer and the reason" {
+  run bash -c "source '$GATE'; maintainer_gate_rejected_disposition_facts \"\$1\"" _ "$(_rej_nodes)"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | grep -c .)" -eq 1 ]
+  [[ "$output" == *'`IC_ca` (codeant-ai)'* ]]
+  [[ "$output" == *'`fixed` reply citing `c293899b7406de4dc221b3ae14ba2a4a98a5d285`'* ]]
+  [[ "$output" == *"posted 2026-11-13T07:08:23Z"* ]]
+  [[ "$output" == *'rejected: `fixed-unverified:content-no-token-removed`'* ]]
+}
+
+@test "#2521: unreadable comment data yields no facts and a non-zero status (never a guessed 'none')" {
+  run bash -c "source '$GATE'; maintainer_gate_rejected_disposition_facts 'not json'"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
