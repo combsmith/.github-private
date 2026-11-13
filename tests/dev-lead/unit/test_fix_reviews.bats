@@ -7045,6 +7045,8 @@ _succeed_fix_bot_comment() {
 
   run bash "$FIX_REVIEWS_SCRIPT" 2>&1
 
+  # Script must succeed before checking logs
+  [ "$status" -eq 0 ]
   # R2 (the rejected latest) and R0 (an older post-edit reply) both go OUTDATED,
   # so none of them reads as coverage; the comment is re-opened.
   grep -Eq 'classifier:OUTDATED.*id=R2' "$MINLOG"

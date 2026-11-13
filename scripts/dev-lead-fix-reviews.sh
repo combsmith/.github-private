@@ -2297,11 +2297,19 @@ resolve_dispositioned_comments() {
         # older replies to OUTDATED now, so the replies never stack (#1992).
         local usid
         for usid in "${superseded_ids[@]}"; do
-          if gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' \
-              -f id="$usid" >/dev/null 2>&1; then
+          local sattempt minimized_superseded="false"
+          for sattempt in 1 2 3; do
+            if gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' \
+                -f id="$usid" >/dev/null 2>&1; then
+              minimized_superseded="true"
+              break
+            fi
+            sleep "$sattempt"
+          done
+          if [[ "$minimized_superseded" == "true" ]]; then
             echo "::notice::minimized superseded disposition reply ${usid} OUTDATED (#1992, #2004)"
           else
-            echo "::warning::failed to minimize superseded disposition reply ${usid} OUTDATED"
+            echo "::warning::failed to minimize superseded disposition reply ${usid} OUTDATED after 3 attempts"
           fi
         done
       fi
