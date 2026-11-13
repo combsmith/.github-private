@@ -278,6 +278,37 @@ else fail "compile: a falsy non-string engine must fail" "status=$status: $outpu
 rm -rf "$spec_dir"
 
 # ---------------------------------------------------------------------------
+# Test: the fable family compiles and resolves to claude-fable-5-2 (#2518).
+# aw.sh reads specs from ./.github/workflows, so run it from a scratch dir.
+# ---------------------------------------------------------------------------
+fable_dir=$(mktemp -d)
+mkdir -p "$fable_dir/.github/workflows"
+printf -- '---\nname: t\ntrigger:\n  issues: {}\nengine: claude\npermissions: {}\nmodels:\n  claude: [fable]\n---\nTriage ${ISSUE_TITLE}\n' \
+  > "$fable_dir/.github/workflows/fable-spec.md"
+status=0; output=$(bash "$REPO_ROOT/scripts/aw.sh" compile "$fable_dir/.github/workflows/fable-spec.md" 2>&1) || status=$?
+if [[ $status -eq 0 ]]; then ok "compile: engine claude with models.claude [fable] passes"
+else fail "compile: the fable family must pass" "status=$status: $output"; fi
+mkdir -p "$fable_dir/bin"
+cat > "$fable_dir/bin/claude" <<MOCK
+#!/bin/sh
+printf '%s\n' "\$*" > "$fable_dir/args"
+echo '{"labels":["bug"],"comment":"ok"}'
+MOCK
+chmod +x "$fable_dir/bin/claude"
+status=0
+run_out="$(cd "$fable_dir" && env -u AI_MODELS_CLAUDE -u CLAUDE_FABLE_MODEL_CHAIN \
+  PATH="$fable_dir/bin:$PATH" bash "$REPO_ROOT/scripts/aw.sh" run fable-spec \
+  --fixture "$REPO_ROOT/tests/aw/issue-triage/fixtures/scenario-1-bug.json" --staged 2>&1)" || status=$?
+args="$(cat "$fable_dir/args" 2>/dev/null || true)"
+model="$(printf '%s\n' "$args" | sed -n 's/.*--model \([^ ]*\).*/\1/p')"
+rm -rf "$fable_dir"
+if [[ $status -eq 0 && "$model" == "claude-fable-5-2" ]]; then
+  ok "run: models.claude [fable] calls claude --model claude-fable-5-2"
+else
+  fail "run: the fable family must resolve to claude-fable-5-2" "got status=$status model='$model' args='$args' output='$run_out'"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""
