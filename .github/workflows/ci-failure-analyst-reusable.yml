@@ -81,7 +81,6 @@ jobs:
           echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
           npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
-
       - name: Analyze failure and post comment
         if: steps.pr.outputs.skip == 'false' && steps.idem.outputs.exists == 'false'
         env:
