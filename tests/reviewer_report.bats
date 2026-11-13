@@ -808,6 +808,16 @@ JSON
     | .findings_threads==1 and .findings_body==1 and .findings_raised==2'
 }
 
+@test "body findings: a URL-encoded Codex permalink path matches the decoded inline path (#2527)" {
+  run _normalize_node '{"url":"u","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
+ "reviews":{"nodes":[{"id":"C1","author":{"login":"chatgpt-codex-connector"},"state":"COMMENTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"Here are some automated review suggestions for this pull request.\nhttps://github.com/o/r/blob/0123456789abcdef0123456789abcdef01234567/docs/my%20notes.md#L3\nFix the link"}]},
+ "reviewThreads":{"nodes":[{"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"chatgpt-codex-connector"},"createdAt":"2026-11-10T10:05:00Z","bodyText":"Fix the link","path":"docs/my notes.md","line":3,"originalLine":3,"pullRequestReview":{"id":"C1"},"reactionGroups":[]}]}}]},
+ "comments":{"nodes":[]}}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.[] | select(.kind=="bot_pr" and .bot=="chatgpt-codex-connector")
+    | .findings_threads==1 and .findings_body==0'
+}
+
 @test "body findings: a boilerplate Codex body beside its threads adds nothing (#2527)" {
   run _normalize_node '{"url":"u","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
  "reviews":{"nodes":[{"id":"C1","author":{"login":"chatgpt-codex-connector"},"state":"COMMENTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"💡 Codex Review\nHere are some automated review suggestions for this pull request.\nReviewed commit: 0123456789"}]},

@@ -324,11 +324,18 @@ _NORMALIZE_JQ='
   # GitHub renders from it (<repo>/<path> Lines <a> to <b> in <sha>). Both yield a
   # repository-relative path: the leading repo-name segment (a repo
   # name never contains "/") is stripped from the snippet form, so paths compare exactly.
+  # The permalink path is URL-encoded (a space is %20) while GraphQL paths are not,
+  # so ASCII escapes are decoded; a multi-byte escape is left as it is.
   def codex_location: .captures | { path: .[0].string, from: (.[1].string | tonumber),
                                     to: ((.[2].string // .[1].string) | tonumber) };
+  def url_decode_ascii:
+    gsub("%(?<h>[0-7][0-9A-Fa-f])";
+         .h | ascii_downcase | explode | map(if . >= 97 then . - 87 else . - 48 end)
+         | [.[0] * 16 + .[1]] | implode);
   def codex_locations:
     (.body // "") as $b
-    | [ ($b | match("/blob/[0-9a-f]{7,40}/([^#\\s]+)#L([0-9]+)(?:-L([0-9]+))?"; "g") | codex_location),
+    | [ ($b | match("/blob/[0-9a-f]{7,40}/([^#\\s]+)#L([0-9]+)(?:-L([0-9]+))?"; "g")
+            | codex_location | .path |= url_decode_ascii),
         ($b | match("(\\S+)\\s+Lines? ([0-9]+)(?: to ([0-9]+))?\\s+in\\s+[0-9a-f]{7,40}\\b"; "g")
             | codex_location | .path |= sub("^[^/]*/"; "")) ];
   # Does this inline comment sit on $loc? The same repository-relative path, and an
