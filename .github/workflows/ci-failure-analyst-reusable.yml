@@ -99,7 +99,7 @@ jobs:
           # shellcheck disable=SC2016  # single quotes are intentional for literal chars
           WORKFLOW_NAME="$(printf '%s' "$WORKFLOW_NAME" | sed -E 's/[^a-zA-Z0-9_ -]//g')"
           export WORKFLOW_NAME
-          FAILED_JOBS="$(printf '%s' "$FAILED_JOBS" | sed -E 's/[^a-zA-Z0-9_ \/-]//g')"
+          FAILED_JOBS="$(printf '%s' "$FAILED_JOBS" | sed -E 's/[^a-zA-Z0-9_ \/;-]//g')"
           export FAILED_JOBS
 
           # JSON-encode metadata for safe insertion into JSON context
