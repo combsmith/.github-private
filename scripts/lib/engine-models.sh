@@ -298,9 +298,14 @@ ai_models_fable_deprecation() {
   done
   # One tr subshell to fold to lowercase (${var,,} is Bash 4+).
   all="$(printf '%s' "$all" | tr '[:upper:]' '[:lower:]')"
-  local found=""
+  local found="" d8='[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'
+  # Whole-id matches only (#2518): Fable 5.1 is the bare id, its -YYYYMMDD
+  # snapshot, or either with a [...] context suffix — never a prefix, so a
+  # later claude-fable-5-10 … 5-19 does not warn. $d8 is unquoted to glob.
   case "${all//[[:space:]]/}," in
-    *,claude-fable-5,*|*,claude-fable-5-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9],*|*,claude-fable-5-1*) found=1 ;;
+    *,claude-fable-5,*|*,claude-fable-5-$d8,*) found=1 ;;
+    *,claude-fable-5-1,*|*,claude-fable-5-1-$d8,*) found=1 ;;
+    *,claude-fable-5-1"["*"]",*|*,claude-fable-5-1-$d8"["*"]",*) found=1 ;;
   esac
   [ -n "$found" ] || return 0
   printf '%s' "claude-fable-5 and claude-fable-5-1 are deprecated (#1901): audit/single default to claude-opus-5-5 (chain claude-opus-5-5,claude-opus-4-8,claude-opus-4-7), and claude-fable-5-2 is the preferred Fable. The configured model is still honoured as a stop-gap — repoint it to claude-opus-5-5, or to claude-fable-5-2 where Fable is wanted."
