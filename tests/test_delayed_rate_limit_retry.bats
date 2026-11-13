@@ -37,6 +37,10 @@ setup() {
   export MOCK_BIN FIXTURE_DIR GH_LOG
   export PATH="$MOCK_BIN:$PATH"
   export AGENT_REPO="combsmith/.github-private"
+  # The sweep's comment-gate pre-check (#2530) has its own tests in
+  # test_sweep_stuck_reviews.bats. These marker comments carry no author (live ones
+  # come from donpetry-bot, outside the gate's scope), so it is off here.
+  export SKIP_GATE_HELD=false
 
   cat > "$MOCK_BIN/gh" <<'EOF'
 #!/usr/bin/env bash
