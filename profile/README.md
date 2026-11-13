@@ -10,14 +10,18 @@ standards, and agentic infrastructure.
 | [.github](https://github.com/combsmith/.github) | Organization-wide GitHub configuration and workflows | Shell |
 | [.github-private](https://github.com/combsmith/.github-private) | Org-wide Copilot custom agents and agentic workflow infrastructure | Shell |
 | [ContentTwin](https://github.com/combsmith/ContentTwin) | AI-powered Social Media Agent for small organizations — enterprise-quality social presence at non-profit pricing | Shell |
-| [TalkTerm](https://github.com/combsmith/TalkTerm) | | HTML |
+| [TalkTerm](https://github.com/combsmith/TalkTerm) | | TypeScript |
 | [bmad-bgreat-suite](https://github.com/combsmith/bmad-bgreat-suite) | BMad Operations Suite — SRE and DevOps agents and workflows for the BMad Method ecosystem | Shell |
 | [broodly](https://github.com/combsmith/broodly) | A test implementation of the BMAD method | HTML |
-| [broodminder-export](https://github.com/combsmith/broodminder-export) | Extract all of your data from the BroodMinder API into portable files — resumable, rate-limit-aware. | Python |
+| [broodminder-data](https://github.com/combsmith/broodminder-data) | Extract all of your data from the BroodMinder API into portable files — resumable, rate-limit-aware. | Python |
+| [empower-personal-dashboard](https://github.com/combsmith/empower-personal-dashboard) | | Python |
 | [google-app-scripts](https://github.com/combsmith/google-app-scripts) | A place to share Google AppScripts for personal productivity | JavaScript |
-| [incubator](https://github.com/combsmith/incubator) | Product incubator: pre-product idea Discussions, decision briefs/PRD-lite, and disposable POCs. Ideas graduate to their own product repo once a POC proves out. Front-of-funnel for the .github-private ideation pipeline. | Shell |
+| [incubator](https://github.com/combsmith/incubator) | Product incubator: pre-product idea Discussions, decision briefs/PRD-lite, and disposable POCs. Ideas graduate to their own product repo once a POC proves out. Front-of-funnel for the .github-private ideation pipeline. | Python |
 | [markets](https://github.com/combsmith/markets) | | HTML |
 | [repo-template](https://github.com/combsmith/repo-template) | Org template repository: one-click scaffold for new combsmith repos. Files via 'Use this template'; non-file standards via bootstrap. See epic combsmith/.github-private#964. | Shell |
+| [software-factory](https://github.com/combsmith/software-factory) | | Python |
+| [software-factory-canary](https://github.com/combsmith/software-factory-canary) | Throwaway repo for the Factory's platform trials. Nothing here is depended on. | Shell |
+| [worldchest](https://github.com/combsmith/worldchest) | Automatic backup, sync, restore and versioning for Minecraft Bedrock worlds on kids' devices (not an official Minecraft product) | — |
 
 ## Standards & Practices
 
@@ -31,9 +35,10 @@ Engineering standards live in
 | [`agent-standards`](https://github.com/combsmith/.github/blob/main/standards/agent-standards.md) | Guidelines for building and deploying AI agents | Required Files · Compliance Exemptions · AgentShield CI Workflow · Decision-Making Reusables · BMAD Method Workflows |
 | [`ci-standards`](https://github.com/combsmith/.github/blob/main/standards/ci-standards.md) | CI/CD pipeline conventions | Staged promotion through concentric rings · Action Pinning Policy · Permissions Policy · Required Workflows · Dev-Lead Agent |
 | [`codeowners-standard`](https://github.com/combsmith/.github/blob/main/standards/codeowners-standard.md) | CODEOWNERS file requirements | Team Composition · Required Setup for New Bots · Branch Protection |
+| [`commercial-support-standard`](https://github.com/combsmith/.github/blob/main/standards/commercial-support-standard.md) | Commercial support offering and README guidelines | Canonical README Section · Standard Commercial Offerings & Rate Card · Repository Adoption Guidelines |
 | [`copilot-instructions-standard`](https://github.com/combsmith/.github/blob/main/standards/copilot-instructions-standard.md) | Copilot custom instruction guidelines | Canonical Instruction Files · Required Sections · Content Quality Rules |
 | [`dependabot-policy`](https://github.com/combsmith/.github/blob/main/standards/dependabot-policy.md) | Dependency update and automerge policy | Dependabot Templates · Auto-Merge Workflow · Vulnerability Audit CI Check · CODEOWNERS Approval Timing |
-| [`feature-ideation-sources`](https://github.com/combsmith/.github/blob/main/standards/feature-ideation-sources.md) | Sources and process for feature ideation | AI / ML — Vendor & Lab Primary Sources · Developer Tooling & Platform Changelogs · Security & Compliance · Conferences |
+| [`feature-ideation-sources`](https://github.com/combsmith/.github/blob/main/standards/feature-ideation-sources.md) | Sources and process for feature ideation | AI / ML — Vendor & Lab Primary Sources · Developer Tooling, DevEx & Platform Changelogs · Security & Compliance · Conferences |
 | [`github-settings`](https://github.com/combsmith/.github/blob/main/standards/github-settings.md) | Repository settings baselines | Repository Rulesets · Organization-Level Secrets · GitHub Apps & Integrations · Labels — Standard Set · Compliance Audit Process |
 | [`gitignore-standard`](https://github.com/combsmith/.github/blob/main/standards/gitignore-standard.md) | `.gitignore` management with a two-layer (secrets + ecosystem) model | Two-Layer Model · L1 — Secrets baseline (org-managed, verbatim, required) · L2 — Ecosystem / OS extension · Managed-block markers · Compliance check |
 | [`initiatives-project`](https://github.com/combsmith/.github/blob/main/standards/initiatives-project.md) | Project board for tracking org initiatives | What belongs on the board · Fields · Theme → Initiative · How the auto-add works |
@@ -48,7 +53,8 @@ Engineering standards live in
 Copilot custom agent profiles live in
 [`.github-private/agents/`](https://github.com/combsmith/.github-private/tree/main/agents)
 and are available org-wide from GitHub.com, VS Code, and JetBrains.
-Invoke any agent by typing `@<agent-name>` in a supported surface.
+Invoke an agent by typing `@<agent-name>` in a supported surface, except where its row below
+notes a different invocation.
 
 | Agent | Role |
 |---|---|
@@ -56,6 +62,7 @@ Invoke any agent by typing `@<agent-name>` in a supported surface.
 | [`compliance-auditor`](https://github.com/combsmith/.github-private/blob/main/agents/compliance-auditor.md) | Audits a repository against combsmith org standards (CI, agent config, repo settings, dependabot, push protection). Reports findings and can auto-fix non-breaking compliance gaps. |
 | [`feature-ideator`](https://github.com/combsmith/.github-private/blob/main/agents/feature-ideator.md) | Generates feature ideas and improvements for a repository by analyzing its codebase, issues, discussions, and competitive landscape. Produces actionable feature proposals with effort estimates. |
 | [`pr-reviewer`](https://github.com/combsmith/.github-private/blob/main/agents/pr-reviewer.md) | Multi-tier PR review agent with cascading risk assessment. Classifies PR risk (LOW/MEDIUM/HIGH), runs deep analysis with cross-engine adversarial review, and makes approve/escalate decisions. (Automated event-driven counterpart: [`pr-review-trigger.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/pr-review-trigger.yml).) |
+| [`why-not-approved`](https://github.com/combsmith/.github-private/blob/main/agents/why-not-approved.md) | Explains why pr-review has not approved a combsmith pull request, and what would change that, by running the real pr-review gate chain read-only. Invoke by selecting it in the Copilot agents panel, or run `bash scripts/pr-approval-diagnostic.sh <pr-url>` from `.github-private` (not a bare `@why-not-approved`). |
 
 ## Automated Workflows
 
@@ -75,6 +82,8 @@ These are distinct from the `@mention` Copilot agents above.
 | [`pr-review-trigger.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/pr-review-trigger.yml) | PR review agent — cascading triage → deep → security review on pull requests. (`@mention` counterpart: [`pr-reviewer`](https://github.com/combsmith/.github-private/blob/main/agents/pr-reviewer.md).) |
 | [`release-notes.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/release-notes.yml) | Release-notes agent — drafts Keep-a-Changelog entries from merged PRs and opens a CHANGELOG PR |
 | [`stale-manager.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/stale-manager.yml) | Stale manager agent — warns and closes stale issues/PRs across the org |
+| [`budget-breaker.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/budget-breaker.yml) | Budget breaker — pauses the agent fleet when the fleet reports quota refusals and lifts its own pause at the reported reset; default off, logs the write it would make until armed (#2153) |
+| [`model-ab.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/model-ab.yml) | Manually dispatched Opus 5.5 vs 4.8 held-out A/B + liveness/effort probe |
 
 ## Agentic Frameworks
 
@@ -97,6 +106,7 @@ Scheduled reports and dashboards post as issues or workflow-run summaries for ma
 |---|---|
 | [`actions-fleet-monitor.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/actions-fleet-monitor.yml) | Actions fleet monitor — org-wide workflow token usage and run anomalies |
 | [`auto-rebase-health.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/auto-rebase-health.yml) | Daily auto-rebase health report (issue) — rebase success/failure trends |
+| [`budget-poller.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/budget-poller.yml) | Dry-run Claude budget poller — reads the usage windows twice hourly, logs what the token-budget breaker would do (never sets a variable), and proves the feed is alive (#2029) |
 | [`daily-pr-review-health.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/daily-pr-review-health.yml) | Daily PR-review health check — flags PR-review agent failures as an issue |
 | [`docs-health-check.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/docs-health-check.yml) | Docs health check — flags stale/broken docs as an issue |
 | [`engine-token-liveness.yml`](https://github.com/combsmith/.github-private/blob/main/.github/workflows/engine-token-liveness.yml) | Engine-token liveness monitor — asserts dev-lead/pr-review caller stubs are not failing at the "Engine token preflight" step, and escalates a sustained fleet-wide outage that would otherwise go unalerted (#1587) |
