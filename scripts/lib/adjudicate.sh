@@ -364,7 +364,9 @@ adjudicate_attach() {
 #     request_changes  → decision escalate tagged `.adjudication.decision`, which
 #                        post-pr-review.sh posts as a fix-request
 adjudicate_build_verdict() {
-  local adj="$1" final="$2" rec="$3" sha="$4" prior="$5" outv="$6" meta="${7:-false}" model
+  local adj="$1" final="$2" rec="$3" sha="$4" prior="$5" outv="$6" meta="${7:-}" model
+  # Omitted seventh argument (e.g. the cycle-cap caller): derive from the adjudication JSON.
+  [[ -n "$meta" ]] || meta="$(jq -r 'if .metadata_only == true then "true" else "false" end' "$adj" 2>/dev/null || echo false)"
   [[ "$meta" == "true" ]] || meta=false
   model="$(_adj_field "$rec" model)"
   jq --arg final "$final" --arg sha "$sha" --arg prior "$(_adj_safe "$prior")" \
