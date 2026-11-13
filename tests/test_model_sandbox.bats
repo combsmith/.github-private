@@ -545,7 +545,11 @@ STUB
 
 @test "every model verdict reaches the output channel through post_verdict" {
   local script="$REPO_ROOT/scripts/review-one-pr.sh"
-  [ "$(grep -c 'post_verdict "\$VERDICT_JSON"' "$script")" -eq 3 ]
+  # The three cascade exits post through post_adjudicated_verdict, which hands
+  # both the verdict and any tier-4 fallback to post_verdict.
+  [ "$(grep -c 'post_adjudicated_verdict "\$VERDICT_JSON"' "$script")" -eq 3 ]
+  sed -n '/^post_adjudicated_verdict() {/,/^}/p' "$script" | grep -q 'post_verdict "\$verdict"'
+  [ "$(sed -n '/^post_adjudicated_verdict() {/,/^}/p' "$script" | grep -c 'REVIEW_OUTPUT_CHANNEL')" -eq 0 ]
   run grep -n 'bash "\$REVIEW_OUTPUT_CHANNEL" "\$PR_URL" "\$VERDICT_JSON"' "$script"
   [ "$status" -eq 1 ]
 }

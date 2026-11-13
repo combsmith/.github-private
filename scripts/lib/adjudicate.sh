@@ -146,16 +146,24 @@ adjudicate_validate() {
   ' "$f" >/dev/null 2>&1
 }
 
-# adjudicate_guard <decision> <audit_risk>
-#   Echo the decision after the guardrails: an approve over a security audit that
-#   reported HIGH risk becomes escalate. <audit_risk> is empty when no audit ran.
+# adjudicate_guard <decision> [<risk> ...]
+#   Echo the decision after the guardrails: an approve becomes escalate unless
+#   every given risk is empty, LOW or MEDIUM (any case). Callers pass the security
+#   audit's risk (empty when no audit ran), the escalating verdict's own risk and
+#   Fable's risk, so a HIGH from any of them, or a value the guard does not know,
+#   keeps the PR with a human.
 adjudicate_guard() {
-  local decision="${1:-}" audit_risk="${2:-}"
-  if [ "$decision" = "approve" ] && [ "$audit_risk" = "HIGH" ]; then
-    echo "escalate"
-  else
-    echo "$decision"
+  local decision="${1:-}" r
+  shift || true
+  if [ "$decision" = "approve" ]; then
+    for r in "$@"; do
+      case "$(printf '%s' "$r" | tr '[:lower:]' '[:upper:]')" in
+        ''|LOW|MEDIUM) ;;
+        *) echo "escalate"; return 0 ;;
+      esac
+    done
   fi
+  echo "$decision"
 }
 
 # adjudicate_context_append <ctx_file> <label> <file>
@@ -305,12 +313,13 @@ adjudicate_note() {
     ok)
       line="**Tier 4 (adjudicate):** ran on \`${m:-unknown}\` (trigger: ${t:-unknown}) — decision: **${dw}**; overrode the human escalation: **${yn}**. FINAL_TIER=adjudicate"
       if [ "$g" = "audit-high" ]; then
-        line="$line"$'\n\n'"Fable returned **approve**, but the security audit reported HIGH risk, so the PR still escalates to a human (guardrail)."
+        line="$line"$'\n\n'"Fable returned **approve**, but the escalating verdict, the security audit or Fable itself rated the PR HIGH risk, so it still escalates to a human (guardrail)."
       fi
       ;;
     rate-limited) line="**Tier 4 (adjudicate):** ran on \`${m:-unknown}\` but was rate-limited — falling back to human escalation (no override)." ;;
     invalid-json) line="**Tier 4 (adjudicate):** ran on \`${m:-unknown}\` but returned invalid JSON — falling back to human escalation (no override)." ;;
     engine-unsupported) line="**Tier 4 (adjudicate):** could not run \`${m:-unknown}\`: Fable needs the claude engine — falling back to human escalation (no override)." ;;
+    post-failed) line="**Tier 4 (adjudicate):** ran on \`${m:-unknown}\`, but its verdict could not be posted — falling back to human escalation (no override)." ;;
     context-error) line="**Tier 4 (adjudicate):** could not gather the PR context for \`${m:-unknown}\` — falling back to human escalation (no override)." ;;
     *) line="**Tier 4 (adjudicate):** ran on \`${m:-unknown}\` but errored — falling back to human escalation (no override)." ;;
   esac
@@ -411,7 +420,10 @@ adjudicate_build_verdict() {
 adjudicate_cascade_verdict() {
   local verdict="$1" audit_risk="${2:-}" items="${3:-[]}" diff="${4:-}"
   shift 4 || shift $#
-  local dir ctx out entry raw final guard="" rec meta
+  local dir ctx out entry raw final guard="" rec meta vrisk frisk
+  # The escalating verdict's own risk, read before the file can be replaced. An
+  # unreadable value fails closed in adjudicate_guard.
+  vrisk=$(jq -r '.risk // ""' "$verdict" 2>/dev/null) || vrisk="UNREADABLE"
   # Carry a metadata-only classification from the cascade verdict into a
   # request_changes replacement so the fix-request can re-arm on metadata edits.
   meta=$(jq -r 'if .metadata_only == true then "true" else "false" end' "$verdict" 2>/dev/null || echo false)
@@ -443,7 +455,8 @@ adjudicate_cascade_verdict() {
   fi
   if run_adjudication cascade-escalate "$ctx" "$out"; then
     raw=$(jq -r '.decision' "$out")
-    final=$(adjudicate_guard "$raw" "$audit_risk")
+    frisk=$(jq -r '.risk // ""' "$out" 2>/dev/null) || frisk="UNREADABLE"
+    final=$(adjudicate_guard "$raw" "$audit_risk" "$vrisk" "$frisk")
     [[ "$raw" != "$final" ]] && guard="audit-high"
     if [[ "$final" == "approve" ]] || [[ "$final" == "request_changes" ]]; then
       rec=$(adjudicate_record_json cascade-escalate "$ADJ_MODEL" ok "$final" true "")

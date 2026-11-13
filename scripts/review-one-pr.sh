@@ -134,11 +134,44 @@ maybe_adjudicate_verdict() {
   risk=$(jq -r '.risk // ""' "$verdict" 2>/dev/null || true)
   if adjudicate_escalates_to_human "$decision" "$risk"; then
     if [[ "${DRY_RUN:-false}" != "true" ]]; then
+      # Keep the escalation: if Fable's replacement cannot be posted,
+      # post_adjudicated_verdict falls back to it.
+      cp "$verdict" "$verdict.pre-adjudicate" 2>/dev/null || true
       adjudicate_cascade_verdict "$verdict" "$audit_risk" "$PR_ITEMS" \
         /tmp/cascade/adjudicate-diff.txt ${ADJ_CONTEXT_FILES[@]+"${ADJ_CONTEXT_FILES[@]}"}
     fi
   fi
   return 0
+}
+
+# adj_head_moved — 0 when the PR's live head is readable and differs from the
+# reviewed one. A post that failed because the head moved needs no human: the new
+# head gets its own review.
+adj_head_moved() {
+  local live
+  live=$(gh pr view "$PR_URL" --json headRefOid --jq .headRefOid 2>/dev/null) || return 1
+  [[ -n "$live" && "$live" != "$PR_HEAD_SHA" ]]
+}
+
+# post_adjudicated_verdict <verdict_file> — post_verdict, but when tier 4 replaced
+# a human escalation and the replacement does not post (a refused self-approval,
+# a failed write), post the original escalation instead, so the PR still reaches
+# a human. Returns the status of what was posted last.
+post_adjudicated_verdict() {
+  local verdict="$1" orig="$1.pre-adjudicate" rc=0 rec
+  post_verdict "$verdict" || rc=$?
+  if [[ "$rc" -ne 0 && "${FINAL_TIER:-}" == "adjudicate" && -s "$orig" ]] && ! adj_head_moved; then
+    echo "::warning::[tier4] the adjudicated verdict did not post (rc=$rc) — escalating to a human instead"
+    rec=$(adjudicate_record_json cascade-escalate "${ADJ_MODEL:-}" post-failed "" false "")
+    adjudicate_log_line "$rec"
+    cp "$orig" "$verdict"
+    adjudicate_attach "$verdict" "$rec" || true
+    export FINAL_TIER="adjudicate-fallback"
+    rc=0
+    post_verdict "$verdict" || rc=$?
+  fi
+  rm -f "$orig"
+  return "$rc"
 }
 
 # adjudicate_max_cycles — tier 4 on the review-cycle cap. Fable sees the diff and
@@ -149,7 +182,7 @@ maybe_adjudicate_verdict() {
 adjudicate_max_cycles() {
   local ctx="/tmp/cascade/adjudicate-context.md" out="/tmp/cascade/adjudicate.json"
   local prior="/tmp/cascade/adjudicate-prior-reviews.md" diff="/tmp/cascade/adjudicate-diff.txt"
-  local verdict="/tmp/cascade/adjudicate-verdict.json" raw final guard="" audit_risk="" rec post_rc=0
+  local verdict="/tmp/cascade/adjudicate-verdict.json" raw final guard="" audit_risk="" rec post_rc=0 frisk
   mkdir -p /tmp/cascade
   : > "$ctx"
   rm -f "$diff" "$diff.full"
@@ -175,7 +208,8 @@ adjudicate_max_cycles() {
   echo "    [tier4] review-cycle cap reached — adjudicating before escalating to a human"
   if run_adjudication max-cycles "$ctx" "$out"; then
     raw=$(jq -r '.decision' "$out")
-    final=$(adjudicate_guard "$raw" "$audit_risk")
+    frisk=$(jq -r '.risk // ""' "$out" 2>/dev/null) || frisk="UNREADABLE"
+    final=$(adjudicate_guard "$raw" "$audit_risk" "$frisk")
     [[ "$raw" != "$final" ]] && guard="audit-high"
     if [[ "$final" == "approve" ]] || [[ "$final" == "request_changes" ]]; then
       rec=$(adjudicate_record_json max-cycles "$ADJ_MODEL" ok "$final" true "")
@@ -183,8 +217,19 @@ adjudicate_max_cycles() {
       export FINAL_TIER="adjudicate"
       adjudicate_log_line "$rec"
       post_verdict "$verdict" || post_rc=$?
-      echo "    [done]  $PR_URL"
-      exit "$post_rc"
+      # A replacement that did not post must not strand the PR: unless the head
+      # moved (the new head gets its own review), fall through to the human
+      # escalation below.
+      if [[ "$post_rc" -eq 0 ]] || adj_head_moved; then
+        echo "    [done]  $PR_URL"
+        exit "$post_rc"
+      fi
+      echo "::warning::[tier4] the adjudicated verdict did not post (rc=$post_rc) — escalating to a human instead"
+      export FINAL_TIER="adjudicate-fallback"
+      rec=$(adjudicate_record_json max-cycles "$ADJ_MODEL" post-failed "" false "")
+      adjudicate_log_line "$rec"
+      CAP_ADJ_NOTE=$(adjudicate_note "$rec" "$PR_HEAD_SHA")
+      return 0
     fi
     rec=$(adjudicate_record_json max-cycles "$ADJ_MODEL" ok escalate false "$guard")
   else
@@ -1026,6 +1071,8 @@ if ! [[ "$MAX_CYCLES" =~ ^[0-9]+$ ]]; then
   echo "::warning:: MAX_REVIEW_CYCLES is not a valid decimal number: $MAX_CYCLES (using default: 3)"
   MAX_CYCLES="3"
 fi
+# Normalize to base 10: [[ -ge ]] reads a leading-zero operand (08, 010) as octal.
+MAX_CYCLES=$((10#$MAX_CYCLES))
 echo "    review cycle: $REVIEW_CYCLE (max: $MAX_CYCLES)"
 
 # Escalation handling (issue #467). Once a PR is escalated to a human, the
@@ -1670,7 +1717,7 @@ if [ "$TRIAGE_ESCALATE" = "false" ]; then
   # review (#1754).
   post_rc=0
   maybe_adjudicate_verdict "$VERDICT_JSON"
-  post_verdict "$VERDICT_JSON" || post_rc=$?
+  post_adjudicated_verdict "$VERDICT_JSON" || post_rc=$?
   echo "    [done]  $PR_URL"
   exit "$post_rc"
 fi
@@ -1962,7 +2009,7 @@ if [ "$COMBINED_ESCALATE" != "true" ]; then
   # review (#1754).
   post_rc=0
   maybe_adjudicate_verdict "$VERDICT_JSON"
-  post_verdict "$VERDICT_JSON" || post_rc=$?
+  post_adjudicated_verdict "$VERDICT_JSON" || post_rc=$?
   echo "    [done]  $PR_URL"
   exit "$post_rc"
 fi
@@ -2042,6 +2089,6 @@ duck_skip_note "$VERDICT_JSON" "$DUCK_SKIP_REASON"
 # review (#1754).
 post_rc=0
 maybe_adjudicate_verdict "$VERDICT_JSON" "$AUDIT_RISK"
-post_verdict "$VERDICT_JSON" || post_rc=$?
+post_adjudicated_verdict "$VERDICT_JSON" || post_rc=$?
 echo "    [done]  $PR_URL"
 exit "$post_rc"

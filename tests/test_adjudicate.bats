@@ -126,6 +126,28 @@ write_json() { # <file> <json>
   [ "$output" = "approve" ]
 }
 
+@test "guard: approve is blocked when ANY given risk is HIGH, not only the audit's" {
+  # adjudicate_guard <decision> <audit_risk> <verdict_risk> <fable_risk>: a triage or
+  # tier-2 escalation rated HIGH runs no audit, so its own risk must still block.
+  run adjudicate_guard approve "" HIGH LOW
+  [ "$output" = "escalate" ]
+  run adjudicate_guard approve "" LOW HIGH
+  [ "$output" = "escalate" ]
+  run adjudicate_guard approve LOW MEDIUM LOW
+  [ "$output" = "approve" ]
+}
+
+@test "guard: a lowercase, unknown or unreadable risk blocks an approve (fail closed)" {
+  run adjudicate_guard approve high
+  [ "$output" = "escalate" ]
+  run adjudicate_guard approve "" CRITICAL
+  [ "$output" = "escalate" ]
+  run adjudicate_guard approve "" UNREADABLE LOW
+  [ "$output" = "escalate" ]
+  run adjudicate_guard approve "" low medium
+  [ "$output" = "approve" ]
+}
+
 @test "guard: request_changes and escalate pass through unchanged" {
   run adjudicate_guard request_changes HIGH
   [ "$output" = "request_changes" ]
@@ -343,7 +365,7 @@ SH
   local rec note
   rec=$(adjudicate_record_json cascade-escalate claude-fable-5-2 ok escalate false audit-high)
   note=$(adjudicate_note "$rec" "$SHA")
-  [[ "$note" == *"security audit reported HIGH"* ]]
+  [[ "$note" == *"HIGH risk, so it still escalates to a human (guardrail)"* ]]
   [[ "$note" == *"overrode the human escalation: **no**"* ]]
 }
 
@@ -432,6 +454,35 @@ cascade_setup() {
   [ "$(jq -r .adjudication.decision "$V")" = "escalate" ]
   [ "$(jq -r .adjudication.guard "$V")" = "audit-high" ]
   [ "$(jq -r .adjudication.overrode "$V")" = "false" ]
+}
+
+@test "cascade guardrail: Fable approve over a HIGH-risk escalation with no audit still escalates" {
+  # A triage or tier-2 verdict rated HIGH reaches tier 4 without a security audit.
+  cascade_setup
+  write_json "$V" '{"decision":"escalate","risk":"HIGH","summary":"cascade unsure","findings":[],"body":"b"}'
+  adjudicate_cascade_verdict "$V" "" '[]' "$DIFF" > /dev/null 2>&1
+  [ "$(jq -r .decision "$V")" = "escalate" ]
+  [ "$(jq -r .risk "$V")" = "HIGH" ]
+  [ "$(jq -r .adjudication.guard "$V")" = "audit-high" ]
+  [ "$(jq -r .adjudication.overrode "$V")" = "false" ]
+  [ "$FINAL_TIER" = "audit" ]
+}
+
+@test "cascade guardrail: Fable approving at HIGH risk still escalates" {
+  cascade_setup
+  export STUB_JSON='{"decision":"approve","risk":"HIGH","summary":"ok but risky","findings":[]}'
+  adjudicate_cascade_verdict "$V" "" '[]' "$DIFF" > /dev/null 2>&1
+  [ "$(jq -r .decision "$V")" = "escalate" ]
+  [ "$(jq -r .adjudication.guard "$V")" = "audit-high" ]
+}
+
+@test "note: a verdict that could not be posted says so and falls back" {
+  local rec note
+  rec=$(adjudicate_record_json cascade-escalate claude-fable-5-2 post-failed "" false "")
+  note=$(adjudicate_note "$rec" "$SHA")
+  [[ "$note" == *"outcome=post-failed decision=none overrode=false"* ]]
+  [[ "$note" == *"could not be posted"* ]]
+  [[ "$note" == *"falling back to human escalation"* ]]
 }
 
 @test "cascade: Fable request_changes becomes a fix-request verdict" {

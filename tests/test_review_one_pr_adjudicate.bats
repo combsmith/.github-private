@@ -51,6 +51,10 @@ if [ "$1" = "api" ]; then
   case "$path" in
     */pulls/*/reviews)
       if [ "$method" = "POST" ]; then
+        if [ -n "${FAIL_REVIEW_POST:-}" ]; then
+          echo "Unprocessable Entity: $FAIL_REVIEW_POST" >&2
+          exit 1
+        fi
         cat > "$POSTED_REVIEW"
         printf '{"id":1,"state":"APPROVED","commit_id":"%s"}' "$FIXED_SHA"
       else
@@ -115,7 +119,7 @@ CEOF
   export LABEL_RETRY_DELAY=0 MQ_READ_ATTEMPTS=1 MQ_READ_RETRY_DELAY_SEC=0
   # A cap of 0 makes the cycle cap fire on the first pass (REVIEW_CYCLE 0 >= 0).
   export MAX_REVIEW_CYCLES=0
-  unset FORCE_REVIEW PR_REVIEW_ADJUDICATE CLAUDE_MODE
+  unset FORCE_REVIEW PR_REVIEW_ADJUDICATE CLAUDE_MODE FAIL_REVIEW_POST
 }
 
 write_snapshot() { # <comments-json>
@@ -158,6 +162,30 @@ EOF
   jq -r .body "$POSTED_REVIEW" | grep -q "decision=approved"
   jq -r .body "$POSTED_REVIEW" | grep -q "pr-review-agent adjudicate v1 sha=$FIXED_SHA trigger=max-cycles outcome=ok decision=approve overrode=true"
   ! grep -q -- '--add-label needs-human-review' "$GH_LOG" || false
+}
+
+@test "Fable approve at the cap that fails to post still escalates to a human" {
+  # A refused or failed approval write must not strand the PR with no marker and
+  # no label: tier 4 falls back to the human escalation it replaced.
+  export PR_REVIEW_ADJUDICATE=true CLAUDE_MODE=approve FAIL_REVIEW_POST="Can not approve your own pull request"
+  run bash "$REVIEW_SCRIPT" "$PR_URL"
+  echo "$output" >&2; cat "$POSTED_COMMENTS" >&2
+  [ "$status" -eq 101 ]
+  [[ "$output" == *"did not post"* ]]
+  grep -q '<!-- pr-review-agent escalation -->' "$POSTED_COMMENTS"
+  grep -q 'outcome=post-failed' "$POSTED_COMMENTS"
+  grep -q 'needs-human-review' "$GH_LOG"
+}
+
+@test "MAX_REVIEW_CYCLES is read as decimal even when zero-padded" {
+  # [[ -ge ]] would read 08 as invalid octal and 010 as 8.
+  grep -A3 'MAX_REVIEW_CYCLES is not a valid decimal number' "$REVIEW_SCRIPT" | grep -q 'fi'
+  grep -qF 'MAX_CYCLES=$((10#$MAX_CYCLES))' "$REVIEW_SCRIPT"
+  export MAX_REVIEW_CYCLES=00
+  run bash "$REVIEW_SCRIPT" "$PR_URL"
+  echo "$output" >&2
+  [ "$status" -eq 101 ]
+  [[ "$output" == *"max: 0)"* ]]
 }
 
 @test "Fable request_changes at the cap posts a fix-request, not an escalation" {
