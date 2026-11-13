@@ -7,7 +7,7 @@
   "isDraft": false,
   "author": {"login": "alice"},
   "reviews": {"nodes": [
-    {"author": {"login": "copilot-pull-request-reviewer"}, "state": "COMMENTED", "submittedAt": "2026-07-10T10:03:06Z", "bodyText": "Looks mostly good."},
+    {"author": {"login": "copilot-pull-request-reviewer"}, "state": "COMMENTED", "submittedAt": "2026-07-10T10:03:06Z", "bodyText": "Pull request overview\nCopilot reviewed 2 out of 2 changed files in this pull request and generated 1 comment."},
     {"author": {"login": "gemini-code-assist"}, "state": "APPROVED", "submittedAt": "2026-07-10T10:00:50Z", "bodyText": "LGTM"},
     {"author": {"login": "coderabbitai"}, "state": "COMMENTED", "submittedAt": "2026-07-10T10:30:00Z", "bodyText": "Review limit reached — you have used up your prepaid credits."},
     {"author": {"login": "alice"}, "state": "APPROVED", "submittedAt": "2026-07-10T11:00:00Z", "bodyText": "human ok"}

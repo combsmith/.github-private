@@ -49,6 +49,10 @@ Every provider takes the same six keys, one per task:
 | `single` | single-reviewer mode |
 | `duck` | the model used when this provider is the rubber duck (one model) |
 
+`AI_MODELS_CLAUDE` also takes `fable`, the model `ai_model_for_family fable`
+returns (one model). No engine task runs it; see
+[Model selection](#model-selection--name-a-family-never-pin-a-version).
+
 `duck` takes one model on every provider. Copilot takes one model for every key,
 because its GitHub Models client has no chain. A key limited to one model that is
 given several warns and uses the first.
@@ -63,6 +67,7 @@ Defaults:
 | `action` | `claude-sonnet-5-5,claude-sonnet-5,claude-opus-5-5` | `gemini-3.8-flash,gemini-3.1-pro-preview` | `openai/o4-mini` |
 | `single` | `claude-opus-5-5,claude-opus-4-8,claude-opus-4-7` | `gemini-3.1-pro-preview,gemini-3.8-flash` | `openai/o4-mini` |
 | `duck` | `claude-sonnet-5-5` | the first `triage` model | the `triage` model |
+| `fable` | `claude-fable-5-2` | — | — |
 
 Example, Claude with two tasks changed (the others keep their defaults):
 
@@ -102,7 +107,7 @@ example `deep: opus 5.5 [opus 4.8, sonnet 5.5]`.
 
 The org standard (#1979, companion
 [`combsmith/.github#1199`](https://github.com/combsmith/.github/issues/1199)):
-callers name a model **family** — `opus`, `sonnet`, or `haiku` — and let the
+callers name a model **family** — `opus`, `sonnet`, `haiku`, or `fable` — and let the
 resolver return the current concrete id. A model swap is then one edit to the
 chains above, not a hunt for hard-coded ids across the tree.
 
@@ -116,6 +121,15 @@ the chains stay the single source of truth:
 | `opus` | `deep` |
 | `sonnet` | `action` |
 | `haiku` | `triage` |
+| `fable` | none — the `AI_MODELS_CLAUDE` key `fable` |
+
+`fable` names no engine tier: no tier defaults to Fable (audit and single stay on
+opus 5.5, #1901), so it runs only where a caller names the family. The one caller in
+PR review is the opt-in tier 4 "adjudicate" (below). It resolves to
+`CLAUDE_FABLE_MODEL_CHAIN`'s first model when set, else the `fable=` entry of
+`AI_MODELS_CLAUDE` (one model), else the default `claude-fable-5-2` — Fable 5.2,
+the preferred Fable. A chain that still names
+`claude-fable-5` or `claude-fable-5-1` is honoured but warns once per run.
 
 Overrides are honoured with the same precedence engine.sh uses: the per-tier
 `CLAUDE_<TIER>_MODEL_CHAIN` env first, then `AI_MODELS_CLAUDE`, then the built-in
@@ -191,6 +205,47 @@ table are allow-listed.
 - **Model chains inside a provider** (for example Claude's deep tier
   `claude-opus-5-5 → claude-opus-4-8 → claude-sonnet-5-5`) are walked before any
   cross-provider fallback. Set them with `AI_MODELS_*` (above).
+
+## Tier 4: adjudicate (Fable second opinion, opt-in)
+
+PR review can ask Fable for a second opinion before it hands a PR to a human
+(#2495). Tier 4 runs **only** when the cascade's verdict would escalate to a human
+(`decision=escalate` that does not qualify for an automated fix-request) or the
+review-cycle cap (`MAX_REVIEW_CYCLES`) is reached. Fable's `approve` or
+`request_changes` replaces the escalation; only a confirmed `escalate` goes on to
+`needs-human-review` and the CODEOWNERS request. Tier 4 is off by default.
+
+| Goal | Set |
+|---|---|
+| Turn tier 4 on | repo variable `PR_REVIEW_ADJUDICATE=true` |
+| Turn tier 4 off | delete the variable, or set it to anything but `true` |
+| Run tier 4 on a different Fable | `AI_MODELS_CLAUDE=…; fable=<model>` (or `CLAUDE_FABLE_MODEL_CHAIN`) |
+
+```bash
+gh variable set PR_REVIEW_ADJUDICATE --body true --repo combsmith/.github-private   # on
+gh variable delete PR_REVIEW_ADJUDICATE --repo combsmith/.github-private             # off
+```
+
+These commands set the variable for this repository's own runs only. `pr-review.yml`
+can be called as a reusable workflow, and a called workflow reads `vars.*` from the
+**caller's** repository. A calling repository that has not set `PR_REVIEW_ADJUDICATE`
+keeps the `false` default only when neither a repository-level nor an applicable organization-level variable exists, so tier 4 does not run for its PRs, with no error. Set the
+variable in each calling repository, or as an organization-level variable those
+repositories can read.
+
+- **Model.** `ai_model_for_family fable` resolves the model (default
+  `claude-fable-5-2`). Tier 4 never hard-pins an id. It needs the claude engine. With
+  any other engine it is skipped, and the PR escalates as before.
+- **Cost and quota.** Fable runs on the shared subscription quota, so watch the
+  quota, not dollars. Volume is the escalation rate: about 1–2 PRs a day across the
+  org.
+- **Token records.** Each run is recorded in `TOKEN_LOG_FILE` under tier
+  `adjudicate`, with the resolved model id.
+- **Failures.** A rate limit, an error, or output that is not the JSON contract
+  falls back to today's human escalation. Tier 4 never approves by default.
+- **Code.** The helpers are in `scripts/lib/adjudicate.sh` and the prompt is
+  `prompts/adjudicate.md`. Guardrails and posting are described in
+  [`docs/pr-review-agent/pr-review-agent.md`](pr-review-agent/pr-review-agent.md#tier-4-adjudicate).
 
 ## Model isolation in PR review
 

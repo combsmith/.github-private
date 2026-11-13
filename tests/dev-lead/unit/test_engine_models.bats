@@ -9,7 +9,7 @@ LIB="$SCRIPT_DIR/scripts/lib/engine-models.sh"
 setup() {
   unset AI_MODELS_CLAUDE AI_MODELS_GEMINI AI_MODELS_COPILOT AI_MODELS_PROBLEM_REPORTED
   unset CLAUDE_TRIAGE_MODEL_CHAIN CLAUDE_DEEP_MODEL_CHAIN CLAUDE_AUDIT_MODEL_CHAIN
-  unset CLAUDE_ACTION_MODEL_CHAIN CLAUDE_SINGLE_MODEL_CHAIN
+  unset CLAUDE_ACTION_MODEL_CHAIN CLAUDE_SINGLE_MODEL_CHAIN CLAUDE_FABLE_MODEL_CHAIN
   unset GEMINI_FLASH_MODEL GEMINI_PRO_MODEL GEMINI_FLASH_MODEL_CHAIN GEMINI_PRO_MODEL_CHAIN
   unset COPILOT_API_MODEL COPILOT_API_MODEL_DEFAULTED AI_ENGINES AI_DUCK_ENGINE AI_DUCK_MODEL GEMINI_AVAILABLE
   # shellcheck source=../../../scripts/lib/engine-models.sh
@@ -39,11 +39,15 @@ _engine() {
   [ -z "$(ai_models_problems)" ]
 }
 
-@test "keys: every provider takes triage, deep, audit, action, single and duck" {
+@test "keys: every provider takes triage, deep, audit, action, single and duck; Claude also fable" {
   local p
-  for p in claude gemini copilot; do
+  for p in gemini copilot; do
     [ "$(_ai_models_keys "$p")" = "triage deep audit action single duck" ]
   done
+  [ "$(_ai_models_keys claude)" = "triage deep audit action single duck fable" ]
+  export AI_MODELS_GEMINI="fable=gemini-x"
+  run ai_models_problems
+  [[ "$output" == *"AI_MODELS_GEMINI: unknown key 'fable'"* ]]
   export AI_MODELS_GEMINI="flash=gemini-f1; pro=gemini-p1" AI_MODELS_COPILOT="model=openai/gpt-5-mini"
   [ "$(ai_models_chain gemini triage)" = "gemini-3.8-flash,gemini-3.1-pro-preview" ]
   [ "$(ai_models_chain copilot triage)" = "openai/o4-mini" ]
@@ -462,10 +466,11 @@ STUB
   [ "$output" = "0" ]
 }
 
-# ── Fable 5 deprecation warning (#1901) ─────────────────────────────────────────
-# Fable 5 is deprecated: audit/single now default to claude-opus-5-5. A chain that
-# still NAMES a claude-fable-* model (via AI_MODELS_CLAUDE or a per-tier
-# CLAUDE_<TIER>_MODEL_CHAIN) is still HONOURED as a stop-gap, but warns once.
+# ── Fable 5 / 5.1 deprecation warning (#1901) ───────────────────────────────────
+# Fable 5 and 5.1 are deprecated: audit/single default to claude-opus-5-5 and
+# claude-fable-5-2 is the preferred Fable. A chain that still NAMES claude-fable-5
+# or claude-fable-5-1 (via AI_MODELS_CLAUDE or a per-tier CLAUDE_<TIER>_MODEL_CHAIN)
+# is still HONOURED as a stop-gap, but warns once; claude-fable-5-2 never warns.
 
 @test "fable-deprecation: detector fires for a configured fable chain, silent by default" {
   source "$LIB"
@@ -476,6 +481,98 @@ STUB
   unset AI_MODELS_CLAUDE
   export CLAUDE_SINGLE_MODEL_CHAIN="claude-fable-5"
   [[ "$(ai_models_fable_deprecation)" == *"claude-fable"* ]]
+}
+
+@test "fable-deprecation: Fable 5.1 warns, Fable 5.2 (the preferred Fable) does not" {
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-1,claude-opus-5-5"
+  [[ "$(ai_models_fable_deprecation)" == *"claude-fable-5-2"* ]]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-2,claude-opus-5-5"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  # Boundary: a suffixed 5-1 id still warns; a suffixed 5-2 id stays silent.
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-1-20261001"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-2-20261201"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  unset CLAUDE_AUDIT_MODEL_CHAIN
+  export AI_MODELS_CLAUDE="audit=claude-fable-5-2,claude-opus-5-5; fable=claude-fable-5-2"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  # A stale fable= key, or an old Fable on a later newline-separated entry, warns.
+  export AI_MODELS_CLAUDE="fable=claude-fable-5"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  export AI_MODELS_CLAUDE=$'deep=claude-opus-5-5\nsingle=CLAUDE-FABLE-5-1'
+  [ -n "$(ai_models_fable_deprecation)" ]
+}
+
+@test "fable-deprecation: CLAUDE_FABLE_MODEL_CHAIN direct override warns for old Fable only" {
+  source "$LIB"
+  export CLAUDE_FABLE_MODEL_CHAIN="claude-fable-5-1"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_FABLE_MODEL_CHAIN="claude-fable-5-2"
+  [ -z "$(ai_models_fable_deprecation)" ]
+}
+
+# The 5-1 match is anchored to the whole id (#2518): a plain prefix match would
+# also flag a future claude-fable-5-10 … 5-19.
+@test "fable-deprecation: claude-fable-5-1 exactly warns" {
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-1"
+  [ -n "$(ai_models_fable_deprecation)" ]
+}
+
+@test "fable-deprecation: claude-fable-5-1-YYYYMMDD warns" {
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-1-20261001,claude-opus-5-5"
+  [ -n "$(ai_models_fable_deprecation)" ]
+}
+
+@test "fable-deprecation: claude-fable-5-1 with a [...] context suffix warns" {
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-1[1m]"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-opus-5-5,claude-fable-5-1-20261001[1m]"
+  [ -n "$(ai_models_fable_deprecation)" ]
+}
+
+@test "fable-deprecation: claude-fable-5-10 (and other 5-1x ids) stay silent" {
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-10"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-19,claude-opus-5-5"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-10[1m]"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-1x"
+  [ -z "$(ai_models_fable_deprecation)" ]
+}
+
+@test "fable-deprecation: claude-fable-5-2 stays silent" {
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-2"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-2[1m]"
+  [ -z "$(ai_models_fable_deprecation)" ]
+}
+
+@test "fable-deprecation: AI_MODELS_CLAUDE is read the way the parser honours it" {
+  # An unknown key is ignored by the parser, so it does not warn.
+  export AI_MODELS_CLAUDE="unknown=claude-fable-5"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  # A padded id is trimmed and used by the parser, so it warns.
+  export AI_MODELS_CLAUDE="fable= claude-fable-5"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  # A date-suffixed Fable 5 warns; a date-suffixed Fable 5.2 does not.
+  export AI_MODELS_CLAUDE="audit=claude-fable-5-20260101"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  export AI_MODELS_CLAUDE="audit=claude-fable-5-2-20261201"
+  [ -z "$(ai_models_fable_deprecation)" ]
+}
+
+@test "fable-deprecation: an AI_MODELS_CLAUDE entry superseded by its tier env does not warn" {
+  # engine.sh uses CLAUDE_AUDIT_MODEL_CHAIN over AI_MODELS_CLAUDE's audit= entry.
+  export AI_MODELS_CLAUDE="audit=claude-fable-5"
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-opus-5-5"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  # A tier with no env override still warns from AI_MODELS_CLAUDE.
+  export AI_MODELS_CLAUDE="audit=claude-fable-5; single=claude-fable-5-1"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  # duck has no env override, so its AI_MODELS_CLAUDE entry is always checked.
+  export AI_MODELS_CLAUDE="duck=claude-fable-5"
+  [ -n "$(ai_models_fable_deprecation)" ]
 }
 
 @test "fable-deprecation: engine.sh warns once via AI_MODELS_CLAUDE and still honours the model" {
@@ -493,7 +590,7 @@ STUB
 
 @test "fable-deprecation: warns once per run (CLAUDE_AUDIT_MODEL_CHAIN), suppressed by the flag" {
   run bash -c "export REVIEW_ENGINE=claude CLAUDE_AUDIT_MODEL_CHAIN='claude-fable-5,claude-opus-4-8'
-    source '$SCRIPT_DIR/scripts/engine.sh' 2>&1 >/dev/null | grep -c 'claude-fable-\* .*deprecated'"
+    source '$SCRIPT_DIR/scripts/engine.sh' 2>&1 >/dev/null | grep -c 'claude-fable-5-1 are deprecated'"
   [ "$output" = "1" ]
   run bash -c "export REVIEW_ENGINE=claude CLAUDE_AUDIT_MODEL_CHAIN='claude-fable-5,claude-opus-4-8' AI_MODELS_FABLE_WARNED=1
     source '$SCRIPT_DIR/scripts/engine.sh' 2>&1 >/dev/null | grep -c 'deprecated'"
@@ -521,6 +618,58 @@ STUB
   [[ "$deep" == claude-opus-* ]]
   [[ "$action" == claude-sonnet-* ]]
   [[ "$triage" == claude-haiku-* ]]
+}
+
+@test "family: fable resolves to Fable 5.2 by default, overridable like the others" {
+  [ "$(ai_model_for_family fable)" = "$(ai_models_default claude fable)" ]
+  [ "$(ai_model_for_family fable)" = "claude-fable-5-2" ]
+  export AI_MODELS_CLAUDE="fable=claude-fable-5-1"
+  [ "$(ai_model_for_family fable)" = "claude-fable-5-1" ]
+  export CLAUDE_FABLE_MODEL_CHAIN="claude-fable-5"
+  [ "$(ai_model_for_family fable)" = "claude-fable-5" ]
+}
+
+# decision-brief.yml, idea-triage.yml and initiative-planner.yml each resolve the
+# dispatch model with their own copy of the same `case "$want" in … esac` block
+# (#2518). Nothing shares it, so this keeps the three copies identical.
+_resolve_model_case() {
+  awk '
+    /- name: Resolve model$/ { inblk = 1; next }
+    inblk && /- name: / { exit }
+    inblk && /case "\$want" in/ { incase = 1 }
+    incase { print }
+    incase && /^[[:space:]]*esac[[:space:]]*$/ { exit }
+  ' "$1"
+}
+
+@test "family: the Resolve model case blocks in the three workflows are identical" {
+  local wf="$SCRIPT_DIR/.github/workflows" ref f blk
+  ref="$(_resolve_model_case "$wf/decision-brief.yml")"
+  # Sanity: the block was found, and covers every family.
+  [[ "$ref" == *'case "$want" in'* ]]
+  [[ "$ref" == *'opus|sonnet|haiku|fable)'*'ai_model_for_family'* ]]
+  [[ "$ref" == *esac ]]
+  for f in idea-triage.yml initiative-planner.yml; do
+    blk="$(_resolve_model_case "$wf/$f")"
+    if [ "$blk" != "$ref" ]; then
+      echo "Resolve model case block in $f differs from decision-brief.yml:"
+      diff <(printf '%s\n' "$ref") <(printf '%s\n' "$blk") || true
+      return 1
+    fi
+  done
+}
+
+@test "family: the Resolve model sync check catches a drifted block" {
+  local wf="$SCRIPT_DIR/.github/workflows" drifted="$BATS_TEST_TMPDIR/drifted.yml"
+  sed 's/opus|sonnet|haiku|fable)/opus|sonnet|haiku)/' "$wf/idea-triage.yml" > "$drifted"
+  [ "$(_resolve_model_case "$drifted")" != "$(_resolve_model_case "$wf/decision-brief.yml")" ]
+}
+
+@test "problems: a fable key given several models warns and keeps the first" {
+  export AI_MODELS_CLAUDE="fable=claude-fable-5-2,claude-opus-5-5"
+  [ "$(ai_models_chain claude fable)" = "claude-fable-5-2" ]
+  run ai_models_problems
+  [[ "$output" == *"'fable' takes one model"* ]]
 }
 
 @test "family: AI_MODELS_CLAUDE override wins (single source of truth)" {

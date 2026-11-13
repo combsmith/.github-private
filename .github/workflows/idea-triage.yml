@@ -34,7 +34,7 @@ on:
         default: false
         type: boolean
       model:
-        description: 'Model family (opus|sonnet|haiku) for triage, resolved to the current id at run time; a concrete claude-* id is honoured as-is'
+        description: 'Model family (opus|sonnet|haiku|fable) for triage, resolved to the current id at run time; a concrete claude-* id is honoured as-is'
         required: false
         default: 'sonnet'
         type: string
@@ -88,7 +88,7 @@ jobs:
           GH_TOKEN: ${{ env.TARGET_GH_TOKEN }}
         run: bash scripts/idea-triage/gather-ideas.sh
 
-      # Resolve the model FAMILY (opus|sonnet|haiku) to the current concrete id via
+      # Resolve the model FAMILY (opus|sonnet|haiku|fable) to the current concrete id via
       # the single-source-of-truth resolver (#1979). A concrete claude-* id an
       # operator supplied is passed through unchanged.
       - name: Resolve model
@@ -100,14 +100,15 @@ jobs:
           # Export the model override variable so ai_model_for_family honours
           # operator-configured model chains (vars.AI_MODELS_CLAUDE).
           AI_MODELS_CLAUDE: ${{ vars.AI_MODELS_CLAUDE }}
+          CLAUDE_FABLE_MODEL_CHAIN: ${{ vars.CLAUDE_FABLE_MODEL_CHAIN || '' }}
         run: |
           source scripts/lib/engine-models.sh
           want="$REQUESTED_MODEL"
           [ -n "$want" ] || want=sonnet
           case "$want" in
-            opus|sonnet|haiku) model="$(ai_model_for_family "$want")" ;;
+            opus|sonnet|haiku|fable) model="$(ai_model_for_family "$want")" ;;
             claude-*)          model="$want" ;;
-            *)                 echo "::error::invalid model: $want (expected opus|sonnet|haiku, or a concrete claude-* id)" >&2; exit 1 ;;
+            *)                 echo "::error::invalid model: $want (expected opus|sonnet|haiku|fable, or a concrete claude-* id)" >&2; exit 1 ;;
           esac
           # The id is spliced into claude_args unquoted below, so it must be a
           # single safe token (no whitespace, not option-like) or it would split

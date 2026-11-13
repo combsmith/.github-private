@@ -64,27 +64,22 @@ check-run name — is **data-driven** in the reviewer-source registry
 (`scripts/lib/reviewer-sources.tsv`, `check_run_name` column); nothing is hard-coded to
 `graphite-app`. For each in-window PR we make a **separate, lightweight REST call** for the
 head commit's check runs (`GET /repos/{o}/{r}/commits/{sha}/check-runs`) so the heavy PR
-page query stays under the resource limit. Each matched check run is classified:
-
-- **Real response.** The run is completed, did **not** fail, and either has a `success`
-  conclusion or a summary that says the review ran. Latency is measured to its
-  `completed_at`. A run that failed does not count, even if its summary mentions the
-  review. Failed conclusions are `failure`, `cancelled`, `timed_out`, `action_required`,
-  `stale` and `startup_failure`.
-- **Refusal.** The run is `completed/skipped` and its summary gives a decline reason, such
-  as "too large", "did not run" or a quota/rate-limit notice.
-- **Contributes nothing.** Everything else: queued or in-progress runs, failed runs, and
-  runs skipped with an empty or unrelated summary. Without a PR review or comment, the PR
-  stays in **No response**.
+page query stays under the resource limit. Every **completed** matched check run is a bot
+message and is classified like any other message (see [Message classes](#message-classes)): its
+output summary is matched against the bot's patterns, so Graphite's `neutral` run with the summary
+"AI review skipped: hourly limit reached" is `refused`. A run with a failed conclusion (`failure`,
+`cancelled`, `timed_out`, `action_required`, `stale`, `startup_failure`) is always `status`, even if
+its summary mentions the review. A queued or in-progress run has no result yet and is not a message.
 
 Each PR node is normalized (pure `jq`) into two record kinds:
 
 - `{kind:"pr", …}` — one per PR (the eligible-PR **denominator**).
-- `{kind:"bot_pr", …}` — one per tracked bot that touched the PR, carrying its
-  `real_responses` / `refusals` split (a rate-limit-only touch is a refusal, a check-run
-  "too large" skip is a refusal), latency to first real response, verdict counts,
-  inline-comment count, thread resolution, and reactions. A check-run clean pass adds **0**
-  to the review-event count but fills the `real_responses` / reviewed bucket.
+- `{kind:"bot_pr", …}` — one per tracked bot that left at least one message on the PR. It
+  carries the per-class message counts (`classes`), `real_responses` (finding + clean
+  messages), `refusals`, latency to the first finding or clean message, verdict counts, the
+  threads the bot opened and how many are resolved, `findings_raised`, reactions, and up to 3
+  truncated `unclassified_samples`. A check-run clean pass adds **0** to the review-event
+  count but makes the PR count as reviewed.
 
 Three diagnostic record kinds keep collection gaps visible (never silent, [#1908](https://github.com/combsmith/.github-private/issues/1908)):
 
@@ -98,28 +93,101 @@ Three diagnostic record kinds keep collection gaps visible (never silent, [#1908
 All are rendered in a **Collection health** section at the top of the report. Human authors
 and untracked bots are dropped at normalization time.
 
+## Message classes
+
+Every bot message (a PR review body, an inline review-thread comment, a top-level PR comment,
+or a completed check run) gets **exactly one** class ([#2504](https://github.com/combsmith/.github-private/issues/2504)):
+
+| Class | Meaning | Example |
+|---|---|---|
+| `finding` | The bot raised at least one problem. | An inline comment; "Actionable comments posted: 2"; "Quality Gate failed". |
+| `clean` | The bot reviewed and found nothing. | "Didn't find any major issues"; "Quality Gate passed"; a Graphite check run that left 0 comments. |
+| `refused` | The bot declined because of quota, rate limit, trial or plan. | "You have reached your daily quota limit"; "trial has ended"; Graphite's "hourly limit reached". |
+| `skipped` | The bot did not review because of its own or the repo's configuration. | CodeRabbit "Review skipped" / "Auto reviews are disabled". |
+| `status` | Progress, summary, marketing or bookkeeping text with no verdict. | "Codex Review Summary"; "Thanks for using CodeAnt"; a bot's reply inside a thread; a failed check run. |
+| `unclassified` | Nothing matched. | Any message shape no pattern knows yet. |
+
+The class is decided in this order, and the first hit wins:
+
+1. A check run with a failed conclusion is `status`.
+2. The bot's own rows in `scripts/lib/reviewer-message-classes.tsv`, top to bottom.
+3. The shared refusal fallback, `ADVISORY_RATE_LIMIT_RE` from `scripts/lib/advisory-review-gate.sh`
+   plus its author-scoped cubic clause, gives `refused`. It is never applied to inline comments,
+   because a finding that talks about a rate limit is still a finding.
+4. Structural defaults:
+   - the first comment of a review thread is a `finding`, and a later comment by the same bot (a reply) is `status`;
+   - a `CHANGES_REQUESTED` review is a `finding` and an `APPROVED` one is `clean`;
+   - when no earlier pattern matches, a check run that succeeded, or whose summary says the review ran, is `clean`;
+   - a check run skipped with a decline reason is `refused`, one skipped otherwise is `skipped`, and one with an empty summary is `status`.
+5. Otherwise `unclassified`.
+
+A PR counts as **reviewed** by a bot only if the bot left at least one `finding` or `clean`
+message on it. A PR with only status messages, or only unclassified ones, never counts as
+reviewed. The report lists up to 3 truncated sample bodies per bot for `unclassified` messages,
+so a new message shape shows up and can be given a pattern. Samples have URLs and backticks
+removed, are cut to 100 characters, and are printed inside code spans so an `@mention` in a bot
+body never notifies anyone. They are not stored in the snapshot artifact.
+
+Patterns match GraphQL `bodyText`, the plain-text rendering of the body with HTML comments and
+markdown markup removed. That is why the gate's own patterns (`info_status_pattern`, the finding-section
+pattern), which match the markdown `body`, are not reused as they are.
+
+### Adding patterns for a new bot
+
+1. Register the bot in `scripts/lib/reviewer-sources.tsv` first. Every login in the sidecar
+   must be a registered source (`tests/reviewer_report.bats` checks it).
+2. Add rows to `scripts/lib/reviewer-message-classes.tsv`, one pattern per row:
+   `login<TAB>class<TAB>kind<TAB>pattern`.
+   - `class` is `finding`, `clean`, `refused`, `skipped` or `status`.
+   - `kind` is `any`, `review`, `inline`, `issue` or `check_run`.
+   - `pattern` is a jq (Oniguruma) regex, matched case-insensitively against the message's `bodyText`, or against a check run's output summary.
+3. Order matters: the first matching row wins. Put narrow rows above broad ones. For example, put
+   a refusal row above a `status` row that matches the summary comment the refusal sits in, and
+   a finding marker above a `clean` row.
+4. Add a fixture for each new message shape to `tests/fixtures/reviewer_message_classes.json`
+   (`bot`, `kind`, `body`, the expected class in `expect`, and `state` / `conclusion` where they
+   apply). Include at least one real finding and one clean pass. Run `bats tests/reviewer_report.bats`.
+5. Watch the **Unclassified messages** section of the next reports and add rows for what shows up.
+
+The sidecar is **scorecard only**. Neither the advisory approval gate nor the maintainer-comment
+gate reads it, so a row here never changes what blocks or clears a merge.
+
 ## Metrics
 
-Everything is deterministic. **Reviews** and **Refused** count *every event*, not
-distinct PRs — GitHub creates a new review submission each time a bot re-reviews after a new
-commit, so a PR reviewed across 5 commits contributes 5 reviews. This matters: on live data
-CodeRabbit produced ~2× more review events than the distinct-PR count would suggest (up to 11
-reviews on a single PR).
+Everything is deterministic.
 
-| Metric | Definition |
+### Scorecard (headline)
+
+Each eligible PR lands in exactly one bucket per bot, checked in this order: With findings,
+Clean, Refused, Skipped, No response. So the five PR columns sum to **Total PRs**.
+
+| Column | Definition |
 |---|---|
 | **Total PRs** | Review-eligible (non-draft) PRs active in the window; the denominator each row is measured against. |
-| **Reviews** | Count of reviews the bot submitted, **each occurrence** (multiple per PR from multiple commits all count). A bot that posts no formal review but delivers its verdict as a top-level comment (e.g. SonarCloud's quality-gate comment) has that comment counted as its review; bots that do submit formal reviews are unaffected, so their extra summary comments are never double-counted. Rate-limit notices are never counted. |
-| **✅ / 🔄** | Of those reviews, how many carried state APPROVED / CHANGES_REQUESTED. |
-| **Refused** | Count of refusal events — out-of-quota / rate-limit notices (detected by body text via the shared gate pattern) **and** a check-run reporter's own decline (a `too large` / `did not run` skip) — each occurrence. |
-| **No response** | Eligible PRs the bot never engaged with at all: no review, no comment, no refusal, and **no check run classified as a real response or a refusal**. For a check-run reporter (Graphite), a clean-pass check run counts as engagement, so it no longer lands here. A queued, failed or unexplained-skip run still leaves the PR in **No response**. |
-| **Latency p50 / p95** | Seconds from PR creation to the bot's first **real** review (refusals excluded, so quota notices don't pollute the percentiles). Targets the "review arrived after auto-approval" failure mode (PR #453). |
-| **Coverage overlap** | PRs reviewed by ≥2 bots — a redundancy vs specialization signal. |
-| **Trend** | Week-over-week Δ (▲/▼) on Reviews and Refused (event counts) vs last week's snapshot. Arrows are directional only. |
+| **With findings** | PRs where the bot left at least one `finding` message. |
+| **Clean** | PRs where the bot left a `clean` message and no `finding`. |
+| **Refused** | PRs with no finding or clean message and at least one `refused` message. |
+| **Skipped** | PRs with no finding, clean or refused message and at least one `skipped` message. |
+| **No response** | Every other eligible PR: the bot never appeared, or left only `status` or `unclassified` messages. A queued check run leaves the PR here too. |
+| **Findings raised** | Review threads the bot opened with a finding, plus `finding` review, comment or check-run bodies. On a PR where the bot opened threads, its body findings are taken to be the summary of those threads and are not counted again. |
+| **Resolved %** | Threads the bot opened that are resolved, out of all threads it opened (`n/a` when it opened none). |
+| **Latency p50 / p95** | Time from PR creation to the bot's first `finding` or `clean` message. Refusals and status notices never count, so they don't pollute the percentiles. Targets the "review arrived after auto-approval" failure mode (PR #453). |
 
-Per-PR bucket counts (`reviewed_prs` / `refused_prs` / `no_response_prs`, which partition the
-eligible PRs), plus thread-resolution and reaction counts, are still computed and stored in the
-snapshot for downstream use — they're just kept out of the headline table to keep it legible.
+### Details
+
+The event counts that used to head the table, plus the reactions the snapshot always
+collected, are in a **Details** section:
+
+| Column | Definition |
+|---|---|
+| **Reviews** | Formal reviews the bot submitted, **each occurrence** (GitHub creates a new review each time a bot re-reviews after a commit, so a PR reviewed across 5 commits contributes 5). Refusals, skips and status notices are left out. A bot that posts no formal review but delivers its verdict as a top-level comment (SonarCloud) has its `finding` / `clean` comments counted instead. Its status and quota comments are never counted. |
+| **✅ / 🔄** | Of those reviews, how many carried state APPROVED / CHANGES_REQUESTED. |
+| **Refusal events** | Every `refused` message, each occurrence. |
+| **👍 / 👎** | Reactions on the bot's inline comments. |
+| **Status messages / Unclassified messages** | Message counts. Neither ever makes a PR count as reviewed. |
+
+**Coverage overlap** counts non-draft PRs *reviewed* (finding or clean) by ≥2 bots. It is a redundancy
+versus specialization signal.
 
 ### Agent comment noise (our own automation)
 
@@ -146,6 +214,14 @@ The report has no external time-series store. Instead each run writes a compact 
 **snapshot** (`reviewer-report-state.json`) which the workflow uploads as an artifact; the
 next run fetches the most recent prior snapshot via the GitHub API and diffs against it.
 First-ever runs (or an expired artifact) simply omit the deltas — never an error.
+
+Deltas cover the headline columns With findings, Clean, Refused, Skipped, No response and
+Findings raised, plus Resolved % in percentage points. They also cover Reviews and Refusal events
+in the details section. Snapshots carry `schema_version: 2`. A prior snapshot without it (written
+before [#2504](https://github.com/combsmith/.github-private/issues/2504)) shows **no** headline
+delta, because its refused and no-response counts were made under the old rules. The details
+deltas still compare. So in the first week after the change, the Reviews delta also reflects that
+status and quota comments are no longer counted.
 
 ## Known gaps (stated in every report)
 
@@ -203,10 +279,11 @@ ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
 | File | Role |
 |---|---|
 | `scripts/lib/reviewer-sources.tsv` + `scripts/lib/reviewer-sources.sh` | The reviewer-source registry ([#1425](https://github.com/combsmith/.github-private/issues/1425)) + its sourced lookup helpers — the single source of truth for bot logins and the `check_run_name` map, projected by the gate and this report. |
+| `scripts/lib/reviewer-message-classes.tsv` | Scorecard-only per-bot message-class patterns ([#2504](https://github.com/combsmith/.github-private/issues/2504)), read through `reviewer_sources_message_class_patterns`. Neither gate reads it. |
 | `scripts/lib/advisory-review-gate.sh` | Advisory approval gate; rate-limit body patterns (reused, not forked). Its bot list is a registry projection. |
 | `scripts/lib/comment-noise.sh` | Pure no-action agent-comment classifier + `cn_render_noise_section` (the noise metric). Unit-tested in `tests/comment_noise.bats`. |
 | `scripts/reviewer_report.sh` | Org-wide GraphQL collection (`main` / `collect_org_reviews`) + pure normalization, aggregation, and rendering (`aggregate_snapshot`, `render_reviewer_report`). |
-| `tests/reviewer_report.bats` | Unit tests for the pure normalize / aggregate / render path (no network). |
+| `tests/reviewer_report.bats` + `tests/fixtures/reviewer_message_classes.json` | Unit tests for the pure normalize / aggregate / render path (no network), and one fixture per known message shape with its expected class. |
 | `.github/workflows/reviewer-report.yml` | Weekly cron → snapshot upload + tracking-issue comment. |
 
 ## Environment variables (script)
@@ -239,7 +316,8 @@ ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
   record (the per-thread case as `connection:"reviewThreads.comments"`) rendered in the
   **Collection health** section, so an undercount there is stated explicitly rather than
   hidden. The scorecard counts every node it did fetch, including bots beyond the 50th review.
-- **Check-run summary text**: a completed, non-failed check run is read as *review ran* when
-  its conclusion is `success` or its summary matches `review ran`. A reporter that changes its
-  summary wording would need the matcher updated. The reporter set and check-run name live
-  in `scripts/lib/reviewer-sources.tsv`.
+- **Message wording**: classes come from body text. When a bot changes its wording, the new
+  shape lands in `unclassified` (or a structural default) until a row is added to
+  `scripts/lib/reviewer-message-classes.tsv`. The **Unclassified messages** section exists to
+  make that visible. The check-run reporter set and check-run name live in
+  `scripts/lib/reviewer-sources.tsv`.
