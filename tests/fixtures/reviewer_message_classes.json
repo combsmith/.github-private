@@ -1,0 +1,304 @@
+[
+  {
+    "name": "codex: Codex Review Summary (Failed) next to a usage-limit notice is status",
+    "bot": "chatgpt-codex-connector",
+    "kind": "issue",
+    "expect": "status",
+    "body": "Codex Review Summary\n\u274c Failed\nCodex could not complete this review. You have reached your Codex usage limits for code reviews."
+  },
+  {
+    "name": "codex: Codex Review Summary (Completed) is status",
+    "bot": "chatgpt-codex-connector",
+    "kind": "issue",
+    "expect": "status",
+    "body": "Codex Review Summary\n\u2705 Completed\nView the full review in the review thread."
+  },
+  {
+    "name": "codex: usage-limit notice is refused",
+    "bot": "chatgpt-codex-connector",
+    "kind": "issue",
+    "expect": "refused",
+    "body": "You have reached your Codex usage limits for code reviews. You can see your limits in the Codex usage dashboard."
+  },
+  {
+    "name": "codex: review with suggestions is a finding",
+    "bot": "chatgpt-codex-connector",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "finding",
+    "body": "\ud83d\udca1 Codex Review\nHere are some automated review suggestions for this pull request.\nReviewed commit: abc1234"
+  },
+  {
+    "name": "codex: no-major-issues review is clean",
+    "bot": "chatgpt-codex-connector",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "clean",
+    "body": "Codex Review: Didn't find any major issues. \ud83d\ude80"
+  },
+  {
+    "name": "gemini: daily quota limit notice is refused (shared pattern misses it)",
+    "bot": "gemini-code-assist",
+    "kind": "issue",
+    "expect": "refused",
+    "body": "You have reached your daily quota limit. Please wait up to 24 hours and I will start processing your requests again!"
+  },
+  {
+    "name": "gemini: inline review comment is a finding",
+    "bot": "gemini-code-assist",
+    "kind": "inline",
+    "expect": "finding",
+    "body": "high\nThis loop never terminates when the input list is empty."
+  },
+  {
+    "name": "gemini: no-feedback review is clean",
+    "bot": "gemini-code-assist",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "clean",
+    "body": "Code Review\nThis pull request updates the README. I have no feedback to provide."
+  },
+  {
+    "name": "coderabbit: Review skipped is skipped",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "skipped",
+    "body": "Review skipped\nAuto reviews are disabled on base/target branches other than the default branch."
+  },
+  {
+    "name": "coderabbit: Auto reviews are disabled is skipped",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "skipped",
+    "body": "Auto reviews are disabled on this repository. Please check the settings in the CodeRabbit UI."
+  },
+  {
+    "name": "coderabbit: actionable comments posted is a finding",
+    "bot": "coderabbitai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "finding",
+    "body": "Actionable comments posted: 2\n\ud83e\uddf9 Nitpick comments (1)"
+  },
+  {
+    "name": "coderabbit: no actionable comments is clean",
+    "bot": "coderabbitai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "clean",
+    "body": "Review details\nNo actionable comments were generated in the recent review. \ud83c\udf89"
+  },
+  {
+    "name": "codeant: Thanks for using CodeAnt is status",
+    "bot": "codeant-ai",
+    "kind": "issue",
+    "expect": "status",
+    "body": "Thanks for using CodeAnt! \ud83c\udf89\nWe're free for open-source projects."
+  },
+  {
+    "name": "codeant: Review Status is status",
+    "bot": "codeant-ai",
+    "kind": "issue",
+    "expect": "status",
+    "body": "Review Status\nCodeAnt AI is reviewing your PR."
+  },
+  {
+    "name": "codeant: CodeAnt PR Risk is status",
+    "bot": "codeant-ai",
+    "kind": "issue",
+    "expect": "status",
+    "body": "CodeAnt PR Risk\nPR Risk: Low Risk"
+  },
+  {
+    "name": "codeant: suggestion is a finding",
+    "bot": "codeant-ai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "finding",
+    "body": "Suggestion: Guard against a nil map before writing to it."
+  },
+  {
+    "name": "codeant: a CodeAnt Nitpicks code suggestion list is a finding",
+    "bot": "codeant-ai",
+    "kind": "issue",
+    "expect": "finding",
+    "body": "CodeAnt Nitpicks\n1 code suggestion\n#### 1. This assertion never verifies the no-ADR branch says `escalate = no`."
+  },
+  {
+    "name": "codeant: a suggestion that mentions a usage limit is still a finding",
+    "bot": "codeant-ai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "finding",
+    "body": "Suggestion: The retry loop should stop once the API usage limit is hit."
+  },
+  {
+    "name": "codeant: no-issues review is clean",
+    "bot": "codeant-ai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "clean",
+    "body": "CodeAnt AI finished reviewing your PR. No issues found."
+  },
+  {
+    "name": "qodo: trial has ended is refused",
+    "bot": "qodo-code-review",
+    "kind": "issue",
+    "expect": "refused",
+    "body": "\u24d8 Qodo reviews are paused because your trial has ended. Ask your workspace admin to add credits to resume reviews."
+  },
+  {
+    "name": "qodo: recommended focus areas is a finding",
+    "bot": "qodo-code-review",
+    "kind": "issue",
+    "expect": "finding",
+    "body": "PR Reviewer Guide \ud83d\udd0d\n\u23f1\ufe0f Estimated effort to review: 2\n\u26a1 Recommended focus areas for review\nPossible nil dereference"
+  },
+  {
+    "name": "qodo: no major issues is clean",
+    "bot": "qodo-code-review",
+    "kind": "issue",
+    "expect": "clean",
+    "body": "PR Reviewer Guide \ud83d\udd0d\n\u23f1\ufe0f Estimated effort to review: 1\n\u26a1 No major issues detected"
+  },
+  {
+    "name": "graphite: neutral hourly-limit check run is refused",
+    "bot": "graphite-app",
+    "kind": "check_run",
+    "conclusion": "neutral",
+    "expect": "refused",
+    "body": "AI review skipped: hourly limit reached"
+  },
+  {
+    "name": "graphite: check run that left comments is a finding",
+    "bot": "graphite-app",
+    "kind": "check_run",
+    "conclusion": "success",
+    "expect": "finding",
+    "body": "AI review ran and left 2 comments"
+  },
+  {
+    "name": "graphite: clean-pass check run is clean",
+    "bot": "graphite-app",
+    "kind": "check_run",
+    "conclusion": "success",
+    "expect": "clean",
+    "body": "AI review ran and left 0 comments"
+  },
+  {
+    "name": "cubic: found issues is a finding",
+    "bot": "cubic-dev-ai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "finding",
+    "body": "cubic reviewed 3 files and found 1 potential issue."
+  },
+  {
+    "name": "cubic: found no issues is clean",
+    "bot": "cubic-dev-ai",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "clean",
+    "body": "cubic reviewed 4 files and found no issues. Review PR in cubic.dev"
+  },
+  {
+    "name": "sonar: failed quality gate is a finding",
+    "bot": "sonarqubecloud",
+    "kind": "issue",
+    "expect": "finding",
+    "body": "Quality Gate failed\nFailed conditions\n3 New issues\n0 Security Hotspots"
+  },
+  {
+    "name": "sonar: passed quality gate with zero issues is clean",
+    "bot": "sonarqubecloud",
+    "kind": "issue",
+    "expect": "clean",
+    "body": "Quality Gate passed\nIssues\n0 New issues\n0 Accepted issues\nMeasures\n0 Security Hotspots"
+  },
+  {
+    "name": "copilot: overview that generated comments is a finding",
+    "bot": "copilot-pull-request-reviewer",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "finding",
+    "body": "Pull request overview\nCopilot reviewed 2 out of 2 changed files in this pull request and generated 3 comments."
+  },
+  {
+    "name": "copilot: overview that generated no comments is clean",
+    "bot": "copilot-pull-request-reviewer",
+    "kind": "review",
+    "state": "COMMENTED",
+    "expect": "clean",
+    "body": "Pull request overview\nCopilot reviewed 1 out of 1 changed files in this pull request and generated no comments."
+  },
+  {
+    "name": "cubic: inline finding with no match falls to structural default",
+    "bot": "cubic-dev-ai",
+    "kind": "inline",
+    "expect": "finding",
+    "body": "P2: This issue has a subtle problem with the algorithm."
+  },
+  {
+    "name": "coderabbit: low-severity retained concern beside a rate limit is a finding",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "finding",
+    "body": "Review limit reached\nRetained concerns\nLow \u00b7 security \u00b7 observed: token logged"
+  },
+  {
+    "name": "gemini: inline finding with no match falls to structural default",
+    "bot": "gemini-code-assist",
+    "kind": "inline",
+    "expect": "finding",
+    "body": "This code path does not properly handle edge cases."
+  },
+  {
+    "name": "coderabbitai: inline with skipped pattern (kind any) is skipped",
+    "bot": "coderabbitai",
+    "kind": "inline",
+    "expect": "skipped",
+    "body": "Review skipped\nAuto reviews are disabled on this branch."
+  },
+  {
+    "name": "codeant: inline with status pattern (kind any) is status",
+    "bot": "codeant-ai",
+    "kind": "inline",
+    "expect": "status",
+    "body": "Thanks for using CodeAnt! 🎉"
+  },
+  {
+    "name": "coderabbit: numbered retained concern beside a rate limit is a finding",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "finding",
+    "body": "Review limit reached\nRetained concerns\n1. The lookup trusts an unvalidated name."
+  },
+  {
+    "name": "coderabbit: prose hardening proposal beside a rate limit is a finding",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "finding",
+    "body": "Review limit reached\n**Hardening Proposals**\nValidate the lookup name before use."
+  },
+  {
+    "name": "coderabbit: empty retained concerns beside a rate limit stays refused",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "refused",
+    "body": "Review limit reached\n**Retained concerns**\nNo architecture-level concerns identified.\n<!-- architecture_review_end -->"
+  },
+  {
+    "name": "coderabbit: plain-text empty retained concerns before Security review details stays refused",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "refused",
+    "body": "Review limit reached\nRetained concerns\nNo architecture-level concerns identified.\n\nSecurity review details"
+  },
+  {
+    "name": "coderabbit: plain-text empty retained concerns then hardening heading stays refused",
+    "bot": "coderabbitai",
+    "kind": "issue",
+    "expect": "refused",
+    "body": "Review limit reached\nRetained concerns\nNo architecture-level concerns identified.\nHardening Proposals\nNo hardening proposals identified."
+  }
+]
