@@ -5955,8 +5955,27 @@ _resolved_bot_comment() {
   run bash "$FIX_REVIEWS_SCRIPT" 2>&1
 
   [ "$status" -eq 1 ]
-  [ ! -s "$MINLOG" ]
+  ! grep -q 'id=IC_ORIG' "$MINLOG" || false
+  # #2507: the rejected `informational` reply goes OUTDATED, so the bot-comment
+  # retry no longer reads it as covering the comment.
+  grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
   [[ "$output" == *"finding-bearing"* ]]
+}
+
+@test "resolve_dispositioned_comments(#2507): an evidence-less disposition (verified=false) on a bot comment is minimized OUTDATED" {
+  local bare nodes
+  bare=$(jq -nc '{id:"R1", author:{login:"donpetry-bot", __typename:"User"},
+    body:"<!-- dev-lead:comment-disposition id=IC_ORIG disposition=informational -->",
+    isMinimized:false, minimizedReason:null, createdAt:"2026-09-26T21:00:00Z"}')
+  nodes=$(jq -sc '.' <(_orig_comment) <(echo "$bare"))
+  _setup_disposition_pass "$nodes"
+
+  run bash "$FIX_REVIEWS_SCRIPT" 2>&1
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"verified=false"* ]]
+  grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
+  ! grep -q 'id=IC_ORIG' "$MINLOG" || false
 }
 
 @test "resolve_dispositioned_comments(#2008): a clean CodeRabbit summary dispositioned \`informational\` still resolves" {
@@ -7016,6 +7035,25 @@ _succeed_fix_bot_comment() {
   [[ "$output" == *"resolve_dispositioned_comments: failed to unminimize"* ]]
 }
 
+@test "resolve_dispositioned_comments(#2507): a rejected post-edit disposition minimizes the superseded post-edit reply too" {
+  local nodes
+  nodes=$(jq -sc '.' \
+    <(_reverify_fixed_pair IC_ORIG R1 R2) \
+    <(_disp_reply "R0" "2026-09-26T21:45:00Z" "informational" "IC_ORIG"))
+  _setup_disposition_pass "$nodes"
+  _succeed_fix_bot_comment
+
+  run bash "$FIX_REVIEWS_SCRIPT" 2>&1
+
+  # Script must succeed before checking logs
+  [ "$status" -eq 0 ]
+  # R2 (the rejected latest) and R0 (an older post-edit reply) both go OUTDATED,
+  # so none of them reads as coverage; the comment is re-opened.
+  grep -Eq 'classifier:OUTDATED.*id=R2' "$MINLOG"
+  grep -Eq 'classifier:OUTDATED.*id=R0' "$MINLOG"
+  grep -Eq 'unminimizeComment.*id=IC_ORIG' "$MINLOG"
+}
+
 # ── open review threads are paginated and fail closed (#2056) ─────────────────
 # PR #1953: 66 threads, the one open Codex P1 at position 66. The unpaginated
 # reviewThreads(first:50) read never saw it, so the pass "addressed 0 threads".
@@ -7365,8 +7403,52 @@ _run_2004() {
   [ "$status" -eq 0 ]
   ! grep -Eq 'classifier:RESOLVED' "$MINLOG" || false
   grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
-  ! grep -Eq 'id=R2' "$MINLOG" || false
+  # #2507: the rejected latest reply goes OUTDATED too, so the bot-comment retry
+  # stops reading it as covering the comment.
+  grep -Eq 'classifier:OUTDATED.*id=R2' "$MINLOG"
+  ! grep -q 'IC_FIND' "$MINLOG" || false
   ! grep -q 'comment-disposition' "$POSTLOG"
+}
+
+# ── #2507: a rejected disposition reply is minimized OUTDATED ────────────────
+# The gate and the resolver ignore minimized replies, and so does the bot-comment
+# retry. Minimizing the reply the resolver rejected makes all three agree that
+# the comment is undispositioned, so the retry dispatches a fresh pass.
+
+@test "#2507: an unverified \`fixed\` on a bot comment minimizes the rejected reply OUTDATED, never the comment" {
+  _setup_2004
+  _2004_nodes "$_2004_FINDING" <(_2004_fixed_reply R1 "2026-10-01T13:30:00Z" "$SHA_B")
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fixed-unverified:content-no-token-removed"* ]]
+  grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
+  ! grep -Eq 'classifier:RESOLVED' "$MINLOG" || false
+  ! grep -q 'IC_FIND' "$MINLOG" || false
+  [[ "$output" == *"minimized rejected disposition reply R1 OUTDATED"* ]]
+}
+
+@test "#2507: an unverified \`fixed\` on a HUMAN comment leaves the reply visible" {
+  _setup_2004
+  _2004_nodes "$_2004_FINDING" <(_2004_fixed_reply R1 "2026-10-01T13:30:00Z" "$SHA_B")
+  jq -c '.[0].author = {login:"alice", __typename:"User"}' "$NODES_FILE" > "$NODES_FILE.tmp"
+  mv "$NODES_FILE.tmp" "$NODES_FILE"
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fixed-unverified:content-no-token-removed"* ]]
+  ! grep -q 'minimizeComment' "$MINLOG" || false
+}
+
+@test "#2507: a corrected \`fixed\` that verifies leaves no rejected reply behind" {
+  _setup_2004
+  _2004_land_fix
+  _2004_nodes "$_2004_FINDING" <(_2004_fixed_reply R1 "2026-10-01T14:30:00Z" "$SHA_B")
+  _run_2004
+
+  [ "$status" -eq 0 ]
+  grep -Eq 'classifier:RESOLVED.*id=IC_FIND' "$MINLOG"
+  [[ "$output" != *"minimized rejected disposition reply"* ]]
 }
 
 # ── #2269: an additive fix to a finding that names a token ───────────────────
