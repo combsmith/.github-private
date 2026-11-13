@@ -135,8 +135,12 @@ maybe_adjudicate_verdict() {
   if adjudicate_escalates_to_human "$decision" "$risk"; then
     if [[ "${DRY_RUN:-false}" != "true" ]]; then
       # Keep the escalation: if Fable's replacement cannot be posted,
-      # post_adjudicated_verdict falls back to it.
-      cp "$verdict" "$verdict.pre-adjudicate" 2>/dev/null || true
+      # post_adjudicated_verdict falls back to it. Without that copy there is no
+      # fallback, so skip tier 4 and post the escalation unchanged.
+      if ! cp "$verdict" "$verdict.pre-adjudicate" 2>/dev/null; then
+        echo "::warning::[tier4] could not keep a copy of the escalation — skipping adjudication"
+        return 0
+      fi
       adjudicate_cascade_verdict "$verdict" "$audit_risk" "$PR_ITEMS" \
         /tmp/cascade/adjudicate-diff.txt ${ADJ_CONTEXT_FILES[@]+"${ADJ_CONTEXT_FILES[@]}"}
     fi

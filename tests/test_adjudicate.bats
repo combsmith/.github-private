@@ -365,7 +365,7 @@ SH
   local rec note
   rec=$(adjudicate_record_json cascade-escalate claude-fable-5-2 ok escalate false audit-high)
   note=$(adjudicate_note "$rec" "$SHA")
-  [[ "$note" == *"HIGH risk, so it still escalates to a human (guardrail)"* ]]
+  [[ "$note" == *"HIGH risk (or gave a risk the guard could not read), so it still escalates to a human (guardrail)"* ]]
   [[ "$note" == *"overrode the human escalation: **no**"* ]]
 }
 
@@ -552,4 +552,52 @@ cascade_setup() {
   strip_line=$(grep -n 'adjudicate_strip' <<<"$fn" | head -1 | cut -d: -f1)
   enable_line=$(grep -n 'adjudicate_enabled' <<<"$fn" | head -1 | cut -d: -f1)
   [ "$strip_line" -lt "$enable_line" ]
+}
+
+# ── post_adjudicated_verdict: a replacement that does not post falls back ─────
+# Loaded from review-one-pr.sh with post_verdict and gh stubbed, so the real
+# fallback logic runs: the first post (Fable's replacement) fails, the second
+# (the restored escalation) is recorded.
+load_post_adjudicated() {
+  local script="$BATS_TEST_DIRNAME/../scripts/review-one-pr.sh"
+  # shellcheck source=/dev/null
+  source <(sed -n '/^adj_head_moved() {/,/^}/p; /^post_adjudicated_verdict() {/,/^}/p' "$script")
+  export PR_URL="https://github.com/o/r/pull/1" PR_HEAD_SHA="$SHA" POSTS="$BATS_TEST_TMPDIR/posts"
+  : > "$POSTS"
+  post_verdict() {
+    jq -c '{decision, outcome: (.adjudication.outcome // "")}' "$1" >> "$POSTS"
+    [ "$(wc -l < "$POSTS")" -gt 1 ] && return 0
+    return "${FIRST_POST_RC:-1}"
+  }
+  gh() { printf '%s\n' "${LIVE_HEAD:-$SHA}"; }
+  V="$BATS_TEST_TMPDIR/verdict.json"
+  write_json "$V" '{"decision":"approve","risk":"LOW","summary":"fable","findings":[],"body":"b"}'
+  write_json "$V.pre-adjudicate" '{"decision":"escalate","risk":"MEDIUM","summary":"cascade unsure","findings":[],"body":"b"}'
+}
+
+@test "post fallback: a replacement that fails to post reposts the original escalation" {
+  load_post_adjudicated
+  export FINAL_TIER=adjudicate
+  run post_adjudicated_verdict "$V"
+  [ "$status" -eq 0 ]
+  [ "$(sed -n 1p "$POSTS")" = '{"decision":"approve","outcome":""}' ]
+  [ "$(sed -n 2p "$POSTS")" = '{"decision":"escalate","outcome":"post-failed"}' ]
+  [[ "$output" == *"did not post"* ]]
+  [ ! -e "$V.pre-adjudicate" ]
+}
+
+@test "post fallback: a post that failed because the head moved is not reposted" {
+  load_post_adjudicated
+  export FINAL_TIER=adjudicate LIVE_HEAD=1111111111111111111111111111111111111111 FIRST_POST_RC=100
+  run post_adjudicated_verdict "$V"
+  [ "$status" -eq 100 ]
+  [ "$(wc -l < "$POSTS")" -eq 1 ]
+}
+
+@test "post fallback: a verdict tier 4 did not replace is posted once, whatever the result" {
+  load_post_adjudicated
+  export FINAL_TIER=audit
+  run post_adjudicated_verdict "$V"
+  [ "$status" -eq 1 ]
+  [ "$(wc -l < "$POSTS")" -eq 1 ]
 }

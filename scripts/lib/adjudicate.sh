@@ -313,7 +313,7 @@ adjudicate_note() {
     ok)
       line="**Tier 4 (adjudicate):** ran on \`${m:-unknown}\` (trigger: ${t:-unknown}) — decision: **${dw}**; overrode the human escalation: **${yn}**. FINAL_TIER=adjudicate"
       if [ "$g" = "audit-high" ]; then
-        line="$line"$'\n\n'"Fable returned **approve**, but the escalating verdict, the security audit or Fable itself rated the PR HIGH risk, so it still escalates to a human (guardrail)."
+        line="$line"$'\n\n'"Fable returned **approve**, but the escalating verdict, the security audit or Fable itself rated the PR HIGH risk (or gave a risk the guard could not read), so it still escalates to a human (guardrail)."
       fi
       ;;
     rate-limited) line="**Tier 4 (adjudicate):** ran on \`${m:-unknown}\` but was rate-limited — falling back to human escalation (no override)." ;;
