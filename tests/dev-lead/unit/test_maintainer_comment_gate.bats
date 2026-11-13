@@ -579,6 +579,36 @@ _codeant_low_risk_body() {
   [ "$status" -eq 1 ]
 }
 
+# CodeAnt's "Review Status" progress table carries no finding and is re-posted on
+# every push, so its registry pattern clears it with no disposition. Only the
+# complete table from a Bot author clears; the overview above still blocks.
+_codeant_review_status_body() {
+  printf '%s' '## <a href="https://codeant.ai/" title="CodeAnt AI"><img src="https://new-codeant-butcket.s3.us-west-1.amazonaws.com/badges/codeant-block-purple-v2.svg" width="28" height="28" align="absmiddle" style="vertical-align:middle" alt="CodeAnt" /></a>&nbsp; CodeAnt Review Status
+
+**✅&nbsp; Review completed**
+
+| Status | Commit | Started (UTC) | Finished (UTC) |
+| --- | --- | --- | --- |
+| ✅&nbsp; `#d2009` Incremental review completed | `3633ecf` | Nov 13, 2026 · 18:14 | 18:14 |
+
+<!-- codeant-review-status:[{"run_id":"d2009f3bc336","label":"Incremental review completed","commit":"3633ecfd49a8e03f87bd1b12311002c24b34c479","done":true}] -->'
+}
+
+@test "codeant: an undispositioned CodeAnt Review Status table clears → 0" {
+  _run_check "$(_notice_json 'codeant-ai[bot]' "$(_codeant_review_status_body)")"
+  [ "$status" -eq 0 ]
+}
+
+@test "codeant: the same Review Status text from a User account still blocks → 1" {
+  _run_check "$(_notice_json codeant-ai "$(_codeant_review_status_body)" User)"
+  [ "$status" -eq 1 ]
+}
+
+@test "codeant: a Review Status table followed by a finding still blocks → 1" {
+  _run_check "$(_notice_json 'codeant-ai[bot]' "$(_codeant_review_status_body)"$'\n\nSuggestion: guard the nil dereference in scripts/foo.sh:42.')"
+  [ "$status" -eq 1 ]
+}
+
 @test "#2178: a CodeAnt body with a **Suggestion:** is finding-bearing" {
   source "$SCRIPT_DIR/lib/comment-disposition-verify.sh"
   run cdv_body_has_findings "$(_codeant_low_risk_body)"$'\n\n**Suggestion:** check the exit status.'
