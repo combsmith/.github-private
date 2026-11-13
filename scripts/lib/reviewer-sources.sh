@@ -7,6 +7,8 @@
 #   * dev-lead's trust check      — scripts/dev-lead-intent.sh (TRUSTED_BOTS)
 #   * the advisory approval gate   — scripts/lib/advisory-review-gate.sh
 #   * the reviewer scorecard       — scripts/reviewer_report.sh
+# The scorecard alone also reads a sidecar, scripts/lib/reviewer-message-classes.tsv,
+# through reviewer_sources_message_class_patterns (#2504). Neither gate reads it.
 #
 # THE #1425 INVARIANT: (creates_threads=yes) ⇒ (dev_lead_trusted=yes). A bot that
 # posts inline review comments creates a blocking review thread; if dev-lead may
@@ -21,8 +23,13 @@ set -euo pipefail
 
 # Resolve the manifest path once, relative to this file (works when sourced from
 # anywhere). Honor an override so callers/tests can point elsewhere.
-if [ -z "${REVIEWER_SOURCES_MANIFEST:-}" ]; then
+if [[ -z "${REVIEWER_SOURCES_MANIFEST:-}" ]]; then
   REVIEWER_SOURCES_MANIFEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reviewer-sources.tsv"
+fi
+# Scorecard-only sidecar of per-bot message-class patterns (#2504). Read only by
+# reviewer_sources_message_class_patterns, which only the reviewer scorecard calls.
+if [[ -z "${REVIEWER_MESSAGE_CLASSES_FILE:-}" ]]; then
+  REVIEWER_MESSAGE_CLASSES_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reviewer-message-classes.tsv"
 fi
 
 # _reviewer_sources_manifest_or_die <caller>
@@ -142,6 +149,41 @@ reviewer_sources_info_status_patterns() {
 #   disposition; a missed one lets a finding be waved away.
 reviewer_sources_finding_section_pattern() {
   printf '%s\n' '<!-- architecture_review_start -->(?:(?!<!-- architecture_review_end -->)[\s\S])*?(?:(?:Retained concerns|Hardening Proposals)(?!\*{0,2}[ \t]*(?:\r?\n[ \t]*)*(?:No (?:(?:architecture-level|security|blocking|critical|retained|hardening|material|significant|additional|new|open|outstanding|unresolved|notable|other|further|remaining) ){0,2}(?:concerns?|proposals?|issues?|findings?|risks?)(?: (?:were|are|have been))?(?: (?:identified|found|raised|retained|proposed|noted))?\.?[ \t]*(?:\r?\n[ \t]*)*)?(?:<details>\s*<summary>(?:<strong>)?Security review details|\*\*(?:Retained concerns|Hardening Proposals)\*\*|<!-- architecture_review_end|\z))|\*\*(?:Critical|High|Medium|Moderate|Low|Major|Minor)\s*·|Security architecture risk:\*\*\s*(?:_[^_]*?|\*\*[^*]*?)(?:Low|Moderate|Medium|Elevated|High|Critical|Severe))|Actionable comments posted:\s*[1-9]|Outside diff range comments(?!\s*\(\s*0\s*\))|Nitpick comments(?!\s*\(\s*0\s*\))|\*\*Suggestion:\*\*|PR Risk:\s*(?!\**Low Risk\b(?:\*\*)?)\S'
+}
+
+# reviewer_sources_message_class_patterns
+#   The reviewer scorecard's per-bot message-class patterns (#2504), read from the
+#   scorecard-only sidecar scripts/lib/reviewer-message-classes.tsv (override with
+#   REVIEWER_MESSAGE_CLASSES_FILE). Emits "<login>\t<class>\t<kind>\t<pattern>" one per
+#   line, in file order (the first matching row wins, so order matters). Neither gate
+#   calls this. A row with an unknown class or kind, or a missing login or pattern, is
+#   reported on stderr and left out, and the function then returns non-zero. The valid
+#   rows are still printed, so one bad row cannot blank every bot's classification.
+reviewer_sources_message_class_patterns() {
+  local f="${REVIEWER_MESSAGE_CLASSES_FILE}"
+  if [[ ! -f "$f" ]]; then
+    echo "reviewer_sources_message_class_patterns: sidecar file not found at $f" >&2
+    return 1
+  fi
+  awk -F'\t' '
+    { sub(/\r$/, "") }
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    {
+      pat = $4
+      for (i = 5; i <= NF; i++) pat = pat "\t" $i
+      where = "reviewer_sources_message_class_patterns: line " NR ": "
+      if ($2 !~ /^(finding|clean|refused|skipped|status)$/) {
+        print where "unknown class \"" $2 "\"" > "/dev/stderr"; bad = 1; next
+      }
+      if ($3 !~ /^(any|review|inline|issue|check_run)$/) {
+        print where "unknown kind \"" $3 "\"" > "/dev/stderr"; bad = 1; next
+      }
+      if ($1 == "" || pat == "") {
+        print where "missing login or pattern" > "/dev/stderr"; bad = 1; next
+      }
+      print $1 "\t" $2 "\t" $3 "\t" pat
+    }
+    END { exit bad ? 1 : 0 }' "$f"
 }
 
 # reviewer_sources_trusted_bots_csv
