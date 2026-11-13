@@ -28,8 +28,12 @@ GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
 export REPO
 
 # emit <key> <value> — write a key=value pair to GITHUB_OUTPUT, stripping carriage returns
-# and characters that could enable prompt injection from untrusted GitHub Actions metadata.
-emit() { printf '%s=%s\n' "$1" "$(printf '%s' "$2" | tr -d '\r\n`$()\\' | sed "s/-->/--REMOVED/g" | sed "s/<!--/REMOVED--/g" | sed 's/|/PIPE/g' | sed 's/&/AMPERSAND/g' | sed 's/</LESS/g' | sed 's/>/GREATER/g')" >> "$GITHUB_OUTPUT"; }
+# and newlines and characters that could enable shell expansion from untrusted GitHub Actions metadata.
+emit() { printf '%s=%s\n' "$1" "$(printf '%s' "$2" | tr -d '\r\n`$()\\' | sed "s/-->/--REMOVED/g" | sed "s/<!--/REMOVED--/g" | sed 's/|/PIPE/g')" >> "$GITHUB_OUTPUT"; }
+
+# sanitize_prompt <value> — apply additional sanitization for values entering an LLM prompt,
+# converting & < > to text equivalents to prevent prompt injection without breaking URLs in details_url.
+sanitize_prompt() { printf '%s' "$1" | sed 's/&/AMPERSAND/g' | sed 's/</LESS/g' | sed 's/>/GREATER/g'; }
 
 # payload_field <jq-filter> — read one value from the event payload; empty on a
 # missing, empty or non-JSON payload.
@@ -138,7 +142,7 @@ resolve() {
   emit event "$event"
   emit pr_number "$pr_number"
   emit head_sha "$head_sha"
-  emit check_name "$name"
+  emit check_name "$(sanitize_prompt "$name")"
   emit details_url "$details_url"
   emit run_id "$run_id"
   emit check_run_id "$check_run_id"
