@@ -55,6 +55,13 @@ case "$1" in
         if [ -f "$f" ]; then cat "$f"; exit 0; fi
         exit 1
         ;;
+      repos/*/contents/.github/workflows/*)
+        # gh api repos/<owner>/<repo>/contents/.github/workflows/<file> → wfc_<owner>__<repo>__<file>
+        r="${2#repos/}"; file="${r##*/}"; r="${r%%/contents/*}"
+        f="$FIXTURE_DIR/wfc_${r%%/*}__${r#*/}__${file}"
+        if [ -f "$f" ]; then cat "$f"; exit 0; fi
+        exit 1
+        ;;
       rate_limit) echo "4990 4980"; exit 0 ;;
       graphql)
         echo '{"data":{"resource":{"comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}'
@@ -1031,15 +1038,42 @@ load_sweep_fn() {
   rm -f "$f"
 }
 
-# write_workflows <owner/repo> <file:state>... — the repo's actions/workflows listing.
+# A caller that takes the sweep's dispatch: workflow_dispatch with pr_url, calling
+# the pr-review reusable (the shape of the standard stub and markets' ingress).
+DISPATCHABLE_CALLER='on:
+  workflow_dispatch:
+    inputs:
+      pr_url:
+        type: string
+jobs:
+  pr-review:
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable'
+# The reference ingress shape: no workflow_dispatch, no pr-review job.
+UNDISPATCHABLE_INGRESS='on:
+  pull_request:
+jobs:
+  dev-lead:
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable'
+
+# write_workflows <owner/repo> <file:state>... — the repo's actions/workflows
+# listing. Each listed pr-review.yml / agent-ingress.yml also gets DISPATCHABLE_CALLER
+# as its contents; write_workflow_file overrides that.
 write_workflows() {
   local repo="$1" json='[]' p
   shift
   for p in "$@"; do
     json=$(jq -c --arg path ".github/workflows/${p%%:*}" --arg state "${p#*:}" '. + [{path:$path, state:$state}]' <<< "$json")
+    case "${p%%:*}" in
+      pr-review.yml|agent-ingress.yml) write_workflow_file "$repo" "${p%%:*}" "$DISPATCHABLE_CALLER" ;;
+    esac
   done
   jq -n --argjson w "$json" '{total_count: ($w | length), workflows: $w}' \
     > "$FIXTURE_DIR/wf_${repo%%/*}__${repo#*/}.json"
+}
+
+# write_workflow_file <owner/repo> <file> <contents>
+write_workflow_file() {
+  printf '%s\n' "$3" > "$FIXTURE_DIR/wfc_${1%%/*}__${1#*/}__$2"
 }
 
 @test "interleave_by_repo: round-robins across repos, keeping each repo's order and the repos' first-seen order" {
@@ -1062,17 +1096,31 @@ https://github.com/o/app/pull/10
 https://github.com/o/.github-private/pull/3" ]
 }
 
-@test "pick_review_entrypoint: prefers an active pr-review.yml, then an active agent-ingress.yml, else nothing" {
-  load_sweep_fn pick_review_entrypoint
-  [ "$(pick_review_entrypoint '{"workflows":[{"path":".github/workflows/agent-ingress.yml","state":"active"},{"path":".github/workflows/pr-review.yml","state":"active"}]}')" = "pr-review.yml" ]
-  [ "$(pick_review_entrypoint '{"workflows":[{"path":".github/workflows/agent-ingress.yml","state":"active"}]}')" = "agent-ingress.yml" ]
+@test "review_entrypoint_candidates: lists an active pr-review.yml, then an active agent-ingress.yml" {
+  load_sweep_fn review_entrypoint_candidates
+  [ "$(review_entrypoint_candidates '{"workflows":[{"path":".github/workflows/agent-ingress.yml","state":"active"},{"path":".github/workflows/pr-review.yml","state":"active"}]}')" = "pr-review.yml
+agent-ingress.yml" ]
+  [ "$(review_entrypoint_candidates '{"workflows":[{"path":".github/workflows/agent-ingress.yml","state":"active"}]}')" = "agent-ingress.yml" ]
   # A disabled pr-review.yml does not count.
-  [ "$(pick_review_entrypoint '{"workflows":[{"path":".github/workflows/pr-review.yml","state":"disabled_manually"},{"path":".github/workflows/agent-ingress.yml","state":"active"}]}')" = "agent-ingress.yml" ]
-  [ -z "$(pick_review_entrypoint '{"workflows":[{"path":".github/workflows/ci.yml","state":"active"}]}')" ]
+  [ "$(review_entrypoint_candidates '{"workflows":[{"path":".github/workflows/pr-review.yml","state":"disabled_manually"},{"path":".github/workflows/agent-ingress.yml","state":"active"}]}')" = "agent-ingress.yml" ]
+  [ -z "$(review_entrypoint_candidates '{"workflows":[{"path":".github/workflows/ci.yml","state":"active"}]}')" ]
   # A same-named file outside .github/workflows, and unreadable input, give nothing.
-  [ -z "$(pick_review_entrypoint '{"workflows":[{"path":"docs/pr-review.yml","state":"active"}]}')" ]
-  [ -z "$(pick_review_entrypoint 'not json')" ]
-  [ -z "$(pick_review_entrypoint '')" ]
+  [ -z "$(review_entrypoint_candidates '{"workflows":[{"path":"docs/pr-review.yml","state":"active"}]}')" ]
+  [ -z "$(review_entrypoint_candidates 'not json')" ]
+  [ -z "$(review_entrypoint_candidates '')" ]
+}
+
+@test "entrypoint_dispatches_pr_review: needs workflow_dispatch, a pr_url input and the pr-review reusable" {
+  load_sweep_fn entrypoint_dispatches_pr_review
+  entrypoint_dispatches_pr_review "$DISPATCHABLE_CALLER"
+  run entrypoint_dispatches_pr_review "$UNDISPATCHABLE_INGRESS"
+  [ "$status" -ne 0 ]
+  run entrypoint_dispatches_pr_review "${DISPATCHABLE_CALLER/pr_url:/dry_run:}"
+  [ "$status" -ne 0 ]
+  run entrypoint_dispatches_pr_review "${DISPATCHABLE_CALLER/pr-review.yml@/dev-lead-reusable.yml@}"
+  [ "$status" -ne 0 ]
+  run entrypoint_dispatches_pr_review ""
+  [ "$status" -ne 0 ]
 }
 
 @test "sweep_cost_line: reports points spent, or unknown when unreadable or the window reset" {
@@ -1127,6 +1175,29 @@ https://github.com/o/.github-private/pull/3" ]
   [ "$status" -eq 0 ]
   grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private --ref refs/heads/some-feature -f pr_url=$(url_for 2604)" "$GH_LOG"
   grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private --ref refs/heads/some-feature -f pr_url=https://github.com/combsmith/nolist/pull/2605" "$GH_LOG"
+}
+
+@test "routing: an ingress that cannot take a pr_url dispatch is not used; the agent-repo trigger is" {
+  write_workflows combsmith/demo agent-ingress.yml:active
+  write_workflow_file combsmith/demo agent-ingress.yml "$UNDISPATCHABLE_INGRESS"
+  write_pr 2608 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  url_for 2608 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2608)" "$GH_LOG"
+  [[ "$output" == *"agent-ingress.yml does not take a pr_url dispatch"* ]]
+}
+
+@test "routing: a pr-review.yml that cannot take the dispatch falls through to a dispatchable agent-ingress.yml" {
+  write_workflows combsmith/demo pr-review.yml:active agent-ingress.yml:active
+  write_workflow_file combsmith/demo pr-review.yml "$UNDISPATCHABLE_INGRESS"
+  write_pr 2609 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  url_for 2609 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run agent-ingress.yml --repo combsmith/demo -f pr_url=$(url_for 2609)" "$GH_LOG"
 }
 
 @test "routing: ROUTE_TO_REPO_ENTRYPOINT=false sends a consumer PR through the agent-repo trigger" {

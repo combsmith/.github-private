@@ -40,10 +40,13 @@ own pr-review entrypoint:
 
 - **Routing:** this repository's PRs still go through `pr-review-trigger.yml`. A PR
   in another repo goes to that repo's active `.github/workflows/pr-review.yml`, or
-  else to its active `agent-ingress.yml` (whose `workflow_dispatch` runs only its
-  pr-review job). Both accept `pr_url` and `force_review`, and the review runs at
-  the channel that repo pins. A repo with neither entrypoint, or whose workflow
-  list cannot be read, keeps the old path through this repository's trigger.
+  else to its active `agent-ingress.yml`, but only if the file can take the
+  dispatch: it must declare `workflow_dispatch` with a `pr_url` input and call the
+  pr-review reusable. The standard stub and markets' ingress do. The reference
+  `agent-ingress.yml` in `docs/architecture/reference/` does not, so a repo shaped
+  like it is not routed. The review then runs at the channel that repo pins. A repo
+  with no qualifying entrypoint, or whose workflow list or files cannot be read,
+  keeps the old path through this repository's trigger.
 - **Credential:** the dispatch uses the sweep's existing token (`GH_PAT_DON_PETRY`,
   else `GH_PAT_WORKFLOWS`), which needs `actions:write` on every consumer repo.
   This makes this repository a hub that can start workflow runs fleet-wide. That is
