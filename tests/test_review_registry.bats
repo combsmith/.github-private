@@ -182,8 +182,18 @@ write_verdict() {
 }
 
 @test "risk contract: HIGH risk bypasses AI delegation (forces human escalation)" {
-  run grep -qE 'RISK.*!=.*HIGH' "$POST_SCRIPT"
+  # The rule lives in adjudicate_escalates_to_human (scripts/lib/adjudicate.sh),
+  # shared with review-one-pr.sh since #2495. post-pr-review.sh must route its
+  # escalate branch through it, and the rule must send HIGH to a human even when
+  # delegation is on and cycles remain.
+  run grep -qF 'adjudicate_escalates_to_human "$DECISION" "$RISK"' "$POST_SCRIPT"
   [ "$status" -eq 0 ]
+  run env AI_DELEGATION_ENABLED=true REVIEW_CYCLE=0 MAX_REVIEW_CYCLES=3 bash -c \
+    'source "$1/scripts/lib/adjudicate.sh" && adjudicate_escalates_to_human escalate HIGH' _ "$REPO_ROOT"
+  [ "$status" -eq 0 ]
+  run env AI_DELEGATION_ENABLED=true REVIEW_CYCLE=0 MAX_REVIEW_CYCLES=3 bash -c \
+    'source "$1/scripts/lib/adjudicate.sh" && adjudicate_escalates_to_human escalate MEDIUM' _ "$REPO_ROOT"
+  [ "$status" -eq 1 ]
 }
 
 # --- idempotency marker format (AC #2) ------------------------------------
