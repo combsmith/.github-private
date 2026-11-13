@@ -321,18 +321,21 @@ _NORMALIZE_JQ='
     | add;
   # Codex body findings (#2527): each code location the body points at, read from
   # bodyText as the permalink (…/blob/<sha>/<path>#L<a>-L<b>) or as the snippet
-  # GitHub renders from it (<repo>/<path> Lines <a> to <b> in <sha>).
+  # GitHub renders from it (<repo>/<path> Lines <a> to <b> in <sha>). Both yield a
+  # repository-relative path: the leading repo-name segment (a repo
+  # name never contains "/") is stripped from the snippet form, so paths compare exactly.
+  def codex_location: .captures | { path: .[0].string, from: (.[1].string | tonumber),
+                                    to: ((.[2].string // .[1].string) | tonumber) };
   def codex_locations:
     (.body // "") as $b
-    | [ ($b | match("/blob/[0-9a-f]{7,40}/([^#\\s]+)#L([0-9]+)(?:-L([0-9]+))?"; "g")),
-        ($b | match("(\\S+)\\s+Lines? ([0-9]+)(?: to ([0-9]+))?\\s+in\\s+[0-9a-f]{7,40}\\b"; "g")) ]
-    | map(.captures | { path: .[0].string, from: (.[1].string | tonumber),
-                        to: ((.[2].string // .[1].string) | tonumber) });
-  # Does this inline comment sit on $loc? Same file (the snippet form prefixes the
-  # repo name) and an overlapping line span, on the current or the original diff.
+    | [ ($b | match("/blob/[0-9a-f]{7,40}/([^#\\s]+)#L([0-9]+)(?:-L([0-9]+))?"; "g") | codex_location),
+        ($b | match("(\\S+)\\s+Lines? ([0-9]+)(?: to ([0-9]+))?\\s+in\\s+[0-9a-f]{7,40}\\b"; "g")
+            | codex_location | .path |= sub("^[^/]*/"; "")) ];
+  # Does this inline comment sit on $loc? The same repository-relative path, and an
+  # overlapping line span on the current or the original diff.
   def at_location($loc):
     (.path // "") as $p
-    | ($p != "") and ($loc.path == $p or ($loc.path | endswith("/" + $p)))
+    | ($p != "") and $loc.path == $p
       and ([ [(.start_line // .line), .line], [(.original_start_line // .original_line), .original_line] ]
            | any(.[]; .[0] != null and .[1] != null and .[0] <= $loc.to and .[1] >= $loc.from));
   # Findings this body carries on its own, beyond the threads its bot opened. The

@@ -204,7 +204,7 @@ not an inline comment is counted by its bot's rule:
 | Bot | Body findings counted |
 |---|---|
 | **coderabbitai** | The counts in its **Outside diff range comments** and **Nitpick comments** section headers, whether or not it opened threads on the PR. `bodyText` carries both header forms, `Outside diff range comments (2)` and `Nitpick comments: 2`. The unnumbered repeats in its "Prompt to fix all issues" block, and its "Duplicate comments" and "Additional comments" sections, add nothing. |
-| **chatgpt-codex-connector** | Each code location the body points at, read from `bodyText` as the permalink (`…/blob/<sha>/<path>#L<a>-L<b>`) or as the snippet GitHub renders from it (`<repo>/<path> Lines <a> to <b> in <sha>`). A location counts unless an inline comment **from the same review** sits on the same file and an overlapping line, on either the current or the original diff. |
+| **chatgpt-codex-connector** | Each code location the body points at, read from `bodyText` as the permalink (`…/blob/<sha>/<path>#L<a>-L<b>`) or as the snippet GitHub renders from it (`<repo>/<path> Lines <a> to <b> in <sha>`). The snippet's leading repo name is dropped, so both forms give a repository-relative path. A location counts unless an inline comment **from the same review** has exactly that path and an overlapping line, on either the current or the original diff. |
 | Every other bot | Nothing beyond the fallback below. |
 
 Fallback, for every bot: a `finding` body for which the rule above found nothing counts **once**,

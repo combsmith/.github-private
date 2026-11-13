@@ -795,6 +795,19 @@ JSON
     | .findings_threads==2 and .findings_body==2 and .findings_raised==4'
 }
 
+@test "body findings: Codex location paths compare exactly, not by suffix (#2527)" {
+  # The same review has an inline comment on x.sh line 10. Its body points at
+  # src/x.sh L10 (a different file: counted) and, as a rendered snippet, at r/x.sh
+  # line 10 (x.sh once the repo name is stripped: matched, not counted).
+  run _normalize_node '{"url":"u","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
+ "reviews":{"nodes":[{"id":"C1","author":{"login":"chatgpt-codex-connector"},"state":"COMMENTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"Here are some automated review suggestions for this pull request.\nhttps://github.com/o/r/blob/0123456789abcdef0123456789abcdef01234567/src/x.sh#L10\nCheck the exit status\n\nr/x.sh\n  Line 10\n  in\n  0123456\nQuote the variable"}]},
+ "reviewThreads":{"nodes":[{"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"chatgpt-codex-connector"},"createdAt":"2026-11-10T10:05:00Z","bodyText":"Quote the variable","path":"x.sh","line":10,"originalLine":10,"pullRequestReview":{"id":"C1"},"reactionGroups":[]}]}}]},
+ "comments":{"nodes":[]}}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.[] | select(.kind=="bot_pr" and .bot=="chatgpt-codex-connector")
+    | .findings_threads==1 and .findings_body==1 and .findings_raised==2'
+}
+
 @test "body findings: a boilerplate Codex body beside its threads adds nothing (#2527)" {
   run _normalize_node '{"url":"u","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
  "reviews":{"nodes":[{"id":"C1","author":{"login":"chatgpt-codex-connector"},"state":"COMMENTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"💡 Codex Review\nHere are some automated review suggestions for this pull request.\nReviewed commit: 0123456789"}]},
