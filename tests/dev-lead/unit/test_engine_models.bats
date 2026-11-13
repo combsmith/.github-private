@@ -511,6 +511,43 @@ STUB
   [ -z "$(ai_models_fable_deprecation)" ]
 }
 
+# The 5-1 match is anchored to the whole id (#2518): a plain prefix match would
+# also flag a future claude-fable-5-10 … 5-19.
+@test "fable-deprecation: claude-fable-5-1 exactly warns" {
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-1"
+  [ -n "$(ai_models_fable_deprecation)" ]
+}
+
+@test "fable-deprecation: claude-fable-5-1-YYYYMMDD warns" {
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-1-20261001,claude-opus-5-5"
+  [ -n "$(ai_models_fable_deprecation)" ]
+}
+
+@test "fable-deprecation: claude-fable-5-1 with a [...] context suffix warns" {
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-1[1m]"
+  [ -n "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-opus-5-5,claude-fable-5-1-20261001[1m]"
+  [ -n "$(ai_models_fable_deprecation)" ]
+}
+
+@test "fable-deprecation: claude-fable-5-10 (and other 5-1x ids) stay silent" {
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-10"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-19,claude-opus-5-5"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-10[1m]"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-1x"
+  [ -z "$(ai_models_fable_deprecation)" ]
+}
+
+@test "fable-deprecation: claude-fable-5-2 stays silent" {
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-2"
+  [ -z "$(ai_models_fable_deprecation)" ]
+  export CLAUDE_AUDIT_MODEL_CHAIN="claude-fable-5-2[1m]"
+  [ -z "$(ai_models_fable_deprecation)" ]
+}
+
 @test "fable-deprecation: AI_MODELS_CLAUDE is read the way the parser honours it" {
   # An unknown key is ignored by the parser, so it does not warn.
   export AI_MODELS_CLAUDE="unknown=claude-fable-5"
@@ -590,6 +627,42 @@ STUB
   [ "$(ai_model_for_family fable)" = "claude-fable-5-1" ]
   export CLAUDE_FABLE_MODEL_CHAIN="claude-fable-5"
   [ "$(ai_model_for_family fable)" = "claude-fable-5" ]
+}
+
+# decision-brief.yml, idea-triage.yml and initiative-planner.yml each resolve the
+# dispatch model with their own copy of the same `case "$want" in … esac` block
+# (#2518). Nothing shares it, so this keeps the three copies identical.
+_resolve_model_case() {
+  awk '
+    /- name: Resolve model$/ { inblk = 1; next }
+    inblk && /- name: / { exit }
+    inblk && /case "\$want" in/ { incase = 1 }
+    incase { print }
+    incase && /^[[:space:]]*esac[[:space:]]*$/ { exit }
+  ' "$1"
+}
+
+@test "family: the Resolve model case blocks in the three workflows are identical" {
+  local wf="$SCRIPT_DIR/.github/workflows" ref f blk
+  ref="$(_resolve_model_case "$wf/decision-brief.yml")"
+  # Sanity: the block was found, and covers every family.
+  [[ "$ref" == *'case "$want" in'* ]]
+  [[ "$ref" == *'opus|sonnet|haiku|fable)'*'ai_model_for_family'* ]]
+  [[ "$ref" == *esac ]]
+  for f in idea-triage.yml initiative-planner.yml; do
+    blk="$(_resolve_model_case "$wf/$f")"
+    if [ "$blk" != "$ref" ]; then
+      echo "Resolve model case block in $f differs from decision-brief.yml:"
+      diff <(printf '%s\n' "$ref") <(printf '%s\n' "$blk") || true
+      return 1
+    fi
+  done
+}
+
+@test "family: the Resolve model sync check catches a drifted block" {
+  local wf="$SCRIPT_DIR/.github/workflows" drifted="$BATS_TEST_TMPDIR/drifted.yml"
+  sed 's/opus|sonnet|haiku|fable)/opus|sonnet|haiku)/' "$wf/idea-triage.yml" > "$drifted"
+  [ "$(_resolve_model_case "$drifted")" != "$(_resolve_model_case "$wf/decision-brief.yml")" ]
 }
 
 @test "problems: a fable key given several models warns and keeps the first" {
