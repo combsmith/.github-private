@@ -127,7 +127,7 @@ maybe_adjudicate_verdict() {
   # fail closed: force a human escalation with no adjudication record.
   if ! adjudicate_strip "$verdict"; then
     echo "::warning::[tier4] could not strip a model-written adjudication record — forcing escalation"
-    printf '%s\n' '{"decision":"escalate","risk":"HIGH"}' > "$verdict"
+    printf '%s\n' '{"decision":"escalate","risk":"HIGH","summary":"Escalating due to adjudication record corruption.","findings":[],"body":"The tier-4 adjudication record could not be safely stripped from the verdict. Escalating to human review."}' > "$verdict"
   fi
   adjudicate_enabled || return 0
   decision=$(jq -r '.decision // ""' "$verdict" 2>/dev/null || true)
@@ -1021,6 +1021,11 @@ PR_ITEMS=$(
 REVIEW_CYCLE=$(compute_review_cycle "$PR_ITEMS")
 export REVIEW_CYCLE
 MAX_CYCLES="${MAX_REVIEW_CYCLES:-3}"
+# Validate MAX_CYCLES is a decimal number to prevent arithmetic injection or octal interpretation
+if ! [[ "$MAX_CYCLES" =~ ^[0-9]+$ ]]; then
+  echo "::warning:: MAX_REVIEW_CYCLES is not a valid decimal number: $MAX_CYCLES (using default: 3)"
+  MAX_CYCLES="3"
+fi
 echo "    review cycle: $REVIEW_CYCLE (max: $MAX_CYCLES)"
 
 # Escalation handling (issue #467). Once a PR is escalated to a human, the

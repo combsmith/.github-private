@@ -229,7 +229,7 @@ gh variable delete PR_REVIEW_ADJUDICATE --repo combsmith/.github-private        
 These commands set the variable for this repository's own runs only. `pr-review.yml`
 can be called as a reusable workflow, and a called workflow reads `vars.*` from the
 **caller's** repository. A calling repository that has not set `PR_REVIEW_ADJUDICATE`
-keeps the `false` default, so tier 4 does not run for its PRs, with no error. Set the
+keeps the `false` default only when neither a repository-level nor an applicable organization-level variable exists, so tier 4 does not run for its PRs, with no error. Set the
 variable in each calling repository, or as an organization-level variable those
 repositories can read.
 
