@@ -48,12 +48,15 @@ case "$1" in
     ;;
   api)
     case "$2" in
-      repos/*/actions/workflows*)
-        # gh api repos/<owner>/<repo>/actions/workflows?... → wf_<owner>__<repo>.json
-        r="${2#repos/}"; r="${r%%/actions/*}"
+      repos/*/actions/workflows/*)
+        # gh api repos/<owner>/<repo>/actions/workflows/<file> --jq '.state // ""'
+        # → that file's state from wf_<owner>__<repo>.json; a 404 when not listed.
+        r="${2#repos/}"; file="${r##*/}"; r="${r%%/actions/*}"
         f="$FIXTURE_DIR/wf_${r%%/*}__${r#*/}.json"
-        if [ -f "$f" ]; then cat "$f"; exit 0; fi
-        exit 1
+        [ -f "$f" ] || exit 1
+        state=$(jq -r --arg p ".github/workflows/$file" 'first(.workflows[] | select(.path == $p) | .state) // empty' "$f")
+        [ -n "$state" ] || exit 1
+        echo "$state"; exit 0
         ;;
       repos/*/contents/.github/workflows/*)
         # gh api repos/<owner>/<repo>/contents/.github/workflows/<file> → wfc_<owner>__<repo>__<file>
@@ -1096,20 +1099,6 @@ https://github.com/o/app/pull/10
 https://github.com/o/.github-private/pull/3" ]
 }
 
-@test "review_entrypoint_candidates: lists an active pr-review.yml, then an active agent-ingress.yml" {
-  load_sweep_fn review_entrypoint_candidates
-  [ "$(review_entrypoint_candidates '{"workflows":[{"path":".github/workflows/agent-ingress.yml","state":"active"},{"path":".github/workflows/pr-review.yml","state":"active"}]}')" = "pr-review.yml
-agent-ingress.yml" ]
-  [ "$(review_entrypoint_candidates '{"workflows":[{"path":".github/workflows/agent-ingress.yml","state":"active"}]}')" = "agent-ingress.yml" ]
-  # A disabled pr-review.yml does not count.
-  [ "$(review_entrypoint_candidates '{"workflows":[{"path":".github/workflows/pr-review.yml","state":"disabled_manually"},{"path":".github/workflows/agent-ingress.yml","state":"active"}]}')" = "agent-ingress.yml" ]
-  [ -z "$(review_entrypoint_candidates '{"workflows":[{"path":".github/workflows/ci.yml","state":"active"}]}')" ]
-  # A same-named file outside .github/workflows, and unreadable input, give nothing.
-  [ -z "$(review_entrypoint_candidates '{"workflows":[{"path":"docs/pr-review.yml","state":"active"}]}')" ]
-  [ -z "$(review_entrypoint_candidates 'not json')" ]
-  [ -z "$(review_entrypoint_candidates '')" ]
-}
-
 @test "entrypoint_dispatches_pr_review: needs workflow_dispatch, a pr_url input and the pr-review reusable" {
   load_sweep_fn entrypoint_dispatches_pr_review
   entrypoint_dispatches_pr_review "$DISPATCHABLE_CALLER"
@@ -1198,6 +1187,16 @@ agent-ingress.yml" ]
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   grep -qF "workflow run agent-ingress.yml --repo combsmith/demo -f pr_url=$(url_for 2609)" "$GH_LOG"
+}
+
+@test "routing: a disabled pr-review.yml is skipped for an active agent-ingress.yml" {
+  write_workflows combsmith/demo pr-review.yml:disabled_manually agent-ingress.yml:active
+  write_pr 2615 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  url_for 2615 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run agent-ingress.yml --repo combsmith/demo -f pr_url=$(url_for 2615)" "$GH_LOG"
 }
 
 @test "routing: ROUTE_TO_REPO_ENTRYPOINT=false sends a consumer PR through the agent-repo trigger" {

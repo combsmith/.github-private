@@ -241,19 +241,6 @@ held=0
 declare -A DISPATCHED_BY_REPO=()
 declare -A ENTRYPOINT_BY_REPO=()
 
-# review_entrypoint_candidates <workflows_json>
-# From a GET /repos/{repo}/actions/workflows body, list the files that may be the
-# repo's own pr-review entrypoint, in preference order, one per line: an active
-# .github/workflows/pr-review.yml, then an active agent-ingress.yml (ADR-0007).
-# A listing says nothing about a file's triggers, so each candidate still has to
-# pass entrypoint_dispatches_pr_review. Pure.
-review_entrypoint_candidates() {
-  jq -r '
-    [ (.workflows // [])[] | objects | select(.state == "active") | (.path // "") ] as $paths
-    | ("pr-review.yml", "agent-ingress.yml")
-    | select(. as $f | any($paths[]; . == ".github/workflows/" + $f))' <<< "${1:-}" 2>/dev/null || true
-}
-
 # entrypoint_dispatches_pr_review <workflow_yaml>
 # True when a workflow file can take the sweep's dispatch: it declares a
 # workflow_dispatch trigger with a pr_url input, and calls the pr-review reusable.
@@ -268,14 +255,15 @@ entrypoint_dispatches_pr_review() {
 }
 
 # resolve_dispatch_target <pr_url>
-# Set DISPATCH_REPO / DISPATCH_WORKFLOW for a PR (#2530). AGENT_REPO's own PRs, an
-# unparseable URL, ROUTE_TO_REPO_ENTRYPOINT=false, and a repo with no entrypoint
-# that takes a pr_url dispatch (or whose workflow list or files cannot be read) all
-# use TRIGGER_WORKFLOW in AGENT_REPO.
+# Set DISPATCH_REPO / DISPATCH_WORKFLOW for a PR (#2530). The repo's own entrypoint
+# is an active .github/workflows/pr-review.yml, else an active agent-ingress.yml
+# (ADR-0007), that passes entrypoint_dispatches_pr_review. AGENT_REPO's own PRs, an
+# unparseable URL, ROUTE_TO_REPO_ENTRYPOINT=false, and a repo with no such file (or
+# whose workflows cannot be read) all use TRIGGER_WORKFLOW in AGENT_REPO.
 # The lookup is cached per repo for the run. Sets globals rather than echoing, so
 # the cache survives (a command substitution would run in a subshell).
 resolve_dispatch_target() {
-  local _url="$1" _repo="" _wf="" _file="" _yaml=""
+  local _url="$1" _repo="" _state="" _file="" _yaml=""
   DISPATCH_REPO="$AGENT_REPO"
   DISPATCH_WORKFLOW="$TRIGGER_WORKFLOW"
   [[ "$ROUTE_TO_REPO_ENTRYPOINT" = "true" ]] || return 0
@@ -285,8 +273,11 @@ resolve_dispatch_target() {
   [[ -n "$_repo" ]] && [[ "$_repo" != "$AGENT_REPO" ]] || return 0
   if [[ -z "${ENTRYPOINT_BY_REPO[$_repo]+set}" ]]; then
     ENTRYPOINT_BY_REPO[$_repo]=""
-    _wf=$(gh api "repos/$_repo/actions/workflows?per_page=100" 2>/dev/null) || _wf=""
-    for _file in $(review_entrypoint_candidates "$_wf"); do
+    # Ask for each file by name, in preference order: the workflow list is paged, so
+    # an entrypoint on a later page would be missed. A missing file is a 404.
+    for _file in pr-review.yml agent-ingress.yml; do
+      _state=$(gh api "repos/$_repo/actions/workflows/$_file" --jq '.state // ""' 2>/dev/null) || _state=""
+      [[ "$_state" == "active" ]] || continue
       _yaml=$(gh api "repos/$_repo/contents/.github/workflows/$_file" \
                 -H "Accept: application/vnd.github.raw" 2>/dev/null) || _yaml=""
       if entrypoint_dispatches_pr_review "$_yaml"; then
