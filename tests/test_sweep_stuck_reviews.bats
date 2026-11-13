@@ -1091,8 +1091,8 @@ https://github.com/o/.github-private/pull/3" ]
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   grep -qF "workflow run pr-review.yml --repo combsmith/demo -f pr_url=$(url_for 2601)" "$GH_LOG"
-  ! grep -qF -- "--ref" "$GH_LOG"
-  ! grep -qF "pr-review-trigger.yml" "$GH_LOG"
+  ! grep -qF -- "--ref" "$GH_LOG" || false
+  ! grep -qF "pr-review-trigger.yml" "$GH_LOG" || false
   [[ "$output" == *"Dispatches by repo: combsmith/demo=1"* ]]
 }
 
@@ -1163,7 +1163,7 @@ GATE_RESOLVED_COMMENT='[{"id":"IC_done","author":{"login":"a-maintainer"},"autho
 
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
-  ! grep -qF -- "-f pr_url=$(url_for 2610)" "$GH_LOG"
+  ! grep -qF -- "-f pr_url=$(url_for 2610)" "$GH_LOG" || false
   grep -qF -- "-f pr_url=$(url_for 2611)" "$GH_LOG"
   [[ "$output" == *"held at the maintainer-comment gate"* ]]
   [[ "$output" == *"1 review(s) dispatched"*"1 held at the comment gate."* ]]

@@ -262,16 +262,16 @@ resolve_dispatch_target() {
   local _url="$1" _repo="" _wf=""
   DISPATCH_REPO="$AGENT_REPO"
   DISPATCH_WORKFLOW="$TRIGGER_WORKFLOW"
-  [ "$ROUTE_TO_REPO_ENTRYPOINT" = "true" ] || return 0
+  [[ "$ROUTE_TO_REPO_ENTRYPOINT" = "true" ]] || return 0
   if [[ "$_url" =~ ^https?://[^/]+/([^/]+/[^/]+)/pull/[0-9]+ ]]; then
     _repo="${BASH_REMATCH[1]}"
   fi
-  [ -n "$_repo" ] && [ "$_repo" != "$AGENT_REPO" ] || return 0
-  if [ -z "${ENTRYPOINT_BY_REPO[$_repo]+set}" ]; then
+  [[ -n "$_repo" ]] && [[ "$_repo" != "$AGENT_REPO" ]] || return 0
+  if [[ -z "${ENTRYPOINT_BY_REPO[$_repo]+set}" ]]; then
     _wf=$(gh api "repos/$_repo/actions/workflows?per_page=100" 2>/dev/null) || _wf=""
     ENTRYPOINT_BY_REPO[$_repo]="$(pick_review_entrypoint "$_wf")"
   fi
-  if [ -n "${ENTRYPOINT_BY_REPO[$_repo]}" ]; then
+  if [[ -n "${ENTRYPOINT_BY_REPO[$_repo]}" ]]; then
     DISPATCH_REPO="$_repo"
     DISPATCH_WORKFLOW="${ENTRYPOINT_BY_REPO[$_repo]}"
   fi
@@ -286,14 +286,14 @@ resolve_dispatch_target() {
 # this shell. SKIP_GATE_HELD=false turns the check off.
 held_at_comment_gate() {
   local _url="$1" _snap="$2" _rc=0
-  [ "$SKIP_GATE_HELD" = "true" ] || return 1
+  [[ "$SKIP_GATE_HELD" = "true" ]] || return 1
   (
     # shellcheck source=lib/maintainer-comment-gate.sh
     source "$SCRIPT_DIR/lib/maintainer-comment-gate.sh"
     _merged=$(maintainer_gate_merge_edit_times "$_url" "$_snap")
     check_maintainer_comments "$_merged" "${BOT_USER:-donpetry-bot}"
   ) >/dev/null 2>&1 || _rc=$?
-  [ "$_rc" -eq 1 ]
+  [[ "$_rc" -eq 1 ]]
 }
 
 # dispatch_review <pr_url> <snapshot> <label> [force]
@@ -325,7 +325,7 @@ dispatch_review() {
     force_flags=(-f force_review=true)
   fi
   # A feature-branch ref exists only in AGENT_REPO; another repo runs its default branch.
-  if [ "$DISPATCH_REPO" = "$AGENT_REPO" ]; then
+  if [[ "$DISPATCH_REPO" = "$AGENT_REPO" ]]; then
     ref_flags=("${REF_FLAGS[@]}")
   fi
   if gh workflow run "$DISPATCH_WORKFLOW" --repo "$DISPATCH_REPO" "${ref_flags[@]}" \
@@ -617,7 +617,7 @@ sweep_cost_line() {
   read -r _bg _bc <<< "$_b"
   read -r _ag _ac <<< "$_a"
   if [[ "$_bg$_bc$_ag$_ac" =~ ^[0-9]+$ && -n "$_bg" && -n "$_bc" && -n "$_ag" && -n "$_ac" ]] \
-     && [ "$_bg" -ge "$_ag" ] && [ "$_bc" -ge "$_ac" ]; then
+     && [[ "$_bg" -ge "$_ag" ]] && [[ "$_bc" -ge "$_ac" ]]; then
     echo "GraphQL $(( _bg - _ag )), REST $(( _bc - _ac ))"
   else
     echo "unknown"
@@ -631,10 +631,10 @@ for _r in "${!DISPATCHED_BY_REPO[@]}"; do
 done
 
 echo ""
-echo "Sweep summary: inspected $inspected candidate(s), $stuck stuck-green, $dispatched review(s) dispatched, $armed delayed retr$([ "$armed" -eq 1 ] && echo y || echo ies) armed, $held held at the comment gate."
+echo "Sweep summary: inspected $inspected candidate(s), $stuck stuck-green, $dispatched review(s) dispatched, $armed delayed retr$([[ "$armed" -eq 1 ]] && echo y || echo ies) armed, $held held at the comment gate."
 echo "  Dispatches by repo: ${by_repo:-none}"
 echo "  API points spent (shared GH_TOKEN quota): $cost"
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
     echo "### PR review sweep"
     echo ""
