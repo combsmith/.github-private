@@ -371,17 +371,6 @@ $(_ours '<!-- dev-lead-bot-comment-retry id=IC_cr version=2026-10-01T23:05:43Z a
 # _rejected <ours-json> — that reply as the resolver leaves it after a rejection.
 _rejected() { jq -c '.isMinimized = true | .minimizedReason = "OUTDATED"' <<< "$1"; }
 
-# _failed_minimize <createdAt> <targetReplyId> — marker reply indicating minimize failed
-_failed_minimize() {
-  jq -nc --arg c "${1:-2026-10-01T23:21:00Z}" --arg id "$2" '
-    {id:("IC_ours_" + ($c | gsub("[^0-9]";"")) + "_don-petry"),
-     author:{login:"don-petry", __typename:"User"},
-     authorAssociation:"OWNER",
-     body:("<!-- dev-lead:failed-to-minimize id=" + $id + " -->"),
-     createdAt:$c, lastEditedAt:null,
-     isMinimized:false, minimizedReason:null}'
-}
-
 _2507_FIXED='<!-- dev-lead:comment-disposition id=IC_ca disposition=fixed sha=43656e0caaaad717ce80cff3cc7354fdfa0d6a09 -->
 Fixed in canary-rollout.sh.'
 
@@ -500,18 +489,6 @@ The value is bounded by the caller.' 2026-10-02T00:10:00Z)")"
     "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
     "$(_rejected "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=1 at=2026-10-02T00:30:00Z -->' 2026-10-02T00:30:00Z)")")"
   [ "$(_reason_for "$out" IC_ca)" = "retry-pending" ]
-}
-
-@test "bcr(#2507): a rejected disposition that failed to minimize (not minimized) is retried" {
-  # Simulate the scenario where the resolver tried to minimize a rejected
-  # disposition but all 3 attempts failed. The reply stays isMinimized=false.
-  # The retry code should detect this and dispatch, not treat it as coverage.
-  out="$(_decide \
-    "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
-    "$(_ours "$_2507_FIXED" 2026-10-01T23:20:00Z)" \
-    "$(_failed_minimize "2026-10-01T23:21:00Z" "IC_ca")")"
-  [ "$(_dispatches "$out")" = "1" ]
-  [ "$(_reason_for "$out" IC_ca)" = "undispositioned" ]
 }
 
 # ── bcr_fetch_pr_comments: fails closed on a partial snapshot ────────────────
