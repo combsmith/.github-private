@@ -136,6 +136,14 @@ if [[ -n "${GITHUB_REF:-}" && ( "$GITHUB_REF" =~ ^refs/heads/ || "$GITHUB_REF" =
   REF_FLAGS=(--ref "$GITHUB_REF")
 fi
 
+# rate_limit_remaining — "<graphql> <core>" points left for GH_TOKEN, or empty when
+# unreadable. Read before candidate discovery and again at the end, so the reported
+# cost includes list-prs.sh's org-wide enumeration (#2530).
+rate_limit_remaining() {
+  gh api rate_limit --jq '"\(.resources.graphql.remaining) \(.resources.core.remaining)"' 2>/dev/null || true
+}
+rate_before=$(rate_limit_remaining)
+
 # ---------------------------------------------------------------------------
 # 1. Gather candidate PR URLs
 # ---------------------------------------------------------------------------
@@ -221,12 +229,6 @@ echo "  Candidates: $candidate_count"
 echo "  Dry run:    $DRY_RUN_BOOL"
 echo ""
 
-# rate_limit_remaining — "<graphql> <core>" points left for GH_TOKEN, or empty when
-# unreadable. Read at the start and the end so the run reports what it cost (#2530).
-rate_limit_remaining() {
-  gh api rate_limit --jq '"\(.resources.graphql.remaining) \(.resources.core.remaining)"' 2>/dev/null || true
-}
-rate_before=$(rate_limit_remaining)
 
 # ---------------------------------------------------------------------------
 # 2. Select stuck-green PRs and re-dispatch
