@@ -733,8 +733,106 @@ JSON
   _normalize_node "$(cat "$dir/n2.json")" | jq -c '.[]' > "$dir/b.jsonl"
   run aggregate_snapshot "$dir"
   echo "$output" | jq -e '.bots["gemini-code-assist"] | .findings_raised==3 and .threads_total==2 and .threads_resolved==1 and .thumbs_up==1'
+  # Other bots keep the #2504 rule (#2527): threads 2, plus 1 body on the thread-less PR.
+  echo "$output" | jq -e '.bots["gemini-code-assist"] | .findings_threads==2 and .findings_body==1'
   run render_reviewer_report "$dir" 7 1 2026-11-12
   echo "$output" | grep -E '^\| Gemini Code Assist \| 2 \| 2 +\| 0 +\| 0 +\| 0 +\| 0 +\| 3 +\| 50% +\|'
+}
+
+# ---------------------------------------------------------------------------
+# Body findings (issue #2527)
+# ---------------------------------------------------------------------------
+
+@test "body findings: CodeRabbit outside-diff and nitpick items count beside its threads (#2527)" {
+  local dir
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/cr.XXXXXX")"
+  # Two reviews on one PR, one per header form seen in bodyText. Review 1 opened two
+  # threads and also carries 1 outside-diff item and 2 nitpicks; review 2 carries
+  # 1 nitpick. The unnumbered repeats in the "Prompt to fix all issues" block must not
+  # add anything, and "Duplicate comments" / "Additional comments" are not findings.
+  cat > "$dir/n.json" <<'JSON'
+{"url":"https://github.com/o/r/pull/1","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
+ "reviews":{"nodes":[
+   {"id":"R1","author":{"login":"coderabbitai"},"state":"COMMENTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"Actionable comments posted: 2\nCautionSome comments are outside the diff and can’t be posted inline due to GitHub limitations.\n⚠️ Outside diff range comments (1)\n\nscripts/a.sh:80-110\nAdd a contract test.\n\n🧹 Nitpick comments (2)\n\nscripts/b.sh (2)\n\n♻️ Duplicate comments (3)\n\nAdditional comments: 4\n\n🤖 Prompt to fix all issues\nOutside diff comments:\nReview comments at @scripts/a.sh:\n- Around line 80-110: Add a contract test.\nNitpick comments:\n- Line 3: rename it."},
+   {"id":"R2","author":{"login":"coderabbitai"},"state":"COMMENTED","submittedAt":"2026-11-10T11:05:00Z","bodyText":" Nitpick comments: 1\n\nscripts/c.sh: 1\n\n1-1:  Trivial · Add the safety flags."}]},
+ "reviewThreads":{"nodes":[
+   {"isResolved":true,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"},"createdAt":"2026-11-10T10:05:00Z","bodyText":"Null deref.","path":"a.sh","line":5,"originalLine":5,"pullRequestReview":{"id":"R1"},"reactionGroups":[]}]}},
+   {"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"},"createdAt":"2026-11-10T10:05:00Z","bodyText":"Leak.","path":"b.sh","line":9,"originalLine":9,"pullRequestReview":{"id":"R1"},"reactionGroups":[]}]}}]},
+ "comments":{"nodes":[]}}
+JSON
+  run _normalize_node "$(cat "$dir/n.json")"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.[] | select(.kind=="bot_pr" and .bot=="coderabbitai")
+    | .findings_threads==2 and .findings_body==4 and .findings_raised==6'
+}
+
+@test "body findings: a CodeRabbit body with no section counts once, only on a thread-less PR (#2527)" {
+  local out
+  out="$(_normalize_node "$(_case_node '{"bot":"coderabbitai","kind":"review","body":"Actionable comments posted: 3"}')")"
+  echo "$out" | jq -e '.[] | select(.bot=="coderabbitai") | .findings_threads==0 and .findings_body==1 and .findings_raised==1'
+}
+
+@test "body findings: Codex body suggestions count unless the same review has an inline comment there (#2527)" {
+  local dir
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/cx.XXXXXX")"
+  # Review C1 points at three locations:
+  #   x.sh L10-L12 (permalink form)     — matched by C1's inline comment on x.sh line 11 → not counted;
+  #   y.sh line 40 (rendered snippet)   — no inline comment there → counted;
+  #   z.sh L5 (permalink form)          — only a DIFFERENT review (C0) commented there → counted.
+  cat > "$dir/n.json" <<'JSON'
+{"url":"https://github.com/o/r/pull/1","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
+ "reviews":{"nodes":[
+   {"id":"C0","author":{"login":"chatgpt-codex-connector"},"state":"COMMENTED","submittedAt":"2026-11-10T10:02:00Z","bodyText":"💡 Codex Review\nHere are some automated review suggestions for this pull request.\nReviewed commit: aaaaaaa111"},
+   {"id":"C1","author":{"login":"chatgpt-codex-connector"},"state":"COMMENTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"💡 Codex Review\nHere are some automated review suggestions for this pull request.\nReviewed commit: 0123456789\nhttps://github.com/o/r/blob/0123456789abcdef0123456789abcdef01234567/src/x.sh#L10-L12\nHandle the empty list\nWhen the list is empty this loop never runs.\n\nr/src/y.sh\n\n        Line 40\n      in\n      0123456\n\nQuote the variable\nWord splitting breaks paths with spaces.\n\nhttps://github.com/o/r/blob/0123456789abcdef0123456789abcdef01234567/src/z.sh#L5\nCheck the exit status"}]},
+ "reviewThreads":{"nodes":[
+   {"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"chatgpt-codex-connector"},"createdAt":"2026-11-10T10:05:00Z","bodyText":"Handle the empty list","path":"src/x.sh","line":null,"originalLine":11,"pullRequestReview":{"id":"C1"},"reactionGroups":[]}]}},
+   {"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"chatgpt-codex-connector"},"createdAt":"2026-11-10T10:02:00Z","bodyText":"Check the exit status","path":"src/z.sh","line":5,"originalLine":5,"pullRequestReview":{"id":"C0"},"reactionGroups":[]}]}}]},
+ "comments":{"nodes":[]}}
+JSON
+  run _normalize_node "$(cat "$dir/n.json")"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.[] | select(.kind=="bot_pr" and .bot=="chatgpt-codex-connector")
+    | .findings_threads==2 and .findings_body==2 and .findings_raised==4'
+}
+
+@test "body findings: a boilerplate Codex body beside its threads adds nothing (#2527)" {
+  run _normalize_node '{"url":"u","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
+ "reviews":{"nodes":[{"id":"C1","author":{"login":"chatgpt-codex-connector"},"state":"COMMENTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"💡 Codex Review\nHere are some automated review suggestions for this pull request.\nReviewed commit: 0123456789"}]},
+ "reviewThreads":{"nodes":[{"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"chatgpt-codex-connector"},"createdAt":"2026-11-10T10:05:00Z","bodyText":"Handle the empty list","path":"src/x.sh","line":11,"originalLine":11,"pullRequestReview":{"id":"C1"},"reactionGroups":[]}]}}]},
+ "comments":{"nodes":[]}}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.[] | select(.kind=="bot_pr" and .bot=="chatgpt-codex-connector")
+    | .findings_threads==1 and .findings_body==0 and .findings_raised==1'
+}
+
+@test "body findings: Details shows threads and bodies separately; the headline is their sum (#2527)" {
+  local dir
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/cd.XXXXXX")"
+  _normalize_node "$(_case_node '{"bot":"coderabbitai","kind":"review","body":"Nitpick comments: 2"}')" \
+    | jq -c '.[]' > "$dir/a.jsonl"
+  run aggregate_snapshot "$dir"
+  echo "$output" | jq -e '.bots["coderabbitai"] | .findings_threads==0 and .findings_body==2 and .findings_raised==2'
+  run render_reviewer_report "$dir" 7 1 2026-11-12
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -qF "| Findings: threads / bodies |"
+  echo "$output" | grep -E '^\| CodeRabbit \| 1 \| 1 +\| 0 +\| 0 +\| 0 +\| 0 +\| 2 +\|'
+  echo "$output" | grep -E '^\| CodeRabbit \| 1 +\| 0 / 0 \| 0 +\| 0 / 0 \| 0 \| 0 \| 0 / 2 \|$'
+}
+
+@test "body findings: Findings raised shows no delta against a v2 snapshot, and one against v3 (#2527)" {
+  local dir prev
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/wv.XXXXXX")"
+  _normalize_node "$(_case_node '{"bot":"coderabbitai","kind":"review","body":"Nitpick comments: 2"}')" \
+    | jq -c '.[]' > "$dir/a.jsonl"
+  prev="$(mktemp "$BATS_TEST_TMPDIR/prev.XXXXXX")"
+  echo '{"schema_version":2,"eligible_prs":1,"total_prs":1,"bots":{"coderabbitai":{"with_findings_prs":1,"clean_prs":0,"refused_prs":0,"skipped_prs":0,"no_response_prs":0,"findings_raised":1}}}' > "$prev"
+  REVIEWER_PREV_SNAPSHOT="$prev" run render_reviewer_report "$dir" 7 1 2026-11-12
+  [ "$status" -eq 0 ]
+  # With findings keeps its v2 delta; Findings raised has none.
+  echo "$output" | grep -E '^\| CodeRabbit \| 1 \| 1 \(±0\) \| 0 \(±0\) \| 0 \(±0\) \| 0 \(±0\) \| 0 \(±0\) \| 2 +\|'
+  echo '{"schema_version":3,"eligible_prs":1,"total_prs":1,"bots":{"coderabbitai":{"with_findings_prs":1,"clean_prs":0,"refused_prs":0,"skipped_prs":0,"no_response_prs":0,"findings_raised":1}}}' > "$prev"
+  REVIEWER_PREV_SNAPSHOT="$prev" run render_reviewer_report "$dir" 7 1 2026-11-12
+  echo "$output" | grep -E '^\| CodeRabbit \| 1 \| .* \| 2 \(▲ \+1\) \|'
 }
 
 @test "render: headline table has the #2504 columns" {
@@ -797,11 +895,11 @@ JSON
   echo "$output" | grep -E '^\| Codex \| 2 \| 0 +\| 0 +\| 1 +\| 0 +\| 1 +\| 0 +\| n/a +\|'
 }
 
-@test "snapshot: carries schema_version 2 and never the unclassified sample bodies (#2504)" {
+@test "snapshot: carries schema_version 3 and never the unclassified sample bodies (#2504, #2527)" {
   local out
   out="$(mktemp "$BATS_TEST_TMPDIR/out.XXXXXX")"
   REVIEWER_SNAPSHOT_OUT="$out" run render_reviewer_report "$FIXTURES" 7 12 2026-07-13
-  jq -e '.schema_version == 2' "$out"
+  jq -e '.schema_version == 3' "$out"
   run grep -q "unclassified_samples" "$out"
   [ "$status" -ne 0 ]
 }

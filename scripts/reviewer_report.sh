@@ -230,8 +230,8 @@ _delta_arrow() {
 #   {kind:"pr", repo, pr, created, merged, draft, author}         (denominator)
 #   {kind:"bot_pr", repo, pr, bot, created, classes, real_responses, refusals,
 #      latency_s, reviews, approved, changes_req, inline_comments, threads_total,
-#      threads_resolved, findings_raised, thumbs_up, thumbs_down,
-#      unclassified_samples}                                       (participation)
+#      threads_resolved, findings_threads, findings_body, findings_raised,
+#      thumbs_up, thumbs_down, unclassified_samples}                                       (participation)
 # Args: --arg repo, --argjson bots (login array), --arg rl (rate-limit regex).
 # A "bot_pr" record is emitted for every bot that left at least one message.
 #
@@ -241,7 +241,10 @@ _delta_arrow() {
 # decided in this order (first hit wins):
 #   0. a check run with a failed conclusion is `status` (the job broke; whatever its
 #      summary says, it carries no review — #1913);
-#   1. the bot's own rows in reviewer-message-classes.tsv, top to bottom;
+#   1. the bot's own rows in reviewer-message-classes.tsv, top to bottom. A row of
+#      kind `any` reaches an inline comment only when its class is `finding` or
+#      `clean` (#2527): a broad status, skip or refusal phrase inside a real inline
+#      finding must not drop it from threads and findings;
 #   2. the shared refusal fallback: $rl (ADVISORY_RATE_LIMIT_RE) or the author-scoped
 #      cubic clause → `refused`. Never applied to inline comments: a finding that talks
 #      about a rate limit is still a finding;
@@ -252,6 +255,17 @@ _delta_arrow() {
 #      `status`;
 #   4. otherwise `unclassified`.
 # A PR counts as reviewed by a bot only when it left a `finding` or `clean` message.
+#
+# Findings raised (#2527) = findings_threads + findings_body:
+#   findings_threads — review threads the bot opened with a finding;
+#   findings_body    — findings written in its review / comment / check-run bodies.
+#     coderabbitai: the counts in its "Outside diff range comments" and "Nitpick
+#       comments" headers, whether or not it opened threads (those items never
+#       become threads);
+#     chatgpt-codex-connector: each code location its body points at, unless an
+#       inline comment from the same review sits on the same file and line;
+#     a finding body with none of the above counts once, and only on a PR where the
+#       bot opened no thread (otherwise it is the summary of those threads).
 # shellcheck disable=SC2089  # this is a jq program; embedded quotes are meant to be literal
 _NORMALIZE_JQ='
   def is_bot($login): ($login != null) and ($login | ascii_downcase) as $l
@@ -266,7 +280,7 @@ _NORMALIZE_JQ='
       else
         ( [ (class_rules[$m.bot] // [])[]
             | select(.kind == $m.kind
-                     or (.kind == "any" and ($m.kind != "inline" or .class != "refused")))
+                     or (.kind == "any" and ($m.kind != "inline" or .class == "finding" or .class == "clean")))
             | select(.pattern as $p | $b | test($p; "i"))
             | select($m.kind != "review" or $m.state != "CHANGES_REQUESTED")
             | .class ] | first ) as $rule
@@ -295,10 +309,46 @@ _NORMALIZE_JQ='
     (.body // "") | gsub("https?://[^\\s)]+"; "[url]") | gsub("[`\\s]+"; " ")
     | sub("^ "; "") | sub(" $"; "")
     | if length > 100 then .[0:100] + "…" else . end;
+  # CodeRabbit body findings (#2527): the counts in its section headers. bodyText
+  # carries two header forms, "Outside diff range comments (2)" and "Nitpick
+  # comments: 2". The unnumbered repeats in its "Prompt to fix all issues" block
+  # ("Outside diff comments:", "Nitpick comments:") carry no count and never match.
+  def coderabbit_body_count:
+    (.body // "") as $b
+    | [ ("Outside diff range", "Nitpick") as $s
+        | (first($b | match("\($s) comments[ \\t]*(?:\\([ \\t]*|:[ \\t]*)([0-9]+)"; "i"))
+           | .captures[0].string | tonumber) // 0 ]
+    | add;
+  # Codex body findings (#2527): each code location the body points at, read from
+  # bodyText as the permalink (…/blob/<sha>/<path>#L<a>-L<b>) or as the snippet
+  # GitHub renders from it (<repo>/<path> Lines <a> to <b> in <sha>).
+  def codex_locations:
+    (.body // "") as $b
+    | [ ($b | match("/blob/[0-9a-f]{7,40}/([^#\\s]+)#L([0-9]+)(?:-L([0-9]+))?"; "g")),
+        ($b | match("(\\S+)\\s+Lines? ([0-9]+)(?: to ([0-9]+))?\\s+in\\s+[0-9a-f]{7,40}\\b"; "g")) ]
+    | map(.captures | { path: .[0].string, from: (.[1].string | tonumber),
+                        to: ((.[2].string // .[1].string) | tonumber) });
+  # Does this inline comment sit on $loc? Same file (the snippet form prefixes the
+  # repo name) and an overlapping line span, on the current or the original diff.
+  def at_location($loc):
+    (.path // "") as $p
+    | ($p != "") and ($loc.path == $p or ($loc.path | endswith("/" + $p)))
+      and ([ [(.start_line // .line), .line], [(.original_start_line // .original_line), .original_line] ]
+           | any(.[]; .[0] != null and .[1] != null and .[0] <= $loc.to and .[1] >= $loc.from));
+  # Findings this body carries on its own, beyond the threads its bot opened. The
+  # argument is that same bot inline comments on the PR.
+  def body_finding_count($inline):
+    . as $m
+    | if $m.bot == "coderabbitai" then coderabbit_body_count
+      elif $m.bot == "chatgpt-codex-connector" then
+        [ codex_locations[] as $loc
+          | select(($inline | any(.[]; .review_id != null and .review_id == $m.id and at_location($loc))) | not) ]
+        | length
+      else 0 end;
   . as $pr
   | ([ (.reviews.nodes // [])[]
        | select(.author.login as $a | is_bot($a))
-       | { bot: (.author.login|ascii_downcase), at: .submittedAt,
+       | { bot: (.author.login|ascii_downcase), at: .submittedAt, id: (.id // null),
            kind: "review", state: (.state // "COMMENTED"),
            body: (.bodyText // ""), reactions_up: 0, reactions_down: 0,
            first_in_thread: false, resolved: false, outdated: false } ]
@@ -311,7 +361,10 @@ _NORMALIZE_JQ='
             reactions_up: ([ (.reactionGroups // [])[] | select(.content=="THUMBS_UP") | .users.totalCount ] | add // 0),
             reactions_down: ([ (.reactionGroups // [])[] | select(.content=="THUMBS_DOWN") | .users.totalCount ] | add // 0),
             first_in_thread: ($idx == 0),
-            resolved: ($t.isResolved // false), outdated: ($t.isOutdated // false) } ]
+            resolved: ($t.isResolved // false), outdated: ($t.isOutdated // false),
+            review_id: (.pullRequestReview.id // null), path: (.path // null),
+            line: (.line // null), original_line: (.originalLine // null),
+            start_line: (.startLine // null), original_start_line: (.originalStartLine // null) } ]
     + [ (.comments.nodes // [])[]
         | select(.author.login as $a | is_bot($a))
         | { bot: (.author.login|ascii_downcase), at: .createdAt,
@@ -345,7 +398,10 @@ _NORMALIZE_JQ='
       | ($substantive | map(select(.kind=="review")) | length) as $rev_events
       # Threads this bot OPENED with a finding — reply comments are not new threads.
       | ($mine | map(select(.kind=="inline" and .first_in_thread and .class=="finding"))) as $threads
-      | ($mine | map(select(.kind!="inline" and .class=="finding")) | length) as $body_findings
+      | ($mine | map(select(.kind=="inline"))) as $inline
+      | ($mine | map(select(.kind!="inline" and .class=="finding") | body_finding_count($inline))) as $body_counts
+      | (($body_counts | add // 0)
+         + (if ($threads | length) > 0 then 0 else ($body_counts | map(select(. == 0)) | length) end)) as $body_findings
       | { kind: "bot_pr", repo: $repo, pr: ($pr.url),
           bot: $grp[0].bot, created: $pr.createdAt,
           classes: (reduce ("finding","clean","refused","skipped","status","unclassified") as $c
@@ -367,10 +423,10 @@ _NORMALIZE_JQ='
           inline_comments:  ($mine | map(select(.kind=="inline" and .class=="finding")) | length),
           threads_total:    ($threads | length),
           threads_resolved: ($threads | map(select(.resolved)) | length),
-          # Findings raised = threads opened + findings in review/comment/check-run
-          # bodies. A body finding on a PR where the bot also opened threads is the
-          # summary of those threads, so it is not counted a second time.
-          findings_raised: (($threads | length) + (if ($threads | length) > 0 then 0 else $body_findings end)),
+          # Findings raised = threads opened + body findings (#2527, see above).
+          findings_threads: ($threads | length),
+          findings_body:    $body_findings,
+          findings_raised:  (($threads | length) + $body_findings),
           thumbs_up:   ($mine | map(.reactions_up // 0)   | add // 0),
           thumbs_down: ($mine | map(.reactions_down // 0) | add // 0),
           unclassified_samples: ($mine | map(select(.class == "unclassified") | sample) | .[0:3]) } )
@@ -390,9 +446,12 @@ _NORMALIZE_JQ='
 # *_events class counts are EVENT counts (each message counted); *_prs are PR counts.
 # schema_version 2 marks a snapshot carrying these fields, so the week-over-week
 # diff never compares them against a v1 snapshot whose buckets meant something else.
-#   { "schema_version": 2, "eligible_prs": N, "total_prs": N,
+# schema_version 3 (#2527) adds findings_threads / findings_body and counts
+# CodeRabbit and Codex body findings in findings_raised, so its delta needs a v3 prior.
+#   { "schema_version": 3, "eligible_prs": N, "total_prs": N,
 #     "bots": { "<login>": { with_findings_prs, clean_prs, refused_prs, skipped_prs,
 #               no_response_prs, reviewed_prs, engaged_prs, findings_raised,
+#               findings_threads, findings_body,
 #               finding_events, clean_events, skipped_events, status_events,
 #               unclassified_events, reviews, refusal_events, approved, changes_req,
 #               inline_comments, threads_total, threads_resolved, thumbs_up,
@@ -402,7 +461,7 @@ _NORMALIZE_JQ='
 aggregate_snapshot() {
   local dir="$1"
   local files=("$dir"/*.jsonl)
-  [[ -e "${files[0]}" ]] || { echo '{"schema_version":2,"eligible_prs":0,"total_prs":0,"bots":{}}'; return 0; }
+  [[ -e "${files[0]}" ]] || { echo '{"schema_version":3,"eligible_prs":0,"total_prs":0,"bots":{}}'; return 0; }
   jq -s '
     (map(select(.kind=="pr"))) as $prs
     | (map(select(.kind=="bot_pr"))) as $bp
@@ -428,6 +487,8 @@ aggregate_snapshot() {
             reviewed_prs:     ($reviewed | length),
             engaged_prs:      length,
             findings_raised:  ([.[].findings_raised // 0] | add),
+            findings_threads: ([.[].findings_threads // 0] | add),
+            findings_body:    ([.[].findings_body // 0] | add),
             finding_events:   ([.[].classes.finding // 0] | add),
             clean_events:     ([.[].classes.clean // 0] | add),
             skipped_events:   ([.[].classes.skipped // 0] | add),
@@ -445,8 +506,8 @@ aggregate_snapshot() {
             latency_p50: (if ($lat|length)==0 then null else $lat[(((($lat|length)-1)*0.50)|floor)] end),
             latency_p95: (if ($lat|length)==0 then null else $lat[(((($lat|length)-1)*0.95)|round)] end)
           } } ) | from_entries) as $bots
-    | { schema_version: 2, eligible_prs: $eligible, total_prs: $total, bots: $bots }
-  ' "${files[@]}" 2>/dev/null || echo '{"schema_version":2,"eligible_prs":0,"total_prs":0,"bots":{}}'
+    | { schema_version: 3, eligible_prs: $eligible, total_prs: $total, bots: $bots }
+  ' "${files[@]}" 2>/dev/null || echo '{"schema_version":3,"eligible_prs":0,"total_prs":0,"bots":{}}'
 }
 
 # _prev <snapshot_json_file> <bot> <field> — prior-week scalar or "" when absent.
@@ -456,21 +517,31 @@ _prev() {
   jq -r --arg b "$bot" --arg k "$field" '.bots?[$b]?[$k]? // empty' "$f" 2>/dev/null || printf ''
 }
 
-# _prev_v2 <snapshot_json_file> <bot> <field> — like _prev, but "" unless the prior
-# snapshot is schema_version >= 2 (#2504). A v1 snapshot has no with_findings_prs /
-# skipped_prs, and its refused_prs / no_response_prs were counted under the old
-# rules, so a headline delta against it would be wrong. No delta is shown instead.
-_prev_v2() {
-  local f="${1:-}" bot="$2" field="$3"
+# _prev_since <min_schema> <snapshot_json_file> <bot> <field> — like _prev, but ""
+# unless the prior snapshot is schema_version >= <min_schema>. A field whose meaning
+# changed in a schema bump must not show a delta against an older snapshot.
+_prev_since() {
+  local min="$1" f="${2:-}" bot="$3" field="$4"
   [[ -n "$f" ]] && [[ -f "$f" ]] || { printf ''; return 0; }
-  jq -r --arg b "$bot" --arg k "$field" '
-    if ((.schema_version? // 1) | tonumber? // 1) >= 2 then
+  jq -r --argjson min "$min" --arg b "$bot" --arg k "$field" '
+    if ((.schema_version? // 1) | tonumber? // 1) >= $min then
       (.bots?[$b]? // null) as $bot
       | if $bot == null then (if $k == "no_response_prs" then .eligible_prs else empty end)
         else ($bot[$k]? // empty) end
     else empty end
   ' "$f" 2>/dev/null || printf ''
 }
+
+# _prev_v2 <snapshot_json_file> <bot> <field> — "" unless the prior snapshot is
+# schema_version >= 2 (#2504). A v1 snapshot has no with_findings_prs / skipped_prs,
+# and its refused_prs / no_response_prs were counted under the old rules, so a
+# headline delta against it would be wrong. No delta is shown instead.
+_prev_v2() { _prev_since 2 "$@"; }
+
+# _prev_v3 <snapshot_json_file> <bot> <field> — "" unless the prior snapshot is
+# schema_version >= 3 (#2527): findings_raised before v3 left out CodeRabbit and
+# Codex body findings on PRs where the bot also opened threads.
+_prev_v3() { _prev_since 3 "$@"; }
 
 # _pct_num <numerator> <denominator> — integer percent, "" when denom is 0 (for deltas).
 _pct_num() {
@@ -640,7 +711,11 @@ render_reviewer_report() {
     local -a cells=()
     for f in "with_findings_prs:$wf" "clean_prs:$clean" "refused_prs:$refused" \
              "skipped_prs:$skipped" "no_response_prs:$no_resp" "findings_raised:$findings"; do
-      pv="$(_prev_v2 "$prev" "$bot" "${f%%:*}")"
+      if [[ "${f%%:*}" == findings_raised ]]; then
+        pv="$(_prev_v3 "$prev" "$bot" "${f%%:*}")"
+      else
+        pv="$(_prev_v2 "$prev" "$bot" "${f%%:*}")"
+      fi
       cells+=("$(_fmt_int "${f#*:}") $(_delta_arrow "${f#*:}" "$pv")")
     done
     # Resolved % with a percentage-point delta (blank when either week had no threads).
@@ -665,40 +740,42 @@ render_reviewer_report() {
   printf -- '- **Refused** — PRs where the bot only declined for quota, rate limit, trial or plan reasons (no finding or clean message).\n'
   printf -- '- **Skipped** — PRs where the bot only reported that it skipped the review because of configuration (for example auto review turned off).\n'
   printf -- '- **No response** — every other eligible PR: the bot never appeared, or left only `status` or `unclassified` messages.\n'
-  printf -- '- **Findings raised** — review threads the bot opened plus findings in its review, comment or check-run bodies (a body that only introduces the bot'"'"'s own threads is not counted twice).\n'
+  printf -- '- **Findings raised** — review threads the bot opened plus findings written in its review, comment or check-run bodies. CodeRabbit'"'"'s outside-diff and nitpick items and Codex'"'"'s body suggestions without a matching inline comment always count; any other finding body counts once, and only on a PR where the bot opened no thread (otherwise it summarizes those threads). The Details section splits the two.\n'
   printf -- '- **Resolved %%** — threads the bot opened that are resolved, out of all threads it opened.\n\n'
 
   # ---- Details (#2504) — the old event counts, verdicts and reactions --------
   printf '## Details\n\n'
-  printf '| Reviewer | Reviews | ✅ / 🔄 | Refusal events | 👍 / 👎 | Status messages | Unclassified messages |\n'
-  printf '|---|---:|:--:|---:|:--:|---:|---:|\n'
-  local reviews refusal_events approved changes_req up down st_ev uc_ev prev_reviews prev_refusals
+  printf '| Reviewer | Reviews | ✅ / 🔄 | Refusal events | 👍 / 👎 | Status messages | Unclassified messages | Findings: threads / bodies |\n'
+  printf '|---|---:|:--:|---:|:--:|---:|---:|:--:|\n'
+  local reviews refusal_events approved changes_req up down st_ev uc_ev f_thr f_body prev_reviews prev_refusals
   for bot in "${REVIEWER_BOTS[@]}"; do
     label="${REVIEWER_LABELS[$bot]:-$bot}"
-    IFS=$'\t' read -r reviews refusal_events approved changes_req up down st_ev uc_ev <<<"$(
+    IFS=$'\t' read -r reviews refusal_events approved changes_req up down st_ev uc_ev f_thr f_body <<<"$(
       jq -r --arg b "$bot" '
         (.bots?[$b] // {}) as $x
         | [ ($x.reviews // 0), ($x.refusal_events // 0), ($x.approved // 0), ($x.changes_req // 0),
             ($x.thumbs_up // 0), ($x.thumbs_down // 0), ($x.status_events // 0),
-            ($x.unclassified_events // 0) ]
+            ($x.unclassified_events // 0), ($x.findings_threads // 0), ($x.findings_body // 0) ]
         | @tsv' <<<"$snap"
     )"
     prev_reviews="$(_prev "$prev" "$bot" reviews)"
     prev_refusals="$(_prev "$prev" "$bot" refusal_events)"
-    printf '| %s | %s %s | %s / %s | %s %s | %s / %s | %s | %s |\n' \
+    printf '| %s | %s %s | %s / %s | %s %s | %s / %s | %s | %s | %s / %s |\n' \
       "$label" \
       "$(_fmt_int "$reviews")" "$(_delta_arrow "$reviews" "$prev_reviews")" \
       "$(_fmt_int "$approved")" "$(_fmt_int "$changes_req")" \
       "$(_fmt_int "$refusal_events")" "$(_delta_arrow "$refusal_events" "$prev_refusals")" \
       "$(_fmt_int "$up")" "$(_fmt_int "$down")" \
-      "$(_fmt_int "$st_ev")" "$(_fmt_int "$uc_ev")"
+      "$(_fmt_int "$st_ev")" "$(_fmt_int "$uc_ev")" \
+      "$(_fmt_int "$f_thr")" "$(_fmt_int "$f_body")"
   done
   printf '\n'
   printf -- '- **Reviews** — formal reviews the bot submitted, **each occurrence** (a PR re-reviewed on 5 commits = 5), leaving out refusals, skips and status notices. A bot that posts no formal review but delivers its verdict as a comment (e.g. SonarCloud'"'"'s quality-gate comment) has its `finding` / `clean` comments counted instead.\n'
   printf -- '- **✅ / 🔄** — of those reviews, how many were APPROVED / CHANGES_REQUESTED (comment-only responses carry no verdict).\n'
   printf -- '- **Refusal events** — every `refused` message, each occurrence.\n'
   printf -- '- **👍 / 👎** — reactions on the bot'"'"'s inline comments.\n'
-  printf -- '- **Status / Unclassified messages** — message counts; neither ever makes a PR count as reviewed.\n\n'
+  printf -- '- **Status / Unclassified messages** — message counts; neither ever makes a PR count as reviewed.\n'
+  printf -- '- **Findings: threads / bodies** — the two parts of **Findings raised**: review threads the bot opened, and findings counted from its review, comment or check-run bodies.\n\n'
 
   _render_unclassified_samples "$dir"
 
@@ -776,6 +853,8 @@ _gh_timeout() {
 # GraphQL query: one repo's PRs (newest first) with reviews, threads, comments.
 # $prFirst is the per-page PR count (small, and halved on retry, see PR_PAGE_SIZE).
 # headRefOid feeds the separate per-PR check-run fetch (#1908) for check-run reporters.
+# Review ids and inline-comment path / lines let Codex body suggestions be matched to
+# the inline comments of the same review (#2527).
 _PR_QUERY='
 query($owner:String!, $name:String!, $cursor:String, $prFirst:Int!) {
   repository(owner:$owner, name:$name) {
@@ -784,13 +863,14 @@ query($owner:String!, $name:String!, $cursor:String, $prFirst:Int!) {
       nodes {
         url number createdAt updatedAt mergedAt isDraft headRefOid
         author { login }
-        reviews(first: 50) { nodes { author { login } state submittedAt bodyText } }
+        reviews(first: 50) { nodes { id author { login } state submittedAt bodyText } }
         reviewThreads(first: 50) {
           nodes {
             isResolved isOutdated
             comments(first: 20) {
               nodes {
                 author { login } createdAt bodyText path
+                line originalLine startLine originalStartLine pullRequestReview { id }
                 reactionGroups { content users { totalCount } }
               }
             }
