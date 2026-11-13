@@ -337,7 +337,9 @@ _NORMALIZE_JQ='
     | [ ($b | match("/blob/[0-9a-f]{7,40}/([^#\\s]+)#L([0-9]+)(?:-L([0-9]+))?"; "g")
             | codex_location | .path |= url_decode_ascii),
         ($b | match("(\\S+)\\s+Lines? ([0-9]+)(?: to ([0-9]+))?\\s+in\\s+[0-9a-f]{7,40}\\b"; "g")
-            | codex_location | .path |= sub("^[^/]*/"; "")) ];
+            | codex_location | .path |= sub("^[^/]*/"; "")) ]
+    # One location written both ways counts once.
+    | unique_by([.path, .from, .to]);
   # Does this inline comment sit on $loc? The same repository-relative path, and an
   # overlapping line span on the current or the original diff.
   def at_location($loc):
