@@ -607,7 +607,9 @@ maintainer_gate_stale_disposition_facts() {
 #       it, so a fresh answer posted since takes it off the list;
 #     • it was not edited after that reply: the reason judged an older body.
 #   Only a minimized reply that is ours (bot_user, or an OWNER / MEMBER /
-#   COLLABORATOR, as trusted_reply) is read: anyone else's marker never counts.
+#   COLLABORATOR, as trusted_reply) is read, and only a tag that sits on a
+#   disposition reply for the same comment: anyone else's marker, or a bare
+#   marker, never counts.
 #   Every value read from a marker is checked before it can reach a prompt: the
 #   id and reason by format, the disposition against the known kinds and the sha
 #   as 40 hex digits; anything else reads as "" (and a bad id or reason drops the
@@ -639,6 +641,9 @@ maintainer_gate_rejected_dispositions() {
         | .createdAt as $c
         | ([$b | scan("<!-- dev-lead:comment-disposition ([^>]*?) -->") | .[0]] | first // "") as $d
         | $b | scan("<!-- dev-lead:disposition-rejected ([^>]*?) -->") | .[0]
+        # Only a tag the resolver wrote counts: it sits on the rejected disposition
+        # reply for the same comment, so a bare marker in any other comment never does.
+        | select(attr("id") == ($d | attr("id")))
         | {cid: (attr("id") | checked("^[-A-Za-z0-9_+/=]+$")),
            reason: (attr("reason") | checked("^[a-z][a-z0-9:-]*$")), at: $c,
            disposition: ($d | attr("disposition")

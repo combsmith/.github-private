@@ -808,4 +808,5 @@ _tag() {
   [ -z "$output" ]
   _tag "body" IC_A ""
   [ "$status" -eq 1 ]
+  [ -z "$output" ]
 }

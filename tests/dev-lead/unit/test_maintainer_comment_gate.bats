@@ -1567,7 +1567,11 @@ _rej_nodes() {
   older=$(jq -cn '[{id:"IC_rej0", author:{login:"don-petry"}, authorAssociation:"OWNER",
     body:"No finding.\n<!-- dev-lead:comment-disposition id=IC_ca disposition=informational -->\n\n<!-- dev-lead:disposition-rejected id=IC_ca reason=informational-on-findings -->",
     createdAt:"2026-11-12T09:00:00Z", isMinimized:true, minimizedReason:"OUTDATED"}]')
-  run bash -c "source '$GATE'; maintainer_gate_rejected_dispositions \"\$1\"" _ "$(_rej_nodes false "$older")"
+  # The older rejection comes first, so a reader taking the first match fails.
+  local nodes
+  nodes=$(_rej_nodes | jq -c --argjson o "$older" '[.[0]] + $o + [.[1]]')
+  [ "$(jq -r '.[1].id' <<< "$nodes")" = "IC_rej0" ]
+  run bash -c "source '$GATE'; maintainer_gate_rejected_dispositions \"\$1\"" _ "$nodes"
   [ "$status" -eq 0 ]
   [ "$(jq -r 'length' <<< "$output")" -eq 1 ]
   [ "$(jq -r '.[0].reason' <<< "$output")" = "fixed-unverified:content-no-token-removed" ]
@@ -1666,4 +1670,46 @@ _rej_reply() {
   run bash -c "source '$GATE'; maintainer_gate_rejected_dispositions '[1]'"
   [ "$status" -ne 0 ]
   [ -z "$output" ]
+}
+
+@test "#2521: a bare rejection marker on a trusted comment that is not a disposition reply for that id never counts" {
+  local bare nodes
+  bare=$(jq -cn '[{id:"IC_bare", author:{login:"don-petry"}, authorAssociation:"OWNER",
+    body:"<!-- dev-lead:disposition-rejected id=IC_ca reason=no-evidence -->",
+    createdAt:"2026-11-13T09:00:00Z", isMinimized:true, minimizedReason:"OUTDATED"},
+   {id:"IC_other", author:{login:"don-petry"}, authorAssociation:"OWNER",
+    body:"Answer.\n<!-- dev-lead:comment-disposition id=IC_zz disposition=answered -->\n<!-- dev-lead:disposition-rejected id=IC_ca reason=no-evidence -->",
+    createdAt:"2026-11-13T09:05:00Z", isMinimized:true, minimizedReason:"OUTDATED"}]')
+  nodes=$(_rej_nodes | jq -c --argjson b "$bare" '[.[0]] + $b')
+  run bash -c "source '$GATE'; maintainer_gate_rejected_dispositions \"\$1\"" _ "$nodes"
+  [ "$status" -eq 0 ]
+  [ "$output" = "[]" ]
+}
+
+@test "#2521: a visible disposition posted in the same second as the rejected reply keeps the comment listed" {
+  local same
+  same=$(jq -cn '[{id:"IC_same", author:{login:"don-petry"}, authorAssociation:"OWNER",
+    body:"Ack.\n<!-- dev-lead:comment-disposition id=IC_ca disposition=answered -->",
+    createdAt:"2026-11-13T07:08:23Z", isMinimized:false, minimizedReason:""}]')
+  run bash -c "source '$GATE'; maintainer_gate_rejected_dispositions \"\$1\"" _ "$(_rej_nodes false "$same")"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.[0].id' <<< "$output")" = "IC_ca" ]
+}
+
+@test "#2521 end to end: the resolver's own tag, on the comment shape the harness fetches, is read back as the fact" {
+  local lib="$SCRIPT_DIR/lib" reply tagged nodes
+  reply=$'Fixed in commit c293899.\n\n<!-- dev-lead:comment-disposition id=IC_kwDORyesfc8AAAABlGA5pw disposition=fixed sha=c293899b7406de4dc221b3ae14ba2a4a98a5d285 -->'
+  tagged=$(bash -c "source '$lib/comment-disposition-verify.sh'; cdv_tag_rejected \"\$1\" IC_kwDORyesfc8AAAABlGA5pw fixed-unverified:content-no-token-removed" _ "$reply")
+  # The node shape bcr_fetch_pr_comments returns: its query asks for exactly these fields.
+  grep -q 'nodes{ id author{login __typename} authorAssociation body createdAt lastEditedAt isMinimized minimizedReason }' "$lib/bot-comment-retry.sh"
+  nodes=$(jq -cn --arg t "$tagged" '[
+    {id:"IC_kwDORyesfc8AAAABlGA5pw", author:{login:"codeant-ai", __typename:"Bot"}, authorAssociation:"NONE",
+     body:"1. `max_semver` can select a lower release.", createdAt:"2026-11-11T01:30:18Z",
+     lastEditedAt:null, isMinimized:false, minimizedReason:null},
+    {id:"IC_r", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+     body:$t, createdAt:"2026-11-13T07:08:23Z", lastEditedAt:"2026-11-13T07:20:00Z",
+     isMinimized:true, minimizedReason:"OUTDATED"}]')
+  run bash -c "source '$GATE'; maintainer_gate_rejected_disposition_facts \"\$1\" don-petry" _ "$nodes"
+  [ "$status" -eq 0 ]
+  [ "$output" = '- `IC_kwDORyesfc8AAAABlGA5pw` (codeant-ai): your `fixed` reply citing `c293899b7406de4dc221b3ae14ba2a4a98a5d285`, posted 2026-11-13T07:08:23Z, was rejected: `fixed-unverified:content-no-token-removed`.' ]
 }

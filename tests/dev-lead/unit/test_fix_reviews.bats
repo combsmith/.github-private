@@ -8145,6 +8145,12 @@ _rejected_nodes() {
   [[ "$output" != *"None."* ]]
 }
 
+@test "fix-reviews(#2521): the script sources the libraries the export reads" {
+  grep -q '^source "$(dirname "$0")/lib/maintainer-comment-gate.sh"$' "$FIX_REVIEWS_SCRIPT"
+  grep -q '^source "$(dirname "$0")/lib/bot-comment-retry.sh"$' "$FIX_REVIEWS_SCRIPT"
+  grep -q '^source "$(dirname "$0")/lib/comment-disposition-verify.sh"$' "$FIX_REVIEWS_SCRIPT"
+}
+
 @test "fix-reviews(#2521): fix-reviews and fix-bot-comment compute rejected dispositions before the model runs" {
   local intent block
   for intent in fix-reviews fix-bot-comment; do
