@@ -98,6 +98,150 @@ post_verdict() {
   fi
   bash "$REVIEW_OUTPUT_CHANNEL" "$PR_URL" "$1" "$DRY_RUN"
 }
+
+# Tier 4 "adjudicate" (#2495): a Fable second opinion before a PR is handed to a
+# human, opt-in behind PR_REVIEW_ADJUDICATE. Runs on two paths: a cascade verdict
+# that would escalate to a human (maybe_adjudicate_verdict below), and the
+# review-cycle cap. Every failure falls back to today's human escalation.
+# shellcheck source=lib/adjudicate.sh
+source "$SCRIPT_DIR/lib/adjudicate.sh"
+
+# "<label>|<file>" for each prior-tier output THIS run produced. /tmp/cascade is
+# shared across the PRs of a batch, so only files recorded here reach tier 4,
+# never a stale one from another PR.
+ADJ_CONTEXT_FILES=()
+adj_context_add() {
+  [[ -s "$2" ]] && ADJ_CONTEXT_FILES+=("$1|$2")
+  return 0
+}
+
+# maybe_adjudicate_verdict <verdict_file> [audit_risk] — strip any model-written
+# adjudication record, then, when tier 4 is enabled and the verdict would escalate
+# to a human, adjudicate it (rewriting the file in place) before the caller hands
+# it to post_verdict.
+maybe_adjudicate_verdict() {
+  local verdict="$1" audit_risk="${2:-}" decision risk
+  # Only tier 4 may attach an adjudication record; drop any the model wrote,
+  # whether or not tier 4 is enabled.
+  # If the strip fails the model's record could still be trusted downstream, so
+  # fail closed: force a human escalation with no adjudication record.
+  if ! adjudicate_strip "$verdict"; then
+    echo "::warning::[tier4] could not strip a model-written adjudication record — forcing escalation"
+    printf '%s\n' '{"decision":"escalate","risk":"HIGH","summary":"Escalating due to adjudication record corruption.","findings":[],"body":"The tier-4 adjudication record could not be safely stripped from the verdict. Escalating to human review."}' > "$verdict"
+  fi
+  adjudicate_enabled || return 0
+  decision=$(jq -r '.decision // ""' "$verdict" 2>/dev/null || true)
+  risk=$(jq -r '.risk // ""' "$verdict" 2>/dev/null || true)
+  if adjudicate_escalates_to_human "$decision" "$risk"; then
+    if [[ "${DRY_RUN:-false}" != "true" ]]; then
+      # Keep the escalation: if Fable's replacement cannot be posted,
+      # post_adjudicated_verdict falls back to it. Without that copy there is no
+      # fallback, so skip tier 4 and post the escalation unchanged.
+      if ! cp "$verdict" "$verdict.pre-adjudicate" 2>/dev/null; then
+        echo "::warning::[tier4] could not keep a copy of the escalation — skipping adjudication"
+        return 0
+      fi
+      adjudicate_cascade_verdict "$verdict" "$audit_risk" "$PR_ITEMS" \
+        /tmp/cascade/adjudicate-diff.txt ${ADJ_CONTEXT_FILES[@]+"${ADJ_CONTEXT_FILES[@]}"}
+    fi
+  fi
+  return 0
+}
+
+# adj_head_moved — 0 when the PR's live head is readable and differs from the
+# reviewed one. A post that failed because the head moved needs no human: the new
+# head gets its own review.
+adj_head_moved() {
+  local live
+  live=$(gh pr view "$PR_URL" --json headRefOid --jq .headRefOid 2>/dev/null) || return 1
+  [[ -n "$live" && "$live" != "$PR_HEAD_SHA" ]]
+}
+
+# post_adjudicated_verdict <verdict_file> — post_verdict, but when tier 4 replaced
+# a human escalation and the replacement does not post (a refused self-approval,
+# a failed write), post the original escalation instead, so the PR still reaches
+# a human. Returns the status of what was posted last.
+post_adjudicated_verdict() {
+  local verdict="$1" orig="$1.pre-adjudicate" rc=0 rec
+  post_verdict "$verdict" || rc=$?
+  if [[ "$rc" -ne 0 && "${FINAL_TIER:-}" == "adjudicate" && -s "$orig" ]] && ! adj_head_moved; then
+    echo "::warning::[tier4] the adjudicated verdict did not post (rc=$rc) — escalating to a human instead"
+    rec=$(adjudicate_record_json cascade-escalate "${ADJ_MODEL:-}" post-failed "" false "")
+    adjudicate_log_line "$rec"
+    cp "$orig" "$verdict"
+    adjudicate_attach "$verdict" "$rec" || true
+    export FINAL_TIER="adjudicate-fallback"
+    rc=0
+    post_verdict "$verdict" || rc=$?
+  fi
+  rm -f "$orig"
+  return "$rc"
+}
+
+# adjudicate_max_cycles — tier 4 on the review-cycle cap. Fable sees the diff and
+# the cascade's verdicts since the last reset. On approve or request_changes the
+# replacement verdict is posted and the script EXITS with the post status. On a
+# confirmed escalate or any failure it returns with CAP_ADJ_NOTE set, and the
+# caller proceeds to today's human escalation.
+adjudicate_max_cycles() {
+  local ctx="/tmp/cascade/adjudicate-context.md" out="/tmp/cascade/adjudicate.json"
+  local prior="/tmp/cascade/adjudicate-prior-reviews.md" diff="/tmp/cascade/adjudicate-diff.txt"
+  local verdict="/tmp/cascade/adjudicate-verdict.json" raw final guard="" audit_risk="" rec post_rc=0 frisk
+  mkdir -p /tmp/cascade
+  : > "$ctx"
+  rm -f "$diff" "$diff.full"
+  adjudicate_prior_reviews "$PR_ITEMS" > "$prior"
+  # The cap path has no audit of its own; a prior verdict that carried HIGH risk
+  # blocks an approve all the same (fail toward the human). Check ALL prior verdicts,
+  # not just those in the context (which is limited to 5 for the prompt).
+  adjudicate_prior_high_risk "$PR_ITEMS" && audit_risk="HIGH"
+  if gh pr diff "$PR_URL" > "$diff.full" 2>/dev/null && [[ -s "$diff.full" ]]; then
+    head -n 3000 "$diff.full" > "$diff"
+    rm -f "$diff.full"
+  else
+    rm -f "$diff.full"
+    ADJ_MODEL="$(ai_model_for_family fable 2>/dev/null || true)"
+    rec=$(adjudicate_record_json max-cycles "$ADJ_MODEL" context-error "" false "")
+    echo "::warning::[tier4] could not fetch the diff of $PR_URL — escalating to a human without adjudication"
+    adjudicate_log_line "$rec"
+    CAP_ADJ_NOTE=$(adjudicate_note "$rec" "$PR_HEAD_SHA")
+    return 0
+  fi
+  adjudicate_context_append "$ctx" "the cascade's verdicts since the last reset (oldest first)" "$prior"
+  adjudicate_context_append "$ctx" "PR diff (truncated to 3000 lines)" "$diff"
+  echo "    [tier4] review-cycle cap reached — adjudicating before escalating to a human"
+  if run_adjudication max-cycles "$ctx" "$out"; then
+    raw=$(jq -r '.decision' "$out")
+    frisk=$(jq -r '.risk // ""' "$out" 2>/dev/null) || frisk="UNREADABLE"
+    final=$(adjudicate_guard "$raw" "$audit_risk" "$frisk")
+    [[ "$raw" != "$final" ]] && guard="audit-high"
+    if [[ "$final" == "approve" ]] || [[ "$final" == "request_changes" ]]; then
+      rec=$(adjudicate_record_json max-cycles "$ADJ_MODEL" ok "$final" true "")
+      adjudicate_build_verdict "$out" "$final" "$rec" "$PR_HEAD_SHA" "max-cycles" "$verdict"
+      export FINAL_TIER="adjudicate"
+      adjudicate_log_line "$rec"
+      post_verdict "$verdict" || post_rc=$?
+      # A replacement that did not post must not strand the PR: unless the head
+      # moved (the new head gets its own review), fall through to the human
+      # escalation below.
+      if [[ "$post_rc" -eq 0 ]] || adj_head_moved; then
+        echo "    [done]  $PR_URL"
+        exit "$post_rc"
+      fi
+      echo "::warning::[tier4] the adjudicated verdict did not post (rc=$post_rc) — escalating to a human instead"
+      export FINAL_TIER="adjudicate-fallback"
+      rec=$(adjudicate_record_json max-cycles "$ADJ_MODEL" post-failed "" false "")
+      adjudicate_log_line "$rec"
+      CAP_ADJ_NOTE=$(adjudicate_note "$rec" "$PR_HEAD_SHA")
+      return 0
+    fi
+    rec=$(adjudicate_record_json max-cycles "$ADJ_MODEL" ok escalate false "$guard")
+  else
+    rec=$(adjudicate_record_json max-cycles "$ADJ_MODEL" "$ADJ_OUTCOME" "" false "")
+  fi
+  adjudicate_log_line "$rec"
+  CAP_ADJ_NOTE=$(adjudicate_note "$rec" "$PR_HEAD_SHA")
+}
 # Agentic iterative validation (issue #1092): apply_finding_verification applies
 # the repro-outcome downgrade/drop discipline to the deep tier's logic/correctness
 # findings and emits kind:"finding_verification" records so the false-positive-rate
@@ -926,6 +1070,13 @@ PR_ITEMS=$(
 REVIEW_CYCLE=$(compute_review_cycle "$PR_ITEMS")
 export REVIEW_CYCLE
 MAX_CYCLES="${MAX_REVIEW_CYCLES:-3}"
+# Validate MAX_CYCLES is a decimal number to prevent arithmetic injection or octal interpretation
+if ! [[ "$MAX_CYCLES" =~ ^[0-9]+$ ]]; then
+  echo "::warning:: MAX_REVIEW_CYCLES is not a valid decimal number: $MAX_CYCLES (using default: 3)"
+  MAX_CYCLES="3"
+fi
+# Normalize to base 10: [[ -ge ]] reads a leading-zero operand (08, 010) as octal.
+MAX_CYCLES=$((10#$MAX_CYCLES))
 echo "    review cycle: $REVIEW_CYCLE (max: $MAX_CYCLES)"
 
 # Escalation handling (issue #467). Once a PR is escalated to a human, the
@@ -965,8 +1116,33 @@ fi
 # with the needs-human-review label) and no-ops without spamming.
 # FORCE_REVIEW bypasses the cap: a mention-triggered run must deliver the
 # review it acknowledged, never silently no-op.
-if [ "${FORCE_REVIEW:-false}" != "true" ] && [ "$REVIEW_CYCLE" -ge "$MAX_CYCLES" ]; then
+if [[ "${FORCE_REVIEW:-false}" != "true" ]] && [[ "$REVIEW_CYCLE" -ge "$MAX_CYCLES" ]]; then
   echo "    cap: review cycle $REVIEW_CYCLE >= max $MAX_CYCLES — escalating to human"
+  # Tier 4 (#2495): a Fable second opinion first. Never in a dry run (diagnose
+  # mode must stay model-free), at most once per head SHA, and never again once
+  # it has run since the last reset — a cap reached after tier 4's own verdict
+  # goes straight to a human.
+  CAP_ADJ_NOTE=""
+  if adjudicate_enabled; then
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+      echo "    [tier4] DRY_RUN: would adjudicate this escalation with $(ai_model_for_family fable 2>/dev/null || echo fable) — no model runs in a dry run"
+    elif adjudicate_done_at_sha "$PR_ITEMS" "$PR_HEAD_SHA" || adjudicate_since_reset "$PR_ITEMS"; then
+      echo "    [tier4] adjudicate skipped: tier 4 already ran since the last reset (it never re-runs itself) — escalating to a human"
+    elif ! _adj_budget_events=$(gather_pr_automation_events \
+        "$(echo "$PR_URL" | sed -E 's|.*/pull/([0-9]+).*|\1|')" \
+        "$(echo "$PR_URL" | sed -E 's|https://github.com/([^/]+/[^/]+)/pull/.*|\1|')") \
+        || pr_budget_exhausted "$_adj_budget_events"; then
+      # The cap path exits before enforce_pr_budget: never let tier 4 post an
+      # automated disposition on a PR whose automation budget is spent (or unreadable).
+      echo "    [tier4] adjudicate skipped: per-PR automation budget exhausted or unreadable — escalating to a human"
+    else
+      adjudicate_max_cycles
+    fi
+  fi
+  CAP_ADJ_SECTION=""
+  if [[ -n "$CAP_ADJ_NOTE" ]]; then
+    CAP_ADJ_SECTION=$'\n'"$CAP_ADJ_NOTE"$'\n'
+  fi
   if [ "${DRY_RUN:-false}" = "true" ]; then
     echo "    DRY_RUN: would post escalation comment, add label, request reviewer"
   else
@@ -980,7 +1156,7 @@ if [ "${FORCE_REVIEW:-false}" != "true" ] && [ "$REVIEW_CYCLE" -ge "$MAX_CYCLES"
 This PR has been through $REVIEW_CYCLE automated review cycles since the last approval or escalation (cap: $MAX_CYCLES) without converging. Further automated review has been paused to avoid infinite loops.
 
 Please take a look manually, or close this PR if it's no longer needed. To re-engage the automated cascade with a fresh cycle budget, a human should remove the \`needs-human-review\` label after reviewing. Re-engagement is intentionally human-gated (#926): mentioning the bot will not reset the cap.
-
+$CAP_ADJ_SECTION
 _Posted by the ${BOT_USER:-donpetry-bot} PR-review cascade._
 ESCALATION_END
     gh pr comment "$PR_URL" --body-file "$ESCALATION_BODY" || echo "    warn: gh pr comment failed — escalation marker not posted; will retry next cycle"
@@ -1362,6 +1538,11 @@ TRIAGE_RESULT=$(
 # symbol-context assembly and unset after that pass completes.
 # Advisory feedback is capped at 8 KB; write to disk for Tier 2/3 to read.
 _sc_diff="${PR_DIFF:-}"
+# Tier 4 (#2495) reads the same truncated diff; persist it only when enabled.
+rm -f /tmp/cascade/adjudicate-diff.txt
+if adjudicate_enabled; then
+  printf '%s\n' "$_sc_diff" > /tmp/cascade/adjudicate-diff.txt
+fi
 ADVISORY_BOT_FEEDBACK_FILE="/tmp/cascade/advisory-bot-feedback.txt"
 rm -f "$ADVISORY_BOT_FEEDBACK_FILE"
 if [[ -n "${ADVISORY_BOT_FEEDBACK//[[:space:]]/}" ]]; then
@@ -1432,6 +1613,10 @@ TRIAGE_ESCALATE=$(echo "$TRIAGE_RESULT" | jq -r '.escalate')
 TRIAGE_RISK=$(echo "$TRIAGE_RESULT" | jq -r '.risk')
 TRIAGE_SIGNALS=$(echo "$TRIAGE_RESULT" | jq -r '.signals | join(", ")')
 echo "    [tier1] escalate=$TRIAGE_ESCALATE risk=$TRIAGE_RISK signals=[$TRIAGE_SIGNALS]"
+if adjudicate_enabled; then
+  printf '%s\n' "$TRIAGE_RESULT" > /tmp/cascade/adjudicate-triage.json
+  adj_context_add "triage (tier 1)" /tmp/cascade/adjudicate-triage.json
+fi
 
 # HEAD-SHA freshness safeguard (epic #1101, Story 5 / #1106). Just before the
 # agentic tiers (single / deep / audit) consume the Story 2 pre-fed context,
@@ -1535,7 +1720,8 @@ if [ "$TRIAGE_ESCALATE" = "false" ]; then
   # classifies the outcome correctly instead of counting an escalation as a posted
   # review (#1754).
   post_rc=0
-  post_verdict "$VERDICT_JSON" || post_rc=$?
+  maybe_adjudicate_verdict "$VERDICT_JSON"
+  post_adjudicated_verdict "$VERDICT_JSON" || post_rc=$?
   echo "    [done]  $PR_URL"
   exit "$post_rc"
 fi
@@ -1715,6 +1901,7 @@ if [ -s "${DUCK_OUTPUT}.engine" ]; then
   read -r DUCK_ENGINE DUCK_MODEL < "${DUCK_OUTPUT}.engine"
 fi
 
+adj_context_add "deep review (tier 2)" "$OUTPUT_FILE"
 DEEP_DECISION=$(jq -r '.decision' "$OUTPUT_FILE")
 DEEP_RISK=$(jq -r '.risk' "$OUTPUT_FILE")
 echo "    [tier2] deep: decision=$DEEP_DECISION risk=$DEEP_RISK"
@@ -1731,6 +1918,7 @@ if [ "$_duck_ok" = true ]; then
   DUCK_DECISION=$(jq -r '.decision' "$DUCK_OUTPUT")
   DUCK_RISK=$(jq -r '.risk' "$DUCK_OUTPUT")
   DUCK_VALID=true
+  adj_context_add "rubber duck (tier 2, $DUCK_ENGINE)" "$DUCK_OUTPUT"
   echo "    [tier2] duck ($DUCK_ENGINE): decision=$DUCK_DECISION risk=$DUCK_RISK"
 else
   echo "    [tier2] rubber duck did not produce a valid verdict — continuing with deep review only"
@@ -1760,6 +1948,7 @@ if [ "$DUCK_VALID" = "true" ]; then
     COMBINED_AGREEMENT=$(jq -r '.agreement' "$OUTPUT_FILE")
     COMBINED_ESCALATE=$(jq -r '.escalate_to_opus' "$OUTPUT_FILE")
     echo "    [tier2b] combined: decision=$COMBINED_DECISION risk=$COMBINED_RISK agreement=$COMBINED_AGREEMENT escalate_to_opus=$COMBINED_ESCALATE"
+    adj_context_add "deep + duck synthesis (tier 2b)" "$OUTPUT_FILE"
   else
     SYNTH_STDOUT=$(cat /tmp/cascade/synth-stdout.txt 2>/dev/null || true)
     SYNTH_STDERR=$(cat /tmp/cascade/synth.log 2>/dev/null || true)
@@ -1823,7 +2012,8 @@ if [ "$COMBINED_ESCALATE" != "true" ]; then
   # classifies the outcome correctly instead of counting an escalation as a posted
   # review (#1754).
   post_rc=0
-  post_verdict "$VERDICT_JSON" || post_rc=$?
+  maybe_adjudicate_verdict "$VERDICT_JSON"
+  post_adjudicated_verdict "$VERDICT_JSON" || post_rc=$?
   echo "    [done]  $PR_URL"
   exit "$post_rc"
 fi
@@ -1866,6 +2056,7 @@ fi
 AUDIT_DECISION=$(jq -r '.decision' "$OUTPUT_FILE")
 AUDIT_RISK=$(jq -r '.risk' "$OUTPUT_FILE")
 echo "    [tier3] decision=$AUDIT_DECISION risk=$AUDIT_RISK"
+adj_context_add "security audit (tier 3)" "$OUTPUT_FILE"
 
 # Security audit makes the final call — post the review
 echo "    [action] security audit resolved — posting review"
@@ -1901,6 +2092,7 @@ duck_skip_note "$VERDICT_JSON" "$DUCK_SKIP_REASON"
 # classifies the outcome correctly instead of counting an escalation as a posted
 # review (#1754).
 post_rc=0
-post_verdict "$VERDICT_JSON" || post_rc=$?
+maybe_adjudicate_verdict "$VERDICT_JSON" "$AUDIT_RISK"
+post_adjudicated_verdict "$VERDICT_JSON" || post_rc=$?
 echo "    [done]  $PR_URL"
 exit "$post_rc"

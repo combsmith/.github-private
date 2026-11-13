@@ -261,6 +261,21 @@ model_sandbox_validate_verdict() {
               escalate_to_ai: (.escalate_to_ai == true),
               body: (marker + "\n\n" + (.body | gsub("<!--[\\s\\S]*?-->"; "") | gsub("<!--[\\s\\S]*$"; "") | sub("^\\s+"; "")))
             }
+            # Tier 4 (#2495): keep the adjudication record, reduced to known
+            # fields of known shape. post-pr-review.sh builds the note and marker
+            # from it, so no free text survives.
+            + (if (.adjudication | type) == "object" then
+                (.adjudication) as $a
+                | def tok($re): (. // "" | tostring) as $v | if ($v | test($re)) then $v else "" end;
+                {adjudication: {
+                  trigger: ($a.trigger | tok("^[a-z-]{0,40}$")),
+                  model: ($a.model | tok("^[A-Za-z0-9._:/@-]{0,100}$")),
+                  outcome: ($a.outcome | tok("^[a-z-]{0,40}$")),
+                  decision: (($a.decision // "") | if IN("approve", "request_changes", "escalate") then . else "" end),
+                  overrode: ($a.overrode == true),
+                  guard: (($a.guard // "") | if . == "audit-high" then . else "" end)
+                }}
+              else {} end)
         end' "$file" > "$tmp" 2>/dev/null; then
     rm -f "$tmp"
     echo "::error::verdict failed validation"
