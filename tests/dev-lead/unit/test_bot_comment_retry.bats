@@ -408,14 +408,60 @@ The value is bounded by the caller.' 2026-10-02T00:10:00Z)")"
   [ "$(_reason_for "$out" IC_ca)" = "dispositioned" ]
 }
 
-@test "bcr(#2507): retries of a rejected disposition stay bounded by MAX_ATTEMPTS" {
+@test "bcr(#2507): retries spent before a rejection do not use up MAX_ATTEMPTS" {
+  # The backlog case: two retries ran against a disposition the resolver later
+  # rejected. The rejection starts a fresh count, so the comment is retried again.
   out="$(_decide \
     "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
     "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=1 at=2026-10-01T20:00:00Z -->' 2026-10-01T20:00:00Z)" \
     "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=2 at=2026-10-01T21:00:00Z -->' 2026-10-01T21:00:00Z)" \
     "$(_rejected "$(_ours "$_2507_FIXED")")")"
+  [ "$(_dispatches "$out")" = "1" ]
+  [ "$(_reason_for "$out" IC_ca)" = "undispositioned" ]
+  [ "$(jq -r '.[0].attempt' <<< "$out")" = "3" ]
+}
+
+@test "bcr(#2507): retries after the latest rejection stay bounded by MAX_ATTEMPTS" {
+  export BOT_COMMENT_RETRY_PENDING_SEC=600
+  out="$(_decide \
+    "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
+    "$(_rejected "$(_ours "$_2507_FIXED" 2026-10-01T23:20:00Z)")" \
+    "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=1 at=2026-10-01T23:30:00Z -->' 2026-10-01T23:30:00Z)" \
+    "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=2 at=2026-10-01T23:40:00Z -->' 2026-10-01T23:40:00Z)")"
   [ "$(_dispatches "$out")" = "0" ]
   [ "$(_reason_for "$out" IC_ca)" = "retry-attempts-exhausted" ]
+}
+
+@test "bcr(#2507): MAX_TOTAL still bounds a comment across rejections" {
+  out="$(_decide \
+    "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
+    "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=1 at=2026-10-01T14:00:00Z -->' 2026-10-01T14:00:00Z)" \
+    "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=2 at=2026-10-01T15:00:00Z -->' 2026-10-01T15:00:00Z)" \
+    "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=3 at=2026-10-01T16:00:00Z -->' 2026-10-01T16:00:00Z)" \
+    "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=4 at=2026-10-01T17:00:00Z -->' 2026-10-01T17:00:00Z)" \
+    "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=5 at=2026-10-01T18:00:00Z -->' 2026-10-01T18:00:00Z)" \
+    "$(_ours '<!-- dev-lead-bot-comment-retry id=IC_ca version=2026-10-01T23:05:43Z attempt=6 at=2026-10-01T19:00:00Z -->' 2026-10-01T19:00:00Z)" \
+    "$(_rejected "$(_ours "$_2507_FIXED")")")"
+  [ "$(_dispatches "$out")" = "0" ]
+  [ "$(_reason_for "$out" IC_ca)" = "retry-attempts-exhausted" ]
+}
+
+@test "bcr(#2507): a pass that ended before a rejection does not end the comment" {
+  out="$(_decide \
+    "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
+    "$(_ours '<!-- dev-lead-fix-reviews pr=2009 sha=abc intent=fix-bot-comment status=applied comment=IC_ca version=2026-10-01T23:05:43Z -->' 2026-10-01T23:20:00Z)" \
+    "$(_rejected "$(_ours "$_2507_FIXED" 2026-10-01T23:21:00Z)")")"
+  [ "$(_dispatches "$out")" = "1" ]
+  [ "$(_reason_for "$out" IC_ca)" = "undispositioned" ]
+}
+
+@test "bcr(#2507): a pass that ended after the latest rejection still ends the comment" {
+  out="$(_decide \
+    "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
+    "$(_rejected "$(_ours "$_2507_FIXED" 2026-10-01T23:20:00Z)")" \
+    "$(_ours '<!-- dev-lead-fix-reviews pr=2009 sha=abc intent=fix-bot-comment status=no-changes comment=IC_ca version=2026-10-01T23:05:43Z -->' 2026-10-01T23:30:00Z)")"
+  [ "$(_dispatches "$out")" = "0" ]
+  [ "$(_reason_for "$out" IC_ca)" = "pass-completed" ]
 }
 
 @test "bcr(#2507): a retry marker on a minimized comment still counts (only dispositions are dropped)" {
