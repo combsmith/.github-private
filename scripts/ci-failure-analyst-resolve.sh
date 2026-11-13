@@ -28,8 +28,8 @@ GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
 export REPO
 
 # emit <key> <value> — write a key=value pair to GITHUB_OUTPUT, stripping carriage returns
-# (defense against prompt injection from untrusted GitHub Actions metadata).
-emit() { printf '%s=%s\n' "$1" "$(printf '%s' "$2" | tr -d '\r\n')" >> "$GITHUB_OUTPUT"; }
+# and characters that could enable prompt injection from untrusted GitHub Actions metadata.
+emit() { printf '%s=%s\n' "$1" "$(printf '%s' "$2" | tr -d '\r\n`$()\\' | sed "s/-->/--REMOVED/g" | sed "s/<!--/REMOVED--/g" | sed 's/|/PIPE/g' | sed 's/&/AMPERSAND/g' | sed 's/</LESS/g' | sed 's/>/GREATER/g')" >> "$GITHUB_OUTPUT"; }
 
 # payload_field <jq-filter> — read one value from the event payload; empty on a
 # missing, empty or non-JSON payload.
@@ -41,7 +41,7 @@ payload_field() {
 
 # failed_jobs <run_id> — "job / failing step; job; ..." for the run's failed jobs.
 # A failed jobs lookup returns nonzero rather than reading as "no failed jobs".
-# Output is sanitized to remove newlines/carriage returns that could enable prompt injection.
+# Output is sanitized to remove newlines/carriage returns and prompt-injection chars.
 failed_jobs() {
   [[ -n "$1" ]] || return 0
   local jobs
@@ -49,7 +49,7 @@ failed_jobs() {
     --jq '.jobs[]? | select(.conclusion == "failure")
           | .name + ((.steps // [] | map(select(.conclusion == "failure") | " / " + .name) | .[0]) // "")')" || return 1
   [[ -n "$jobs" ]] || return 0
-  printf '%s\n' "$jobs" | paste -sd';' - | sed 's/;/; /g' | tr -d '\r\n'
+  printf '%s\n' "$jobs" | paste -sd';' - | sed 's/;/; /g' | tr -d '\r\n`$()\\' | sed "s/-->/--REMOVED/g" | sed "s/<!--/REMOVED--/g" | sed 's/|/PIPE/g' | sed 's/&/AMPERSAND/g' | sed 's/</LESS/g' | sed 's/>/GREATER/g'
 }
 
 # resolve — parse the GitHub event payload and emit outputs needed for analysis.

@@ -94,10 +94,10 @@ jobs:
           set -euo pipefail
           export PATH="$HOME/.npm-global/bin:$PATH"
 
-          # Sanitize untrusted variables to prevent prompt injection: remove newlines
-          # and carriage returns from data that originated in GitHub Actions job output.
-          WORKFLOW_NAME="$(printf '%s' "$WORKFLOW_NAME" | tr -d '\r\n')"
-          FAILED_JOBS="$(printf '%s' "$FAILED_JOBS" | tr -d '\r\n')"
+          # Sanitize untrusted variables to prevent prompt injection: remove newlines,
+          # carriage returns, backticks, shell metacharacters, and HTML comment markers
+          WORKFLOW_NAME="$(printf '%s' "$WORKFLOW_NAME" | tr -d '\r\n`$()\\' | sed 's/-->/--REMOVED/g' | sed 's/<!--/REMOVED--/g' | sed 's/|/PIPE/g' | sed 's/&/AMPERSAND/g' | sed 's/</LESS/g' | sed 's/>/GREATER/g')"
+          FAILED_JOBS="$(printf '%s' "$FAILED_JOBS" | tr -d '\r\n`$()\\' | sed 's/-->/--REMOVED/g' | sed 's/<!--/REMOVED--/g' | sed 's/|/PIPE/g' | sed 's/&/AMPERSAND/g' | sed 's/</LESS/g' | sed 's/>/GREATER/g')"
 
           cat > /tmp/prompt-template.txt << 'TMPL'
           A CI check named "$WORKFLOW_NAME" just failed on PR #$PR_NUMBER in repository $REPO.
