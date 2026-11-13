@@ -127,10 +127,17 @@ resolve() {
     details_url="$(payload_field ".check_run.details_url // .check_run.html_url")"
     check_run_id="$(payload_field ".check_run.id")"
     # An Actions-hosted check links to its run; a third-party check does not.
-    run_id="$(printf '%s' "$details_url" | grep -oE '/actions/runs/[0-9]+' | grep -oE '[0-9]+$' || true)"
+    if run_id_match="$(printf '%s' "$details_url" | grep -oE '/actions/runs/[0-9]+' 2>/dev/null)"; then
+      run_id="$(printf '%s' "$run_id_match" | grep -oE '[0-9]+$')"
+    fi
   else
     details_url="$(payload_field ".workflow_run.html_url")"
     run_id="$(payload_field ".workflow_run.id")"
+    if [[ -z "$run_id" ]]; then
+      echo "::notice::No run ID in the $event payload — skipping"
+      emit skip true
+      return 0
+    fi
   fi
 
   if ! jobs_summary="$(failed_jobs "$run_id")"; then
