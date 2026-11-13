@@ -165,9 +165,10 @@ minimized with classifier `RESOLVED`. In practice:
   *registered info-status bot* whose finding-free status stranded the queue (chiefly
   SonarCloud, which re-posts `Quality Gate passed` on every push) — that bot's
   comment, requiring a `--reason` posted as a `<!-- maintainer-resolve … -->` reply
-  before the minimize. It refuses another human's comment and a finding-producing bot
-  such as `codeant-ai` or `graphite-app` (whose findings still require dev-lead's
-  verified-fix flow), and fails closed if it cannot confirm the comment's author, its
+  before the minimize. It refuses another human's comment and any bot comment whose
+  body does not match that bot's pattern, so a finding-producing bot's findings still
+  require dev-lead's verified-fix flow: `graphite-app` has no pattern, and `codeant-ai`'s
+  matches only its progress table and promo. It fails closed if it cannot confirm the comment's author, its
   actor type (`__typename == Bot`), or the invoking viewer.
 - **A registered clean info-status bot comment auto-clears (#1918)** — see the scope
   section above; no disposition action is needed for it.

@@ -255,11 +255,12 @@ _body_matches_pattern() {
 # than dev-lead passes ran. The pattern matches only those complete bodies.
 _codeant_icon='<a href="https://codeant.ai/" title="CodeAnt AI"><img src="https://new-codeant-butcket.s3.us-west-1.amazonaws.com/badges/codeant-block-purple-v2.svg" width="28" height="28" align="absmiddle" style="vertical-align:middle" alt="CodeAnt" /></a>'
 
-_codeant_status_body() { # <in progress|completed>
-  local icon='🔄' label='Incremental review in progress…' fin='—'
-  if [ "$1" = completed ]; then icon='✅' label='Incremental review completed' fin='18:14'; fi
-  printf '## %s&nbsp; CodeAnt Review Status\n\n**%s&nbsp; Review %s**\n\n| Status | Commit | Started (UTC) | Finished (UTC) |\n| --- | --- | --- | --- |\n| %s&nbsp; `#d2009` %s | `3633ecf` | Nov 13, 2026 · 18:14 | %s |\n\n<!-- codeant-review-status:[{"run_id":"d2009f3bc336","commit":"3633ecfd49a8e03f87bd1b12311002c24b34c479","done":false}] -->' \
-    "$_codeant_icon" "$icon" "$1" "$icon" "$label" "$fin"
+_codeant_status_body() { # <in progress|completed> [row label] [header icon markup]
+  local icon='🔄' label='Incremental review in progress…' fin='—' done=false
+  if [ "$1" = completed ]; then icon='✅' label='Incremental review completed' fin='18:14' done=true; fi
+  label="${2:-$label}"
+  printf '## %s&nbsp; CodeAnt Review Status\n\n**%s&nbsp; Review %s**\n\n| Status | Commit | Started (UTC) | Finished (UTC) |\n| --- | --- | --- | --- |\n| %s&nbsp; `#d2009` %s | `3633ecf` | Nov 13, 2026 · 18:14 | %s |\n\n<!-- codeant-review-status:[{"run_id":"d2009f3bc336","commit":"3633ecfd49a8e03f87bd1b12311002c24b34c479","done":%s}] -->' \
+    "${3-$_codeant_icon}" "$icon" "$1" "$icon" "$label" "$fin" "$done"
 }
 
 _codeant_promo_body() {
@@ -279,6 +280,11 @@ _codeant_promo_body() {
   [ "$status" -eq 0 ]
   run _body_matches_pattern "$pat" "$(_codeant_promo_body)"
   [ "$status" -eq 0 ]
+  # The first-review row labels, and a header without the logo markup.
+  run _body_matches_pattern "$pat" "$(_codeant_status_body 'in progress' 'Reviewing your PR…')"
+  [ "$status" -eq 0 ]
+  run _body_matches_pattern "$pat" "$(_codeant_status_body completed 'Reviewed your PR' '')"
+  [ "$status" -eq 0 ]
 }
 
 @test "info-status: codeant-ai's pattern never matches a nitpick, a PR Risk overview or an extended notice" {
@@ -295,6 +301,12 @@ _codeant_promo_body() {
   run _body_matches_pattern "$pat" "$(_codeant_status_body completed)"$'\n\nSuggestion: guard the nil dereference in scripts/foo.sh:42.'
   [ "$status" -eq 1 ]
   run _body_matches_pattern "$pat" "$(_codeant_promo_body)"$'\nPossible bug: scripts/foo.sh:42 drops the exit status.'
+  [ "$status" -eq 1 ]
+  # A row carries only a known run label: finding text inside a row never clears,
+  # and neither does an in-progress row reporting a completed label.
+  run _body_matches_pattern "$pat" "$(_codeant_status_body completed 'Reviewed your PR — the token is logged in plain text at scripts/foo.sh:42')"
+  [ "$status" -eq 1 ]
+  run _body_matches_pattern "$pat" "$(_codeant_status_body 'in progress' 'Reviewed your PR')"
   [ "$status" -eq 1 ]
   # Anchored at the start: a comment that quotes the table never clears.
   run _body_matches_pattern "$pat" "Earlier: $(_codeant_status_body completed)"
