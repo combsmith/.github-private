@@ -157,7 +157,7 @@ adjudicate_max_cycles() {
   # The cap path has no audit of its own; a prior verdict that carried HIGH risk
   # blocks an approve all the same (fail toward the human). Check ALL prior verdicts,
   # not just those in the context (which is limited to 5 for the prompt).
-  grep -Eq '<!-- decision=[a-z-]+ risk=HIGH -->|<!-- pr-review-agent v1 [^>]*risk=HIGH -->' <<< "$PR_ITEMS" 2>/dev/null && audit_risk="HIGH"
+  adjudicate_prior_high_risk "$PR_ITEMS" && audit_risk="HIGH"
   if gh pr diff "$PR_URL" > "$diff.full" 2>/dev/null && [[ -s "$diff.full" ]]; then
     head -n 3000 "$diff.full" > "$diff"
     rm -f "$diff.full"

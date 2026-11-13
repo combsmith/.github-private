@@ -118,6 +118,18 @@ adjudicate_prior_reviews() {
   ' <<<"$items" 2>/dev/null || true
 }
 
+# adjudicate_prior_high_risk <items_json>
+#   0 when any automation-authored verdict marker since the latest reset carries
+#   risk=HIGH. Human comments and pre-reset history are ignored; unlike
+#   adjudicate_prior_reviews the window is not capped at five entries.
+adjudicate_prior_high_risk() {
+  local items="${1:-[]}"
+  jq -e --argjson bots "$(_adj_bots_json)" "$_REVIEW_CYCLE_JQ_DEFS$_ADJ_RESET_JQ"'
+    | any(.[]; is_automation_author($bots) and has_marker and (.when > $reset)
+        and ((.body // "") | test("<!-- decision=[a-z-]+ risk=HIGH -->|<!-- pr-review-agent v1 [^>]*risk=HIGH -->")))
+  ' <<<"$items" >/dev/null 2>&1
+}
+
 # adjudicate_validate <file>
 #   0 when <file> holds the tier-4 contract: an object with decision
 #   approve|request_changes|escalate, risk LOW|MEDIUM|HIGH, a non-empty summary
@@ -178,7 +190,7 @@ _adj_is_rate_limited() {
 #   Token records go to TOKEN_LOG_FILE through run_agentic under tier `adjudicate`.
 run_adjudication() {
   local trigger="$1" ctx="$2" out="$3"
-  local dir prompt stdout_f stderr_f rc=0 so se
+  local dir prompt stdout_f stderr_f rc=0 so se run_pid watchdog_pid
   ADJ_OUTCOME="" ADJ_MODEL=""
   if ! declare -F ai_model_for_family >/dev/null 2>&1; then
     # shellcheck source=engine-models.sh
@@ -212,10 +224,20 @@ run_adjudication() {
   rm -f "$out"
 
   # A subshell keeps the caller's OUTPUT_FILE untouched.
-  # Timeout tier 4 to 25 minutes, reserving ~35 minutes in a 60-minute job for
-  # earlier tiers and the fallback human escalation.
-  ( export OUTPUT_FILE="$out"; timeout 25m run_agentic "$prompt" "$ADJ_MODEL" adjudicate ) \
-    >"$stdout_f" 2>"$stderr_f" || rc=$?
+  # Bound tier 4 to 25 minutes, reserving ~35 minutes in a 60-minute job for
+  # earlier tiers and the fallback human escalation. `timeout` cannot exec a shell
+  # function (run_agentic), so a watchdog terminates the subshell and its children.
+  ( export OUTPUT_FILE="$out"; run_agentic "$prompt" "$ADJ_MODEL" adjudicate ) \
+    >"$stdout_f" 2>"$stderr_f" &
+  run_pid=$!
+  ( sleep "${ADJUDICATE_TIMEOUT_SECS:-1500}"
+    pkill -TERM -P "$run_pid" 2>/dev/null || true
+    kill -TERM "$run_pid" 2>/dev/null || true ) >/dev/null 2>&1 3>&- &
+  watchdog_pid=$!
+  wait "$run_pid" || rc=$?
+  pkill -TERM -P "$watchdog_pid" 2>/dev/null || true
+  kill "$watchdog_pid" 2>/dev/null || true
+  wait "$watchdog_pid" 2>/dev/null || true
   so="$(cat "$stdout_f" 2>/dev/null || true)"
   se="$(cat "$stderr_f" 2>/dev/null || true)"
 
@@ -342,10 +364,11 @@ adjudicate_attach() {
 #     request_changes  → decision escalate tagged `.adjudication.decision`, which
 #                        post-pr-review.sh posts as a fix-request
 adjudicate_build_verdict() {
-  local adj="$1" final="$2" rec="$3" sha="$4" prior="$5" outv="$6" model
+  local adj="$1" final="$2" rec="$3" sha="$4" prior="$5" outv="$6" meta="${7:-false}" model
+  [[ "$meta" == "true" ]] || meta=false
   model="$(_adj_field "$rec" model)"
   jq --arg final "$final" --arg sha "$sha" --arg prior "$(_adj_safe "$prior")" \
-     --arg model "$model" --argjson rec "$rec" '
+     --arg model "$model" --argjson rec "$rec" --argjson meta "$meta" '
     def clean: tostring | gsub("<!--[\\s\\S]*?-->"; "") | gsub("<!--[\\s\\S]*$"; "");
     (.summary | clean) as $summary
     | ((.findings // []) | map(if type == "object" then
@@ -366,7 +389,7 @@ adjudicate_build_verdict() {
            + "_Tier 4 (adjudicate) replaced an escalation to a human with this approval. Reply if you need a human review._")}
       else
         {decision: "escalate", risk: $risk, summary: $summary, findings: $findings,
-         escalate_to_ai: true, metadata_only: false, adjudication: $rec,
+         escalate_to_ai: true, metadata_only: $meta, adjudication: $rec,
          body: ("**Adjudication (tier 4, \($model)):** \($summary)\n\n\($ftext)\n\n`FINAL_TIER: adjudicate`")}
       end
   ' "$adj" > "$outv"
@@ -386,7 +409,10 @@ adjudicate_build_verdict() {
 adjudicate_cascade_verdict() {
   local verdict="$1" audit_risk="${2:-}" items="${3:-[]}" diff="${4:-}"
   shift 4 || shift $#
-  local dir ctx out entry raw final guard="" rec
+  local dir ctx out entry raw final guard="" rec meta
+  # Carry a metadata-only classification from the cascade verdict into a
+  # request_changes replacement so the fix-request can re-arm on metadata edits.
+  meta=$(jq -r 'if .metadata_only == true then "true" else "false" end' "$verdict" 2>/dev/null || echo false)
   dir="${ADJUDICATE_WORK_DIR:-/tmp/cascade}"
   ctx="$dir/adjudicate-context.md"
   out="$dir/adjudicate.json"
@@ -419,7 +445,7 @@ adjudicate_cascade_verdict() {
     [[ "$raw" != "$final" ]] && guard="audit-high"
     if [[ "$final" == "approve" ]] || [[ "$final" == "request_changes" ]]; then
       rec=$(adjudicate_record_json cascade-escalate "$ADJ_MODEL" ok "$final" true "")
-      adjudicate_build_verdict "$out" "$final" "$rec" "${PR_HEAD_SHA:-}" "${FINAL_TIER:-single}" "$verdict"
+      adjudicate_build_verdict "$out" "$final" "$rec" "${PR_HEAD_SHA:-}" "${FINAL_TIER:-single}" "$verdict" "$([[ "$final" == "request_changes" ]] && echo "$meta" || echo false)"
       export FINAL_TIER="adjudicate"
     else
       rec=$(adjudicate_record_json cascade-escalate "$ADJ_MODEL" ok escalate false "$guard")
