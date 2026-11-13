@@ -603,21 +603,31 @@ cdv_reply_needs_response() {
 
 # cdv_tag_rejected <reply_body> <comment_node_id> <reason>
 #   The body a rejected disposition reply is edited to before the resolver
-#   minimizes it OUTDATED (#2521): <reply_body> with one trailing
+#   minimizes it OUTDATED (#2521): <reply_body> ending in exactly one
 #     <!-- dev-lead:disposition-rejected id=<comment_node_id> reason=<reason> -->
 #   The next pass reads the reason (maintainer_gate_rejected_disposition_facts) and
 #   is told what to answer instead. Without it the retry pass re-posted the same
-#   rejected answer until its attempts ran out. Idempotent: a body that already
-#   carries a rejection marker for that id is echoed unchanged. Returns 1 (echoes
-#   nothing) when the id or reason is malformed, so the caller never writes a
-#   marker the reader cannot parse. Pure.
+#   rejected answer until its attempts ran out. A body already carrying that
+#   exact marker is echoed unchanged, so a second rejection for the same reason
+#   writes nothing. An earlier complete marker for the same id with another
+#   reason is replaced, never kept beside the new one; a partial or quoted
+#   prefix is not a marker and is left as text. Returns 1 (echoes nothing) when
+#   the id or reason is malformed, so the caller never writes a marker the reader
+#   cannot parse. Pure.
 cdv_tag_rejected() {
-  local body="${1:-}" cid="${2:-}" reason="${3:-}"
+  local body="${1:-}" cid="${2:-}" reason="${3:-}" marker
   [[ "$cid" =~ ^[-A-Za-z0-9_+/=]+$ ]] || return 1
   [[ "$reason" =~ ^[a-z][a-z0-9:-]*$ ]] || return 1
-  if [[ "$body" == *"<!-- dev-lead:disposition-rejected id=${cid} "* ]]; then
+  marker="<!-- dev-lead:disposition-rejected id=${cid} reason=${reason} -->"
+  if [[ "$body" == *"$marker"* ]]; then
     printf '%s' "$body"
     return 0
   fi
-  printf '%s\n\n<!-- dev-lead:disposition-rejected id=%s reason=%s -->' "$body" "$cid" "$reason"
+  # Drop any earlier complete marker for this id. The id is matched literally:
+  # `+`, `/` and `=` in a node id are not regex syntax here.
+  body=$(jq -nr --arg b "$body" --arg cid "$cid" '
+    ($cid | gsub("(?<c>[+/=.])"; "\\\(.c)")) as $q
+    | $b | gsub("\\n*<!-- dev-lead:disposition-rejected id=" + $q + " reason=[a-z][a-z0-9:-]* -->"; "")
+  ') || return 1
+  printf '%s\n\n%s' "$body" "$marker"
 }

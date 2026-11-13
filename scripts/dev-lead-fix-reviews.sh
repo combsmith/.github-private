@@ -998,9 +998,9 @@ export_rejected_dispositions() {
   local comments facts
   if comments=$(bcr_fetch_pr_comments "$REPO" "$PR_NUMBER" 2>/dev/null) \
      && facts=$(maintainer_gate_rejected_disposition_facts "$comments" "${BOT_USER:-donpetry-bot}"); then
-    if [ -n "$facts" ]; then
+    if [[ -n "$facts" ]]; then
       # The same MAX_ARG_STRLEN bound as export_stale_dispositions.
-      if [ "${#facts}" -gt 30000 ]; then
+      if [[ "${#facts}" -gt 30000 ]]; then
         facts="${facts:0:30000}
 ... (list truncated; a minimized reply carrying a dev-lead:disposition-rejected marker names the rest)"
       fi
@@ -2186,10 +2186,12 @@ resolve_dispositioned_comments() {
     ref=$(printf '%s' "$disp_json" | jq -r '.ref // ""' 2>/dev/null || echo "")
 
     # Verify the disposition against ground truth. Fail closed: unknown → false.
-    # reject_reason names why it did not verify. A rejected reply carries it, so
-    # the next pass is told what to answer instead (#2521).
+    # reject_reason names why it did not verify, set only on a path that leaves
+    # verified false. A rejected reply carries it, so the next pass is told what
+    # to answer instead (#2521). Empty means no reason is known: the reply is
+    # still rejected, but it is not tagged.
     verified="false"
-    local reject_reason="unknown-disposition"
+    local reject_reason=""
     case "$disposition" in
       fixed)
         if [ "$pass_outcome" = "failed" ]; then
@@ -2287,18 +2289,29 @@ resolve_dispositioned_comments() {
         ;;
       out-of-scope)
         # The referenced tracking issue must exist.
-        local ref_num="${ref#\#}"
-        reject_reason="out-of-scope-ref-missing"
-        if [ -n "$ref_num" ] && gh issue view "$ref_num" --repo "$REPO" --json number >/dev/null 2>&1; then
+        # Only a not-found answer is tagged out-of-scope-ref-missing: an API,
+        # auth or rate-limit failure says nothing about the issue, so it is not
+        # tagged and the next pass is not told the issue is missing (#2521).
+        local ref_num="${ref#\#}" ref_err=""
+        if [[ -z "$ref_num" ]]; then
+          reject_reason="out-of-scope-ref-missing"
+        elif ref_err=$(gh issue view "$ref_num" --repo "$REPO" --json number 2>&1 >/dev/null); then
           verified="true"
+        elif [[ "$ref_err" == *"Could not resolve to an issue"* || "$ref_err" == *"HTTP 404"* ]]; then
+          reject_reason="out-of-scope-ref-missing"
+        else
+          echo "::notice::comment ${cid}: could not read issue #${ref_num} cited by its \`out-of-scope\` disposition; the rejection is not tagged (#2521)"
         fi
         ;;
       invalid|answered|informational)
         # The disposition reply must carry non-empty evidence beyond the marker itself.
         local evidence
         evidence=$(printf '%s' "$reply_body" | jq -Rsr 'gsub("<!--.*?-->";"";"s") | gsub("\\s";"";"g")' 2>/dev/null || echo "")
-        reject_reason="no-evidence"
-        [ -n "$evidence" ] && verified="true"
+        if [[ -n "$evidence" ]]; then
+          verified="true"
+        else
+          reject_reason="no-evidence"
+        fi
         # #2008: `informational` claims "no finding". It never verifies against a
         # body carrying a finding-bearing section (e.g. CodeRabbit's Security
         # Architecture Review beside a rate-limit block). A notice covers only its
@@ -2316,6 +2329,7 @@ resolve_dispositioned_comments() {
         ;;
       *)
         verified="false"
+        reject_reason="unknown-disposition"
         ;;
     esac
 
@@ -2362,8 +2376,13 @@ resolve_dispositioned_comments() {
         # failed edit leaves the reply untagged and is never a reason to keep it
         # visible. An unread body is never written back: that would erase the reply.
         local tagged_body
-        if [[ -n "$reply_body" ]] && tagged_body=$(cdv_tag_rejected "$reply_body" "$cid" "$reject_reason") \
-           && [[ "$tagged_body" != "$reply_body" ]]; then
+        if [[ -z "$reject_reason" ]]; then
+          echo "::notice::rejected disposition reply ${chosen_reply_id} has no known reason; it is not tagged (#2521)"
+        elif [[ -z "$reply_body" ]]; then
+          echo "::warning::could not read rejected disposition reply ${chosen_reply_id}; it is not tagged (#2521)"
+        elif ! tagged_body=$(cdv_tag_rejected "$reply_body" "$cid" "$reject_reason"); then
+          echo "::warning::could not tag rejected disposition reply ${chosen_reply_id}: malformed comment id or reason=${reject_reason} (#2521)"
+        elif [[ "$tagged_body" != "$reply_body" ]]; then
           if gh api graphql -f query='mutation($id:ID!,$body:String!){updateIssueComment(input:{id:$id,body:$body}){issueComment{id}}}' \
               -f id="$chosen_reply_id" -f body="$tagged_body" >/dev/null 2>&1; then
             echo "::notice::tagged rejected disposition reply ${chosen_reply_id} with reason=${reject_reason} (#2521)"

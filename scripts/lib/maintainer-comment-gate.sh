@@ -595,21 +595,33 @@ maintainer_gate_stale_disposition_facts() {
 }
 
 # maintainer_gate_rejected_dispositions <comments_array_json> [bot_user]
-#   The bot comments still open whose newest disposition reply the resolver
-#   rejected (#2521). The resolver tags a rejected reply
+#   The open bot comments whose newest disposition reply the resolver rejected
+#   (#2521). The resolver tags a rejected reply
 #     <!-- dev-lead:disposition-rejected id=<comment id> reason=<code> -->
-#   and minimizes it OUTDATED (#2507). A comment is listed when its newest tagged
-#   reply is newer than every visible disposition covering it, so a fresh answer
-#   posted since takes it off the list. A comment minimized RESOLVED is done and
-#   never listed. Only a minimized reply that is ours (bot_user, or an OWNER /
-#   MEMBER / COLLABORATOR, as trusted_reply) is read: anyone else's marker never
-#   counts. Echoes a compact JSON array of
+#   and minimizes it OUTDATED (#2507). A comment is listed only while all of
+#   these hold, so the prompt never sends a pass after a comment that needs no
+#   reply:
+#     • it is a Bot comment, not minimized for any reason, and not a no-finding
+#       summary (the gate clears those, as the stale reader skips them);
+#     • its newest tagged reply is newer than every visible disposition covering
+#       it, so a fresh answer posted since takes it off the list;
+#     • it was not edited after that reply: the reason judged an older body.
+#   Only a minimized reply that is ours (bot_user, or an OWNER / MEMBER /
+#   COLLABORATOR, as trusted_reply) is read: anyone else's marker never counts.
+#   Every value read from a marker is checked before it can reach a prompt: the
+#   id and reason by format, the disposition against the known kinds and the sha
+#   as 40 hex digits; anything else reads as "" (and a bad id or reason drops the
+#   marker). Echoes a compact JSON array of
 #     {id, login, reason, disposition, sha, rejectedReplyAt}
-#   oldest reply first. Unreadable input echoes nothing and returns non-zero.
+#   oldest reply first. Empty or unreadable input, or a node that is not an
+#   object, echoes nothing and returns non-zero.
 maintainer_gate_rejected_dispositions() {
-  local comments="${1:-}" bot_user="${2:-donpetry-bot}"
+  local comments="${1:-}" bot_user="${2:-donpetry-bot}" finding_re
+  [[ -n "$comments" ]] || return 1
+  finding_re="$(_maintainer_gate_finding_re)"
   printf '%s' "$comments" | jq -c \
-    --arg botuser "$bot_user" "$_MAINTAINER_GATE_DISP_JQ_DEFS"'
+    --arg botuser "$bot_user" \
+    --arg findre "$finding_re" "$_MAINTAINER_GATE_DISP_JQ_DEFS$_MAINTAINER_GATE_NO_FINDING_JQ_DEFS"'
     def ours_hidden:
       (.isMinimized == true)
       and ((.createdAt // "") | tostring | iso)
@@ -618,25 +630,32 @@ maintainer_gate_rejected_dispositions() {
         or (((.authorAssociation // "") | tostring | ascii_upcase) as $a
             | ["OWNER", "MEMBER", "COLLABORATOR"] | index($a) != null)
       );
+    def checked($re): (. // "") | tostring | if test($re) then . else "" end;
     . as $all
     | if type != "array" then error("not an array") else . end
-    | [ $all[] | objects | select(ours_hidden)
+    | if any(.[]; type != "object") then error("not an object") else . end
+    | [ $all[] | select(ours_hidden)
         | (.body // "" | tostring) as $b
         | .createdAt as $c
         | ([$b | scan("<!-- dev-lead:comment-disposition ([^>]*?) -->") | .[0]] | first // "") as $d
         | $b | scan("<!-- dev-lead:disposition-rejected ([^>]*?) -->") | .[0]
-        | {cid: attr("id"), reason: attr("reason"), at: $c,
-           disposition: ($d | attr("disposition")), sha: ($d | attr("sha"))}
+        | {cid: (attr("id") | checked("^[-A-Za-z0-9_+/=]+$")),
+           reason: (attr("reason") | checked("^[a-z][a-z0-9:-]*$")), at: $c,
+           disposition: ($d | attr("disposition")
+                         | checked("^(fixed|answered|invalid|out-of-scope|informational)$")),
+           sha: ($d | attr("sha") | checked("^[0-9a-f]{40}$"))}
         | select(.cid != "" and .reason != "") ] as $rej
-    | [ $all[] | objects
+    | [ $all[]
         | (.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $lbare
         | select((.author?.__typename // "") == "Bot")
-        | select((((.isMinimized // false) == true)
-                  and (((.minimizedReason // "") | ascii_downcase) == "resolved")) | not)
+        | select((.isMinimized // false) == false)
+        | select(no_finding_summary | not)
         | (.id // "") as $cid
         | select($cid != "")
         | ([ $rej[] | select(.cid == $cid) ] | sort_by(.at) | last) as $r
         | select($r != null)
+        | edit_state as $e
+        | select($e == "never" or ($e != "unreadable" and $e <= $r.at))
         | latest_cover($all; $cid) as $cov
         | select($cov == null or $cov.createdAt <= $r.at)
         | {id: $cid, login: $lbare, reason: $r.reason, disposition: $r.disposition,
@@ -656,8 +675,9 @@ maintainer_gate_rejected_disposition_facts() {
   rejected=$(maintainer_gate_rejected_dispositions "${1:-}" "${2:-donpetry-bot}") || return 1
   [[ -n "$rejected" ]] || return 1
   printf '%s' "$rejected" | jq -r '
-    .[] | "- `\(.id)` (\(.login)): your `\(if .disposition == "" then "?" else .disposition end)` reply"
-          + (if .sha != "" then " citing `\(.sha)`" else "" end)
+    .[] | (.disposition // "") as $d | (.sha // "") as $s
+        | "- `\(.id)` (\(.login)): your `\(if $d == "" then "?" else $d end)` reply"
+          + (if $s != "" then " citing `\($s)`" else "" end)
           + ", posted \(.rejectedReplyAt), was rejected: `\(.reason)`."
   ' 2>/dev/null
 }

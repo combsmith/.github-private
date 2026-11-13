@@ -778,11 +778,25 @@ _tag() {
   [[ "$output" == $'Fixed.\n<!-- dev-lead:comment-disposition id=IC_A disposition=fixed sha=c293899b7406de4dc221b3ae14ba2a4a98a5d285 -->\n\n<!-- dev-lead:disposition-rejected id=IC_A reason=fixed-unverified:content-no-token-removed -->' ]]
 }
 
-@test "cdv_tag_rejected(#2521): a body already tagged for that comment is left unchanged" {
+@test "cdv_tag_rejected(#2521): a body already tagged for that comment with that reason is left unchanged" {
   local body=$'No finding.\n\n<!-- dev-lead:disposition-rejected id=IC_A reason=no-evidence -->'
-  _tag "$body" IC_A "informational-on-findings"
+  _tag "$body" IC_A "no-evidence"
   [ "$status" -eq 0 ]
   [ "$output" = "$body" ]
+}
+
+@test "cdv_tag_rejected(#2521): an earlier marker for that comment with another reason is replaced, not kept" {
+  _tag $'No finding.\n\n<!-- dev-lead:disposition-rejected id=IC_A+b= reason=no-evidence -->' "IC_A+b=" "informational-on-findings"
+  [ "$status" -eq 0 ]
+  [ "$output" = $'No finding.\n\n<!-- dev-lead:disposition-rejected id=IC_A+b= reason=informational-on-findings -->' ]
+}
+
+@test "cdv_tag_rejected(#2521): a marker for another comment, or a quoted partial prefix, is left as text" {
+  _tag $'See <!-- dev-lead:disposition-rejected id=IC_A \n<!-- dev-lead:disposition-rejected id=IC_B reason=no-evidence -->' IC_A "no-evidence"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'See <!-- dev-lead:disposition-rejected id=IC_A '* ]]
+  [[ "$output" == *'<!-- dev-lead:disposition-rejected id=IC_B reason=no-evidence -->'* ]]
+  [[ "$output" == *$'\n\n<!-- dev-lead:disposition-rejected id=IC_A reason=no-evidence -->' ]]
 }
 
 @test "cdv_tag_rejected(#2521): a malformed id or reason writes nothing" {

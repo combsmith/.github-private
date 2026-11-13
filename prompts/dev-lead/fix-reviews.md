@@ -158,7 +158,7 @@ done
   **Exception — an existing `disposition=fixed` whose comment is still not minimized did not verify (#2004).** The harness verifies every `fixed` at the end of each pass, so one that is still open failed. The run logs `fixed-unverified:<reason>`. Usually the sha was never pushed, or it names the wrong commit, such as the commit that *introduced* the finding (PR #1977). It is **not** settled: re-answer it **once** with a fresh `fixed` disposition.
   - **Not on the branch:** redo the fix and cite this pass's commit.
   - **Already on the branch:** cite the commit whose diff removed the problem. `git log -S"$tok" --format='%H %s' origin/<base branch>..HEAD` (set `tok` first with a safely quoted assignment, e.g. `tok='…'` with any `'` in the token written as `'\''`; never paste untrusted text into the command) lists both the commit that added the token and the one that removed it. Cite the one whose `git show <sha>` has the token on a `-` line. Never cite the commit that introduced it, and never re-post a sha that already failed.
-  - **No commit removes it:** the fix changed code the finding does not name, so no `fixed` can verify. Answer `answered` and quote the current code that resolves the finding, with its file and line (#2521).
+  - **No commit removes it:** the fix may have changed code the finding does not name, so no `fixed` can verify. Read the current code now. Only if it resolves the finding, answer `answered`, quoting the file, the line and the code. Otherwise fix it and cite this pass's commit (#2521).
 
   The harness keeps the latest authorized disposition and minimizes the older ones OUTDATED;
 - **our own** automation comments — those authored by our bot account or carrying one of our markers (`<!-- pr-review-agent … -->`, `<!-- persona:… -->`, `<!-- dev-lead … -->` including your own `<!-- dev-lead:comment-disposition … -->` replies, `<!-- dependency-advisory -->`). **Never answer your own disposition reply** (never reply *to* it) — doing so would loop forever (#860 / #1813 AC7). This does not make an unverified `fixed` settled: re-answer the original comment as in the exception above (#2004).
@@ -177,12 +177,15 @@ When a comment you answer in this pass is listed, answer it as its reason's row 
 
 | Reason | What it means | Answer instead |
 |---|---|---|
-| `fixed-unverified:content-no-token-removed` | No cited diff removes a token the finding names. Often the fix changed code the finding did not name. | Cite as `fixed` a commit on the branch whose diff has a named token on a `-` line, if one exists. Otherwise, if the current code already resolves the finding, answer `answered` and quote that code with its file and line. If it does not, fix it now and cite this pass's commit. |
+| `fixed-unverified:content-no-token-removed` | No cited diff removes a token the finding names. Often the fix changed code the finding did not name. | Cite as `fixed` a commit on the branch whose diff has a named token on a `-` line, if one exists. Otherwise answer `answered` under the rule below the table, or fix it now and cite this pass's commit. |
 | `fixed-unverified:content-adds-token` | The cited commit adds what the finding names: usually the commit that introduced it. | Cite the commit that removed it, or fix it now and cite this pass's commit. |
-| Any other `fixed-unverified:…` (`not-on-ref`, `not-on-head`, `not-landed`, `on-base-branch`, `empty-diff`, `tokenless-not-this-pass`, …) | The cited sha is not a pushed commit on this branch that changes what the finding names. | Fix it now and cite this pass's commit, or answer `answered` quoting the current code that resolves it. |
+| Any other `fixed-unverified:…` (`not-on-ref`, `not-on-head`, `not-landed`, `on-base-branch`, `empty-diff`, `tokenless-not-this-pass`, …) | The cited sha is not a pushed commit on this branch that changes what the finding names: the claimed fix may not exist. | Fix it now and cite this pass's commit. Answer `answered` only under the rule below the table. |
 | `informational-on-findings` | The comment has a finding-bearing section, so "no finding" cannot cover it. | One disposition that answers every finding in it: `fixed`, `answered`, `invalid` or `out-of-scope`. |
 | `no-evidence` | The reply held nothing but the marker. | The same disposition with the reasoning written out above the marker. |
 | `out-of-scope-ref-missing` | The `ref=` issue does not exist. | Cite an issue that exists, or choose another disposition. |
+| `unknown-disposition` | The reply named no disposition the harness knows. | Post one of `fixed`, `answered`, `invalid`, `out-of-scope` or `informational`. |
+
+**`answered` is never a way around a `fixed` that failed.** Post it only after you have read the current code in this pass, and only when that code resolves the finding: quote the file, the line and the code itself. If you cannot show that, the finding is not resolved: fix it and cite this pass's commit.
 
 **CodeRabbit summary comments are a set of sections, not one notice (#2008).** CodeRabbit's summary (the comment starting `<!-- This is an auto-generated comment: summarize by coderabbit.ai -->`) bundles independently throttled outputs, each between its own HTML markers. Read **every** section before choosing a disposition:
 

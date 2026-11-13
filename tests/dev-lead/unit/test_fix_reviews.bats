@@ -5725,6 +5725,10 @@ case "$ARGS" in
     echo "$ARGS" >> "$EDITLOG"
     [ "${EDIT_FAIL:-}" = "1" ] && exit 1
     printf '%s' '{"data":{"updateIssueComment":{"issueComment":{"id":"x"}}}}'; exit 0 ;;
+  *"issue view"*)
+    # #2521: ISSUE_VIEW_ERR makes the out-of-scope ref lookup fail with that text.
+    if [ -n "${ISSUE_VIEW_ERR:-}" ]; then echo "$ISSUE_VIEW_ERR" >&2; exit 1; fi
+    echo '{"number":1}'; exit 0 ;;
   *"unminimizeComment"*)
     # #2037: log every unminimize call, then simulate an API failure for the
     # one configured comment id.
@@ -6030,6 +6034,46 @@ _resolved_bot_comment() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"could not tag rejected disposition reply R1"* ]]
   grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
+}
+
+# _oos_reply: an out-of-scope disposition of IC_ORIG citing issue #999.
+_oos_reply() {
+  jq -nc '{id:"R1", author:{login:"donpetry-bot", __typename:"User"},
+    body:"Tracked separately.\n<!-- dev-lead:comment-disposition id=IC_ORIG disposition=out-of-scope ref=#999 -->",
+    isMinimized:false, minimizedReason:null, createdAt:"2026-09-26T21:00:00Z"}'
+}
+
+@test "resolve_dispositioned_comments(#2521): an out-of-scope ref that is not found is tagged reason=out-of-scope-ref-missing" {
+  _setup_disposition_pass "$(jq -sc '.' <(_orig_comment) <(_oos_reply))"
+  export ISSUE_VIEW_ERR="GraphQL: Could not resolve to an issue or pull request with the number of 999. (repository.issue)"
+
+  run bash "$FIX_REVIEWS_SCRIPT" 2>&1
+
+  [ "$status" -eq 1 ]
+  grep -q '<!-- dev-lead:disposition-rejected id=IC_ORIG reason=out-of-scope-ref-missing -->' "$EDITLOG"
+  grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
+}
+
+@test "resolve_dispositioned_comments(#2521): an out-of-scope ref that cannot be read is not tagged, and still rejected" {
+  _setup_disposition_pass "$(jq -sc '.' <(_orig_comment) <(_oos_reply))"
+  export ISSUE_VIEW_ERR="HTTP 502: Bad Gateway (https://api.github.com/graphql)"
+
+  run bash "$FIX_REVIEWS_SCRIPT" 2>&1
+
+  [ "$status" -eq 1 ]
+  [ ! -s "$EDITLOG" ]
+  [[ "$output" == *"could not read issue #999"* ]]
+  grep -Eq 'classifier:OUTDATED.*id=R1' "$MINLOG"
+}
+
+@test "resolve_dispositioned_comments(#2521): an out-of-scope ref that exists verifies, untagged" {
+  _setup_disposition_pass "$(jq -sc '.' <(_orig_comment) <(_oos_reply))"
+
+  run bash "$FIX_REVIEWS_SCRIPT" 2>&1
+
+  [ "$status" -eq 1 ]
+  [ ! -s "$EDITLOG" ]
+  grep -Eq 'classifier:RESOLVED.*id=IC_ORIG' "$MINLOG"
 }
 
 @test "resolve_dispositioned_comments(#2521): a verified disposition is never tagged" {
@@ -8122,6 +8166,8 @@ _rejected_nodes() {
     [[ "$out" == *'`informational-on-findings`'* ]]
     [[ "$out" == *'`no-evidence`'* ]]
     [[ "$out" == *'`out-of-scope-ref-missing`'* ]]
+    [[ "$out" == *'`unknown-disposition`'* ]]
+    [[ "$out" == *'`answered` is never a way around a `fixed` that failed'* ]]
   done
 }
 
