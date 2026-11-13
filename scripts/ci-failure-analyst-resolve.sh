@@ -51,7 +51,7 @@ failed_jobs() {
   local jobs
   jobs="$(gh api "repos/$REPO/actions/runs/$1/jobs" --paginate \
     --jq '.jobs[]? | select(.conclusion == "failure")
-          | .name + ((.steps // [] | map(select(.conclusion == "failure") | " / " + .name) | .[0]) // "")')" || return 1
+          | (.name // "") + ((.steps // [] | map(select(.conclusion == "failure") | " / " + (.name // "")) | .[0]) // "")')" || return 1
   [[ -n "$jobs" ]] || return 0
   printf '%s\n' "$jobs" | paste -sd';' - | sed 's/;/; /g' | tr -d $'\r\n`$()\\' | sed "s/-->/--REMOVED/g" | sed "s/<!--/REMOVED--/g" | sed 's/|/PIPE/g' | sed 's/&/AMPERSAND/g' | sed 's/</LESS/g' | sed 's/>/GREATER/g'
 }
