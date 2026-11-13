@@ -114,7 +114,12 @@ jobs:
           ### 1. Identify the failing step and error
           From the failed jobs information, extract:
           - The specific step name that failed
-          - The key error message or assertion
+          - The key error message or assertion, only if one is actually present
+
+          The failed jobs information contains job and step names only, not log text, and is
+          empty for third-party checks. Do not guess or invent an error message. When no error
+          text is available, say so in the comment, classify from the check/step name alone,
+          and point the reader to the details URL for the full logs.
 
           ### 2. Classify the root cause into exactly one category:
           | Category      | Indicators |
