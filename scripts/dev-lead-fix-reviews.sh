@@ -2282,18 +2282,57 @@ resolve_dispositioned_comments() {
 
     if ! cdv_authorize "$disposition" "$is_human" "$verified"; then
       echo "::notice::skipping comment ${cid} — disposition '${disposition}' not authorized to resolve (is_human=${is_human} verified=${verified}); leaving open (#1813)"
-      if [ "$disposition" = "fixed" ] && [ "$reverify" != "true" ]; then
+      # #2507: a bot comment whose disposition did not verify is not dispositioned.
+      # The gate and this resolver already ignore a minimized reply, so minimize
+      # the rejected one OUTDATED. The bot-comment retry reads the same signal and
+      # dispatches a pass that posts a fresh disposition. Without this, the retry
+      # counted the visible reply as covering the comment and nothing re-answered
+      # it. A human comment's reply stays visible: a later pass may re-answer it
+      # with a corrected `fixed` (#2004), and the retry never acts on it.
+      local rejected="false"
+      if [[ "$is_human" != "true" && "$verified" != "true" ]]; then
+        rejected="true"
+      fi
+      # On a post-edit re-verification rejection the superseded replies are
+      # minimized too: a surviving post-edit reply would still read as coverage.
+      if { [[ "$disposition" == "fixed" ]] && [[ "$reverify" != "true" ]]; } || [[ "$rejected" == "true" ]]; then
         # #2004: an unverified `fixed` is re-answered on later passes. Converge the
         # older replies to OUTDATED now, so the replies never stack (#1992).
         local usid
         for usid in "${superseded_ids[@]}"; do
-          if gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' \
-              -f id="$usid" >/dev/null 2>&1; then
+          local sattempt minimized_superseded="false"
+          for sattempt in 1 2 3; do
+            if gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' \
+                -f id="$usid" >/dev/null 2>&1; then
+              minimized_superseded="true"
+              break
+            fi
+            sleep "$sattempt"
+          done
+          if [[ "$minimized_superseded" == "true" ]]; then
             echo "::notice::minimized superseded disposition reply ${usid} OUTDATED (#1992, #2004)"
           else
-            echo "::warning::failed to minimize superseded disposition reply ${usid} OUTDATED"
+            echo "::warning::failed to minimize superseded disposition reply ${usid} OUTDATED after 3 attempts"
           fi
         done
+      fi
+      if [[ "$rejected" == "true" ]]; then
+        # Retry the minimize: a single transient failure would leave the rejected
+        # reply visible, and the bot-comment retry would read it as coverage.
+        local mattempt minimized_rejected="false"
+        for mattempt in 1 2 3; do
+          if gh api graphql -f query='mutation($id:ID!){minimizeComment(input:{subjectId:$id,classifier:OUTDATED}){minimizedComment{isMinimized}}}' \
+              -f id="$chosen_reply_id" >/dev/null 2>&1; then
+            minimized_rejected="true"
+            break
+          fi
+          sleep "$mattempt"
+        done
+        if [[ "$minimized_rejected" == "true" ]]; then
+          echo "::notice::minimized rejected disposition reply ${chosen_reply_id} OUTDATED — comment ${cid} needs a fresh disposition (#2507)"
+        else
+          echo "::warning::failed to minimize rejected disposition reply ${chosen_reply_id} OUTDATED after 3 attempts — the bot-comment retry still reads comment ${cid} as dispositioned (#2507)"
+        fi
       fi
       if [ "$reverify" = "true" ]; then
         # Fail closed: the fresh disposition answering the edit did not verify,
