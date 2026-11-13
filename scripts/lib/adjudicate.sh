@@ -57,7 +57,7 @@ adjudicate_escalates_to_human() {
   local decision="${1:-}" risk="${2:-}"
   [[ "$decision" == "escalate" ]] || return 1
   if [[ "${AI_DELEGATION_ENABLED:-false}" == "true" ]] \
-     && [[ "${REVIEW_CYCLE:-0}" -lt "${MAX_REVIEW_CYCLES:-3}" ]] \
+     && [ "${REVIEW_CYCLE:-0}" -lt "${MAX_REVIEW_CYCLES:-3}" ] \
      && [[ "$risk" != "HIGH" ]]; then
     return 1
   fi

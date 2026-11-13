@@ -150,8 +150,8 @@ EOF
   [ "$status" -eq 0 ]
   [ -s "$CLAUDE_CALLS" ]
   # Derive the expected Fable model from the resolver instead of hard-coding it
-  expected_model="$(bash -c 'source '"$REPO_ROOT"'/scripts/lib/engine-models.sh && ai_model_for_family fable')"
-  grep -q "$expected_model" "$CLAUDE_CALLS"
+  expected_model="$(bash -c 'source "$1"/scripts/lib/engine-models.sh && ai_model_for_family fable' -- "$REPO_ROOT")"
+  grep -qF "$expected_model" "$CLAUDE_CALLS"
   [[ "$output" == *"[tier4] adjudicate"* ]]
   [[ "$output" == *"decision=approve"* ]]
   [[ "$output" == *"overrode=true"* ]]
