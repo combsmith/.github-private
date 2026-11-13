@@ -247,7 +247,7 @@ _cdv_diff_side() {
 #   `--emit-workflow-only`. Pure.
 _cdv_has_token() {
   local text="${1:-}" tok="${2:-}" esc
-  esc=$(sed 's/[][\.^$*+?(){}|/]/\\&/g' <<< "$tok")
+  esc=$(sed 's/[][\.^$*+?(){}|]/\\&/g' <<< "$tok")
   grep -qE -- "(^|[^A-Za-z0-9_-])${esc}($|[^A-Za-z0-9_-])" <<< "$text"
 }
 

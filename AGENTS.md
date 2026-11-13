@@ -174,12 +174,17 @@ of the check-vs-intent failure mode ([`docs/agentic-interaction-model.md` §13](
 
 ### Local environment caveats
 
-macOS ships **bash 3.2**: `mapfile`, `readarray` and `declare -A` all fail there, so scripts that
-use them (e.g. `scripts/fleet_monitor.sh`) and several bats suites cannot run locally
-(`tests/dev-lead/unit/test_fix_reviews.bats` fails ~103 tests on `main` for this reason alone).
-System `python3` is 3.9 and too old for the eval scripts — use `python3.12` or a venv. In zsh,
-`read -r path` clobbers `$PATH`. **Rule: when a local suite fails, diff it against `main` before
-calling it a regression, and treat CI as authoritative.**
+The scripts assume what `ubuntu-latest` has: bash 5, GNU coreutils, sed, grep, findutils, gawk,
+`flock`, and a `python3` with jsonschema and PyYAML. macOS ships bash 3.2 and the BSD tools, and a
+plain `bats` run there fails about 2,000 tests that pass in CI. **On macOS, run the suites with
+`scripts/test-local.sh`** (first time: `brew bundle --file=Brewfile`). It puts the GNU tools and
+bash 5 first on `PATH` for that run only, resolves `TMPDIR` (`/var` is a symlink to `/private/var`),
+and builds a cached venv from `requirements/ci/`. With no arguments it runs every suite; pass test
+paths or bats options (`-f <regex>`) to narrow it, and `--jobs N` to run files in parallel. A bare
+`bats` run on macOS without that toolchain stops in `setup_suite` with one message naming what is
+missing (`tests/dev-lead/unit/toolchain_preflight.bash`). System `python3` is 3.9 and too old for
+the eval scripts — use `python3.12` or a venv. In zsh, `read -r path` clobbers `$PATH`. **Rule: when a local suite
+fails, diff it against `main` before calling it a regression, and treat CI as authoritative.**
 
 ## Project-Specific Standards
 
