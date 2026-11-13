@@ -133,10 +133,11 @@ at all (this was the deadlock reported in #1911). Two changes close this:
   classify.
 - **Maintainers can clear a *registered info-status bot's* comment when needed.**
   `scripts/maintainer-resolve-comment.sh` accepts a comment authored by a bot that declares an
-  `info_status_pattern` in `reviewer-sources.tsv` — a clean-status re-poster like `sonarqubecloud`,
-  **not** a finding-producing reviewer such as `codeant-ai` or `graphite-app` (whose findings still
-  require dev-lead's verified-fix flow, so this path cannot `--reason` them away) — in addition to
-  your own. The author must be a GitHub App actor (`__typename == Bot`), so a *person* whose login
+  `info_status_pattern` in `reviewer-sources.tsv` (a clean-status re-poster like `sonarqubecloud`),
+  in addition to your own, and only when the comment's body matches that pattern. A
+  finding-producing reviewer's findings still require dev-lead's verified-fix flow, so this path
+  cannot `--reason` them away: `graphite-app` declares no pattern, and `codeant-ai`'s matches only its
+  "Review Status" progress table and promo, never a nitpick or PR Risk overview. The author must be a GitHub App actor (`__typename == Bot`), so a *person* whose login
   matches a registered bot's is refused like any other human. This path **requires `--reason`**, which
   is posted as a reply carrying a `<!-- maintainer-resolve … -->` marker (pinned to the original
   comment's node id, so the reply is not itself a new blocker and a retry does not post a duplicate)
