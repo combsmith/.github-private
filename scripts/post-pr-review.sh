@@ -13,7 +13,8 @@
 #     "summary": "...",
 #     "findings": [...],
 #     "body": "full markdown review body",
-#     "escalate_to_ai": false
+#     "escalate_to_ai": false,
+#     "adjudication": {...}   (optional, #2495 tier 4 — see lib/adjudicate.sh)
 #   }
 
 set -euo pipefail
@@ -38,6 +39,10 @@ source "$POST_PR_SCRIPT_DIR/lib/pr-metadata-digest.sh"
 source "$POST_PR_SCRIPT_DIR/lib/verify-approval-review.sh"
 # shellcheck source=lib/merge-queue-dequeue.sh
 source "$POST_PR_SCRIPT_DIR/lib/merge-queue-dequeue.sh"
+# Tier 4 "adjudicate" (#2495): the human-escalation predicate shared with
+# review-one-pr.sh and the tier-4 note/marker builder.
+# shellcheck source=lib/adjudicate.sh
+source "$POST_PR_SCRIPT_DIR/lib/adjudicate.sh"
 
 # The account this run acts as and the secret holding its PAT — named in the
 # #1874 loud-failure diagnostic so a stranded approval points straight at the
@@ -181,6 +186,23 @@ BODY=$(jq -r '.body // ""' "$VERDICT_JSON")
 # body edit (AC3).
 METADATA_ONLY=$(jq -r '.metadata_only // false' "$VERDICT_JSON")
 
+# Tier 4 "adjudicate" (#2495). review-one-pr.sh attaches a structured
+# `.adjudication` record when Fable adjudicated a verdict that would have gone to
+# a human. The record, never model text, decides two things here:
+#   - decision=request_changes posts a fix-request, even where the cascade's own
+#     escalate would have gone to a human;
+#   - every posted artifact (approval, fix-request, escalation comment) carries
+#     the tier-4 note: that tier 4 ran, its model, its decision, whether it
+#     overrode the escalation, and the per-SHA marker.
+# Absent ⇒ ADJ_NOTE is empty and every path is unchanged.
+ADJUDICATION_JSON=$(jq -c '.adjudication // empty | select(type == "object")' "$VERDICT_JSON" 2>/dev/null || true)
+ADJ_DECISION=""
+ADJ_NOTE=""
+if [[ -n "$ADJUDICATION_JSON" ]]; then
+  ADJ_DECISION=$(jq -r '.decision // ""' <<<"$ADJUDICATION_JSON" 2>/dev/null || true)
+  ADJ_NOTE=$(adjudicate_note "$ADJUDICATION_JSON" "$PR_HEAD_SHA")
+fi
+
 # Derive the approval marker word from the verdict, not from model-written text
 # (issue #2169). The verdict vocabulary is `approve`, but every marker consumer
 # (the #1754 guard below, review-one-pr.sh, carry-forward, the miss-rate metric)
@@ -188,7 +210,7 @@ METADATA_ONLY=$(jq -r '.metadata_only // false' "$VERDICT_JSON")
 # raw verdict word, so a valid approve verdict failed the guard on formatting
 # alone and nothing was posted. Normalize only the present-tense word inside the
 # head-SHA v1 marker; a missing or contradictory decision still fails closed.
-if [ "$DECISION" = "approve" ]; then
+if [[ "$DECISION" == "approve" ]]; then
   # -z treats the body as one record so a marker wrapped across lines still
   # matches. Detect changes without command substitution stripping newlines: write
   # to temp files and compare via cmp, so a trailing-newline-only difference
@@ -491,6 +513,10 @@ if [ "$DRY_RUN" = "true" ]; then
   echo "Risk: $RISK"
   echo "Body:"
   echo "$BODY"
+  if [[ -n "$ADJ_NOTE" ]]; then
+    echo "Tier 4:"
+    echo "$ADJ_NOTE"
+  fi
   exit 0
 fi
 
@@ -551,6 +577,12 @@ if [ "$DECISION" = "approve" ]; then
   if [ "$LIVE_HEAD" != "$PR_HEAD_SHA" ]; then
     echo "::warning::$PR_URL head moved from $PR_HEAD_SHA to $LIVE_HEAD during the review — not approving; the new head gets its own review (exit 100)"
     exit 100
+  fi
+
+  # Tier 4 (#2495): record that adjudication produced this approval. Appended
+  # after the marker checks above, so it cannot affect them.
+  if [[ -n "$ADJ_NOTE" ]]; then
+    BODY="$BODY"$'\n\n'"$ADJ_NOTE"
   fi
 
   # Post an APPROVED review
@@ -703,11 +735,14 @@ if [ "$DECISION" = "approve" ]; then
   echo "Review posted"
 
 elif [ "$DECISION" = "escalate" ]; then
-  # Check if AI delegation should be used
-  if [ "${AI_DELEGATION_ENABLED:-false}" = "true" ] && [ "${REVIEW_CYCLE:-0}" -lt "${MAX_REVIEW_CYCLES:-3}" ] && [ "$RISK" != "HIGH" ]; then
+  # Post a fix-request when AI delegation applies (delegation on, cycles left, risk
+  # not HIGH — adjudicate_escalates_to_human is that rule, shared with
+  # review-one-pr.sh), or when tier 4 adjudicated this verdict to request_changes
+  # (#2495). Everything else escalates to a human.
+  if [[ "$ADJ_DECISION" == "request_changes" ]] || ! adjudicate_escalates_to_human "$DECISION" "$RISK"; then
     # Post fix-request comment
     COMMENT_FILE="/tmp/pr-comment-$$.txt"
-    NEXT_CYCLE=$((REVIEW_CYCLE + 1))
+    NEXT_CYCLE=$(( ${REVIEW_CYCLE:-0} + 1 ))
     # Strip any embedded marker from BODY before inserting — the cascade-action body
     # already carries its own marker, and a second copy would cause review-one-pr.sh
     # to count this cycle as 2 (grep -c counts matching lines), prematurely hitting
@@ -740,7 +775,7 @@ elif [ "$DECISION" = "escalate" ]; then
     cat > "$COMMENT_FILE" <<COMMENT_END
 <!-- pr-review-agent v1 sha=$PR_HEAD_SHA --> <!-- decision=fix-requested risk=$RISK$META_ATTR -->
 
-## Review — fix requested (cycle $NEXT_CYCLE/$MAX_REVIEW_CYCLES)
+## Review — fix requested (cycle $NEXT_CYCLE/${MAX_REVIEW_CYCLES:-3})
 
 The automated review identified the following issues. Please address each one:
 
@@ -755,6 +790,9 @@ $BODY_FOR_COMMENT
 
 $REARM_FOOTER
 COMMENT_END
+    if [[ -n "$ADJ_NOTE" ]]; then
+      printf '\n%s\n' "$ADJ_NOTE" >> "$COMMENT_FILE"
+    fi
 
     echo "Posting fix-request comment..."
     # The hold is cleared only after the fix request is CONFIRMED posted: a failed
@@ -815,6 +853,12 @@ COMMENT_END
     # here (not derived from the API) because gh's issue-comment view exposes no
     # updatedAt field.
     ESC_RESET_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    # Tier 4 (#2495): state that adjudication ran and confirmed (or could not
+    # replace) this escalation. Empty when tier 4 did not run.
+    ESC_ADJ_SECTION=""
+    if [[ -n "$ADJ_NOTE" ]]; then
+      ESC_ADJ_SECTION=$'\n\n'"$ADJ_NOTE"
+    fi
     ESC_BODY=$(cat <<ESC_END
 $ESCALATION_COMMENT_MARKER
 <!-- pr-review-agent human-escalation reset=$ESC_RESET_TS -->
@@ -824,7 +868,7 @@ The automated review cascade escalated this PR to a human reviewer at review cyc
 
 Why: the cascade could neither approve the PR nor auto-request fixes, so it requested human review via CODEOWNERS and set the \`needs-human-review\` label. A human should review the PR, or remove the \`needs-human-review\` label to re-engage the automated cascade.${ESC_SUMMARY:+
 
-**Reviewer summary:** $ESC_SUMMARY}
+**Reviewer summary:** $ESC_SUMMARY}$ESC_ADJ_SECTION
 
 _This note is updated in place on re-escalation; it is not re-posted._
 ESC_END
