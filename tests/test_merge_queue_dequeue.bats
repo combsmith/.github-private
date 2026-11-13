@@ -521,7 +521,7 @@ isa_node() {
 @test "every dismissal site in scripts/ is followed by mq_dequeue_if_unapproved" {
   local f n sites
   sites=$(grep -rlE 'dismissPullRequestReview|/dismissals' "$REPO_ROOT/scripts" \
-    | while read -r f; do grep -vE '^\s*#' "$f" | grep -qE 'dismissPullRequestReview|/dismissals' && echo "$f"; done || true)
+    | while read -r f; do grep -vE '^\s*#' "$f" | grep -qE 'dismissPullRequestReview|/dismissals' && echo "$f" || true; done)
   [ -n "$sites" ]
   for f in $sites; do
     grep -qF 'lib/merge-queue-dequeue.sh' "$f"
