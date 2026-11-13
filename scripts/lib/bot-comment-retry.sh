@@ -24,11 +24,17 @@
 #   a fix-bot-comment retry now. A comment's VERSION is lastEditedAt // createdAt;
 #   all coverage checks are against the current version, so an edit re-opens it.
 #     dispositioned            a `dev-lead:comment-disposition id=<id>` reply exists
-#                              at/after the version → covered, nothing to do
+#                              at/after the version and is not minimized →
+#                              covered, nothing to do. A reply the resolver
+#                              rejected as unverified is minimized OUTDATED
+#                              (#2507), like a superseded one (#1992), so it no
+#                              longer covers: the comment falls through to a
+#                              retry under the attempt bounds below
 #     pass-completed           a fix-bot-comment pass already ended on this version
 #                              (its terminal marker carries `comment=<id>` and the
 #                              `version=` it processed) without a disposition → do
-#                              not loop; only an edit re-opens
+#                              not loop; only an edit, or a later rejected
+#                              disposition (#2507), re-opens
 #     retry-pending            a retry marker for this version is younger than the
 #                              pending window → that retry may still be queued or
 #                              running; never duplicate it. A retry whose recorded
@@ -41,8 +47,10 @@
 #     rate-limited             a fix-bot-comment pass on this PR ended rate-limited
 #                              (or blocked) and its reset= time is still ahead
 #     retry-attempts-exhausted this version already had MAX retry attempts since the
-#                              last rate-limited end (an attempt that ended rate-
-#                              limited does not count, nor does a LOST one), or
+#                              last rate-limited end and the last rejected
+#                              disposition (#2507: a rejection starts a fresh
+#                              count; an attempt that ended rate-limited does not
+#                              count, nor does a LOST one), or
 #                              MAX_TOTAL in all — rate-limited and lost included,
 #                              so a lane that keeps cancelling is still bounded
 #     grace-period             the comment is too new — the original event-driven
@@ -221,7 +229,15 @@ _bcr_evaluate() {
         | select(((.authorAssociation // "") as $a | ["OWNER","MEMBER","COLLABORATOR"] | index($a)) != null)
         | (markers("dev-lead-fix-reviews") | map(select(attr("intent") == "fix-bot-comment"))) as $fr
         | {t: (.createdAt | epoch),
-           disp: markers("dev-lead:comment-disposition"),
+           # A minimized disposition reply covers nothing (#2507): the resolver
+           # minimizes a reply OUTDATED when it supersedes it or rejects it as
+           # unverified, and the gate and the resolver ignore it the same way.
+           disp: (if .isMinimized then []
+                  else markers("dev-lead:comment-disposition") end),
+           # The same replies, kept to date the latest rejection: a rejected
+           # disposition starts a fresh attempt count for its comment (#2507).
+           rejected: (if .isMinimized then markers("dev-lead:comment-disposition")
+                      else [] end),
            pass: ($fr | map(select(attr("comment") != null))),
            hold: ($fr | map(select(attr("status") == "rate-limited" or attr("status") == "blocked"))
                       | map(attr("reset") | vepoch)),
@@ -274,11 +290,20 @@ _bcr_evaluate() {
         | ($ver | epoch) as $vt
         | ([ $notes[] | select(.t >= $vt) | .disp[] | select(attr("id") == $id) ] | length > 0) as $covered
         | (.createdAt | vepoch) as $ct
+        # The newest minimized (rejected or superseded) disposition of this comment.
+        # Passes and retries before it ran against an answer the resolver has since
+        # thrown out, so they neither end the comment nor use up MAX_ATTEMPTS (#2507).
+        | ([ $notes[] | .t as $t | .rejected[] | select(attr("id") == $id) | $t ] | max) as $last_reject
         # A pass covers the version it PROCESSED (its version= stamp), so an edit
         # made while it ran stays open. A legacy marker without the stamp falls
         # back to "posted at/after this version". The skew absorbs only an
         # edited-event stamp lag; a creation stamp must match exactly.
+        # A pass dates from when it started reading (read_at=, else its marker): the
+        # pass that posted a disposition finishes after that reply, so the time on its marker
+        # would outlive the later rejection of that reply (#2507).
         | ([ $notes[] | .t as $t | .pass[] | select(attr("comment") == $id)
+             | ((attr("read_at") | vepoch) // $t) as $rt
+             | select($last_reject == null or $rt > $last_reject)
              | (attr("version") | vepoch) as $pv
              | select(if $pv == null then $t >= $vt
                       elif $pv == $ct then $pv >= $vt
@@ -293,7 +318,8 @@ _bcr_evaluate() {
         # A lost retry did no work: it neither uses up one of MAX_ATTEMPTS nor
         # holds the comment as pending.
         | ([ $retries[] | select(.lost | not)
-             | select($last_hold == null or .t > $last_hold) ] | length) as $counted
+             | select($last_hold == null or .t > $last_hold)
+             | select($last_reject == null or .t > $last_reject) ] | length) as $counted
         | ([ $retries[] | select(.lost | not) | .t ] | max) as $last_retry
         | {id: $id, login: $l, version: $ver, created: .createdAt, attempt: ($attempts + 1),
            # Runs worth reading for this comment (bcr_retry_run_ids): only when a
