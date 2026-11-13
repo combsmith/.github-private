@@ -93,12 +93,13 @@ jobs:
           set -euo pipefail
           export PATH="$HOME/.npm-global/bin:$PATH"
 
-          # Sanitize untrusted variables to prevent prompt injection: remove newlines,
-          # carriage returns, backticks, quotes, shell metacharacters, and HTML comment markers
+          # Sanitize untrusted variables to prevent prompt injection: keep only alphanumerics,
+          # spaces, hyphens, and underscores to eliminate all special characters that could
+          # be used for markdown or command injection in prompts sent to Claude
           # shellcheck disable=SC2016  # single quotes are intentional for literal chars
-          WORKFLOW_NAME="$(printf '%s' "$WORKFLOW_NAME" | tr -d $'\r\n`$()\\\'\"' | sed 's/-->/--REMOVED/g' | sed 's/<!--/REMOVED--/g' | sed 's/|/PIPE/g' | sed 's/&/AMPERSAND/g' | sed 's/</LESS/g' | sed 's/>/GREATER/g')"
+          WORKFLOW_NAME="$(printf '%s' "$WORKFLOW_NAME" | sed -E 's/[^a-zA-Z0-9_ -]//g')"
           export WORKFLOW_NAME
-          FAILED_JOBS="$(printf '%s' "$FAILED_JOBS" | tr -d $'\r\n`$()\\\'\"' | sed 's/-->/--REMOVED/g' | sed 's/<!--/REMOVED--/g' | sed 's/|/PIPE/g' | sed 's/&/AMPERSAND/g' | sed 's/</LESS/g' | sed 's/>/GREATER/g')"
+          FAILED_JOBS="$(printf '%s' "$FAILED_JOBS" | sed -E 's/[^a-zA-Z0-9_ \/-]//g')"
           export FAILED_JOBS
 
           # JSON-encode metadata for safe insertion into JSON context
