@@ -989,6 +989,41 @@ This is settled; do not re-derive it. For each comment listed, read its CURRENT 
   export STALE_DISPOSITIONS
 }
 
+# export_rejected_dispositions: exports REJECTED_DISPOSITIONS, the prompt text
+# naming every open registered-bot comment whose newest disposition reply the
+# resolver rejected, with the reason it wrote on that reply (#2521). The prompt
+# maps each reason to the answer to give instead. Without it a retry pass could
+# not see why its earlier answer was hidden: on .github PR 1503 it re-cited the
+# same `fixed` sha on four passes, each rejected `content-no-token-removed`.
+# A PR whose comments cannot be read gets an explicit "could not be determined"
+# note, never "none".
+export_rejected_dispositions() {
+  local comments facts
+  if comments=$(bcr_fetch_pr_comments "$REPO" "$PR_NUMBER" 2>/dev/null) \
+     && facts=$(maintainer_gate_rejected_disposition_facts "$comments" "${BOT_USER:-donpetry-bot}"); then
+    if [[ -n "$facts" ]]; then
+      # The same MAX_ARG_STRLEN bound as export_stale_dispositions.
+      if [[ "${#facts}" -gt 30000 ]]; then
+        facts="${facts:0:30000}
+... (list truncated; a minimized reply carrying a dev-lead:disposition-rejected marker names the rest)"
+      fi
+      REJECTED_DISPOSITIONS="The harness rejected and hid your newest disposition reply for each of these registered reviewer-bot comments. Each comment is still open and blocks the PR:
+
+${facts}
+
+This is settled; do not re-derive it. Answer each comment again in this pass, as the table below says for its reason. Never post the rejected answer again: the same disposition and sha are rejected the same way."
+      echo "::notice::rejected dispositions on PR #${PR_NUMBER} (stated in the prompt, #2521):"
+      printf '%s\n' "$facts"
+    else
+      REJECTED_DISPOSITIONS="None. No open registered reviewer-bot comment on this PR has a rejected disposition waiting for a fresh answer."
+    fi
+  else
+    REJECTED_DISPOSITIONS="Could not be determined: the harness could not read this PR's comments. A minimized reply of yours carrying a \`dev-lead:disposition-rejected\` marker names a rejected answer and its reason."
+    echo "::warning::could not compute rejected dispositions for PR #${PR_NUMBER} — the prompt says so instead of listing them (#2521)"
+  fi
+  export REJECTED_DISPOSITIONS
+}
+
 # resolve_bot_outdated_threads: resolves all outdated review threads from bot reviewers.
 # This is a cleanup function for the no-changes path: when no code changes are needed,
 # we still want to mark outdated bot comments as resolved so they don't clutter the PR.
@@ -2154,7 +2189,12 @@ resolve_dispositioned_comments() {
     ref=$(printf '%s' "$disp_json" | jq -r '.ref // ""' 2>/dev/null || echo "")
 
     # Verify the disposition against ground truth. Fail closed: unknown → false.
+    # reject_reason names why it did not verify, set only on a path that leaves
+    # verified false. A rejected reply carries it, so the next pass is told what
+    # to answer instead (#2521). Empty means no reason is known: the reply is
+    # still rejected, but it is not tagged.
     verified="false"
+    local reject_reason=""
     case "$disposition" in
       fixed)
         if [ "$pass_outcome" = "failed" ]; then
@@ -2194,6 +2234,7 @@ resolve_dispositioned_comments() {
         else
           # AC2: loud and distinguishable from "dev-lead has not run yet".
           echo "::warning::comment ${cid}: \`fixed\` disposition citing ${sha} did not verify (fixed-unverified:${fixed_reason}); the cited commit's diff must remove what the finding names (#2004)"
+          reject_reason="fixed-unverified:${fixed_reason}"
           # AC3: an unverified disposition is not settled. Re-answer it with the
           # PR-branch commit whose diff removes the finding's token, when one exists.
           local corrected_rc=0 live_body
@@ -2251,16 +2292,29 @@ resolve_dispositioned_comments() {
         ;;
       out-of-scope)
         # The referenced tracking issue must exist.
-        local ref_num="${ref#\#}"
-        if [ -n "$ref_num" ] && gh issue view "$ref_num" --repo "$REPO" --json number >/dev/null 2>&1; then
+        # Only a not-found answer is tagged out-of-scope-ref-missing: an API,
+        # auth or rate-limit failure says nothing about the issue, so it is not
+        # tagged and the next pass is not told the issue is missing (#2521).
+        local ref_num="${ref#\#}" ref_err=""
+        if [[ -z "$ref_num" ]]; then
+          reject_reason="out-of-scope-ref-missing"
+        elif ref_err=$(gh issue view "$ref_num" --repo "$REPO" --json number 2>&1 >/dev/null); then
           verified="true"
+        elif [[ "$ref_err" == *"Could not resolve to an issue"* || "$ref_err" == *"HTTP 404"* ]]; then
+          reject_reason="out-of-scope-ref-missing"
+        else
+          echo "::notice::comment ${cid}: could not read issue #${ref_num} cited by its \`out-of-scope\` disposition; the rejection is not tagged (#2521)"
         fi
         ;;
       invalid|answered|informational)
         # The disposition reply must carry non-empty evidence beyond the marker itself.
         local evidence
         evidence=$(printf '%s' "$reply_body" | jq -Rsr 'gsub("<!--.*?-->";"";"s") | gsub("\\s";"";"g")' 2>/dev/null || echo "")
-        [ -n "$evidence" ] && verified="true"
+        if [[ -n "$evidence" ]]; then
+          verified="true"
+        else
+          reject_reason="no-evidence"
+        fi
         # #2008: `informational` claims "no finding". It never verifies against a
         # body carrying a finding-bearing section (e.g. CodeRabbit's Security
         # Architecture Review beside a rate-limit block). A notice covers only its
@@ -2271,12 +2325,14 @@ resolve_dispositioned_comments() {
             'first(.[] | select(.id == $id)) | .body // ""' 2>/dev/null || echo "")
           if cdv_body_has_findings "$orig_body"; then
             verified="false"
+            reject_reason="informational-on-findings"
             echo "::notice::comment ${cid} carries a finding-bearing section — an \`informational\` disposition cannot cover it; each finding needs a real disposition (#2008)"
           fi
         fi
         ;;
       *)
         verified="false"
+        reject_reason="unknown-disposition"
         ;;
     esac
 
@@ -2317,6 +2373,26 @@ resolve_dispositioned_comments() {
         done
       fi
       if [[ "$rejected" == "true" ]]; then
+        # #2521: write the reason onto the reply first. The next pass is told it
+        # (export_rejected_dispositions) and answers differently; without it the
+        # retry re-posted the same rejected answer until its attempts ran out. A
+        # failed edit leaves the reply untagged and is never a reason to keep it
+        # visible. An unread body is never written back: that would erase the reply.
+        local tagged_body
+        if [[ -z "$reject_reason" ]]; then
+          echo "::notice::rejected disposition reply ${chosen_reply_id} has no known reason; it is not tagged (#2521)"
+        elif [[ -z "$reply_body" ]]; then
+          echo "::warning::could not read rejected disposition reply ${chosen_reply_id}; it is not tagged (#2521)"
+        elif ! tagged_body=$(cdv_tag_rejected "$reply_body" "$cid" "$reject_reason"); then
+          echo "::warning::could not tag rejected disposition reply ${chosen_reply_id}: malformed comment id or reason=${reject_reason} (#2521)"
+        elif [[ "$tagged_body" != "$reply_body" ]]; then
+          if gh api graphql -f query='mutation($id:ID!,$body:String!){updateIssueComment(input:{id:$id,body:$body}){issueComment{id}}}' \
+              -f id="$chosen_reply_id" -f body="$tagged_body" >/dev/null 2>&1; then
+            echo "::notice::tagged rejected disposition reply ${chosen_reply_id} with reason=${reject_reason} (#2521)"
+          else
+            echo "::warning::could not tag rejected disposition reply ${chosen_reply_id} with reason=${reject_reason}; the next pass is not told why (#2521)"
+          fi
+        fi
         # Retry the minimize: a single transient failure would leave the rejected
         # reply visible, and the bot-comment retry would read it as coverage.
         local mattempt minimized_rejected="false"
@@ -4256,6 +4332,7 @@ case "$INTENT_TYPE" in
     export -n OPEN_THREADS_JSON  # an inherited export would carry the payload into every exec
     fetch_pr_context
     export_stale_dispositions
+    export_rejected_dispositions
     rc=0
     build_and_run "fix-reviews" || rc=$?
     [ "$rc" -eq 2 ] && handle_rate_limit "fix-reviews"
@@ -4379,6 +4456,7 @@ case "$INTENT_TYPE" in
     export COMMENT_VERSION="${COMMENT_VERSION:-}"
     fetch_pr_context
     export_stale_dispositions
+    export_rejected_dispositions
     rc=0
     build_and_run "fix-bot-comment" || rc=$?
     [ "$rc" -eq 2 ] && handle_rate_limit "fix-bot-comment"
