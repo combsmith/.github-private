@@ -100,10 +100,8 @@ jobs:
           FAILED_JOBS="$(printf '%s' "$FAILED_JOBS" | tr -d $'\r\n`$()\\\'\"' | sed 's/-->/--REMOVED/g' | sed 's/<!--/REMOVED--/g' | sed 's/|/PIPE/g' | sed 's/&/AMPERSAND/g' | sed 's/</LESS/g' | sed 's/>/GREATER/g')"
 
           # JSON-encode metadata for safe insertion into JSON context
-          WORKFLOW_NAME_JSON=$(jq -n --arg name "$WORKFLOW_NAME" '$name')
-          export WORKFLOW_NAME_JSON
-          FAILED_JOBS_JSON=$(jq -n --arg jobs "$FAILED_JOBS" '$jobs')
-          export FAILED_JOBS_JSON
+          export WORKFLOW_NAME_JSON=$(jq -n --arg name "$WORKFLOW_NAME" '$name')
+          export FAILED_JOBS_JSON=$(jq -n --arg jobs "$FAILED_JOBS" '$jobs')
 
           cat > /tmp/prompt-template.txt << 'TMPL'
           A CI check has failed on PR #$PR_NUMBER in repository $REPO.
