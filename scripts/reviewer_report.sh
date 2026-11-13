@@ -322,7 +322,8 @@ _NORMALIZE_JQ='
   # Codex body findings (#2527): each code location the body points at, read from
   # bodyText as the permalink (…/blob/<sha>/<path>#L<a>-L<b>) or as the snippet
   # GitHub renders from it (a <repo>/<path> line, then Lines <a> to <b> in <sha>; the
-  # whole line is the path, so a path with spaces survives). Both yield a
+  # whole line is the path, so a path with spaces survives; a path on the same line
+  # as the Lines label is read up to the first space). Both yield a
   # repository-relative path: the leading repo-name segment (a repo
   # name never contains "/") is stripped from the snippet form, so paths compare exactly.
   # The permalink path is URL-encoded (a space is %20) while GraphQL paths are not,
@@ -337,8 +338,10 @@ _NORMALIZE_JQ='
     (.body // "") as $b
     | [ ($b | match("/blob/[0-9a-f]{7,40}/([^#\\s]+)#L([0-9]+)(?:-L([0-9]+))?"; "g")
             | codex_location | .path |= url_decode_ascii),
-        ($b | match("([^\\n]*\\S)[ \\t]*\\n\\s*Lines? ([0-9]+)(?: to ([0-9]+))?\\s+in\\s+[0-9a-f]{7,40}\\b"; "g")
-            | codex_location | .path |= (sub("^\\s+"; "") | sub("^[^/]*/"; ""))) ]
+        ($b | match("(?:([^\\n]*\\S)[ \\t]*\\n\\s*|(\\S+)[ \\t]+)Lines? ([0-9]+)(?: to ([0-9]+))?\\s+in\\s+[0-9a-f]{7,40}\\b"; "g")
+            | .captures | { path: (.[0].string // .[1].string), from: (.[2].string | tonumber),
+                            to: ((.[3].string // .[2].string) | tonumber) }
+            | .path |= (sub("^\\s+"; "") | sub("^[^/]*/"; ""))) ]
     # One location written both ways counts once.
     | unique_by([.path, .from, .to]);
   # Does this inline comment sit on $loc? The same repository-relative path, and an
