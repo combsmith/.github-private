@@ -222,6 +222,12 @@ _bcr_evaluate() {
     | ($trusted | split(",") | map(gsub("^\\s+|\\s+$"; "") | bare) | map(select(length > 0))) as $tb
     # Logins compare without a `[bot]` suffix: GraphQL omits it where REST keeps it.
     | ($automation | split(",") | map(gsub("^\\s+|\\s+$"; "") | bare) | map(select(length > 0))) as $auto
+    # Extract failed-to-minimize markers first (#2507): these are marker-only replies
+    # from our automation that indicate a disposition minimize attempt failed.
+    | ([$all[] | objects
+       | select((.author?.login // "" | tostring | bare) as $l | ($auto | index($l)) != null)
+       | select(((.authorAssociation // "") as $a | ["OWNER","MEMBER","COLLABORATOR"] | index($a)) != null)
+       | markers("dev-lead:failed-to-minimize") | map(attr("id")) | .[] ] | unique) as $failed_minimize_ids
     # Our own automation: one of our acting logins AND a trusted association — a
     # marker from anyone else (outside commenter or another member) never counts.
     | [ .[] | objects
@@ -232,8 +238,13 @@ _bcr_evaluate() {
            # A minimized disposition reply covers nothing (#2507): the resolver
            # minimizes a reply OUTDATED when it supersedes it or rejects it as
            # unverified, and the gate and the resolver ignore it the same way.
+           # A disposition whose minimize was attempted but failed is also not
+           # coverage (#2507: failed-pass path). Such dispositions are marked by
+           # dev-lead:failed-to-minimize marker-only replies.
            disp: (if .isMinimized then []
-                  else markers("dev-lead:comment-disposition") end),
+                  else (markers("dev-lead:comment-disposition")
+                        | map(select(attr("id") as $id | ($failed_minimize_ids | index($id)) == null)))
+                  end),
            # The same replies, kept to date the latest rejection: a rejected
            # disposition starts a fresh attempt count for its comment (#2507).
            rejected: (if .isMinimized then markers("dev-lead:comment-disposition")

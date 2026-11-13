@@ -2309,7 +2309,13 @@ resolve_dispositioned_comments() {
           if [[ "$minimized_superseded" == "true" ]]; then
             echo "::notice::minimized superseded disposition reply ${usid} OUTDATED (#1992, #2004)"
           else
-            echo "::warning::failed to minimize superseded disposition reply ${usid} OUTDATED after 3 attempts"
+            echo "::warning::failed to minimize superseded disposition reply ${usid} OUTDATED after 3 attempts — posting marker (#2507)"
+            # Use the COMMENT ID so it matches the disposition marker's id= attribute.
+            if gh pr comment "$pr" --repo "$repo" --body "<!-- dev-lead:failed-to-minimize id=${cid} -->" >/dev/null 2>&1; then
+              echo "::notice::posted failed-to-minimize marker for comment ${cid}"
+            else
+              echo "::warning::failed to post failed-to-minimize marker for comment ${cid}"
+            fi
           fi
         done
       fi
@@ -2328,7 +2334,16 @@ resolve_dispositioned_comments() {
         if [[ "$minimized_rejected" == "true" ]]; then
           echo "::notice::minimized rejected disposition reply ${chosen_reply_id} OUTDATED — comment ${cid} needs a fresh disposition (#2507)"
         else
-          echo "::warning::failed to minimize rejected disposition reply ${chosen_reply_id} OUTDATED after 3 attempts — the bot-comment retry still reads comment ${cid} as dispositioned (#2507)"
+          echo "::warning::failed to minimize rejected disposition reply ${chosen_reply_id} OUTDATED after 3 attempts — posting marker so bot-comment retry treats comment ${cid} as undispositioned (#2507)"
+          # Post a marker-only reply to signal that the minimize failed. The
+          # bot-comment-retry code will check for this marker and exclude the
+          # corresponding disposition from coverage (#2507).  Use the COMMENT ID
+          # so it matches the disposition marker's id= attribute.
+          if gh pr comment "$pr" --repo "$repo" --body "<!-- dev-lead:failed-to-minimize id=${cid} -->" >/dev/null 2>&1; then
+            echo "::notice::posted failed-to-minimize marker for comment ${cid}"
+          else
+            echo "::warning::failed to post failed-to-minimize marker for comment ${cid}"
+          fi
         fi
       fi
       if [ "$reverify" = "true" ]; then
