@@ -96,7 +96,10 @@ is minimized `RESOLVED`, **unless** it is in the exemption set recorded in
   with and pins the `**Quality Gate passed**` headline **and** the
   `[0 New issues]` and `[0 Security Hotspots]` lines, so a `Quality Gate failed`
   comment, or one still reporting new issues or hotspots, does **not** match and still
-  blocks. An unreadable registry degrades to "clear nothing", never to clearing
+  blocks. CodeAnt also re-posts on every push: a "Review Status" progress table (in
+  progress, then completed) and, on a first review, a share-us promo. Its pattern matches
+  only those complete bodies, so its nitpicks and PR Risk overviews still need dev-lead's
+  disposition. An unreadable registry degrades to "clear nothing", never to clearing
   something it cannot classify. **A pattern never clears a body with a
   finding-bearing section (#2008).** Such sections include a Security Architecture
   Review that lists retained concerns or hardening proposals or rates its risk
