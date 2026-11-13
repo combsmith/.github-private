@@ -29,7 +29,7 @@ export REPO
 
 # emit <key> <value> — write a key=value pair to GITHUB_OUTPUT, stripping carriage returns
 # and newlines and characters that could enable shell expansion from untrusted GitHub Actions metadata.
-emit() { printf '%s=%s\n' "$1" "$(printf '%s' "$2" | tr -d '\r\n`$()\\' | sed "s/-->/--REMOVED/g" | sed "s/<!--/REMOVED--/g" | sed 's/|/PIPE/g')" >> "$GITHUB_OUTPUT"; }
+emit() { printf '%s=%s\n' "$1" "$(printf '%s' "$2" | tr -d $'\r\n`$()\\' | sed "s/-->/--REMOVED/g" | sed "s/<!--/REMOVED--/g" | sed 's/|/PIPE/g')" >> "$GITHUB_OUTPUT"; }
 
 # sanitize_prompt <value> — apply additional sanitization for values entering an LLM prompt,
 # converting & < > to text equivalents to prevent prompt injection without breaking URLs in details_url.
@@ -53,7 +53,7 @@ failed_jobs() {
     --jq '.jobs[]? | select(.conclusion == "failure")
           | .name + ((.steps // [] | map(select(.conclusion == "failure") | " / " + .name) | .[0]) // "")')" || return 1
   [[ -n "$jobs" ]] || return 0
-  printf '%s\n' "$jobs" | paste -sd';' - | sed 's/;/; /g' | tr -d '\r\n`$()\\' | sed "s/-->/--REMOVED/g" | sed "s/<!--/REMOVED--/g" | sed 's/|/PIPE/g' | sed 's/&/AMPERSAND/g' | sed 's/</LESS/g' | sed 's/>/GREATER/g'
+  printf '%s\n' "$jobs" | paste -sd';' - | sed 's/;/; /g' | tr -d $'\r\n`$()\\' | sed "s/-->/--REMOVED/g" | sed "s/<!--/REMOVED--/g" | sed 's/|/PIPE/g' | sed 's/&/AMPERSAND/g' | sed 's/</LESS/g' | sed 's/>/GREATER/g'
 }
 
 # resolve — parse the GitHub event payload and emit outputs needed for analysis.
