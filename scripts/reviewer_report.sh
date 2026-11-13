@@ -265,7 +265,8 @@ _NORMALIZE_JQ='
     | if $m.kind == "check_run" and (failed_conclusions | index($concl)) != null then "status"
       else
         ( [ (class_rules[$m.bot] // [])[]
-            | select(.kind == $m.kind or .kind == "any")
+            | select(.kind == $m.kind
+                     or (.kind == "any" and ($m.kind != "inline" or .class != "refused")))
             | select(.pattern as $p | $b | test($p; "i"))
             | select($m.kind != "review" or $m.state != "CHANGES_REQUESTED")
             | .class ] | first ) as $rule

@@ -656,6 +656,13 @@ JSON
   echo "$out" | jq -e '.[] | select(.bot=="gemini-code-assist") | .classes.finding==1 and .refusals==0'
 }
 
+@test "classes: an inline comment from coderabbitai with rate limit phrase is finding, not refused (#2504)" {
+  local node out
+  node="$(_case_node '{"bot":"coderabbitai","kind":"inline","body":"rate limit exceeded for valid requests"}')"
+  out="$(_normalize_node "$node")"
+  echo "$out" | jq -e '.[] | select(.bot=="coderabbitai") | .classes.finding==1 and .refusals==0'
+}
+
 @test "classes: a bot reply inside a thread someone else opened is status, not a new finding (#2504)" {
   local tmp out
   tmp="$(mktemp "$BATS_TEST_TMPDIR/tmp.XXXXXX")"
