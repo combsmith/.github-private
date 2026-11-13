@@ -455,7 +455,27 @@ The value is bounded by the caller.' 2026-10-02T00:10:00Z)")"
   [ "$(_reason_for "$out" IC_ca)" = "undispositioned" ]
 }
 
-@test "bcr(#2507): a pass that ended after the latest rejection still ends the comment" {
+@test "bcr(#2507): the pass that posted a later-rejected disposition does not end the comment" {
+  # The real order: the pass starts reading (read_at), posts its disposition, then
+  # its terminal marker. The resolver rejects that disposition on a later run.
+  out="$(_decide \
+    "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
+    "$(_rejected "$(_ours "$_2507_FIXED" 2026-10-01T23:20:00Z)")" \
+    "$(_ours '<!-- dev-lead-fix-reviews pr=2009 sha=abc intent=fix-bot-comment status=applied comment=IC_ca version=2026-10-01T23:05:43Z read_at=2026-10-01T23:18:00Z -->' 2026-10-01T23:20:15Z)")"
+  [ "$(_dispatches "$out")" = "1" ]
+  [ "$(_reason_for "$out" IC_ca)" = "undispositioned" ]
+}
+
+@test "bcr(#2507): a pass that started after the latest rejection still ends the comment" {
+  out="$(_decide \
+    "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
+    "$(_rejected "$(_ours "$_2507_FIXED" 2026-10-01T23:20:00Z)")" \
+    "$(_ours '<!-- dev-lead-fix-reviews pr=2009 sha=abc intent=fix-bot-comment status=no-changes comment=IC_ca version=2026-10-01T23:05:43Z read_at=2026-10-01T23:25:00Z -->' 2026-10-01T23:30:00Z)")"
+  [ "$(_dispatches "$out")" = "0" ]
+  [ "$(_reason_for "$out" IC_ca)" = "pass-completed" ]
+}
+
+@test "bcr(#2507): a legacy pass marker without read_at after the latest rejection still ends the comment" {
   out="$(_decide \
     "$(_bot IC_ca codeant-ai 'CodeAnt Nitpicks: a value wraps past 2^63')" \
     "$(_rejected "$(_ours "$_2507_FIXED" 2026-10-01T23:20:00Z)")" \

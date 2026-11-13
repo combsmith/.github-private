@@ -298,8 +298,12 @@ _bcr_evaluate() {
         # made while it ran stays open. A legacy marker without the stamp falls
         # back to "posted at/after this version". The skew absorbs only an
         # edited-event stamp lag; a creation stamp must match exactly.
-        | ([ $notes[] | .t as $t | select($last_reject == null or $t > $last_reject)
-             | .pass[] | select(attr("comment") == $id)
+        # A pass dates from when it started reading (read_at=, else its marker): the
+        # pass that posted a disposition finishes after that reply, so the time on its marker
+        # would outlive the later rejection of that reply (#2507).
+        | ([ $notes[] | .t as $t | .pass[] | select(attr("comment") == $id)
+             | ((attr("read_at") | vepoch) // $t) as $rt
+             | select($last_reject == null or $rt > $last_reject)
              | (attr("version") | vepoch) as $pv
              | select(if $pv == null then $t >= $vt
                       elif $pv == $ct then $pv >= $vt
