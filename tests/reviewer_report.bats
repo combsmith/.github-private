@@ -818,6 +818,16 @@ JSON
     | .findings_threads==1 and .findings_body==0'
 }
 
+@test "body findings: a rendered Codex snippet keeps spaces in its path (#2527)" {
+  run _normalize_node '{"url":"u","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
+ "reviews":{"nodes":[{"id":"C1","author":{"login":"chatgpt-codex-connector"},"state":"COMMENTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"Here are some automated review suggestions for this pull request.\n\n  r/docs/my notes.md\n\n    Line 3\n  in\n  0123456\nFix the link"}]},
+ "reviewThreads":{"nodes":[{"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"chatgpt-codex-connector"},"createdAt":"2026-11-10T10:05:00Z","bodyText":"Fix the link","path":"docs/my notes.md","line":3,"originalLine":3,"pullRequestReview":{"id":"C1"},"reactionGroups":[]}]}}]},
+ "comments":{"nodes":[]}}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.[] | select(.kind=="bot_pr" and .bot=="chatgpt-codex-connector")
+    | .findings_threads==1 and .findings_body==0 and .findings_raised==1'
+}
+
 @test "body findings: a Codex location written as both permalink and snippet counts once (#2527)" {
   run _normalize_node '{"url":"u","createdAt":"2026-11-10T10:00:00Z","updatedAt":"2026-11-10T10:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
  "reviews":{"nodes":[{"id":"C1","author":{"login":"chatgpt-codex-connector"},"state":"COMMENTED","submittedAt":"2026-11-10T10:05:00Z","bodyText":"Here are some automated review suggestions for this pull request.\nhttps://github.com/o/r/blob/0123456789abcdef0123456789abcdef01234567/src/x.sh#L10-L12\nr/src/x.sh\n  Lines 10 to 12\n  in\n  0123456\nHandle the empty list"}]},
