@@ -60,7 +60,7 @@ SNAPSHOT_REPO="${SNAPSHOT_REPO:-combsmith/.github-private}"
 # bot logins and rate-limit detection never drift from the approval gate.
 # ---------------------------------------------------------------------------
 _here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$_here/lib/advisory-review-gate.sh" ]; then
+if [[ -f "$_here/lib/advisory-review-gate.sh" ]]; then
   # shellcheck source=scripts/lib/advisory-review-gate.sh
   source "$_here/lib/advisory-review-gate.sh"
 fi
@@ -69,7 +69,7 @@ fi
 # (the shared jq pre-classifier applied during collection) and the pure
 # cn_render_noise_section renderer. Derive its two decision patterns once so the
 # collection workers and the renderer agree by construction.
-if [ -f "$_here/lib/comment-noise.sh" ]; then
+if [[ -f "$_here/lib/comment-noise.sh" ]]; then
   # shellcheck source=scripts/lib/comment-noise.sh
   source "$_here/lib/comment-noise.sh"
   CN_MARKER_RE="$(cn_marker_pattern)"
@@ -80,7 +80,7 @@ fi
 # bot raised on a PR pr-review had already approved. Provides _MISS_JQ_DEFS +
 # PR_REVIEW_MISS_COLLECT_JQ (the additive collection pass) and the pure
 # pr_review_render_miss_section renderer. Reuses REVIEWER_BOTS as its trusted set.
-if [ -f "$_here/lib/pr-review-miss-rate.sh" ]; then
+if [[ -f "$_here/lib/pr-review-miss-rate.sh" ]]; then
   # shellcheck source=scripts/lib/pr-review-miss-rate.sh
   source "$_here/lib/pr-review-miss-rate.sh"
 fi
@@ -89,7 +89,7 @@ fi
 # exactly our target set — the gate bots PLUS coderabbitai — so we reuse it as
 # the canonical login list rather than re-declaring it (#drift-guard). If the
 # library is unavailable (e.g. a stripped test env), fall back to a literal list.
-if declare -p RATE_LIMIT_NOTICE_BOTS >/dev/null 2>&1 && [ "${#RATE_LIMIT_NOTICE_BOTS[@]}" -gt 0 ]; then
+if declare -p RATE_LIMIT_NOTICE_BOTS >/dev/null 2>&1 && [[ "${#RATE_LIMIT_NOTICE_BOTS[@]}" -gt 0 ]]; then
   REVIEWER_BOTS=("${RATE_LIMIT_NOTICE_BOTS[@]}")
 else
   REVIEWER_BOTS=(gemini-code-assist copilot-pull-request-reviewer sonarqubecloud chatgpt-codex-connector coderabbitai qodo-code-review codeant-ai graphite-app cubic-dev-ai)
@@ -138,8 +138,8 @@ fi
 # Map: login → exact check-run name. Empty when the registry is absent.
 declare -gA REVIEWER_CHECK_RUN_NAMES=()
 if declare -F reviewer_sources_check_run_reporters >/dev/null 2>&1; then
-  while IFS=$'\t' read -r _crr_login _crr_name || [ -n "$_crr_login" ]; do
-    [ -n "$_crr_login" ] && REVIEWER_CHECK_RUN_NAMES["$_crr_login"]="$_crr_name"
+  while IFS=$'\t' read -r _crr_login _crr_name || [[ -n "$_crr_login" ]]; do
+    [[ -n "$_crr_login" ]] && REVIEWER_CHECK_RUN_NAMES["$_crr_login"]="$_crr_name"
   done < <(reviewer_sources_check_run_reporters 2>/dev/null || true)
   unset _crr_login _crr_name
 fi
@@ -165,7 +165,7 @@ REVIEWER_MESSAGE_CLASS_JSON='{}'
 if declare -F reviewer_sources_message_class_patterns >/dev/null 2>&1; then
   _mc_rows="$(reviewer_sources_message_class_patterns)" \
     || echo "WARN: reviewer-message-classes.tsv has invalid rows — they are ignored (see above)" >&2
-  if [ -n "$_mc_rows" ]; then
+  if [[ -n "$_mc_rows" ]]; then
     REVIEWER_MESSAGE_CLASS_JSON="$(jq -Rsc '
       split("\n") | map(select(length > 0) | split("\t")
         | {login: (.[0] | ascii_downcase), class: .[1], kind: .[2], pattern: (.[3:] | join("\t"))})
@@ -173,7 +173,7 @@ if declare -F reviewer_sources_message_class_patterns >/dev/null 2>&1; then
       | map(select(. as $r | try ("" | test($r.pattern; "i") | true) catch false))
       | reduce .[] as $r ({}; .[$r.login] += [{class: $r.class, kind: $r.kind, pattern: $r.pattern}])
     ' <<<"$_mc_rows" 2>/dev/null)" || REVIEWER_MESSAGE_CLASS_JSON='{}'
-    [ -n "$REVIEWER_MESSAGE_CLASS_JSON" ] || REVIEWER_MESSAGE_CLASS_JSON='{}'
+    [[ -n "$REVIEWER_MESSAGE_CLASS_JSON" ]] || REVIEWER_MESSAGE_CLASS_JSON='{}'
   fi
   unset _mc_rows
 fi
@@ -216,7 +216,7 @@ _fmt_dur() {
 # metric — more approvals is good, more rate-limits is bad), so we keep it neutral.
 _delta_arrow() {
   local curr="${1:-}" prev="${2:-}"
-  [ -z "$prev" ] && { printf ''; return 0; }
+  [[ -z "$prev" ]] && { printf ''; return 0; }
   awk -v c="${curr:-0}" -v p="${prev:-0}" 'BEGIN {
     d = c - p
     if (d > 0)      printf "(▲ +%g)", d
@@ -402,7 +402,7 @@ _NORMALIZE_JQ='
 aggregate_snapshot() {
   local dir="$1"
   local files=("$dir"/*.jsonl)
-  [ -e "${files[0]}" ] || { echo '{"schema_version":2,"eligible_prs":0,"total_prs":0,"bots":{}}'; return 0; }
+  [[ -e "${files[0]}" ]] || { echo '{"schema_version":2,"eligible_prs":0,"total_prs":0,"bots":{}}'; return 0; }
   jq -s '
     (map(select(.kind=="pr"))) as $prs
     | (map(select(.kind=="bot_pr"))) as $bp
@@ -452,7 +452,7 @@ aggregate_snapshot() {
 # _prev <snapshot_json_file> <bot> <field> — prior-week scalar or "" when absent.
 _prev() {
   local f="${1:-}" bot="$2" field="$3"
-  [ -n "$f" ] && [ -f "$f" ] || { printf ''; return 0; }
+  [[ -n "$f" ]] && [[ -f "$f" ]] || { printf ''; return 0; }
   jq -r --arg b "$bot" --arg k "$field" '.bots?[$b]?[$k]? // empty' "$f" 2>/dev/null || printf ''
 }
 
@@ -462,7 +462,7 @@ _prev() {
 # rules, so a headline delta against it would be wrong. No delta is shown instead.
 _prev_v2() {
   local f="${1:-}" bot="$2" field="$3"
-  [ -n "$f" ] && [ -f "$f" ] || { printf ''; return 0; }
+  [[ -n "$f" ]] && [[ -f "$f" ]] || { printf ''; return 0; }
   jq -r --arg b "$bot" --arg k "$field" '
     if ((.schema_version? // 1) | tonumber? // 1) >= 2 then
       (.bots?[$b]? // null) as $bot
@@ -486,7 +486,7 @@ _pct_num() {
 _render_collection_health() {
   local dir="$1" repo_count="$2"
   local files=("$dir"/*.jsonl)
-  [ -e "${files[0]}" ] || return 0
+  [[ -e "${files[0]}" ]] || return 0
 
   local errs
   errs="$(jq -rs --argjson m "${repo_count:-0}" '
@@ -538,7 +538,7 @@ _render_collection_health() {
 _render_unclassified_samples() {
   local dir="$1"
   local files=("$dir"/*.jsonl)
-  [ -e "${files[0]}" ] || return 0
+  [[ -e "${files[0]}" ]] || return 0
   local data
   data="$(jq -sc '
     (reduce (.[] | select(.kind=="pr" and .draft == false)) as $p ({}; .[$p.pr] = true)) as $elig
@@ -548,7 +548,7 @@ _render_unclassified_samples() {
             value: { count: ([.[].classes.unclassified] | add),
                      samples: ([.[].unclassified_samples // [] | .[]] | .[0:3]) } })
     | from_entries' "${files[@]}" 2>/dev/null || printf '{}')"
-  { [ -z "$data" ] || [ "$data" = "{}" ]; } && return 0
+  { [[ -z "$data" ]] || [[ "$data" = "{}" ]]; } && return 0
 
   printf '## Unclassified messages\n\n'
   printf 'Bot messages that no pattern recognized. They count toward no column above. '
@@ -560,10 +560,10 @@ _render_unclassified_samples() {
       | "**\(.count)** unclassified message\(if .count == 1 then "" else "s" end)",
         (.samples[] | gsub("https?://[^\\s)]+"; "[url]") | gsub("[`\\s]+"; " ") | .[0:101]
                     | "  - `\(.)`")' <<<"$data" 2>/dev/null || true)"
-    [ -n "$lines" ] || continue
+    [[ -n "$lines" ]] || continue
     label="${REVIEWER_LABELS[$bot]:-$bot}"
     printf -- '- **%s** — %s\n' "$label" "${lines%%$'\n'*}"
-    if [ "$lines" != "${lines%%$'\n'*}" ]; then printf '%s\n' "${lines#*$'\n'}"; fi
+    if [[ "$lines" != "${lines%%$'\n'*}" ]]; then printf '%s\n' "${lines#*$'\n'}"; fi
   done
   printf '\n'
   return 0
@@ -582,7 +582,7 @@ render_reviewer_report() {
   total="$(jq -r '.total_prs' <<<"$snap")"
 
   printf '# 🔎 Third-Party Reviewer Scorecard — %s-day Report\n\n' "$lookback"
-  if [ -n "$generated_at" ]; then
+  if [[ -n "$generated_at" ]]; then
     printf '_Generated %s · org `%s` · %s repos scanned · %s PRs active (%s non-draft, review-eligible)_\n\n' \
       "$generated_at" "$ORG" "$repo_count" "$(_fmt_int "$total")" "$(_fmt_int "$eligible")"
   else
@@ -594,7 +594,7 @@ render_reviewer_report() {
   # that dropped repos never presents its partial counts as complete (#1908).
   _render_collection_health "$dir" "$repo_count"
 
-  if [ "${total:-0}" -eq 0 ]; then
+  if [[ "${total:-0}" -eq 0 ]]; then
     printf 'No pull-request activity found in the last %s days.\n' "$lookback"
     if declare -F cn_render_noise_section >/dev/null 2>&1; then
       cn_render_noise_section "$dir"
@@ -648,8 +648,8 @@ render_reviewer_report() {
     prev_tt="$(_prev_v2 "$prev" "$bot" threads_total)"
     prev_tr="$(_prev_v2 "$prev" "$bot" threads_resolved)"
     prev_pct=""
-    [ -n "$prev_tt" ] && prev_pct="$(_pct_num "${prev_tr:-0}" "$prev_tt")"
-    if [ -n "$pct" ] && [ -n "$prev_pct" ]; then
+    [[ -n "$prev_tt" ]] && prev_pct="$(_pct_num "${prev_tr:-0}" "$prev_tt")"
+    if [[ -n "$pct" ]] && [[ -n "$prev_pct" ]]; then
       cells+=("$(_fmt_pct "$thr_res" "$thr_total") $(_delta_arrow "$pct" "$prev_pct")")
     else
       cells+=("$(_fmt_pct "$thr_res" "$thr_total") ")

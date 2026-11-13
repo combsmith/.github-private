@@ -23,12 +23,12 @@ set -euo pipefail
 
 # Resolve the manifest path once, relative to this file (works when sourced from
 # anywhere). Honor an override so callers/tests can point elsewhere.
-if [ -z "${REVIEWER_SOURCES_MANIFEST:-}" ]; then
+if [[ -z "${REVIEWER_SOURCES_MANIFEST:-}" ]]; then
   REVIEWER_SOURCES_MANIFEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reviewer-sources.tsv"
 fi
 # Scorecard-only sidecar of per-bot message-class patterns (#2504). Read only by
 # reviewer_sources_message_class_patterns, which only the reviewer scorecard calls.
-if [ -z "${REVIEWER_MESSAGE_CLASSES_FILE:-}" ]; then
+if [[ -z "${REVIEWER_MESSAGE_CLASSES_FILE:-}" ]]; then
   REVIEWER_MESSAGE_CLASSES_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reviewer-message-classes.tsv"
 fi
 
