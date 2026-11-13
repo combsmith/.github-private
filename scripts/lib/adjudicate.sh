@@ -212,7 +212,9 @@ run_adjudication() {
   rm -f "$out"
 
   # A subshell keeps the caller's OUTPUT_FILE untouched.
-  ( export OUTPUT_FILE="$out"; run_agentic "$prompt" "$ADJ_MODEL" adjudicate ) \
+  # Timeout tier 4 to 25 minutes, reserving ~35 minutes in a 60-minute job for
+  # earlier tiers and the fallback human escalation.
+  ( export OUTPUT_FILE="$out"; timeout 25m run_agentic "$prompt" "$ADJ_MODEL" adjudicate ) \
     >"$stdout_f" 2>"$stderr_f" || rc=$?
   so="$(cat "$stdout_f" 2>/dev/null || true)"
   se="$(cat "$stderr_f" 2>/dev/null || true)"
