@@ -1302,3 +1302,34 @@ GATE_RESOLVED_COMMENT='[{"id":"IC_done","author":{"login":"a-maintainer"},"autho
   # The metrics parser's anchor survives.
   [[ "$output" == *"1 review(s) dispatched"* ]]
 }
+
+@test "comment gate: a near-reset rate-limited PR the gate holds arms no delayed retry" {
+  export SKIP_GATE_HELD=true
+  local reset marker comments
+  reset="$(near_reset)"
+  marker=$(jq -cn --arg b "<!-- pr-review-agent rate-limited v1 sha=rl2640 status=rate-limited reset=$reset -->" \
+    '{id:"IC_rl", author:{login:"donpetry-bot"}, authorAssociation:"NONE", body:$b, isMinimized:false, minimizedReason:null}')
+  comments=$(jq -c --argjson m "$marker" '[$m] + .' <<< "$GATE_OPEN_COMMENT")
+  write_pr 2640 "REVIEW_REQUIRED" "$ROLLUP_PASS" "rl2640" "[]" "$comments"
+  url_for 2640 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"arm skipped $(url_for 2640) — held at the maintainer-comment gate"* ]]
+  [[ "$output" == *"1 held at the comment gate."* ]]
+}
+
+@test "comment gate: a near-reset rate-limited PR with only our own marker still arms its retry" {
+  export SKIP_GATE_HELD=true
+  local reset
+  reset="$(near_reset)"
+  write_pr 2641 "REVIEW_REQUIRED" "$ROLLUP_PASS" "rl2641" "[]" \
+    "$(jq -cn --arg b "<!-- pr-review-agent rate-limited v1 sha=rl2641 status=rate-limited reset=$reset -->" \
+        '[{id:"IC_rl", author:{login:"donpetry-bot"}, authorAssociation:"NONE", body:$b, isMinimized:false, minimizedReason:null}]')"
+  url_for 2641 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c -- 'workflow run pr-review-delayed-retry.yml' "$GH_LOG")" -eq 1 ]
+}

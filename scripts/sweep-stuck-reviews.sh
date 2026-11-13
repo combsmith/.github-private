@@ -566,7 +566,14 @@ while IFS= read -r pr_url; do
       dispatch_review "$pr_url" "$snapshot" "rate-limited (reset $rl_reset elapsed, head ${head_sha:0:8})"
     else
       echo "  defer $pr_url — rate-limited until $rl_reset (head ${head_sha:0:8})"
-      arm_delayed_retry "$pr_url" "$head_sha" "$rl_reset" "$reset_epoch" "$now_epoch"
+      # A retry armed for a PR the comment gate holds would only re-enter this sweep
+      # and be skipped there, so it is not armed and spends no MAX_DISPATCH (#2530).
+      if held_at_comment_gate "$pr_url" "$snapshot"; then
+        held=$((held + 1))
+        echo "    arm skipped $pr_url — held at the maintainer-comment gate (undispositioned PR comment) (#2530)"
+      else
+        arm_delayed_retry "$pr_url" "$head_sha" "$rl_reset" "$reset_epoch" "$now_epoch"
+      fi
     fi
     continue
   fi
