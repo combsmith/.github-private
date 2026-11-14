@@ -1015,3 +1015,279 @@ JSON
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '[.[] | select(.kind=="bot_pr" and .bot=="coderabbitai") | .classes] | .[0] | (.status // 0) == 0 and (.finding // 0) == 1'
 }
+
+# ---------------------------------------------------------------------------
+# Coverage matrix, outage alerts and quota timing (#2506)
+# ---------------------------------------------------------------------------
+
+# _cov_pr <dir> <repo> <number> <created> [author] [draft] — append a pr record.
+_cov_pr() {
+  jq -nc --arg repo "$2" --arg n "$3" --arg c "$4" --arg a "${5:-alice}" --argjson d "${6:-false}" \
+    '{kind:"pr", repo:$repo, pr:"https://github.com/\($repo)/pull/\($n)", created:$c,
+      merged:null, draft:$d, author:$a}' >> "$1/cov.jsonl"
+}
+
+# _cov_bot <dir> <repo> <number> <bot> <created> <reviewed 0|1> [refused_at JSON array]
+# — append a bot_pr record: reviewed=1 is one finding message, refused_at its refusals.
+_cov_bot() {
+  jq -nc --arg repo "$2" --arg n "$3" --arg bot "$4" --arg c "$5" --argjson r "$6" \
+    --argjson ra "${7:-[]}" \
+    '{kind:"bot_pr", repo:$repo, pr:"https://github.com/\($repo)/pull/\($n)", bot:$bot, created:$c,
+      classes:{finding:$r, clean:0, refused:($ra|length), skipped:0, status:0, unclassified:0},
+      real_responses:$r, refusals:($ra|length), refused_at:$ra, latency_s:null, reviews:$r,
+      approved:0, changes_req:0, inline_comments:0, threads_total:0, threads_resolved:0,
+      findings_threads:0, findings_body:0, findings_raised:0, thumbs_up:0, thumbs_down:0}' >> "$1/cov.jsonl"
+}
+
+# _section <markdown> <heading> — the lines of one "## <heading>" section.
+_section() {
+  awk -v h="## $2" '$0 == h { on = 1; next } on && /^## / { exit } on' <<<"$1"
+}
+
+# The rename outage: a bot reviews on Nov 8–9, then nothing on Nov 10–12 while two
+# PRs a day open across two repos.
+_rename_outage_fixture() {
+  local d="$1" n=0 day repo
+  for day in 08 09 10 11 12; do
+    for repo in combsmith/markets combsmith/broodly; do
+      n=$((n + 1))
+      _cov_pr "$d" "$repo" "$n" "2026-11-${day}T09:00:00Z"
+      if [[ "$day" == 08 || "$day" == 09 ]]; then
+        _cov_bot "$d" "$repo" "$n" gemini-code-assist "2026-11-${day}T09:00:00Z" 1
+      fi
+    done
+  done
+}
+
+@test "alerts: an org-wide silence like the rename outage raises an alert (#2506)" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  _rename_outage_fixture "$d"
+  REVIEWER_BOTS=(gemini-code-assist)
+  REVIEWER_EXPECTED_OFF_JSON='[]'
+  run render_reviewer_report "$d" 7 2 2026-11-13
+  [ "$status" -eq 0 ]
+  local alerts line
+  alerts="$(_section "$output" "Outage alerts")"
+  line="$(grep -F -- '- **Gemini Code Assist**' <<<"$alerts" | grep -F 'consecutive')"
+  [ -n "$line" ]
+  [[ "$line" == *'first silent day **2026-11-10**'* ]]
+  [[ "$line" == *'`combsmith/broodly`'* ]]
+  [[ "$line" == *'`combsmith/markets`'* ]]
+  [[ "$line" == *'3 consecutive days'* ]]
+  [[ "$line" == *'6 PRs opened'* ]]
+  # The alerts come before the scorecard.
+  local a s
+  a="$(grep -n '^## Outage alerts' <<<"$output" | cut -d: -f1)"
+  s="$(grep -n '^## Scorecard' <<<"$output" | cut -d: -f1)"
+  [ "$a" -lt "$s" ]
+}
+
+@test "alerts: one silent day, or fewer than 3 PRs on the silent days, is not an outage (#2506)" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  # Reviewed Nov 8–9; Nov 10 silent with 4 PRs (one day only); Nov 11 reviewed;
+  # Nov 12–13 silent with only one PR each (2 PRs < 3).
+  local n=0 day repo
+  for day in 08 09 10 11; do
+    for repo in combsmith/markets combsmith/broodly; do
+      n=$((n + 1)); _cov_pr "$d" "$repo" "$n" "2026-11-${day}T09:00:00Z"
+      [[ "$day" == 10 ]] || _cov_bot "$d" "$repo" "$n" gemini-code-assist "2026-11-${day}T09:00:00Z" 1
+      if [[ "$day" == 10 ]]; then n=$((n + 1)); _cov_pr "$d" "$repo" "$n" "2026-11-10T11:00:00Z"; fi
+    done
+  done
+  _cov_pr "$d" combsmith/markets 100 "2026-11-12T09:00:00Z"
+  _cov_pr "$d" combsmith/broodly 101 "2026-11-13T09:00:00Z"
+  REVIEWER_BOTS=(gemini-code-assist)
+  REVIEWER_EXPECTED_OFF_JSON='[]'
+  run render_reviewer_report "$d" 7 2 2026-11-14
+  [ "$status" -eq 0 ]
+  [ "$(_section "$output" "Outage alerts" | grep -v '^$' | head -1)" = "none" ]
+}
+
+# software-factory × graphite-app: graphite reviews markets every day but never
+# software-factory, where four PRs open.
+_single_repo_fixture() {
+  local d="$1" bot="$2" day
+  for day in 08 09 10 11; do
+    _cov_pr "$d" combsmith/markets "1${day}" "2026-11-${day}T08:00:00Z"
+    _cov_bot "$d" combsmith/markets "1${day}" "$bot" "2026-11-${day}T08:00:00Z" 1
+    _cov_pr "$d" combsmith/software-factory "2${day}" "2026-11-${day}T10:00:00Z"
+  done
+}
+
+@test "alerts: a single-repo silence like software-factory × graphite-app raises a cell alert (#2506)" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  _single_repo_fixture "$d" graphite-app
+  REVIEWER_BOTS=(graphite-app)
+  REVIEWER_EXPECTED_OFF_JSON='[]'
+  run render_reviewer_report "$d" 7 2 2026-11-12
+  [ "$status" -eq 0 ]
+  local alerts line
+  alerts="$(_section "$output" "Outage alerts")"
+  # Graphite reviewed markets every day, so there is no org-wide alert ...
+  run grep -F 'consecutive' <<<"$alerts"
+  [ "$status" -ne 0 ]
+  # ... only the cell alert.
+  line="$(grep -F -- '- **Graphite**' <<<"$alerts")"
+  [[ "$line" == *'`combsmith/software-factory`'* ]]
+  [[ "$line" == *'0 of 4'* ]]
+  [[ "$line" == *'first silent day **2026-11-08**'* ]]
+  [ "$(grep -c -- '^- ' <<<"$alerts")" -eq 1 ]
+}
+
+@test "matrix: one row per repo, one column per bot, cells are reviewed / opened (#2506)" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  _single_repo_fixture "$d" graphite-app
+  REVIEWER_BOTS=(graphite-app coderabbitai)
+  REVIEWER_EXPECTED_OFF_JSON='[]'
+  run render_reviewer_report "$d" 7 2 2026-11-12
+  [ "$status" -eq 0 ]
+  local m
+  m="$(_section "$output" "Coverage matrix")"
+  grep -qF '| Repo | Graphite | CodeRabbit |' <<<"$m"
+  grep -qF '| `combsmith/markets` | 4 / 4 | 0 / 4 |' <<<"$m"
+  grep -qF '| `combsmith/software-factory` | 0 / 4 | 0 / 4 |' <<<"$m"
+}
+
+@test "expected-off: the software-factory × coderabbitai cell is declared in the sidecar (#2506)" {
+  run reviewer_sources_expected_off_cells
+  [ "$status" -eq 0 ]
+  grep -qx $'coderabbitai\tcombsmith/software-factory' <<<"$output"
+  # It is no message pattern: the class loader leaves it out.
+  run reviewer_sources_message_class_patterns
+  [ "$status" -eq 0 ]
+  run grep -P '^coderabbitai\toff\t' <<<"$output"
+  [ "$status" -ne 0 ]
+  # And the scorecard loaded it at source time.
+  jq -e 'any(.[]; .login == "coderabbitai" and .repo == "combsmith/software-factory")' <<<"$REVIEWER_EXPECTED_OFF_JSON"
+}
+
+@test "expected-off: an off cell renders off (by design) and never alerts (#2506)" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  # coderabbitai reviews markets on Nov 8 and 11. software-factory, where it is
+  # off, gets two unreviewed PRs on each of Nov 9 and 10 — two silent days with 4 PRs
+  # and a 0 / 4 cell, which would trip both rules if the cell were not expected-off.
+  local day
+  for day in 08 11; do
+    _cov_pr "$d" combsmith/markets "1${day}" "2026-11-${day}T08:00:00Z"
+    _cov_bot "$d" combsmith/markets "1${day}" coderabbitai "2026-11-${day}T08:00:00Z" 1
+  done
+  for day in 09 10; do
+    _cov_pr "$d" combsmith/software-factory "2${day}" "2026-11-${day}T08:00:00Z"
+    _cov_pr "$d" combsmith/software-factory "3${day}" "2026-11-${day}T09:00:00Z"
+  done
+  REVIEWER_BOTS=(coderabbitai)
+  REVIEWER_EXPECTED_OFF_JSON='[{"login":"coderabbitai","repo":"combsmith/software-factory"}]'
+  run render_reviewer_report "$d" 7 2 2026-11-12
+  [ "$status" -eq 0 ]
+  [ "$(_section "$output" "Outage alerts" | grep -v '^$' | head -1)" = "none" ]
+  _section "$output" "Coverage matrix" | grep -qF '| `combsmith/software-factory` | off (by design) |'
+  _section "$output" "Coverage matrix" | grep -qF '| `combsmith/markets` | 2 / 2 |'
+
+  # The same cell declared by bare repo name (survives an org rename) is off too.
+  REVIEWER_EXPECTED_OFF_JSON='[{"login":"coderabbitai","repo":"software-factory"}]'
+  run render_reviewer_report "$d" 7 2 2026-11-12
+  [ "$(_section "$output" "Outage alerts" | grep -v '^$' | head -1)" = "none" ]
+
+  # Without the declaration both rules fire.
+  REVIEWER_EXPECTED_OFF_JSON='[]'
+  run render_reviewer_report "$d" 7 2 2026-11-12
+  _section "$output" "Outage alerts" | grep -F '**CodeRabbit**' | grep -qF 'consecutive'
+  _section "$output" "Outage alerts" | grep -F '**CodeRabbit**' | grep -qF '0 of 4'
+}
+
+@test "matrix and alerts: Dependabot, draft and pre-window PRs are not counted (#2506)" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  local day
+  for day in 08 09 10 11; do
+    _cov_pr "$d" combsmith/markets "1${day}" "2026-11-${day}T08:00:00Z"
+    _cov_bot "$d" combsmith/markets "1${day}" graphite-app "2026-11-${day}T08:00:00Z" 1
+    # Unreviewed Dependabot PRs: no alert, and not in the opened count.
+    _cov_pr "$d" combsmith/markets "2${day}" "2026-11-${day}T09:00:00Z" dependabot
+    _cov_pr "$d" combsmith/broodly "2${day}" "2026-11-${day}T09:00:00Z" 'dependabot[bot]'
+    # Unreviewed drafts: not opened either.
+    _cov_pr "$d" combsmith/broodly "3${day}" "2026-11-${day}T09:00:00Z" alice true
+  done
+  # Unreviewed PRs created before the window start: still collected (updated in
+  # the window) but not opened in it.
+  for day in 01 02 03; do _cov_pr "$d" combsmith/broodly "4${day}" "2026-11-${day}T09:00:00Z"; done
+  REVIEWER_BOTS=(graphite-app)
+  REVIEWER_EXPECTED_OFF_JSON='[]'
+  REVIEWER_WINDOW_START="2026-11-05T00:00:00Z" run render_reviewer_report "$d" 7 2 2026-11-12
+  [ "$status" -eq 0 ]
+  [ "$(_section "$output" "Outage alerts" | grep -v '^$' | head -1)" = "none" ]
+  local m
+  m="$(_section "$output" "Coverage matrix")"
+  grep -qF '| `combsmith/markets` | 4 / 4 |' <<<"$m"
+  run grep -F 'combsmith/broodly' <<<"$m"
+  [ "$status" -ne 0 ]
+}
+
+@test "quota timing: refusals per day and the time of the first refusal each day (#2506)" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  _cov_pr "$d" combsmith/markets 1 "2026-11-10T20:00:00Z"
+  _cov_bot "$d" combsmith/markets 1 gemini-code-assist "2026-11-10T20:00:00Z" 0 \
+    '["2026-11-11T05:00:00Z","2026-11-12T01:15:00Z"]'
+  _cov_pr "$d" combsmith/broodly 2 "2026-11-11T02:00:00Z"
+  _cov_bot "$d" combsmith/broodly 2 gemini-code-assist "2026-11-11T02:00:00Z" 0 \
+    '["2026-11-11T02:41:00Z","2026-11-11T23:59:00Z"]'
+  # A reviewer with no refusal gets no line; a refusal on a Dependabot PR is not counted.
+  _cov_bot "$d" combsmith/broodly 2 graphite-app "2026-11-11T02:00:00Z" 1
+  _cov_pr "$d" combsmith/broodly 3 "2026-11-11T02:00:00Z" dependabot
+  _cov_bot "$d" combsmith/broodly 3 gemini-code-assist "2026-11-11T02:00:00Z" 0 '["2026-11-11T00:10:00Z"]'
+  REVIEWER_EXPECTED_OFF_JSON='[]'
+  run render_reviewer_report "$d" 7 2 2026-11-13
+  [ "$status" -eq 0 ]
+  local q
+  q="$(_section "$output" "Quota timing")"
+  grep -qF '| Gemini Code Assist | 2026-11-11 | 3 | 02:41 |' <<<"$q"
+  grep -qF '| Gemini Code Assist | 2026-11-12 | 1 | 01:15 |' <<<"$q"
+  run grep -F 'Graphite' <<<"$q"
+  [ "$status" -ne 0 ]
+}
+
+@test "quota timing: says none when no bot refused (#2506)" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  _cov_pr "$d" combsmith/markets 1 "2026-11-10T20:00:00Z"
+  _cov_bot "$d" combsmith/markets 1 graphite-app "2026-11-10T20:00:00Z" 1
+  run render_reviewer_report "$d" 7 1 2026-11-13
+  [ "$status" -eq 0 ]
+  [ "$(_section "$output" "Quota timing" | grep -v '^$' | tail -1)" = "none" ]
+}
+
+@test "normalize: refused_at carries the time of each refused message (#2506)" {
+  run _normalize_node '{"url":"https://github.com/o/r/pull/9","createdAt":"2026-11-11T02:00:00Z","updatedAt":"2026-11-11T03:00:00Z","mergedAt":null,"isDraft":false,"author":{"login":"h"},
+ "reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},
+ "comments":{"nodes":[{"author":{"login":"gemini-code-assist"},"createdAt":"2026-11-11T02:41:00Z","bodyText":"You have reached your daily quota limit. Please wait up to 24 hours."}]}}'
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.[] | select(.kind=="bot_pr" and .bot=="gemini-code-assist") | .refused_at == ["2026-11-11T02:41:00Z"]'
+}
+
+@test "sidecar: an expected-off row needs kind repo and a repo name (#2506)" {
+  local bad
+  bad="$(mktemp "$BATS_TEST_TMPDIR/bad.XXXXXX")"
+  printf 'coderabbitai\toff\tany\tcombsmith/software-factory\ngraphite-app\toff\trepo\tnot a repo\ncodeant-ai\toff\trepo\tcombsmith/broodly\n' > "$bad"
+  REVIEWER_MESSAGE_CLASSES_FILE="$bad" run reviewer_sources_expected_off_cells
+  [ "$status" -ne 0 ]
+  local out="$output"
+  grep -qx $'codeant-ai\tcombsmith/broodly' <<<"$out"
+  grep -q 'kind "repo"' <<<"$out"
+  grep -q 'line 2: ' <<<"$out"
+  run grep -qx $'coderabbitai\tcombsmith/software-factory' <<<"$out"
+  [ "$status" -ne 0 ]
+}
+
+@test "alerts: a failed computation says so instead of none (#2506)" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  _rename_outage_fixture "$d"
+  REVIEWER_BOTS=(gemini-code-assist)
+  # Malformed expected-off JSON makes the jq call fail.
+  REVIEWER_EXPECTED_OFF_JSON='not json'
+  run render_reviewer_report "$d" 7 2 2026-11-13
+  [ "$status" -eq 0 ]
+  local report="$output" alerts
+  alerts="$(_section "$report" "Outage alerts")"
+  grep -q "could not be computed" <<<"$alerts"
+  _section "$report" "Coverage matrix" | grep -q "could not be computed"
+  run grep -qx "none" <<<"$alerts"
+  [ "$status" -ne 0 ]
+}
