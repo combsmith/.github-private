@@ -165,6 +165,39 @@ readonly _MAINTAINER_GATE_INFO_JQ_DEFS='
            and ($b | test($p)));
 '
 
+# The superseded CI-analysis classifier (#2537) as a jq definition, shared by
+# check_maintainer_comments and maintainer_gate_open_comment_ids. The CI Failure
+# Analyst posts one `## CI Failure` comment per failing head, as github-actions,
+# opening with `<!-- ci-analyst sha=<head sha> -->`. It reports on that commit
+# only. No reviewer-bot retry answers it and maintainer-resolve-comment.sh
+# refuses it, so before this rule one such comment held approval for good. The
+# caller passes $headsha, the PR head (40 hex), or "" when it is not known.
+#   stale_ci_analysis($headsha) — ALL of: the author is the GitHub Actions app
+#                    (author.__typename "Bot", bare login `github-actions`; only
+#                    a workflow in the repo posts as it, and a User account
+#                    holding the login is not a Bot); the body OPENS with the
+#                    marker, carrying a 40-hex sha; $headsha is 40 hex; and the
+#                    two differ. An analysis of the current head stays in scope:
+#                    it describes a failure that is still there. An unknown head
+#                    or a missing __typename clears nothing (fail closed).
+#   The head is the one the caller's snapshot was taken at. An analysis posted
+#   for a NEWER head after that snapshot reads as superseded until the next
+#   snapshot. That window is accepted: an approval is bound to the commit it
+#   reviewed, and the required checks at the head still block the merge.
+#   Every caller's comment nodes need author.__typename; a snapshot without it
+#   makes the rule never fire, which is the old behaviour.
+readonly _MAINTAINER_GATE_CI_ANALYST_JQ_DEFS='
+  def stale_ci_analysis($headsha):
+    ((.author?.__typename // "") == "Bot")
+    and ((.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) == "github-actions")
+    and (($headsha // "") | tostring | test("^[0-9a-f]{40}$"))
+    # A body without the marker captures nothing: read that as "", never as an
+    # empty stream, which would drop the comment from the gate.
+    and (([ (.body // "") | tostring
+            | capture("\\A<!-- ci-analyst sha=(?<s>[0-9a-f]{40}) -->") | .s ] | first // "") as $s
+         | $s != "" and $s != $headsha);
+'
+
 # The no-finding summary classifier as jq definitions. Codex and CodeRabbit each
 # keep ONE summary comment per PR and edit it on every push. Under #2008 each edit
 # needs a fresh dev-lead disposition, and on a `dev-lead:hands-off` PR dev-lead
@@ -704,7 +737,7 @@ maintainer_gate_head_committer_date() {
     --jq '.data.resource.commits.nodes[0].commit.committer.date // empty' 2>/dev/null || true
 }
 
-# maintainer_gate_open_comment_ids <comments_array_json> [bot_user]
+# maintainer_gate_open_comment_ids <comments_array_json> [bot_user] [head_sha]
 #   dev-lead's candidate list for resolve_dispositioned_comments (#2209). Echoes one
 #   node id per line for every comment in the gate's scope (in_gate_scope) that is
 #   not minimized RESOLVED, so the harness never tries to disposition a comment the
@@ -713,22 +746,26 @@ maintainer_gate_head_committer_date() {
 #   minimizedReason}. Filters out clean registered info-status comments and no-finding
 #   summaries with the same info_status_clear and no_finding_summary definitions
 #   check_maintainer_comments uses, so the gate and candidate filter never disagree.
-#   A node without author.__typename "Bot" is never filtered as either. Unreadable
-#   input echoes nothing and returns non-zero.
+#   A node without author.__typename "Bot" is never filtered as either. With
+#   [head_sha], a CI analysis of an earlier head (stale_ci_analysis, #2537) is
+#   filtered too; without it none is. Unreadable input echoes nothing and returns
+#   non-zero.
 maintainer_gate_open_comment_ids() {
-  local comments="${1:-}" bot_user="${2:-donpetry-bot}" info_patterns finding_re
+  local comments="${1:-}" bot_user="${2:-donpetry-bot}" head_sha="${3:-}" info_patterns finding_re
   info_patterns="$(_maintainer_gate_info_patterns_json)"
   finding_re="$(_maintainer_gate_finding_re)"
   printf '%s' "$comments" | jq -r \
     --arg botuser "$bot_user" \
     --arg markers "$_MAINTAINER_GATE_AGENT_MARKERS" \
     --arg findre "$finding_re" \
-    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_SCOPE_JQ_DEFS$_MAINTAINER_GATE_INFO_JQ_DEFS$_MAINTAINER_GATE_NO_FINDING_JQ_DEFS"'
+    --arg headsha "$head_sha" \
+    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_SCOPE_JQ_DEFS$_MAINTAINER_GATE_INFO_JQ_DEFS$_MAINTAINER_GATE_NO_FINDING_JQ_DEFS$_MAINTAINER_GATE_CI_ANALYST_JQ_DEFS"'
       if type != "array" then error("not an array") else . end
       | [ .[] | objects
           | select(in_gate_scope)
           | select(info_status_clear | not)
           | select(no_finding_summary | not)
+          | select(stale_ci_analysis($headsha) | not)
           | select(((.isMinimized // false) == true)
                    and (((.minimizedReason // "") | ascii_downcase) == "resolved") | not)
           | .id ]
@@ -753,6 +790,8 @@ maintainer_gate_no_finding_ids() {
 }
 
 # check_maintainer_comments <pr_snapshot_json> [bot_user]
+#   The snapshot's own headRefOid, when present, decides which CI Failure Analyst
+#   comments are superseded (stale_ci_analysis, #2537).
 check_maintainer_comments() {
   local json="${1:-}"
   local bot_user="${2:-donpetry-bot}"
@@ -803,8 +842,11 @@ check_maintainer_comments() {
     --arg botuser "$bot_user" \
     --arg findre "$finding_re" \
     --argjson registered "$registered" \
-    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_DISP_JQ_DEFS$_MAINTAINER_GATE_SCOPE_JQ_DEFS$_MAINTAINER_GATE_INFO_JQ_DEFS$_MAINTAINER_GATE_NO_FINDING_JQ_DEFS"'
+    --argjson infopatterns "$info_patterns" "$_MAINTAINER_GATE_DISP_JQ_DEFS$_MAINTAINER_GATE_SCOPE_JQ_DEFS$_MAINTAINER_GATE_INFO_JQ_DEFS$_MAINTAINER_GATE_NO_FINDING_JQ_DEFS$_MAINTAINER_GATE_CI_ANALYST_JQ_DEFS"'
       (.comments // []) as $all
+      # #2537: the PR head the snapshot was taken at; "" when the caller did not
+      # fetch headRefOid, and then no CI analysis is treated as superseded.
+      | ((.headRefOid // "") | tostring) as $headsha
       | [ $all[] | objects
         | (.author?.login // "" | tostring | if endswith("[bot]") then .[0:-5] else . end) as $lbare
         # #2209: our login, registered markers, review requests, opt-outs.
@@ -820,6 +862,9 @@ check_maintainer_comments() {
         # or not it is minimized and however often the bot has edited it, so a
         # hands-off PR (no dev-lead to re-disposition each edit) keeps approval.
         | select(no_finding_summary | not)
+        # Drop a CI Failure Analyst comment about an earlier head (#2537): the
+        # commit it analysed is no longer the head, and nothing dispositions it.
+        | select(stale_ci_analysis($headsha) | not)
         | if ((.isMinimized // false) == true)
              and (((.minimizedReason // "") | ascii_downcase) == "resolved") | not
           then "block"
