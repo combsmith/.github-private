@@ -312,8 +312,8 @@ entrypoint_dispatches_pr_review() {
 
 # resolve_dispatch_target <pr_url> [force]
 # Set DISPATCH_REPO / DISPATCH_WORKFLOW for a PR (#2530). The repo's own entrypoint
-# is an active .github/workflows/pr-review.yml, else an active agent-ingress.yml
-# (ADR-0007), that passes entrypoint_dispatches_pr_review. AGENT_REPO's own PRs, an
+# is an active .github/workflows/pr-review.yml, else pr-review-reusable.yml, else an
+# active agent-ingress.yml (ADR-0007), that passes entrypoint_dispatches_pr_review. AGENT_REPO's own PRs, an
 # unparseable URL, ROUTE_TO_REPO_ENTRYPOINT=false, and a repo with no such file (or
 # whose workflows cannot be read) all use TRIGGER_WORKFLOW in AGENT_REPO.
 # The lookup is cached per repo for the run. Sets globals rather than echoing, so
