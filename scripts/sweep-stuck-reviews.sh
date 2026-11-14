@@ -307,7 +307,7 @@ pr_review_job_block() {
 entrypoint_dispatches_pr_review() {
   local _y="${1:-}"
   entrypoint_dispatch_inputs "$_y" | grep -qx 'pr_url' \
-    && grep -Eq '/\.github/workflows/pr-review\.yml@' <<< "$_y"
+    && grep -Eq '/\.github/workflows/pr-review(-reusable)?\.yml@' <<< "$_y"
 }
 
 # resolve_dispatch_target <pr_url> [force]
