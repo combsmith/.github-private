@@ -692,7 +692,7 @@ _COVERAGE_JQ_DEFS='
   # "name" matches the repo of that name under any owner.
   def is_off($bot; $repo):
     ($repo | ascii_downcase) as $r
-    | any($off[]; (.login | ascii_downcase) == $bot
+    | any($off[]; (.login | ascii_downcase) == ($bot | ascii_downcase)
                   and ((.repo | ascii_downcase) as $d
                        | if ($d | contains("/")) then $d == $r else $d == ($r | split("/") | last) end));
   def opened_prs:
