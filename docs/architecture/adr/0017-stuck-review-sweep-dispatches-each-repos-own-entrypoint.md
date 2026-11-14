@@ -46,7 +46,9 @@ own pr-review entrypoint:
   `agent-ingress.yml` in `docs/architecture/reference/` does not, so a repo shaped
   like it is not routed. The review then runs at the channel that repo pins. A repo
   with no qualifying entrypoint, or whose workflow list or files cannot be read,
-  keeps the old path through this repository's trigger.
+  keeps the old path through this repository's trigger. One exception: the
+  orphaned-marker rescue sends `force_review`, so it routes only to an entrypoint
+  that declares that input, and otherwise uses this repository's trigger.
 - **Credential:** the dispatch uses the sweep's existing token (`GH_PAT_DON_PETRY`,
   else `GH_PAT_WORKFLOWS`), which needs `actions:write` on every consumer repo.
   This makes this repository a hub that can start workflow runs fleet-wide. That is
