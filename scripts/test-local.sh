@@ -40,7 +40,7 @@ while [ "$#" -gt 0 ]; do
     --jobs|-j) jobs="${2:?--jobs needs a number}"; shift 2 ;;
     --jobs=*) jobs="${1#--jobs=}"; shift ;;
     -h|--help) sed -n '3,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    -f|--filter|-F|--formatter|--filter-status|--filter-tags|-o|--output) bats_args+=("$1" "${2:?$1 needs a value}"); shift 2 ;;
+    -f|--filter|-F|--formatter|--report-formatter|--filter-status|--filter-tags|-o|--output|--gather-test-outputs-in|--line-reference-format|--code-quote-style) bats_args+=("$1" "${2:?$1 needs a value}"); shift 2 ;;
     -*) bats_args+=("$1"); shift ;;
     *) paths+=("$1"); shift ;;
   esac
@@ -76,6 +76,9 @@ if [ "$(uname -s)" = Darwin ]; then
   fi
   [ -x "$brew_prefix/bin/bats" ] || missing="$missing bats-core"
   [ -x "$brew_prefix/bin/flock" ] || missing="$missing flock"
+  # macOS may ship its own jq in /usr/bin; any jq and yq on PATH will do.
+  command -v jq >/dev/null 2>&1 || [ -x "$brew_prefix/bin/jq" ] || missing="$missing jq"
+  command -v yq >/dev/null 2>&1 || [ -x "$brew_prefix/bin/yq" ] || missing="$missing yq"
   if [ "$jobs" != 1 ] && [ ! -x "$brew_prefix/bin/parallel" ]; then
     missing="$missing parallel"
   fi
