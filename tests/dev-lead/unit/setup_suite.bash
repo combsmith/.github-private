@@ -7,8 +7,14 @@
 
 # shellcheck source=tests/dev-lead/unit/git_identity_guard.bash
 source "$(dirname "${BASH_SOURCE[0]}")/git_identity_guard.bash"
+# shellcheck source=tests/dev-lead/unit/toolchain_preflight.bash
+source "$(dirname "${BASH_SOURCE[0]}")/toolchain_preflight.bash"
 
 setup_suite() {
+  # On macOS, fail the run up front when the GNU toolchain the scripts assume is
+  # not on PATH, instead of failing thousands of tests one by one.
+  toolchain_preflight || return 1
+
   # No test writes to a token ledger it did not create (#2304): a suite started
   # with TOKEN_LOG_FILE exported (the dev-lead job does that) appended its
   # fixture records to the run's real ledger. bats starts every test file from
