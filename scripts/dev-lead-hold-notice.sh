@@ -35,6 +35,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/hold-notice.sh
 source "$SCRIPT_DIR/lib/hold-notice.sh"
+# shellcheck source=lib/shadow-suppress.sh
+source "$SCRIPT_DIR/lib/shadow-suppress.sh"
 
 REPO="${REPO:-${GITHUB_REPOSITORY:-}}"
 SUBJECT_NUMBER="${SUBJECT_NUMBER:-}"
@@ -42,6 +44,8 @@ HOLD_LABEL="${HOLD_LABEL:-}"
 MODE="${MODE:-notice}"
 NOTICE_AUTHOR="${NOTICE_AUTHOR:-${BOT_USER:-}}"
 DRY_RUN="${DEV_LEAD_DRY_RUN:-${DRY_RUN:-false}}"
+# Shadow mode (#1713) posts nothing: treat it as dry-run so no write call fires.
+if shadow_mode_active; then DRY_RUN="true"; fi
 
 if [ -z "$REPO" ]; then
   echo "::warning::dev-lead-hold-notice: REPO/GITHUB_REPOSITORY not set — skipping"
