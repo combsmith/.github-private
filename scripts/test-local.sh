@@ -84,14 +84,16 @@ if [ "$(uname -s)" = Darwin ]; then
   fi
 
   PATH="${gnu_path}${brew_prefix}/bin:$PATH"
-  TMPDIR="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
+  TMPDIR="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || TMPDIR="$(cd /tmp && pwd -P)"
   export PATH TMPDIR
 fi
 
-# Python deps for the validator suites. Use what is there when it already has
-# them (CI installs them system-wide); otherwise build a venv once per
-# requirements change, outside the checkout so every worktree shares it.
-if ! python3 -c 'import jsonschema, yaml' >/dev/null 2>&1; then
+# Python deps for the validator suites. Use the python3 on PATH when it is new
+# enough and already has them (CI installs them system-wide). macOS's own 3.9
+# can import both and still fail the validators, whose annotations need 3.10.
+# Otherwise build a venv once per requirements change, outside the checkout so
+# every worktree shares it.
+if ! python3 -c 'import sys, jsonschema, yaml; sys.exit(sys.version_info < (3, 10))' >/dev/null 2>&1; then
   py=""
   for candidate in python3.12 python3.13 python3; do
     if command -v "$candidate" >/dev/null 2>&1 \
@@ -104,7 +106,8 @@ if ! python3 -c 'import jsonschema, yaml' >/dev/null 2>&1; then
 
   reqs=(requirements/ci/jsonschema.txt requirements/ci/pyyaml.txt requirements/ci/yamllint.txt)
   venv="${COMBSMITH_TEST_VENV:-${XDG_CACHE_HOME:-$HOME/.cache}/combsmith-github-private/test-venv}"
-  stamp="$( { "$py" --version; cat "${reqs[@]}"; } | shasum -a 256 | cut -d' ' -f1)"
+  if command -v sha256sum >/dev/null 2>&1; then sha=(sha256sum); else sha=(shasum -a 256); fi
+  stamp="$( { "$py" --version; cat "${reqs[@]}"; } | "${sha[@]}" | cut -d' ' -f1)"
   if [ "$(cat "$venv/.stamp" 2>/dev/null || true)" != "$stamp" ]; then
     echo "test-local: building the python venv at $venv" >&2
     rm -rf "$venv"

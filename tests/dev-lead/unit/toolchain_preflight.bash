@@ -35,8 +35,8 @@ toolchain_preflight() {
   - awk is BSD awk; the scripts need gawk"
   command -v flock >/dev/null 2>&1 || problems="${problems}
   - flock is not installed"
-  python3 -c 'import jsonschema, yaml' >/dev/null 2>&1 || problems="${problems}
-  - python3 cannot import jsonschema and yaml (the validator suites need them)"
+  python3 -c 'import sys, jsonschema, yaml; sys.exit(sys.version_info < (3, 10))' >/dev/null 2>&1 || problems="${problems}
+  - python3 is older than 3.10 or cannot import jsonschema and yaml (the validator suites need both)"
 
   if [ -n "$problems" ]; then
     printf 'toolchain preflight: this run would fail for reasons that are not bugs:%s\n' "$problems" >&2
@@ -45,6 +45,6 @@ toolchain_preflight() {
     return 1
   fi
 
-  TMPDIR="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
+  TMPDIR="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || TMPDIR="$(cd /tmp && pwd -P)"
   export TMPDIR
 }

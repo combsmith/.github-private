@@ -75,6 +75,12 @@ _preflight_with_only_stubs_on_path() {
   [ "$status" -eq 0 ]
 }
 
+@test "macOS: a TMPDIR that does not exist falls back to /tmp" {
+  TMPDIR="$BATS_TEST_TMPDIR/missing"
+  toolchain_preflight
+  [ "$TMPDIR" = "$(cd /tmp && pwd -P)" ]
+}
+
 @test "macOS: TMPDIR is resolved to its real path" {
   mkdir -p "$BATS_TEST_TMPDIR/real"
   ln -s "$BATS_TEST_TMPDIR/real" "$BATS_TEST_TMPDIR/link"
