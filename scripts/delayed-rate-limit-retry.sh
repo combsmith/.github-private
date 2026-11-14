@@ -156,7 +156,7 @@ still_applicable() {
     echo "  no-op ($_phase): head advanced ${HEAD_SHA:0:8} -> ${_current_head:0:8} — superseded by a newer push; its event drives a fresh review"
     return 1
   fi
-  [ "$WAIT_KIND" = "rate-limit" ] || return 0
+  [[ "$WAIT_KIND" = "rate-limit" ]] || return 0
   _has_marker=$(jq -r --arg m "<!-- pr-review-agent rate-limited v1 sha=${HEAD_SHA} " \
     '[((.reviews // []) + (.comments // []))[]? | (.body // "" | tostring) | select(contains($m))] | length > 0' <<< "$_snapshot" 2>/dev/null || echo "false")
   if [ "$_has_marker" != "true" ]; then
