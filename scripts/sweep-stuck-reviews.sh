@@ -304,7 +304,10 @@ resolve_dispatch_target() {
                 -H "Accept: application/vnd.github.raw" 2>/dev/null) || _yaml=""
       if entrypoint_dispatches_pr_review "$_yaml"; then
         ENTRYPOINT_BY_REPO[$_repo]="$_file"
-        if entrypoint_dispatch_inputs "$_yaml" | grep -qx 'force_review'; then
+        # The rescue needs force_review declared as an input AND forwarded to the
+        # reusable; a stub that declares it but drops it would run an unforced review.
+        if entrypoint_dispatch_inputs "$_yaml" | grep -qx 'force_review' \
+           && grep -Eq '^[[:space:]]*force_review:[[:space:]]*\$\{\{[^}]*inputs\.force_review' <<< "$_yaml"; then
           ENTRYPOINT_FORCE_BY_REPO[$_repo]=true
         else
           ENTRYPOINT_FORCE_BY_REPO[$_repo]=false
@@ -316,9 +319,10 @@ resolve_dispatch_target() {
   fi
   [[ -n "${ENTRYPOINT_BY_REPO[$_repo]}" ]] || return 0
   # The orphan rescue needs force_review. An entrypoint without that input would
-  # reject the dispatch (HTTP 422), so the rescue keeps the agent-repo trigger.
+  # reject the dispatch (HTTP 422), and one that does not forward it to the reusable
+  # would ignore it, so either way the rescue keeps the agent-repo trigger.
   if [[ "$_force" == "force" && "${ENTRYPOINT_FORCE_BY_REPO[$_repo]:-false}" != "true" ]]; then
-    echo "    note: $_repo ${ENTRYPOINT_BY_REPO[$_repo]} has no force_review input; the rescue uses $TRIGGER_WORKFLOW"
+    echo "    note: $_repo ${ENTRYPOINT_BY_REPO[$_repo]} does not take and forward force_review; the rescue uses $TRIGGER_WORKFLOW"
     return 0
   fi
   DISPATCH_REPO="$_repo"

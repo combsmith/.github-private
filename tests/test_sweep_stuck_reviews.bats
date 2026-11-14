@@ -1065,7 +1065,23 @@ DISPATCHABLE_CALLER='on:
         type: string
 jobs:
   pr-review:
-    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable'
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
+    with:
+      pr_url: ${{ inputs.pr_url || '"''"' }}
+      force_review: ${{ inputs.force_review || '"''"' }}'
+# Declares force_review but never forwards it to the reusable.
+CALLER_DROPS_FORCE='on:
+  workflow_dispatch:
+    inputs:
+      pr_url:
+        type: string
+      force_review:
+        type: string
+jobs:
+  pr-review:
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
+    with:
+      pr_url: ${{ inputs.pr_url }}'
 # Takes pr_url but not force_review.
 CALLER_WITHOUT_FORCE='on:
   workflow_dispatch:
@@ -1422,4 +1438,16 @@ GATE_RESOLVED_COMMENT='[{"id":"IC_done","author":{"login":"a-maintainer"},"autho
   [ ! -s "$GH_LOG" ]
   [[ "$output" != *"arm skipped"* ]]
   [[ "$output" == *"0 held at the comment gate."* ]]
+}
+
+@test "routing: an orphan rescue keeps the agent-repo trigger when the entrypoint declares force_review but does not forward it" {
+  write_workflows combsmith/demo pr-review.yml:active
+  write_workflow_file combsmith/demo pr-review.yml "$CALLER_DROPS_FORCE"
+  write_pr 2670 "REVIEW_REQUIRED" "$ROLLUP_PASS" "orph2670" "[]" '[{"body":"<!-- pr-review-agent v1 sha=orph2670 -->"}]'
+  url_for 2670 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2670) -f force_review=true" "$GH_LOG"
+  [[ "$output" == *"does not take and forward force_review"* ]]
 }
