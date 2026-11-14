@@ -30,6 +30,16 @@ setup() {
   # fixtures' marker comments carry no author (live ones come from donpetry-bot,
   # outside the gate's scope), so the shared suite runs with it off.
   export SKIP_GATE_HELD=false
+  # Delayed retries are armed only for pr-review consumers (#2533). The fixtures'
+  # combsmith/demo stands in for one; combsmith/outsider is not one.
+  export CONSUMER_MANIFEST="$FIXTURE_DIR/consumer-manifest.json"
+  cat > "$CONSUMER_MANIFEST" <<'EOF'
+{"consumers": [
+  {"repo": "combsmith/.github-private", "refs": [".github-private/.github/workflows/pr-review.yml"]},
+  {"repo": "combsmith/demo", "refs": [".github-private/.github/workflows/pr-review.yml"]},
+  {"repo": "combsmith/outsider", "refs": [".github-private/.github/workflows/dev-lead-reusable.yml"]}
+]}
+EOF
 
   cat > "$MOCK_BIN/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -49,7 +59,29 @@ case "$1" in
     printf '%s\n' "$*" >> "$GH_LOG"
     exit 0
     ;;
+  run)
+    # gh run list --json status,displayTitle → runs.json when a test writes one.
+    [ -f "$FIXTURE_DIR/runs.json" ] && cat "$FIXTURE_DIR/runs.json"
+    exit 0
+    ;;
   api)
+    # Head-commit lookup (#2533, and the advisory gate's head age): answer from
+    # head_<num>.json ({oid, date}); a failure when the PR has none. Honours --jq.
+    case "$*" in
+      *graphql*committer*)
+        url=""; jqf=""; prev=""
+        for a in "$@"; do
+          case "$a" in url=*) url="${a#url=}" ;; esac
+          [ "$prev" = "--jq" ] && jqf="$a"
+          prev="$a"
+        done
+        f="$FIXTURE_DIR/head_${url##*/}.json"
+        [ -f "$f" ] || exit 1
+        out=$(jq -c '{data:{resource:{commits:{nodes:[{commit:{oid:.oid, committer:{date:.date}}}]}}}}' "$f")
+        if [ -n "$jqf" ]; then jq -r "$jqf" <<< "$out"; else printf '%s\n' "$out"; fi
+        exit 0
+        ;;
+    esac
     case "$2" in
       repos/*/actions/workflows/*)
         # gh api repos/<owner>/<repo>/actions/workflows/<file> --jq '.state // ""'
@@ -1487,4 +1519,159 @@ GATE_RESOLVED_COMMENT='[{"id":"IC_done","author":{"login":"a-maintainer"},"autho
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2680) -f force_review=true" "$GH_LOG"
+}
+
+# ── Deadline-armed retries for consumer repos (#2533) ─────────────────────────
+#
+# Two waits have a deadline known when the sweep defers a PR: a rate-limit marker's
+# reset=, and the advisory gate's head-age timeout (head commit time +
+# ADVISORY_HEAD_AGE_TIMEOUT_SEC). The sweep arms pr-review-delayed-retry.yml for
+# both, in any pr-review consumer repo, passing the wait kind as -f wait=.
+
+url_in() { echo "https://github.com/$1/pull/$2"; }
+
+# iso_at <epoch> — that instant as an ISO-8601 UTC timestamp.
+iso_at() {
+  date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ
+}
+
+# write_head <num> <oid> <committer-epoch> — the PR's latest commit, as the
+# GraphQL head-commit lookup reports it.
+write_head() {
+  jq -n --arg o "$2" --arg d "$(iso_at "$3")" '{oid:$o, date:$d}' > "$FIXTURE_DIR/head_$1.json"
+}
+
+@test "advisory wait: a consumer PR with a young head and no advisory output is deferred and armed for head time + 1200s" {
+  local head_epoch; head_epoch=$(( $(date -u +%s) - 300 ))
+  write_pr 2533 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2533"
+  write_head 2533 adv2533 "$head_epoch"
+  url_for 2533 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c -- 'workflow run pr-review-delayed-retry.yml' "$GH_LOG")" -eq 1 ]
+  grep -qF -- "-f pr_url=$(url_for 2533) -f head_sha=adv2533 -f not_before=$(iso_at $(( head_epoch + 1200 ))) -f wait=advisory-bots" "$GH_LOG"
+  # The review would only skip as waiting-for-advisory-bots, so it is not dispatched now.
+  ! grep -qF -- "workflow run pr-review-trigger.yml" "$GH_LOG" || false
+  ! grep -qF -- "workflow run pr-review.yml" "$GH_LOG" || false
+  [[ "$output" == *"defer $(url_for 2533) — waiting for advisory bots"* ]]
+}
+
+@test "advisory wait: a head older than the timeout is dispatched as before, with nothing armed" {
+  write_pr 2534 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2534"
+  write_head 2534 adv2534 $(( $(date -u +%s) - 1800 ))
+  url_for 2534 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2534)" "$GH_LOG"
+  ! grep -qF -- "pr-review-delayed-retry.yml" "$GH_LOG" || false
+}
+
+@test "advisory wait: a young head the gate already clears (quiescence) is dispatched, not deferred" {
+  local now head_epoch reviews
+  now=$(date -u +%s)
+  head_epoch=$(( now - 900 ))
+  reviews=$(jq -cn --arg t "$(iso_at $(( now - 1000 )))" \
+    '[{author:{login:"gemini-code-assist"}, state:"COMMENTED", submittedAt:$t, body:"looks fine"}]')
+  write_pr 2535 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2535" "$reviews"
+  write_head 2535 adv2535 "$head_epoch"
+  url_for 2535 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2535)" "$GH_LOG"
+  ! grep -qF -- "pr-review-delayed-retry.yml" "$GH_LOG" || false
+}
+
+@test "advisory wait: an unknown head commit time dispatches as before" {
+  write_pr 2536 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2536"
+  url_for 2536 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2536)" "$GH_LOG"
+  ! grep -qF -- "pr-review-delayed-retry.yml" "$GH_LOG" || false
+}
+
+@test "advisory wait: DEFER_ADVISORY_WAIT=false dispatches a young-head PR as before" {
+  write_pr 2537 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2537"
+  write_head 2537 adv2537 $(( $(date -u +%s) - 300 ))
+  url_for 2537 > "$SWEEP_PRS_FILE"
+  export DEFER_ADVISORY_WAIT=false
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2537)" "$GH_LOG"
+  ! grep -qF -- "pr-review-delayed-retry.yml" "$GH_LOG" || false
+}
+
+@test "advisory wait: no retry is armed when the head moved since the snapshot" {
+  write_pr 2538 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2538"
+  write_head 2538 newer2538 $(( $(date -u +%s) - 60 ))
+  url_for 2538 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"arm skipped $(url_for 2538) — head moved"* ]]
+}
+
+@test "advisory wait: no retry is armed when one is already in flight for the same pr_url + head_sha" {
+  write_pr 2539 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2539"
+  write_head 2539 adv2539 $(( $(date -u +%s) - 300 ))
+  url_for 2539 > "$SWEEP_PRS_FILE"
+  # gh run list reports a queued retry for this exact (PR, head).
+  jq -cn --arg t "pr-review-delayed-retry $(url_for 2539) @ adv2539" \
+    '[{status:"queued", displayTitle:$t}]' > "$FIXTURE_DIR/runs.json"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"already in flight"* ]]
+}
+
+@test "advisory wait: a PR in a repo that is not a pr-review consumer is deferred with nothing armed" {
+  write_pr 2540 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2540"
+  write_head 2540 adv2540 $(( $(date -u +%s) - 300 ))
+  url_in combsmith/outsider 2540 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"arm skipped $(url_in combsmith/outsider 2540) — combsmith/outsider is not a pr-review consumer"* ]]
+}
+
+@test "advisory wait: ARM_DELAYED_RETRY=false (the retry's own delegation) defers without arming" {
+  write_pr 2541 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2541"
+  write_head 2541 adv2541 $(( $(date -u +%s) - 300 ))
+  url_for 2541 > "$SWEEP_PRS_FILE"
+  export ARM_DELAYED_RETRY=false
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"defer $(url_for 2541) — waiting for advisory bots"* ]]
+}
+
+@test "rate-limit wait: a consumer-repo PR arms its retry for the marker's reset, with wait=rate-limit" {
+  local reset; reset="$(near_reset)"
+  write_pr 2542 "REVIEW_REQUIRED" "$ROLLUP_PASS" "rl2542" "[]" "$(rl_comment rl2542 "$reset")"
+  url_for 2542 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c -- 'workflow run pr-review-delayed-retry.yml' "$GH_LOG")" -eq 1 ]
+  grep -qF -- "workflow run pr-review-delayed-retry.yml --repo combsmith/.github-private -f pr_url=$(url_for 2542) -f head_sha=rl2542 -f not_before=$reset -f wait=rate-limit" "$GH_LOG"
+}
+
+@test "rate-limit wait: a PR in a repo that is not a pr-review consumer arms nothing" {
+  local reset; reset="$(near_reset)"
+  write_pr 2543 "REVIEW_REQUIRED" "$ROLLUP_PASS" "rl2543" "[]" "$(rl_comment rl2543 "$reset")"
+  url_in combsmith/outsider 2543 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"is not a pr-review consumer"* ]]
 }

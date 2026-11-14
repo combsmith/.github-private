@@ -65,6 +65,9 @@
 #                     applies to dispatches in AGENT_REPO only
 #   ROUTE_TO_REPO_ENTRYPOINT  "false" → send every PR through TRIGGER_WORKFLOW (default: true)
 #   SKIP_GATE_HELD    "false" → dispatch PRs the comment gate holds, as before (default: true)
+#   DEFER_ADVISORY_WAIT "false" → dispatch a PR the advisory gate would hold, as before (default: true)
+#   CONSUMER_MANIFEST consumer manifest naming the pr-review consumers that delayed
+#                     retries may be armed for (default: lib/consumer-manifest.json)
 #   GH_TOKEN          a PAT with workflow scope on AGENT_REPO and the consumer repos
 #                     (required at the call site)
 set -euo pipefail
@@ -83,6 +86,9 @@ source "$SCRIPT_DIR/lib/pr-automation-budget.sh"
 # approval, so it must never satisfy the stop condition.
 # shellcheck source=lib/standing-approval.sh
 source "$SCRIPT_DIR/lib/standing-approval.sh"
+# Pure arming decision and consumer lookup for the delayed retry (#2533).
+# shellcheck source=lib/delayed-retry-arming.sh
+source "$SCRIPT_DIR/lib/delayed-retry-arming.sh"
 
 AGENT_REPO="${AGENT_REPO:-combsmith/.github-private}"
 TRIGGER_WORKFLOW="${TRIGGER_WORKFLOW:-pr-review-trigger.yml}"
@@ -122,12 +128,22 @@ fi
 # instead of 15 min, #1952). A reset BEYOND the horizon is left to the cron
 # backstop. ARM_DELAYED_RETRY=false disables arming — the mode the delayed retry
 # itself uses when it delegates back to this sweep, so a retry can never re-arm.
+#
+# Deadline-armed retries for consumer repos (#2533). The same retry is armed for
+# the advisory gate's head-age wait (waiting-for-advisory-bots): the gate proceeds
+# once the head commit is older than ADVISORY_HEAD_AGE_TIMEOUT_SEC, so the sweep
+# defers such a PR and arms the retry for that time. Both waits are armed for PRs
+# in this repository and in every pr-review consumer (CONSUMER_MANIFEST); the retry
+# re-enters this sweep, which sends a consumer PR to its own entrypoint.
+# DEFER_ADVISORY_WAIT=false dispatches advisory-held PRs as before.
 ARM_DELAYED_RETRY="${ARM_DELAYED_RETRY:-true}"
 DELAYED_RETRY_WORKFLOW="${DELAYED_RETRY_WORKFLOW:-pr-review-delayed-retry.yml}"
 DELAYED_RETRY_HORIZON_SEC="${DELAYED_RETRY_HORIZON_SEC:-3600}"
 case "$DELAYED_RETRY_HORIZON_SEC" in
   ''|*[!0-9]*) DELAYED_RETRY_HORIZON_SEC=3600 ;;
 esac
+DEFER_ADVISORY_WAIT="${DEFER_ADVISORY_WAIT:-true}"
+CONSUMER_MANIFEST="${CONSUMER_MANIFEST:-$SCRIPT_DIR/lib/consumer-manifest.json}"
 
 # Use GITHUB_REF as --ref only when it is a branch or tag (supports testing on
 # feature branches); a pull-request merge ref is not dispatchable.
@@ -415,26 +431,46 @@ dispatch_review() {
   fi
 }
 
-# arm_delayed_retry <pr_url> <head_sha> <reset_iso> <reset_epoch> <now_epoch> [snapshot]
-# Deterministic near-reset retry (#1994). Called from the rate-limit DEFER branch:
-# when a PR is withheld on an un-elapsed reset that is within
-# DELAYED_RETRY_HORIZON_SEC, dispatch pr-review-delayed-retry.yml, which sleeps
-# until <reset>, re-checks the marker still applies at the same head, then
-# re-dispatches the review through THIS sweep (scoped to the one PR). This gives a
-# retry bounded to minutes after reset without depending on the best-effort cron.
-# Resets beyond the horizon are left to the cron backstop. Idempotency and
-# cross-PR isolation live in the retry workflow's per-(PR, head) concurrency group;
-# a newer push changes the head so the stale armed retry no-ops. Honours DRY_RUN
-# and shares the single MAX_DISPATCH budget with normal dispatches (dispatched +
-# armed), so one sweep never issues more than MAX_DISPATCH requests total. No-op
-# when ARM_DELAYED_RETRY=false — the mode the
+# arm_delayed_retry <pr_url> <head_sha> <not_before_iso> <deadline_epoch> <now_epoch> [snapshot] [wait] [current_head]
+# Deterministic deadline retry (#1994, #2533). Called from a DEFER branch: the
+# rate-limit branch (wait=rate-limit, deadline = the marker's reset) and the
+# advisory-wait branch (wait=advisory-bots, deadline = head commit time +
+# ADVISORY_HEAD_AGE_TIMEOUT_SEC). Dispatches pr-review-delayed-retry.yml, which
+# sleeps until <not_before>, re-checks that the wait still applies at the same head,
+# then re-dispatches the review through THIS sweep (scoped to the one PR), so the
+# PR goes to its own repo's entrypoint. This bounds the retry to minutes after the
+# deadline without depending on the best-effort cron.
+#
+# Whether to arm is delayed_retry_arm_decision (lib/delayed-retry-arming.sh): only
+# for a near, un-elapsed deadline, at an unchanged head (<current_head>, default
+# <head_sha>), for a pr-review consumer, with no retry already in flight for the
+# same pr_url + head_sha. Deadlines beyond DELAYED_RETRY_HORIZON_SEC are left to the
+# cron backstop. Honours DRY_RUN and shares the single MAX_DISPATCH budget with
+# normal dispatches (dispatched + armed), so one sweep never issues more than
+# MAX_DISPATCH requests total. No-op when ARM_DELAYED_RETRY=false — the mode the
 # retry uses when it delegates back here, so it can never re-arm itself.
 arm_delayed_retry() {
   local _url="$1" _sha="$2" _reset="$3" _reset_epoch="$4" _now_epoch="$5" _snap="${6:-}"
+  local _wait="${7:-rate-limit}" _current="${8:-$2}" _repo="" _consumer=false _decision
   [ "$ARM_DELAYED_RETRY" = "true" ] || return 0
-  [ -n "$_reset_epoch" ] || return 0
-  local _delta=$(( _reset_epoch - _now_epoch ))
-  { [ "$_delta" -gt 0 ] && [ "$_delta" -le "$DELAYED_RETRY_HORIZON_SEC" ]; } || return 0
+  if [[ "$_url" =~ ^https?://[^/]+/([^/]+/[^/]+)/pull/[0-9]+ ]]; then
+    _repo="${BASH_REMATCH[1]}"
+  fi
+  if pr_review_consumer_repo "$_repo" "$AGENT_REPO" "$CONSUMER_MANIFEST"; then
+    _consumer=true
+  fi
+  # Decide on everything but the in-flight check first: it is pure, and a far or
+  # elapsed deadline must cost no gate lookup and no run-list query.
+  if ! _decision=$(delayed_retry_arm_decision "$_wait" "$_reset_epoch" "$_now_epoch" \
+                     "$DELAYED_RETRY_HORIZON_SEC" "$_sha" "$_current" false "$_consumer"); then
+    case "$_decision" in
+      skip:head-moved)
+        echo "    arm skipped $_url — head moved ${_sha:0:8} -> ${_current:0:8} since the snapshot; the newer push drives its own review" ;;
+      skip:not-consumer)
+        echo "    arm skipped $_url — ${_repo:-<unknown repo>} is not a pr-review consumer ($CONSUMER_MANIFEST); left to the cron sweep" ;;
+    esac
+    return 0
+  fi
   # A retry armed for a PR the comment gate holds would only re-enter this sweep and
   # be skipped there, so it is not armed and spends no MAX_DISPATCH (#2530). Checked
   # only once arming is otherwise due, so a far reset costs no gate lookup.
@@ -448,7 +484,7 @@ arm_delayed_retry() {
     return 0
   fi
   if [ "$DRY_RUN_BOOL" = "true" ]; then
-    echo "    dry-run: would arm delayed retry for $_url (not_before=$_reset, head ${_sha:0:8})"
+    echo "    dry-run: would arm delayed retry for $_url (wait=$_wait, not_before=$_reset, head ${_sha:0:8})"
     armed=$((armed + 1))
     return 0
   fi
@@ -461,14 +497,19 @@ arm_delayed_retry() {
   # this exact (PR, head): the run-name carries "<pr_url> @ <head_sha>", which
   # gh exposes as displayTitle. Fail OPEN — a query error falls through to arm so
   # a transient gh failure can never strand the retry.
+  local _in_flight=false
   if delayed_retry_in_flight "$_url" "$_sha"; then
+    _in_flight=true
+  fi
+  if ! delayed_retry_arm_decision "$_wait" "$_reset_epoch" "$_now_epoch" \
+         "$DELAYED_RETRY_HORIZON_SEC" "$_sha" "$_current" "$_in_flight" "$_consumer" >/dev/null; then
     echo "    arm skipped $_url — a delayed retry is already in flight for head ${_sha:0:8}"
     return 0
   fi
   if gh workflow run "$DELAYED_RETRY_WORKFLOW" --repo "$AGENT_REPO" "${REF_FLAGS[@]}" \
-       -f pr_url="$_url" -f head_sha="$_sha" -f not_before="$_reset"; then
+       -f pr_url="$_url" -f head_sha="$_sha" -f not_before="$_reset" -f wait="$_wait"; then
     armed=$((armed + 1))
-    echo "    armed delayed retry for $_url (not_before=$_reset, head ${_sha:0:8})"
+    echo "    armed delayed retry for $_url (wait=$_wait, not_before=$_reset, head ${_sha:0:8})"
   else
     # A failed attempt still spends a MAX_DISPATCH slot, so a transient dispatch
     # error cannot turn one sweep into a retry storm across every candidate.
@@ -493,6 +534,58 @@ delayed_retry_in_flight() {
     any(.[]?; (.status == "queued" or .status == "in_progress")
              and ((.displayTitle // "") | endswith($title)))' \
     <<< "$_runs" >/dev/null 2>&1
+}
+
+# advisory_head_age_timeout — ADVISORY_HEAD_AGE_TIMEOUT_SEC as the advisory gate
+# defines it, read once per run in a subshell so the gate's helpers stay out of this
+# shell. Falls back to 1200 (the gate's value) when it cannot be read.
+ADVISORY_TIMEOUT_CACHE=""
+advisory_head_age_timeout() {
+  if [[ -z "$ADVISORY_TIMEOUT_CACHE" ]]; then
+    ADVISORY_TIMEOUT_CACHE=$(
+      # shellcheck source=lib/advisory-review-gate.sh
+      source "$SCRIPT_DIR/lib/advisory-review-gate.sh" >/dev/null 2>&1
+      printf '%s' "${ADVISORY_HEAD_AGE_TIMEOUT_SEC:-}"
+    ) || ADVISORY_TIMEOUT_CACHE=""
+    [[ "$ADVISORY_TIMEOUT_CACHE" =~ ^[0-9]+$ ]] || ADVISORY_TIMEOUT_CACHE=1200
+  fi
+  printf '%s' "$ADVISORY_TIMEOUT_CACHE"
+}
+
+# advisory_wait_deadline <pr_url> <now_epoch>
+# True when review-one-pr.sh would skip this PR as waiting-for-advisory-bots (#2533):
+# the head commit is younger than ADVISORY_HEAD_AGE_TIMEOUT_SEC and the advisory
+# gate (check_advisory_reviews, run in a subshell exactly as review-one-pr.sh runs
+# it) says it is still waiting. Sets ADVISORY_DEADLINE_EPOCH / ADVISORY_DEADLINE_ISO
+# (head commit time + timeout) and ADVISORY_CURRENT_HEAD (the latest commit's oid at
+# lookup time). Anything undeterminable — an unreadable head commit, a gate that
+# clears or errors — is false, so the PR is dispatched as before and the review
+# itself decides. DEFER_ADVISORY_WAIT=false turns the check off.
+advisory_wait_deadline() {
+  local _url="$1" _now="$2" _gql _raw _oid _date _timeout _deadline _rc=0
+  ADVISORY_DEADLINE_EPOCH=""; ADVISORY_DEADLINE_ISO=""; ADVISORY_CURRENT_HEAD=""
+  [[ "$DEFER_ADVISORY_WAIT" = "true" ]] || return 1
+  # shellcheck disable=SC2016  # $url is a GraphQL variable, not a shell variable
+  _gql='query($url:URI!){resource(url:$url){...on PullRequest{commits(last:1){nodes{commit{oid committer{date}}}}}}}'
+  _raw=$(gh api graphql -f query="$_gql" -f url="$_url" 2>/dev/null) || return 1
+  _oid=$(jq -r '.data.resource.commits.nodes[0].commit.oid // ""' <<< "$_raw" 2>/dev/null) || _oid=""
+  _date=$(jq -r '.data.resource.commits.nodes[0].commit.committer.date // ""' <<< "$_raw" 2>/dev/null) || _date=""
+  [[ -n "$_oid" && -n "$_date" ]] || return 1
+  _timeout=$(advisory_head_age_timeout)
+  _deadline=$(advisory_head_age_deadline "$_date" "$_timeout") || return 1
+  # Past the deadline the gate proceeds on head age, so the review is due now.
+  [[ "$_now" -lt "$_deadline" ]] || return 1
+  (
+    # shellcheck source=lib/advisory-review-gate.sh
+    source "$SCRIPT_DIR/lib/advisory-review-gate.sh"
+    check_advisory_reviews "$_url"
+  ) >/dev/null 2>&1 || _rc=$?
+  [[ "$_rc" -eq 1 ]] || return 1
+  ADVISORY_DEADLINE_EPOCH="$_deadline"
+  ADVISORY_DEADLINE_ISO=$(date -u -d "@$_deadline" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+    || date -u -r "$_deadline" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || ADVISORY_DEADLINE_ISO=""
+  [[ -n "$ADVISORY_DEADLINE_ISO" ]] || return 1
+  ADVISORY_CURRENT_HEAD="$_oid"
 }
 
 while IFS= read -r pr_url; do
@@ -635,7 +728,7 @@ while IFS= read -r pr_url; do
       dispatch_review "$pr_url" "$snapshot" "rate-limited (reset $rl_reset elapsed, head ${head_sha:0:8})"
     else
       echo "  defer $pr_url — rate-limited until $rl_reset (head ${head_sha:0:8})"
-      arm_delayed_retry "$pr_url" "$head_sha" "$rl_reset" "$reset_epoch" "$now_epoch" "$snapshot"
+      arm_delayed_retry "$pr_url" "$head_sha" "$rl_reset" "$reset_epoch" "$now_epoch" "$snapshot" rate-limit
     fi
     continue
   fi
@@ -689,6 +782,20 @@ while IFS= read -r pr_url; do
       echo "  skip $pr_url — all checks eventable (workflow_run fast path owns it); scheduled sweep is un-eventable-only (#1408)"
       continue
     fi
+  fi
+
+  # Advisory-bot wait (#2533). A review dispatched now would only skip as
+  # waiting-for-advisory-bots, and no event re-fires if the bots never report. Defer
+  # it instead, and arm a retry for the gate's head-age deadline; past that deadline
+  # the gate proceeds, so the retry's review runs. When no retry is armed (far
+  # deadline, not a consumer, budget spent), a bot's review event or the cron still
+  # re-enters the PR.
+  now_epoch=$(date -u +%s)
+  if advisory_wait_deadline "$pr_url" "$now_epoch"; then
+    echo "  defer $pr_url — waiting for advisory bots until $ADVISORY_DEADLINE_ISO (head ${head_sha:0:8})"
+    arm_delayed_retry "$pr_url" "$head_sha" "$ADVISORY_DEADLINE_ISO" "$ADVISORY_DEADLINE_EPOCH" "$now_epoch" \
+      "$snapshot" advisory-bots "$ADVISORY_CURRENT_HEAD"
+    continue
   fi
 
   dispatch_review "$pr_url" "$snapshot" "stuck-green (head ${head_sha:0:8})"

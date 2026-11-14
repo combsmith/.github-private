@@ -265,7 +265,10 @@ calling it a regression, and treat CI as authoritative.**
   (`workflow_dispatch`-only) companion to `pr-review-sweep.yml`: when the sweep defers a PR on an un-elapsed
   rate-limit marker whose `reset` is within a bounded horizon, it arms this workflow, which sleeps until the
   reset, re-checks the marker still applies at the same head, then re-dispatches through the sweep — so a
-  rate-limited review retries within minutes of its reset instead of waiting for the best-effort cron. Its
+  rate-limited review retries within minutes of its reset instead of waiting for the best-effort cron. Since
+  #2533 the sweep also arms it for the advisory gate's head-age wait (`waiting-for-advisory-bots`, deadline =
+  head commit time + `ADVISORY_HEAD_AGE_TIMEOUT_SEC`), and for PRs in any pr-review consumer repo; the retry
+  re-enters the sweep, which dispatches the consumer's own entrypoint. Its
   in-run sleep is an armed delay, not an `on: schedule` timer, so it is Class 1 by declaration. It must not be
   removed by template syncs. If the org template gains an equivalent, remove this exception and defer to it.
 - **Exception:** `readme-refresh.yml` (weekly org README refresh) is a documented repo-specific workflow

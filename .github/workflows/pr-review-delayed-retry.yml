@@ -17,6 +17,15 @@ run-name: "pr-review-delayed-retry ${{ inputs.pr_url }} @ ${{ inputs.head_sha }}
 # then delegates to the sweep scoped to that one PR — re-dispatching the review
 # through exactly the path the sweep uses, never force-reviewing.
 #
+# GENERALISED (#2533). The sweep also arms this retry for the advisory gate's
+# head-age wait (`wait: advisory-bots` — the review skipped as
+# waiting-for-advisory-bots, and the gate proceeds once the head commit is
+# ADVISORY_HEAD_AGE_TIMEOUT_SEC old, so `not_before` is that deadline). `pr_url`
+# may be in any pr-review consumer repo (scripts/lib/consumer-manifest.json): the
+# delegated sweep re-dispatches it through that repo's own entrypoint (#2530).
+# The run name and concurrency lane stay keyed on pr_url + head_sha, so there is
+# at most one armed retry per (PR, head) whichever wait armed it.
+#
 # CLASSIFICATION (docs/agentic-interaction-model.md §4). Class 1 by declaration:
 # `workflow_dispatch` only, no `schedule` and no `timer_role`. The in-run sleep is
 # a deterministic delay anchored to an armed `not_before`, NOT a scheduled trigger
@@ -36,17 +45,22 @@ on:
   workflow_dispatch:
     inputs:
       pr_url:
-        description: "PR html_url whose rate-limited review to retry"
+        description: "PR html_url (this repo or any pr-review consumer) whose deferred review to retry"
         required: true
         type: string
       head_sha:
-        description: "Head SHA the rate-limit marker was armed on (supersession guard)"
+        description: "Head SHA the wait was armed on (supersession guard)"
         required: true
         type: string
       not_before:
-        description: "ISO-8601 reset time to wait for before retrying"
+        description: "ISO-8601 deadline to wait for before retrying (rate-limit reset, or advisory head-age deadline)"
         required: false
         default: ""
+        type: string
+      wait:
+        description: "Which wait was armed: rate-limit (marker reset) or advisory-bots (head-age deadline)"
+        required: false
+        default: "rate-limit"
         type: string
       dry_run:
         description: "If true, delegate in dry-run (log, do not dispatch)"
@@ -110,5 +124,6 @@ jobs:
           PR_URL: ${{ inputs.pr_url }}
           HEAD_SHA: ${{ inputs.head_sha }}
           NOT_BEFORE: ${{ inputs.not_before }}
+          WAIT_KIND: ${{ inputs.wait || 'rate-limit' }}
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
         run: bash scripts/delayed-rate-limit-retry.sh
