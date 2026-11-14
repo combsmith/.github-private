@@ -37,6 +37,9 @@ setup() {
   export MOCK_BIN FIXTURE_DIR GH_LOG
   export PATH="$MOCK_BIN:$PATH"
   export AGENT_REPO="combsmith/.github-private"
+  # On a CI runner these hold the runner's own ref and summary file. Tests that
+  # need them set them explicitly.
+  unset GITHUB_REF GITHUB_STEP_SUMMARY
   # The sweep's comment-gate pre-check (#2530) has its own tests in
   # test_sweep_stuck_reviews.bats. These marker comments carry no author (live ones
   # come from donpetry-bot, outside the gate's scope), so it is off here.

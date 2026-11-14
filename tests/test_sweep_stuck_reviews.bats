@@ -23,6 +23,9 @@ setup() {
   export PATH="$MOCK_BIN:$PATH"
   export SWEEP_PRS_FILE="$PRS_FILE"
   export AGENT_REPO="combsmith/.github-private"
+  # On a CI runner these hold the runner's own ref and summary file. Tests that
+  # need them set them explicitly.
+  unset GITHUB_REF GITHUB_STEP_SUMMARY
   # The comment-gate pre-check (#2530) is exercised by its own tests below. These
   # fixtures' marker comments carry no author (live ones come from donpetry-bot,
   # outside the gate's scope), so the shared suite runs with it off.
@@ -1403,4 +1406,20 @@ GATE_RESOLVED_COMMENT='[{"id":"IC_done","author":{"login":"a-maintainer"},"autho
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   grep -qF -- "-f pr_url=$(url_for 2652)" "$GH_LOG"
+}
+
+@test "comment gate: a far-reset rate-limited PR is not gate-checked or counted as held (no arm is due)" {
+  export SKIP_GATE_HELD=true
+  local marker comments
+  marker=$(jq -cn --arg b "<!-- pr-review-agent rate-limited v1 sha=rl2660 status=rate-limited reset=$FUTURE_RESET -->" \
+    '{id:"IC_rl", author:{login:"donpetry-bot"}, authorAssociation:"NONE", body:$b, isMinimized:false, minimizedReason:null}')
+  comments=$(jq -c --argjson m "$marker" '[$m] + .' <<< "$GATE_OPEN_COMMENT")
+  write_pr 2660 "REVIEW_REQUIRED" "$ROLLUP_PASS" "rl2660" "[]" "$comments"
+  url_for 2660 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" != *"arm skipped"* ]]
+  [[ "$output" == *"0 held at the comment gate."* ]]
 }

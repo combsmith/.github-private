@@ -391,7 +391,7 @@ dispatch_review() {
   fi
 }
 
-# arm_delayed_retry <pr_url> <head_sha> <reset_iso> <reset_epoch> <now_epoch>
+# arm_delayed_retry <pr_url> <head_sha> <reset_iso> <reset_epoch> <now_epoch> [snapshot]
 # Deterministic near-reset retry (#1994). Called from the rate-limit DEFER branch:
 # when a PR is withheld on an un-elapsed reset that is within
 # DELAYED_RETRY_HORIZON_SEC, dispatch pr-review-delayed-retry.yml, which sleeps
@@ -406,11 +406,19 @@ dispatch_review() {
 # when ARM_DELAYED_RETRY=false — the mode the
 # retry uses when it delegates back here, so it can never re-arm itself.
 arm_delayed_retry() {
-  local _url="$1" _sha="$2" _reset="$3" _reset_epoch="$4" _now_epoch="$5"
+  local _url="$1" _sha="$2" _reset="$3" _reset_epoch="$4" _now_epoch="$5" _snap="${6:-}"
   [ "$ARM_DELAYED_RETRY" = "true" ] || return 0
   [ -n "$_reset_epoch" ] || return 0
   local _delta=$(( _reset_epoch - _now_epoch ))
   { [ "$_delta" -gt 0 ] && [ "$_delta" -le "$DELAYED_RETRY_HORIZON_SEC" ]; } || return 0
+  # A retry armed for a PR the comment gate holds would only re-enter this sweep and
+  # be skipped there, so it is not armed and spends no MAX_DISPATCH (#2530). Checked
+  # only once arming is otherwise due, so a far reset costs no gate lookup.
+  if [[ -n "$_snap" ]] && held_at_comment_gate "$_url" "$_snap"; then
+    held=$((held + 1))
+    echo "    arm skipped $_url — held at the maintainer-comment gate (undispositioned PR comment) (#2530)"
+    return 0
+  fi
   if [ "$(( dispatched + armed ))" -ge "$MAX_DISPATCH" ]; then
     echo "    arm skipped $_url — reached MAX_DISPATCH=$MAX_DISPATCH (dispatches + armed retries) this sweep"
     return 0
@@ -603,14 +611,7 @@ while IFS= read -r pr_url; do
       dispatch_review "$pr_url" "$snapshot" "rate-limited (reset $rl_reset elapsed, head ${head_sha:0:8})"
     else
       echo "  defer $pr_url — rate-limited until $rl_reset (head ${head_sha:0:8})"
-      # A retry armed for a PR the comment gate holds would only re-enter this sweep
-      # and be skipped there, so it is not armed and spends no MAX_DISPATCH (#2530).
-      if held_at_comment_gate "$pr_url" "$snapshot"; then
-        held=$((held + 1))
-        echo "    arm skipped $pr_url — held at the maintainer-comment gate (undispositioned PR comment) (#2530)"
-      else
-        arm_delayed_retry "$pr_url" "$head_sha" "$rl_reset" "$reset_epoch" "$now_epoch"
-      fi
+      arm_delayed_retry "$pr_url" "$head_sha" "$rl_reset" "$reset_epoch" "$now_epoch" "$snapshot"
     fi
     continue
   fi
