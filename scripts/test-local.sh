@@ -113,15 +113,15 @@ if ! python3 -c 'import sys, jsonschema, yaml; sys.exit(sys.version_info < (3, 1
   stamp="$( { "$py" --version; cat "${reqs[@]}"; } | "${sha[@]}" | cut -d' ' -f1)"
   # One venv per interpreter + requirements, so a worktree on other
   # requirements never replaces a venv another run is using. Concurrent runs
-  # that need the same new venv build it once, under a lock (flock is required
-  # on macOS above and standard on Linux).
+  # that need the same new venv build it once, under a lock; flock is required
+  # for that (checked on macOS above, util-linux on Linux).
   venv="$venv_root/$stamp"
   mkdir -p "$venv_root"
   if [ ! -f "$venv/.complete" ]; then
-    if command -v flock >/dev/null 2>&1; then
-      exec 9>"$venv.lock"
-      flock 9
-    fi
+    command -v flock >/dev/null 2>&1 \
+      || die "flock is needed to build the python venv safely (macOS: brew bundle --file=Brewfile; Linux: util-linux)"
+    exec 9>"$venv.lock"
+    flock 9
     if [ ! -f "$venv/.complete" ]; then
       echo "test-local: building the python venv at $venv" >&2
       rm -rf "$venv"
