@@ -485,10 +485,7 @@ _NORMALIZE_JQ='
 # diff never compares them against a v1 snapshot whose buckets meant something else.
 # schema_version 3 (#2527) adds findings_threads / findings_body and counts
 # CodeRabbit and Codex body findings in findings_raised, so its delta needs a v3 prior.
-# schema_version 4 (#2506) excludes Dependabot-authored PRs from total_prs (was all
-# PRs, now non-Dependabot only), so its delta needs a v4 prior; total_prs now
-# accurately reflects the "active" PRs considered for the headline.
-#   { "schema_version": 4, "eligible_prs": N, "total_prs": N,
+#   { "schema_version": 3, "eligible_prs": N, "total_prs": N,
 #     "bots": { "<login>": { with_findings_prs, clean_prs, refused_prs, skipped_prs,
 #               no_response_prs, reviewed_prs, engaged_prs, findings_raised,
 #               findings_threads, findings_body,
@@ -501,14 +498,13 @@ _NORMALIZE_JQ='
 aggregate_snapshot() {
   local dir="$1"
   local files=("$dir"/*.jsonl)
-  [[ -e "${files[0]}" ]] || { echo '{"schema_version":4,"eligible_prs":0,"total_prs":0,"bots":{}}'; return 0; }
+  [[ -e "${files[0]}" ]] || { echo '{"schema_version":3,"eligible_prs":0,"total_prs":0,"bots":{}}'; return 0; }
   jq -s '
-    def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
     (map(select(.kind=="pr"))) as $prs
     | (map(select(.kind=="bot_pr"))) as $bp
-    | ([$prs[] | select(((.author // "") | is_dependabot | not))] | length) as $total
-    # Bucket over ELIGIBLE (non-draft, non-Dependabot) PRs only, so the buckets sum to eligible.
-    | (reduce ($prs[] | select(.draft == false and ((.author // "") | is_dependabot | not))) as $p ({}; .[$p.pr] = true)) as $elig_map
+    | ($prs | length) as $total
+    # Bucket over ELIGIBLE (non-draft) PRs only, so the buckets sum to eligible.
+    | (reduce ($prs[] | select(.draft == false)) as $p ({}; .[$p.pr] = true)) as $elig_map
     | ($elig_map | length) as $eligible
     | ($bp | map(select($elig_map[.pr]))) as $bpe
     | ($bpe | group_by(.bot) | map(
@@ -547,8 +543,8 @@ aggregate_snapshot() {
             latency_p50: (if ($lat|length)==0 then null else $lat[(((($lat|length)-1)*0.50)|floor)] end),
             latency_p95: (if ($lat|length)==0 then null else $lat[(((($lat|length)-1)*0.95)|round)] end)
           } } ) | from_entries) as $bots
-    | { schema_version: 4, eligible_prs: $eligible, total_prs: $total, bots: $bots }
-  ' "${files[@]}" 2>/dev/null || echo '{"schema_version":4,"eligible_prs":0,"total_prs":0,"bots":{}}'
+    | { schema_version: 3, eligible_prs: $eligible, total_prs: $total, bots: $bots }
+  ' "${files[@]}" 2>/dev/null || echo '{"schema_version":3,"eligible_prs":0,"total_prs":0,"bots":{}}'
 }
 
 # _prev <snapshot_json_file> <bot> <field> — prior-week scalar or "" when absent.
@@ -583,11 +579,6 @@ _prev_v2() { _prev_since 2 "$@"; }
 # schema_version >= 3 (#2527): findings_raised before v3 left out CodeRabbit and
 # Codex body findings on PRs where the bot also opened threads.
 _prev_v3() { _prev_since 3 "$@"; }
-
-# _prev_v4 <snapshot_json_file> <bot> <field> — "" unless the prior snapshot is
-# schema_version >= 4 (#2506): total_prs before v4 included Dependabot-authored
-# PRs; v4 excludes them, so a delta against v3 would show an artificial drop.
-_prev_v4() { _prev_since 4 "$@"; }
 
 # _pct_num <numerator> <denominator> — integer percent, "" when denom is 0 (for deltas).
 _pct_num() {
@@ -658,8 +649,7 @@ _render_unclassified_samples() {
   [[ -e "${files[0]}" ]] || return 0
   local data
   data="$(jq -sc '
-    def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
-    (reduce (.[] | select(.kind=="pr" and .draft == false and ((.author // "") | is_dependabot | not))) as $p ({}; .[$p.pr] = true)) as $elig
+    (reduce (.[] | select(.kind=="pr" and .draft == false)) as $p ({}; .[$p.pr] = true)) as $elig
     | [ .[] | select(.kind=="bot_pr" and $elig[.pr] and ((.classes.unclassified // 0) > 0)) ]
     | group_by(.bot)
     | map({ key: .[0].bot,
@@ -711,12 +701,9 @@ _COVERAGE_JQ_DEFS='
                    and ($start == "" or (.created // "") >= $start))
           | {pr, repo, day: (.created[0:10])} ]
     | unique_by(.pr);
-  # "<bot> <pr url>" → true for every PR the bot reviewed (excluding Dependabot-authored PRs).
+  # "<bot> <pr url>" → true for every PR the bot reviewed.
   def reviewed_set:
-    (reduce (.[] | select(.kind == "pr" and .draft == false
-                          and ((.author // "") | is_dependabot | not))) as $p
-       ({}; .[$p.pr] = true)) as $elig
-    | reduce (.[] | select(.kind == "bot_pr" and (.real_responses // 0) > 0 and $elig[.pr])) as $b
+    reduce (.[] | select(.kind == "bot_pr" and (.real_responses // 0) > 0)) as $b
       ({}; .[$b.bot + " " + $b.pr] = true);
   def bot_label($b): $labels[$b] // $b;
 '
@@ -1003,8 +990,7 @@ render_reviewer_report() {
   # overlap — a status notice or refusal is not coverage (#2504).
   local co_review multi_bot
   co_review="$(jq -s '
-    def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
-    (reduce (.[] | select(.kind=="pr" and .draft == false and ((.author // "") | is_dependabot | not))) as $p ({}; .[$p.pr] = true)) as $elig
+    (reduce (.[] | select(.kind=="pr" and .draft == false)) as $p ({}; .[$p.pr] = true)) as $elig
     | [ .[] | select(.kind=="bot_pr" and (.real_responses // 0) > 0 and ($elig[.pr] // false)) ] | group_by(.pr)
     | map(select(length >= 2)) | length
   ' "$dir"/*.jsonl 2>/dev/null || echo 0)"

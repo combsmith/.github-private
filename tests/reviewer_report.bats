@@ -1304,27 +1304,3 @@ _single_repo_fixture() {
   run grep -qx "none" <<<"$alerts"
   [ "$status" -ne 0 ]
 }
-
-@test "snapshot: Dependabot-authored PRs excluded from eligible_prs and bucket counts (#2506)" {
-  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
-  # A human-authored non-draft PR reviewed by a bot
-  _cov_pr "$d" combsmith/markets 1 "2026-11-10T08:00:00Z" alice
-  _cov_bot "$d" combsmith/markets 1 graphite-app "2026-11-10T08:00:00Z" 1
-  # A Dependabot-authored PR (both lower and [bot] variant) reviewed by the same bot
-  _cov_pr "$d" combsmith/markets 2 "2026-11-10T08:30:00Z" dependabot
-  _cov_bot "$d" combsmith/markets 2 graphite-app "2026-11-10T08:30:00Z" 1
-  _cov_pr "$d" combsmith/broodly 3 "2026-11-10T09:00:00Z" 'dependabot[bot]'
-  _cov_bot "$d" combsmith/broodly 3 graphite-app "2026-11-10T09:00:00Z" 1
-  local snap
-  snap="$(aggregate_snapshot "$d")"
-  # Schema version bumped to 4 for Dependabot exclusion in total_prs
-  echo "$snap" | jq -e '.schema_version == 4'
-  # eligible_prs excludes all 2 Dependabot PRs (both authors)
-  echo "$snap" | jq -e '.eligible_prs == 1'
-  # total_prs also excludes Dependabot PRs (they're "inactive" for our purposes)
-  echo "$snap" | jq -e '.total_prs == 1'
-  # Bot's engaged_prs (unfiltered) is 3: includes all it reviewed
-  echo "$snap" | jq -e '.bots["graphite-app"].engaged_prs == 3'
-  # Bot's reviewed_prs is 1: only the eligible (non-Dependabot) PR
-  echo "$snap" | jq -e '.bots["graphite-app"].reviewed_prs == 1'
-}
