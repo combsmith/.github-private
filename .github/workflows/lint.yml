@@ -276,6 +276,7 @@ jobs:
             tests/dev-lead/unit/test_maintainer_comment_gate.bats \
             tests/dev-lead/unit/test_agent_marker_convention.bats \
             tests/dev-lead/unit/test_maintainer_resolve_comment.bats \
+            tests/dev-lead/unit/test_toolchain_preflight.bats \
             tests/dev-lead/unit/test_comment_disposition_verify.bats \
             tests/dev-lead/unit/test_conflict_integrity.bats \
             tests/dev-lead/unit/test_addressed_claim_verify.bats \
