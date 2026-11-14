@@ -16,8 +16,9 @@
 #
 # pr-review-delayed-retry.yml (#1994) is a Class-1 (workflow_dispatch-only) member
 # of this runtime: the sweep ARMS it when it defers a PR on an un-elapsed rate-limit
-# marker whose reset is near, and it fires a deterministic retry within minutes of
-# that reset instead of waiting for the best-effort cron. Its in-run sleep is an
+# marker whose reset is near, or on the advisory gate's head-age wait (#2533), in
+# this repo or any pr-review consumer, and it fires a deterministic retry within
+# minutes of that deadline instead of waiting for the best-effort cron. Its in-run sleep is an
 # armed delay, not a scheduled timer — it has no `on: schedule`, so it adds no timer
 # to this contract; it only re-dispatches through the same sweep path.
 #
@@ -59,7 +60,7 @@ interaction:
     - "workflow_dispatch:pr-review-trigger"
     - "workflow_dispatch:pr-review-delayed-retry"
   idempotency_key: "pr_url + head_sha (the review marker makes a same-head re-review a fast no-op)"
-  concurrency_lane: "pr-review-pr-<pr_url> / pr-review-batch (pr-review.yml); pr-review-sweep-<branch|event_name> (pr-review-sweep.yml); pr-review-delayed-retry-<pr_url>-<head_sha> (pr-review-delayed-retry.yml)"
+  concurrency_lane: "pr-review-pr-<pr_url> / pr-review-batch (pr-review.yml); pr-review-sweep-<branch|event_name> (pr-review-sweep.yml); pr-review-delayed-retry-<pr_url>-<head_sha>-<wait> (pr-review-delayed-retry.yml)"
   stop_markers:
     - needs-human-review
     - pr-review:hands-off

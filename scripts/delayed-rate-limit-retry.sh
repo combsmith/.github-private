@@ -26,10 +26,22 @@
 # the next cron sweep still catches the PR. This path only makes the common
 # near-reset case fast.
 #
+# Generalised for consumer repos (#2533). The sweep also arms this retry for the
+# advisory gate's head-age wait (WAIT_KIND=advisory-bots: review-one-pr.sh skipped
+# the PR as waiting-for-advisory-bots, and the gate proceeds once the head commit
+# is ADVISORY_HEAD_AGE_TIMEOUT_SEC old). That wait leaves no marker, so only the
+# rate-limit wait re-checks one; both re-check the head. The PR may be in any
+# pr-review consumer repo: the delegated sweep sends it to that repo's own
+# entrypoint (#2530). A PR in a repo that is not a consumer is a no-op.
+#
 # Env / inputs:
 #   PR_URL                     (required) the deferred PR's html_url
-#   HEAD_SHA                   (required) the head the rate-limit marker was armed on
-#   NOT_BEFORE                 ISO-8601 reset time to wait for (the marker's reset=)
+#   HEAD_SHA                   (required) the head the wait was armed on
+#   NOT_BEFORE                 ISO-8601 deadline to wait for (the marker's reset=, or
+#                              the head-age deadline for WAIT_KIND=advisory-bots)
+#   WAIT_KIND                  rate-limit (default) | advisory-bots — which wait was armed
+#   CONSUMER_MANIFEST          consumer manifest naming the pr-review consumers
+#                              (default: lib/consumer-manifest.json)
 #   DELAYED_RETRY_BUFFER_SEC   seconds added after NOT_BEFORE before retrying (default 120)
 #   DELAYED_RETRY_HORIZON_SEC  the sweep's arming horizon (default 3600; same variable
 #                              and default as sweep-stuck-reviews.sh)
@@ -43,10 +55,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/delayed-retry-arming.sh
+source "$SCRIPT_DIR/lib/delayed-retry-arming.sh"
 
 PR_URL="${PR_URL:-}"
 HEAD_SHA="${HEAD_SHA:-}"
 NOT_BEFORE="${NOT_BEFORE:-}"
+WAIT_KIND="${WAIT_KIND:-rate-limit}"
+CONSUMER_MANIFEST="${CONSUMER_MANIFEST:-$SCRIPT_DIR/lib/consumer-manifest.json}"
 AGENT_REPO="${AGENT_REPO:-combsmith/.github-private}"
 SWEEP_SCRIPT="${SWEEP_SCRIPT:-$SCRIPT_DIR/sweep-stuck-reviews.sh}"
 DELAYED_RETRY_BUFFER_SEC="${DELAYED_RETRY_BUFFER_SEC:-120}"
@@ -82,15 +98,37 @@ if [ -z "$PR_URL" ] || [ -z "$HEAD_SHA" ]; then
   echo "::error::delayed-rate-limit-retry: PR_URL and HEAD_SHA are required"
   exit 2
 fi
+case "$WAIT_KIND" in
+  rate-limit|advisory-bots) ;;
+  *)
+    echo "::error::delayed-rate-limit-retry: WAIT_KIND='$WAIT_KIND' is not rate-limit or advisory-bots"
+    exit 2 ;;
+esac
 
-echo "=== Delayed rate-limit retry ==="
+echo "=== Delayed pr-review retry ==="
 echo "  PR:         $PR_URL"
+echo "  Wait:       $WAIT_KIND"
 echo "  Armed head: ${HEAD_SHA:0:8}"
 echo "  Not before: ${NOT_BEFORE:-<none>}"
 
+# Only pr-review consumers are retried (#2533): the delegated sweep would otherwise
+# dispatch a review for a repo pr-review does not serve.
+if [[ "$PR_URL" =~ ^https?://[^/]+/([^/]+/[^/]+)/pull/[0-9]+ ]]; then
+  pr_repo="${BASH_REMATCH[1]}"
+else
+  echo "::error::delayed-rate-limit-retry: PR_URL '${PR_URL:-<empty>}' is unparseable"
+  exit 2
+fi
+if ! pr_review_consumer_repo "$pr_repo" "$AGENT_REPO" "$CONSUMER_MANIFEST"; then
+  echo "  no-op: $pr_repo is not a pr-review consumer — nothing to retry"
+  exit 0
+fi
+
 # still_applicable <phase>
 # The armed retry must still apply: the PR open, un-merged, at the SAME head the
-# marker was armed on, and that head's rate-limit marker still present. Returns
+# wait was armed on, and — for WAIT_KIND=rate-limit — that head's rate-limit marker
+# still present. The advisory-bots wait leaves no marker; the delegated sweep
+# re-checks the gate and the PR's state. Returns
 # non-zero (caller no-ops) when it does not. Without the marker check, a retry
 # whose marker was removed would fall through the delegated sweep's ordinary
 # REVIEW_REQUIRED + green-CI path and launch a plain review instead of no-oping.
@@ -118,6 +156,7 @@ still_applicable() {
     echo "  no-op ($_phase): head advanced ${HEAD_SHA:0:8} -> ${_current_head:0:8} — superseded by a newer push; its event drives a fresh review"
     return 1
   fi
+  [[ "$WAIT_KIND" = "rate-limit" ]] || return 0
   _has_marker=$(jq -r --arg m "<!-- pr-review-agent rate-limited v1 sha=${HEAD_SHA} " \
     '[((.reviews // []) + (.comments // []))[]? | (.body // "" | tostring) | select(contains($m))] | length > 0' <<< "$_snapshot" 2>/dev/null || echo "false")
   if [ "$_has_marker" != "true" ]; then
@@ -170,19 +209,21 @@ still_applicable "post-sleep" || exit 0
 
 # ---------------------------------------------------------------------------
 # 3. Delegate to the sweep scoped to this one PR. The sweep re-validates the
-#    rate-limit marker, standing verdict, CI and exclusions and re-dispatches
-#    through the normal trigger (never force). ARM_DELAYED_RETRY=false so it
-#    cannot re-arm another retry, and the event name is unset so the #1408
+#    rate-limit marker or advisory gate, standing verdict, CI and exclusions and
+#    re-dispatches through the PR's own repo entrypoint (never force).
+#    ARM_DELAYED_RETRY=false so it cannot re-arm another retry, and the event
+#    name is unset so the #1408
 #    scheduled-narrowing does not apply to this targeted retry.
 # ---------------------------------------------------------------------------
 one_pr_file="$(mktemp)" || { echo "::error::Failed to create temporary file"; exit 1; }
 trap 'rm -f "$one_pr_file"' EXIT
 printf '%s\n' "$PR_URL" > "$one_pr_file"
 
-echo "  retry: delegating to the sweep for $PR_URL (head ${HEAD_SHA:0:8})"
+echo "  retry: delegating to the sweep for $PR_URL (wait $WAIT_KIND, head ${HEAD_SHA:0:8})"
 SWEEP_PRS_FILE="$one_pr_file" \
 ARM_DELAYED_RETRY=false \
 AGENT_REPO="$AGENT_REPO" \
+CONSUMER_MANIFEST="$CONSUMER_MANIFEST" \
 DRY_RUN="${DRY_RUN:-false}" \
 GITHUB_EVENT_NAME="" \
   bash "$SWEEP_SCRIPT"
