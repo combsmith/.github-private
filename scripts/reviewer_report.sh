@@ -178,6 +178,25 @@ if declare -F reviewer_sources_message_class_patterns >/dev/null 2>&1; then
   unset _mc_rows
 fi
 
+# Expected-off bot × repo cells (#2506) from the same sidecar, as a JSON array
+#   [ {login, repo}, ... ]
+# where repo is "owner/name" or a bare "name". An off cell renders "off (by design)"
+# in the coverage matrix and never raises an outage alert. `[]` when the loader is
+# absent; a malformed row is dropped by the loader (and the bats suite fails on it).
+REVIEWER_EXPECTED_OFF_JSON='[]'
+if declare -F reviewer_sources_expected_off_cells >/dev/null 2>&1; then
+  _off_rows="$(reviewer_sources_expected_off_cells)" \
+    || echo "WARN: reviewer-message-classes.tsv has invalid expected-off rows — they are ignored (see above)" >&2
+  if [[ -n "$_off_rows" ]]; then
+    REVIEWER_EXPECTED_OFF_JSON="$(jq -Rsc '
+      split("\n") | map(select(length > 0) | split("\t")
+        | {login: (.[0] | ascii_downcase), repo: (.[1] // "")} | select(.repo != ""))
+    ' <<<"$_off_rows" 2>/dev/null)" || REVIEWER_EXPECTED_OFF_JSON='[]'
+    [[ -n "$REVIEWER_EXPECTED_OFF_JSON" ]] || REVIEWER_EXPECTED_OFF_JSON='[]'
+  fi
+  unset _off_rows
+fi
+
 # ---------------------------------------------------------------------------
 # Pure rendering / aggregation helpers (unit-tested, no network)
 # ---------------------------------------------------------------------------
@@ -229,7 +248,7 @@ _delta_arrow() {
 # a stream of normalized JSONL records. Emits:
 #   {kind:"pr", repo, pr, created, merged, draft, author}         (denominator)
 #   {kind:"bot_pr", repo, pr, bot, created, classes, real_responses, refusals,
-#      latency_s, reviews, approved, changes_req, inline_comments, threads_total,
+#      refused_at, latency_s, reviews, approved, changes_req, inline_comments, threads_total,
 #      threads_resolved, findings_threads, findings_body, findings_raised,
 #      thumbs_up, thumbs_down, unclassified_samples}                                       (participation)
 # Args: --arg repo, --argjson bots (login array), --arg rl (rate-limit regex).
@@ -424,6 +443,8 @@ _NORMALIZE_JQ='
                       ({}; .[$c] = ($mine | map(select(.class == $c)) | length))),
           real_responses: ($real | length),
           refusals:       ($refd | length),
+          # When each refusal was posted, oldest first — the quota-timing section (#2506).
+          refused_at:     ($refd | map(.at // empty) | sort),
           # Latency = time to first finding/clean message (null when the bot never
           # reviewed, so refusals and status notices never pollute the percentiles).
           latency_s: (if ($real | length) == 0 then null
@@ -479,11 +500,12 @@ aggregate_snapshot() {
   local files=("$dir"/*.jsonl)
   [[ -e "${files[0]}" ]] || { echo '{"schema_version":3,"eligible_prs":0,"total_prs":0,"bots":{}}'; return 0; }
   jq -s '
+    def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
     (map(select(.kind=="pr"))) as $prs
     | (map(select(.kind=="bot_pr"))) as $bp
     | ($prs | length) as $total
-    # Bucket over ELIGIBLE (non-draft) PRs only, so the buckets sum to eligible.
-    | (reduce ($prs[] | select(.draft == false)) as $p ({}; .[$p.pr] = true)) as $elig_map
+    # Bucket over ELIGIBLE (non-draft, non-Dependabot) PRs only, so the buckets sum to eligible.
+    | (reduce ($prs[] | select(.draft == false and ((.author // "") | is_dependabot | not))) as $p ({}; .[$p.pr] = true)) as $elig_map
     | ($elig_map | length) as $eligible
     | ($bp | map(select($elig_map[.pr]))) as $bpe
     | ($bpe | group_by(.bot) | map(
@@ -628,7 +650,8 @@ _render_unclassified_samples() {
   [[ -e "${files[0]}" ]] || return 0
   local data
   data="$(jq -sc '
-    (reduce (.[] | select(.kind=="pr" and .draft == false)) as $p ({}; .[$p.pr] = true)) as $elig
+    def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
+    (reduce (.[] | select(.kind=="pr" and .draft == false and ((.author // "") | is_dependabot | not))) as $p ({}; .[$p.pr] = true)) as $elig
     | [ .[] | select(.kind=="bot_pr" and $elig[.pr] and ((.classes.unclassified // 0) > 0)) ]
     | group_by(.bot)
     | map({ key: .[0].bot,
@@ -654,6 +677,170 @@ _render_unclassified_samples() {
   done
   printf '\n'
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# Coverage matrix, outage alerts and quota timing (#2506) — PURE
+# ---------------------------------------------------------------------------
+# Every count in these three sections leaves out Dependabot-authored PRs.
+#   opened   — non-draft PRs created in the window (on or after the window start,
+#              REVIEWER_WINDOW_START, else CUTOFF; with neither set, every collected PR).
+#   reviewed — opened PRs on which the bot left a `finding` or `clean` message (#2504).
+#   day      — the UTC calendar day a PR was opened.
+# Expected-off cells come from REVIEWER_EXPECTED_OFF_JSON (the sidecar's `off` rows).
+_COVERAGE_JQ_DEFS='
+  def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
+  # Is $bot expected off on $repo? A declared "owner/name" matches that repo; a bare
+  # "name" matches the repo of that name under any owner.
+  def is_off($bot; $repo):
+    ($repo | ascii_downcase) as $r
+    | any($off[]; (.login | ascii_downcase) == ($bot | ascii_downcase)
+                  and ((.repo | ascii_downcase) as $d
+                       | if ($d | contains("/")) then $d == $r else $d == ($r | split("/") | last) end));
+  def opened_prs:
+    [ .[] | select(.kind == "pr" and .draft == false
+                   and ((.author // "") | is_dependabot | not)
+                   and ($start == "" or (.created // "") >= $start))
+          | {pr, repo, day: (.created[0:10])} ]
+    | unique_by(.pr);
+  # "<bot> <pr url>" → true for every PR the bot reviewed (excluding Dependabot-authored PRs).
+  def reviewed_set:
+    (reduce (.[] | select(.kind == "pr" and .draft == false
+                          and ((.author // "") | is_dependabot | not))) as $p
+       ({}; .[$p.pr] = true)) as $elig
+    | reduce (.[] | select(.kind == "bot_pr" and (.real_responses // 0) > 0 and $elig[.pr])) as $b
+      ({}; .[$b.bot + " " + $b.pr] = true);
+  def bot_label($b): $labels[$b] // $b;
+'
+
+# _coverage_jq <jsonl_dir> <jq program> — run a coverage program over the slurped
+# records with $bots, $off, $start and $labels bound. Returns non-zero when jq fails,
+# so a renderer never reads a failure as "no alerts".
+_coverage_jq() {
+  local dir="$1" prog="$2"
+  local files=("$dir"/*.jsonl)
+  [[ -e "${files[0]}" ]] || return 0
+  local bots_json labels_json b
+  bots_json="$(printf '%s\n' "${REVIEWER_BOTS[@]}" | jq -R . | jq -sc .)"
+  labels_json='{}'
+  for b in "${REVIEWER_BOTS[@]}"; do
+    labels_json="$(jq -c --arg k "$b" --arg v "${REVIEWER_LABELS[$b]:-$b}" '. + {($k): $v}' <<<"$labels_json")"
+  done
+  jq -rs --argjson bots "$bots_json" --argjson off "${REVIEWER_EXPECTED_OFF_JSON:-[]}" \
+    --arg start "${REVIEWER_WINDOW_START:-${CUTOFF:-}}" --argjson labels "$labels_json" \
+    "${_COVERAGE_JQ_DEFS} ${prog}" "${files[@]}"
+}
+
+# _coverage_failed <section> — the line a section prints when its jq program failed.
+_coverage_failed() {
+  printf '⚠️ The %s could not be computed (jq failed; see the run log). This is not the same as none.\n\n' "$1"
+}
+
+# _render_outage_alerts <jsonl_dir> — PURE (#2506). The "Outage alerts" section, put
+# at the top of the report. Two rules, each over the expected-on cells only:
+#   1. org-wide silence: on 2 or more consecutive days the bot reviewed none of the PRs
+#      opened that day in the repos where it is expected on, and those days have at
+#      least 3 opened PRs between them. Only days on which such a PR was opened count;
+#      a day with none neither ends nor extends a run.
+#   2. single-repo silence: a cell with at least 3 opened PRs and 0 reviewed.
+# Each alert names the bot, the repo(s) and the first silent day. Prints "none" when
+# no rule fires.
+_render_outage_alerts() {
+  local dir="$1" alerts
+  printf '## Outage alerts\n\n'
+  alerts="$(_coverage_jq "$dir" '
+    . as $all
+    | ($all | opened_prs) as $o
+    | ($all | reviewed_set) as $rv
+    | ($o | map(.repo) | unique) as $repos
+    # Rule 1 — runs of silent days per bot, over the repos where it is expected on.
+    | [ $bots[] as $b
+        | ($o | map(select(is_off($b; .repo) | not))) as $on
+        | ($on | group_by(.day)
+               | map({ day: .[0].day, opened: length, repos: (map(.repo) | unique),
+                       reviewed: (map(select($rv[$b + " " + .pr])) | length) })) as $days
+        | reduce ($days[], {reviewed: 1}) as $d ({runs: [], cur: null};
+            if $d.reviewed == 0 then
+              .cur = (if .cur == null then {first: $d.day, days: 1, opened: $d.opened, repos: $d.repos}
+                      else (.cur | .days += 1 | .opened += $d.opened | .repos = ((.repos + $d.repos) | unique)) end)
+            else (if .cur != null then .runs += [.cur] else . end) | .cur = null end)
+        | .runs[] | select(.days >= 2 and .opened >= 3)
+        | "- **\(bot_label($b))** — no PR reviewed on \(.days) consecutive days with PRs (\(.opened) PRs opened) in "
+          + (.repos | map("`\(.)`") | join(", ")) + "; first silent day **\(.first)**." ]
+    # Rule 2 — a cell with at least 3 opened PRs and none reviewed all window.
+    + [ $bots[] as $b | $repos[] as $r
+        | select(is_off($b; $r) | not)
+        | ($o | map(select(.repo == $r))) as $prs
+        | select(($prs | length) >= 3 and ($prs | map(select($rv[$b + " " + .pr])) | length) == 0)
+        | "- **\(bot_label($b))** — 0 of \($prs | length) PRs opened in `\($r)` reviewed in the whole window; "
+          + "first silent day **\($prs | map(.day) | min)**." ]
+    | .[]')" || { _coverage_failed "outage alerts"; return 0; }
+
+  if [[ -z "$alerts" ]]; then
+    printf 'none\n\n'
+    return 0
+  fi
+  printf '%s\n\n' "$alerts"
+  printf '_Rules and how to mark a cell off by design: `docs/reviewer-report.md` (Outage alerts)._\n\n'
+}
+
+# _render_coverage_matrix <jsonl_dir> — PURE (#2506). One row per repo with an opened
+# PR, one column per tracked bot; each cell is "reviewed / opened", or
+# "off (by design)" for an expected-off cell.
+_render_coverage_matrix() {
+  local dir="$1" table
+  printf '## Coverage matrix\n\n'
+  table="$(_coverage_jq "$dir" '
+    . as $all
+    | ($all | opened_prs) as $o
+    | ($all | reviewed_set) as $rv
+    | ($o | map(.repo) | unique) as $repos
+    | if ($repos | length) == 0 then empty
+      else
+        ("| Repo | " + ($bots | map(bot_label(.)) | join(" | ")) + " |"),
+        ("|---|" + ($bots | map("---:|") | join(""))),
+        ( $repos[] as $r
+          | ($o | map(select(.repo == $r))) as $prs
+          | "| `\($r)` | "
+            + ($bots | map(. as $b
+                | if is_off($b; $r) then "off (by design)"
+                  else "\($prs | map(select($rv[$b + " " + .pr])) | length) / \($prs | length)" end)
+              | join(" | "))
+            + " |" )
+      end')" || { _coverage_failed "coverage matrix"; return 0; }
+
+  if [[ -z "$table" ]]; then
+    printf 'No non-draft, non-Dependabot PRs were opened in the window.\n\n'
+    return 0
+  fi
+  printf 'PRs each bot reviewed (a `finding` or `clean` message) out of the non-draft PRs opened in each repo in the window. '
+  printf 'Dependabot PRs are left out. `off (by design)` marks a bot that is meant not to run on that repo '
+  printf '(declared in `scripts/lib/reviewer-message-classes.tsv`).\n\n'
+  printf '%s\n\n' "$table"
+}
+
+# _render_quota_timing <jsonl_dir> — PURE (#2506). For each bot with `refused`
+# messages in the window (Dependabot PRs left out): refusals per UTC day and the time
+# of the first refusal that day, so the hour a daily quota runs out is visible.
+_render_quota_timing() {
+  local dir="$1" rows
+  printf '## Quota timing\n\n'
+  rows="$(_coverage_jq "$dir" '
+    (reduce (.[] | select(.kind == "pr")) as $p ({}; .[$p.pr] = (($p.author // "") | is_dependabot))) as $dep
+    | [ .[] | select(.kind == "bot_pr" and ($dep[.pr] | not)) ] | unique_by([.bot, .pr])
+    | [ .[] | .bot as $b | (.refused_at // [])[] | select($start == "" or . >= $start) | {bot: $b, at: .} ] as $ev
+    | $bots[] as $b
+    | ($ev | map(select(.bot == $b)) | group_by(.at[0:10]))[]
+    | "| \(bot_label($b)) | \(.[0].at[0:10]) | \(length) | \(map(.at) | min | .[11:16]) |"')" || { _coverage_failed "quota timing"; return 0; }
+
+  if [[ -z "$rows" ]]; then
+    printf 'none\n\n'
+    return 0
+  fi
+  printf 'Refusals (quota, rate limit, trial or plan) per bot per UTC day, and the time of the first one that day. Dependabot PRs are left out.\n\n'
+  printf '| Reviewer | Day (UTC) | Refusals | First refusal (UTC) |\n'
+  printf '|---|---|---:|---:|\n'
+  printf '%s\n\n' "$rows"
 }
 
 # render_reviewer_report <jsonl_dir> <lookback> <repo_count> [generated_at]
@@ -688,6 +875,9 @@ render_reviewer_report() {
     fi
     return 0
   fi
+
+  # Outage alerts (#2506) sit at the top so a bot that went silent is seen first.
+  _render_outage_alerts "$dir"
 
   printf 'Deterministic report — every figure is computed with `jq`/`awk` from GitHub review data; '
   printf 'no LLM is involved. Bots are identified by their GraphQL App login '
@@ -793,14 +983,20 @@ render_reviewer_report() {
   printf -- '- **Status / Unclassified messages** — message counts; neither ever makes a PR count as reviewed.\n'
   printf -- '- **Findings: threads / bodies** — the two parts of **Findings raised**: review threads the bot opened, and findings counted from its review, comment or check-run bodies.\n\n'
 
+  _render_quota_timing "$dir"
+
   _render_unclassified_samples "$dir"
+
+  # ---- Coverage matrix (#2506) ----------------------------------------------
+  _render_coverage_matrix "$dir"
 
   # ---- Coverage / overlap --------------------------------------------------
   # Only bots that actually REVIEWED (a finding or clean message) count toward
   # overlap — a status notice or refusal is not coverage (#2504).
   local co_review multi_bot
   co_review="$(jq -s '
-    (reduce (.[] | select(.kind=="pr" and .draft == false)) as $p ({}; .[$p.pr] = true)) as $elig
+    def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
+    (reduce (.[] | select(.kind=="pr" and .draft == false and ((.author // "") | is_dependabot | not))) as $p ({}; .[$p.pr] = true)) as $elig
     | [ .[] | select(.kind=="bot_pr" and (.real_responses // 0) > 0 and ($elig[.pr] // false)) ] | group_by(.pr)
     | map(select(length >= 2)) | length
   ' "$dir"/*.jsonl 2>/dev/null || echo 0)"
@@ -1093,6 +1289,12 @@ _collect_one_repo() {
   done
 }
 
+# _window_cutoff — the window start, LOOKBACK_DAYS ago, as an ISO-8601 UTC timestamp.
+_window_cutoff() {
+  date -u -d "${LOOKBACK_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+    || date -u -v-"${LOOKBACK_DAYS}"d +%Y-%m-%dT%H:%M:%SZ
+}
+
 # collect_org_reviews <jsonl_dir>  (stdout: "<repo_count>")
 # Discover non-archived repos, then sweep each one's recent PRs in bounded parallel.
 collect_org_reviews() {
@@ -1110,8 +1312,7 @@ collect_org_reviews() {
   local repo_count
   repo_count="$(printf '%s\n' "$repos_raw" | awk 'NF{c++} END{print c+0}')"
 
-  CUTOFF="$(date -u -d "${LOOKBACK_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
-    || date -u -v-"${LOOKBACK_DAYS}"d +%Y-%m-%dT%H:%M:%SZ)"
+  [ -n "${CUTOFF:-}" ] || CUTOFF="$(_window_cutoff)"
   export CUTOFF COLLECT_JSONL_DIR="$jsonl_dir" GH_OP_TIMEOUT MAX_PR_PAGES PR_PAGE_SIZE PR_FETCH_MAX_ATTEMPTS
   # shellcheck disable=SC2090  # jq/GraphQL program strings: literal content is intended
   export _PR_QUERY _NORMALIZE_JQ RATE_LIMIT_RE
@@ -1180,6 +1381,12 @@ main() {
   jsonl_dir="$(mktemp -d)"
   # shellcheck disable=SC2064
   trap "rm -rf '$jsonl_dir'" EXIT
+
+  # Compute the window start once, here: collect_org_reviews runs in a command
+  # substitution, so a CUTOFF it set would not reach the renderer, which needs it to
+  # tell PRs opened in the window from older PRs updated in it (#2506).
+  CUTOFF="${CUTOFF:-$(_window_cutoff)}"
+  export CUTOFF
 
   echo "Collecting PR review activity across ${ORG} (last ${LOOKBACK_DAYS} days)..." >&2
   repo_count="$(collect_org_reviews "$jsonl_dir")"

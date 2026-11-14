@@ -26,8 +26,9 @@ set -euo pipefail
 if [[ -z "${REVIEWER_SOURCES_MANIFEST:-}" ]]; then
   REVIEWER_SOURCES_MANIFEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reviewer-sources.tsv"
 fi
-# Scorecard-only sidecar of per-bot message-class patterns (#2504). Read only by
-# reviewer_sources_message_class_patterns, which only the reviewer scorecard calls.
+# Scorecard-only sidecar of per-bot message-class patterns (#2504) and expected-off
+# bot × repo cells (#2506). Read by reviewer_sources_message_class_patterns and
+# reviewer_sources_expected_off_cells, both called only by the reviewer scorecard.
 if [[ -z "${REVIEWER_MESSAGE_CLASSES_FILE:-}" ]]; then
   REVIEWER_MESSAGE_CLASSES_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reviewer-message-classes.tsv"
 fi
@@ -168,6 +169,8 @@ reviewer_sources_message_class_patterns() {
   awk -F'\t' '
     { sub(/\r$/, "") }
     /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    # Expected-off cell rows (#2506) are not message patterns; reviewer_sources_expected_off_cells reads them.
+    $2 == "off" { next }
     {
       pat = $4
       for (i = 5; i <= NF; i++) pat = pat "\t" $i
@@ -182,6 +185,52 @@ reviewer_sources_message_class_patterns() {
         print where "missing login or pattern" > "/dev/stderr"; bad = 1; next
       }
       print $1 "\t" $2 "\t" $3 "\t" pat
+    }
+    END { exit bad ? 1 : 0 }' "$f"
+}
+
+# reviewer_sources_expected_off_cells
+#   The reviewer scorecard's expected-off bot × repo cells (#2506), read from the
+#   same scorecard-only sidecar: rows of the form "<login>\toff\trepo\t<repo>", where
+#   <repo> is "owner/name" or a bare "name" (a bare name matches that repo under any
+#   owner, so it survives an org rename). Emits "<login>\t<repo>" one per line. An
+#   off cell renders "off (by design)" in the coverage matrix and never raises an
+#   outage alert. Neither gate calls this. A malformed off row is reported on stderr
+#   and left out, and the function then returns non-zero; the valid rows are still printed.
+reviewer_sources_expected_off_cells() {
+  local f="${REVIEWER_MESSAGE_CLASSES_FILE}"
+  if [[ ! -f "$f" ]]; then
+    echo "reviewer_sources_expected_off_cells: sidecar file not found at $f" >&2
+    return 1
+  fi
+  local manifest="${REVIEWER_SOURCES_MANIFEST}"
+  if [[ ! -f "$manifest" ]]; then
+    echo "reviewer_sources_expected_off_cells: manifest file not found at $manifest" >&2
+    return 1
+  fi
+  awk -F'\t' \
+    -v manifest="$manifest" \
+    'BEGIN {
+      while ((getline < manifest) > 0) {
+        if ($1 !~ /^[[:space:]]*#/ && $1 != "") logins[$1] = 1
+      }
+      close(manifest)
+    }
+    { sub(/\r$/, "") }
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    $2 != "off" { next }
+    {
+      where = "reviewer_sources_expected_off_cells: line " NR ": "
+      if ($3 != "repo") {
+        print where "an off row needs kind \"repo\", not \"" $3 "\"" > "/dev/stderr"; bad = 1; next
+      }
+      if ($1 == "" || NF != 4 || $4 !~ /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)?$/) {
+        print where "an off row needs a login and a repo (owner/name or name)" > "/dev/stderr"; bad = 1; next
+      }
+      if (!($1 in logins)) {
+        print where "login \"" $1 "\" not registered in the reviewer sources" > "/dev/stderr"; bad = 1; next
+      }
+      print $1 "\t" $4
     }
     END { exit bad ? 1 : 0 }' "$f"
 }

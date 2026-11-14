@@ -43,6 +43,13 @@
 #   4. otherwise `unclassified`. The report shows up to 3 samples per bot, so a new
 #      message shape is visible and can be given a row here.
 #
+# Expected-off cells (#2506). A row with class `off` and kind `repo` is not a message
+# pattern: it declares that the bot is off by design on one repo, and its last column
+# is the repo — `owner/name`, or a bare `name` that matches the repo under any owner.
+# The scorecard's coverage matrix shows that cell as `off (by design)`, and it never
+# raises an outage alert. Read by reviewer_sources_expected_off_cells; the message-class
+# loader skips these rows. Say why in a comment above the row.
+#
 # login	class	kind	pattern
 copilot-pull-request-reviewer	finding	review	generated [1-9][0-9]* (new )?comments?
 copilot-pull-request-reviewer	clean	review	generated (no|0) (new )?comments?
@@ -83,3 +90,7 @@ graphite-app	status	issue	managed by Graphite|Graphite Merge Queue|graphite\.dev
 cubic-dev-ai	finding	any	found [1-9][0-9]* (potential )?issues?
 cubic-dev-ai	clean	any	found (no|0) (potential )?issues?|No issues found
 cubic-dev-ai	status	any	cubic is (reviewing|analyzing)|Review in progress
+#
+# Expected-off cells (#2506): <login>	off	repo	<repo>
+# coderabbitai is on-demand only on software-factory: its .coderabbit.yaml turns auto review off.
+coderabbitai	off	repo	combsmith/software-factory
