@@ -703,9 +703,12 @@ _COVERAGE_JQ_DEFS='
                    and ($start == "" or (.created // "") >= $start))
           | {pr, repo, day: (.created[0:10])} ]
     | unique_by(.pr);
-  # "<bot> <pr url>" → true for every PR the bot reviewed.
+  # "<bot> <pr url>" → true for every PR the bot reviewed (excluding Dependabot-authored PRs).
   def reviewed_set:
-    reduce (.[] | select(.kind == "bot_pr" and (.real_responses // 0) > 0)) as $b
+    (reduce (.[] | select(.kind == "pr" and .draft == false
+                          and ((.author // "") | is_dependabot | not))) as $p
+       ({}; .[$p.pr] = true)) as $elig
+    | reduce (.[] | select(.kind == "bot_pr" and (.real_responses // 0) > 0 and $elig[.pr])) as $b
       ({}; .[$b.bot + " " + $b.pr] = true);
   def bot_label($b): $labels[$b] // $b;
 '
