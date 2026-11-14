@@ -782,24 +782,38 @@ while IFS= read -r pr_url; do
   # the gate proceeds, so the retry's review runs. When no retry is armed (far
   # deadline, not a consumer, budget spent), a bot's review event or the cron still
   # re-enters the PR.
+  # Evaluate this before the scheduled narrowing so advisory-held PRs are not
+  # skipped as eventable-only (#2533 issue).
   now_epoch=$(date -u +%s)
+  advisory_held_deadline_epoch=""
+  advisory_held_deadline_iso=""
+  advisory_held_current_head=""
   if advisory_wait_deadline "$pr_url" "$now_epoch"; then
-    echo "  defer $pr_url — waiting for advisory bots until $ADVISORY_DEADLINE_ISO (head ${head_sha:0:8})"
-    arm_delayed_retry "$pr_url" "$head_sha" "$ADVISORY_DEADLINE_ISO" "$ADVISORY_DEADLINE_EPOCH" "$now_epoch" \
-      "$snapshot" advisory-bots "$ADVISORY_CURRENT_HEAD"
-    continue
+    advisory_held_deadline_epoch="$ADVISORY_DEADLINE_EPOCH"
+    advisory_held_deadline_iso="$ADVISORY_DEADLINE_ISO"
+    advisory_held_current_head="$ADVISORY_CURRENT_HEAD"
   fi
 
   # Scheduled-backstop narrowing (#1408): on the cron event, only re-review the
   # un-eventable residue. A PR whose external checks are all eventable GitHub
   # Actions runs is owned by the workflow_run fast path, so re-dispatching it here
-  # would be the redundant re-review this story removes.
+  # would be the redundant re-review this story removes. However, exclude PRs that
+  # are waiting for advisory bots, since advisory checks are non-eventable and are
+  # not covered by the workflow_run fast path.
   if [ "$SCHEDULED_SWEEP" = "true" ]; then
     eventability=$(classify_rollup_eventability "$(jq '.statusCheckRollup? // []' <<< "$snapshot" 2>/dev/null || echo '[]')")
-    if [ "$eventability" = "eventable-only" ]; then
+    if [ "$eventability" = "eventable-only" ] && [ -z "$advisory_held_deadline_iso" ]; then
       echo "  skip $pr_url — all checks eventable (workflow_run fast path owns it); scheduled sweep is un-eventable-only (#1408)"
       continue
     fi
+  fi
+
+  # Handle the advisory-wait deferral if one was found
+  if [ -n "$advisory_held_deadline_iso" ]; then
+    echo "  defer $pr_url — waiting for advisory bots until $advisory_held_deadline_iso (head ${head_sha:0:8})"
+    arm_delayed_retry "$pr_url" "$head_sha" "$advisory_held_deadline_iso" "$advisory_held_deadline_epoch" "$now_epoch" \
+      "$snapshot" advisory-bots "$advisory_held_current_head"
+    continue
   fi
 
   dispatch_review "$pr_url" "$snapshot" "stuck-green (head ${head_sha:0:8})"
