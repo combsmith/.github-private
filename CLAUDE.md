@@ -32,3 +32,5 @@ It contains:
 ## Commands
 
 - Lint shell scripts: `shellcheck scripts/*.sh`
+- Run the bats suites (macOS or Linux): `scripts/test-local.sh [test paths...]`. On macOS install the
+  GNU toolchain once with `brew bundle --file=Brewfile`; a bare `bats` run there fails for want of it.
