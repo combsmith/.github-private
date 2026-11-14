@@ -67,7 +67,17 @@ case "$1" in
         ;;
       rate_limit) echo "4990 4980"; exit 0 ;;
       graphql)
-        echo '{"data":{"resource":{"comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}'
+        # The comment-gate edit-time/author-type lookup: answer from the PR fixture,
+        # typing a "[bot]" login as Bot and anything else as User.
+        [ -z "${GH_GRAPHQL_FAIL:-}" ] || exit 1
+        url=""
+        for a in "$@"; do case "$a" in url=*) url="${a#url=}" ;; esac; done
+        f="$FIXTURE_DIR/pr_${url##*/}.json"
+        nodes='[]'
+        [ -f "$f" ] && nodes=$(jq -c '[(.comments // [])[] | select(.id != null)
+          | {id, lastEditedAt: (.lastEditedAt // null),
+             author: {__typename: (if ((.author.login // "") | endswith("[bot]")) then "Bot" else "User" end)}}]' "$f")
+        jq -cn --argjson n "$nodes" '{data:{resource:{comments:{pageInfo:{hasNextPage:false,endCursor:null},nodes:$n}}}}'
         exit 0
         ;;
     esac
@@ -1048,9 +1058,28 @@ DISPATCHABLE_CALLER='on:
     inputs:
       pr_url:
         type: string
+      force_review:
+        type: string
 jobs:
   pr-review:
     uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable'
+# Takes pr_url but not force_review.
+CALLER_WITHOUT_FORCE='on:
+  workflow_dispatch:
+    inputs:
+      pr_url:
+        type: string
+jobs:
+  pr-review:
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable'
+# pr_url only as a reusable input under `with:`, never a dispatch input.
+CALLER_PR_URL_ONLY_IN_WITH='on:
+  workflow_dispatch:
+jobs:
+  pr-review:
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
+    with:
+      pr_url: ""'
 # The reference ingress shape: no workflow_dispatch, no pr-review job.
 UNDISPATCHABLE_INGRESS='on:
   pull_request:
@@ -1100,6 +1129,7 @@ https://github.com/o/.github-private/pull/3" ]
 }
 
 @test "entrypoint_dispatches_pr_review: needs workflow_dispatch, a pr_url input and the pr-review reusable" {
+  load_sweep_fn entrypoint_dispatch_inputs
   load_sweep_fn entrypoint_dispatches_pr_review
   entrypoint_dispatches_pr_review "$DISPATCHABLE_CALLER"
   run entrypoint_dispatches_pr_review "$UNDISPATCHABLE_INGRESS"
@@ -1332,4 +1362,45 @@ GATE_RESOLVED_COMMENT='[{"id":"IC_done","author":{"login":"a-maintainer"},"autho
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$(grep -c -- 'workflow run pr-review-delayed-retry.yml' "$GH_LOG")" -eq 1 ]
+}
+
+@test "entrypoint_dispatch_inputs: lists only the keys under on.workflow_dispatch.inputs" {
+  load_sweep_fn entrypoint_dispatch_inputs
+  [ "$(entrypoint_dispatch_inputs "$DISPATCHABLE_CALLER" | tr '\n' ' ')" = "pr_url force_review " ]
+  [ -z "$(entrypoint_dispatch_inputs "$CALLER_PR_URL_ONLY_IN_WITH")" ]
+  [ -z "$(entrypoint_dispatch_inputs "$UNDISPATCHABLE_INGRESS")" ]
+  # Inline comments and blank lines are tolerated; a sibling trigger ends the block.
+  run entrypoint_dispatch_inputs $'on:\n  workflow_dispatch:   # manual\n    inputs:\n\n      pr_url:\n        description: x\n      dry_run:\n  repository_dispatch:\n    types: [pr_url]'
+  [ "$output" = $'pr_url\ndry_run' ]
+}
+
+@test "entrypoint_dispatches_pr_review: a pr_url under a job's with: is not a dispatch input" {
+  load_sweep_fn entrypoint_dispatch_inputs
+  load_sweep_fn entrypoint_dispatches_pr_review
+  run entrypoint_dispatches_pr_review "$CALLER_PR_URL_ONLY_IN_WITH"
+  [ "$status" -ne 0 ]
+}
+
+@test "routing: an orphan rescue keeps the agent-repo trigger when the entrypoint has no force_review input" {
+  write_workflows combsmith/demo pr-review.yml:active
+  write_workflow_file combsmith/demo pr-review.yml "$CALLER_WITHOUT_FORCE"
+  write_pr 2650 "REVIEW_REQUIRED" "$ROLLUP_PASS" "orph2650" "[]" '[{"body":"<!-- pr-review-agent v1 sha=orph2650 -->"}]'
+  write_pr 2651 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  printf '%s\n' "$(url_for 2650)" "$(url_for 2651)" > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2650) -f force_review=true" "$GH_LOG"
+  # An ordinary dispatch in the same repo still routes to the entrypoint.
+  grep -qF "workflow run pr-review.yml --repo combsmith/demo -f pr_url=$(url_for 2651)" "$GH_LOG"
+}
+
+@test "comment gate: a failed author-type lookup is undeterminable, so the PR is dispatched" {
+  export SKIP_GATE_HELD=true GH_GRAPHQL_FAIL=1
+  write_pr 2652 "REVIEW_REQUIRED" "$ROLLUP_PASS" "lk2652" "[]" "$GATE_OPEN_COMMENT"
+  url_for 2652 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "-f pr_url=$(url_for 2652)" "$GH_LOG"
 }

@@ -240,21 +240,43 @@ armed=0
 held=0
 declare -A DISPATCHED_BY_REPO=()
 declare -A ENTRYPOINT_BY_REPO=()
+declare -A ENTRYPOINT_FORCE_BY_REPO=()
+
+# entrypoint_dispatch_inputs <workflow_yaml>
+# Print the input names declared under on.workflow_dispatch.inputs, one per line.
+# Only that block counts, so a `pr_url:` under a job's `with:` is not an input.
+# An indentation walk, not a full YAML parse: enough for the caller stubs. Pure.
+entrypoint_dispatch_inputs() {
+  awk '
+    /^[[:space:]]*(#.*)?$/ { next }
+    {
+      match($0, /^ */); ind = RLENGTH; line = substr($0, ind + 1)
+      if (state == 2 && ind <= in_ind) state = (ind <= wd_ind) ? 0 : 1
+      if (state == 1 && ind <= wd_ind) state = 0
+    }
+    state == 2 {
+      if (key_ind == 0) key_ind = ind
+      if (ind == key_ind && line ~ /^[A-Za-z0-9_-]+:/) { k = line; sub(/:.*/, "", k); print k }
+      next
+    }
+    state == 1 && line ~ /^inputs:[[:space:]]*(#.*)?$/ { state = 2; in_ind = ind; key_ind = 0; next }
+    state == 0 && line ~ /^workflow_dispatch:[[:space:]]*(#.*)?$/ { state = 1; wd_ind = ind; next }
+  ' <<< "${1:-}"
+}
 
 # entrypoint_dispatches_pr_review <workflow_yaml>
-# True when a workflow file can take the sweep's dispatch: it declares a
-# workflow_dispatch trigger with a pr_url input, and calls the pr-review reusable.
-# The standard pr-review.yml stub and the markets-style agent-ingress.yml both do.
-# The reference agent-ingress.yml (docs/architecture/reference/) has neither, and a
-# dispatch to it would fail or run no review. Text match, not a YAML parse. Pure.
+# True when a workflow file can take the sweep's dispatch: workflow_dispatch declares
+# a pr_url input, and the file calls the pr-review reusable. The standard
+# pr-review.yml stub and the markets-style agent-ingress.yml both do. The reference
+# agent-ingress.yml (docs/architecture/reference/) does not, and a dispatch to it
+# would fail or run no review. Pure.
 entrypoint_dispatches_pr_review() {
   local _y="${1:-}"
-  grep -Eq '^[[:space:]]*workflow_dispatch:' <<< "$_y" \
-    && grep -Eq '^[[:space:]]*pr_url:' <<< "$_y" \
+  entrypoint_dispatch_inputs "$_y" | grep -qx 'pr_url' \
     && grep -Eq '/\.github/workflows/pr-review\.yml@' <<< "$_y"
 }
 
-# resolve_dispatch_target <pr_url>
+# resolve_dispatch_target <pr_url> [force]
 # Set DISPATCH_REPO / DISPATCH_WORKFLOW for a PR (#2530). The repo's own entrypoint
 # is an active .github/workflows/pr-review.yml, else an active agent-ingress.yml
 # (ADR-0007), that passes entrypoint_dispatches_pr_review. AGENT_REPO's own PRs, an
@@ -263,7 +285,7 @@ entrypoint_dispatches_pr_review() {
 # The lookup is cached per repo for the run. Sets globals rather than echoing, so
 # the cache survives (a command substitution would run in a subshell).
 resolve_dispatch_target() {
-  local _url="$1" _repo="" _state="" _file="" _yaml=""
+  local _url="$1" _force="${2:-}" _repo="" _state="" _file="" _yaml=""
   DISPATCH_REPO="$AGENT_REPO"
   DISPATCH_WORKFLOW="$TRIGGER_WORKFLOW"
   [[ "$ROUTE_TO_REPO_ENTRYPOINT" = "true" ]] || return 0
@@ -282,23 +304,33 @@ resolve_dispatch_target() {
                 -H "Accept: application/vnd.github.raw" 2>/dev/null) || _yaml=""
       if entrypoint_dispatches_pr_review "$_yaml"; then
         ENTRYPOINT_BY_REPO[$_repo]="$_file"
+        if entrypoint_dispatch_inputs "$_yaml" | grep -qx 'force_review'; then
+          ENTRYPOINT_FORCE_BY_REPO[$_repo]=true
+        else
+          ENTRYPOINT_FORCE_BY_REPO[$_repo]=false
+        fi
         break
       fi
       echo "    note: $_repo $_file does not take a pr_url dispatch for pr-review; not routing to it"
     done
   fi
-  if [[ -n "${ENTRYPOINT_BY_REPO[$_repo]}" ]]; then
-    DISPATCH_REPO="$_repo"
-    DISPATCH_WORKFLOW="${ENTRYPOINT_BY_REPO[$_repo]}"
+  [[ -n "${ENTRYPOINT_BY_REPO[$_repo]}" ]] || return 0
+  # The orphan rescue needs force_review. An entrypoint without that input would
+  # reject the dispatch (HTTP 422), so the rescue keeps the agent-repo trigger.
+  if [[ "$_force" == "force" && "${ENTRYPOINT_FORCE_BY_REPO[$_repo]:-false}" != "true" ]]; then
+    echo "    note: $_repo ${ENTRYPOINT_BY_REPO[$_repo]} has no force_review input; the rescue uses $TRIGGER_WORKFLOW"
+    return 0
   fi
+  DISPATCH_REPO="$_repo"
+  DISPATCH_WORKFLOW="${ENTRYPOINT_BY_REPO[$_repo]}"
 }
 
 # held_at_comment_gate <pr_url> <snapshot>
 # True when the maintainer-comment gate would withhold approval (rc 1): the check
 # review-one-pr.sh runs before it reviews (#1813), with the same edit-time and
 # author-type merge (#2008). Dispatching such a PR only buys a skip with no verdict
-# (#2530). Any other outcome — clear, or undeterminable (rc 2) — is false, so the
-# review itself still decides. Run in a subshell so the gate's helpers stay out of
+# (#2530). Any other outcome — clear, undeterminable (rc 2), or a failed author-type
+# lookup — is false, so the review itself still decides. Run in a subshell so the gate's helpers stay out of
 # this shell. SKIP_GATE_HELD=false turns the check off.
 held_at_comment_gate() {
   local _url="$1" _snap="$2" _rc=0
@@ -307,6 +339,11 @@ held_at_comment_gate() {
     # shellcheck source=lib/maintainer-comment-gate.sh
     source "$SCRIPT_DIR/lib/maintainer-comment-gate.sh"
     _merged=$(maintainer_gate_merge_edit_times "$_url" "$_snap")
+    # The merge returns the snapshot unchanged when its lookup fails, and the gate
+    # then cannot clear a registered bot's status comment. A comment still missing
+    # its author type means the lookup failed: undeterminable, so let the review run.
+    jq -e '[(.comments // [])[] | select((.author.__typename // null) == null)] | length == 0' \
+      <<< "$_merged" >/dev/null 2>&1 || exit 2
     check_maintainer_comments "$_merged" "${BOT_USER:-donpetry-bot}"
   ) >/dev/null 2>&1 || _rc=$?
   [[ "$_rc" -eq 1 ]]
@@ -331,7 +368,7 @@ dispatch_review() {
   fi
   stuck=$((stuck + 1))
   echo "  $_label: $_url — needs re-review"
-  resolve_dispatch_target "$_url"
+  resolve_dispatch_target "$_url" "$_force"
   if [ "$DRY_RUN_BOOL" = "true" ]; then
     echo "    dry-run: would dispatch $DISPATCH_WORKFLOW @ $DISPATCH_REPO for $_url"
     return 0
