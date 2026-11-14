@@ -212,7 +212,7 @@ reviewer_sources_expected_off_cells() {
     -v manifest="$manifest" \
     'BEGIN {
       while ((getline < manifest) > 0) {
-        if ($1 !~ /^[[:space:]]*#/ && $1 != "") logins[$1] = 1
+        if ($1 !~ /^[[:space:]]*#/ && $1 != "") logins[tolower($1)] = 1
       }
       close(manifest)
     }
@@ -227,7 +227,7 @@ reviewer_sources_expected_off_cells() {
       if ($1 == "" || NF != 4 || $4 !~ /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)?$/) {
         print where "an off row needs a login and a repo (owner/name or name)" > "/dev/stderr"; bad = 1; next
       }
-      if (!($1 in logins)) {
+      if (!(tolower($1) in logins)) {
         print where "login \"" $1 "\" not registered in the reviewer sources" > "/dev/stderr"; bad = 1; next
       }
       print $1 "\t" $4
