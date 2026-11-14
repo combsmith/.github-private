@@ -14,8 +14,8 @@ set -euo pipefail
 #   2. resolves TMPDIR to its real path (/var is a symlink to /private/var, and
 #      a test comparing $PWD with a path built from TMPDIR fails otherwise);
 #   3. on any OS, builds a cached venv from the hash-pinned requirements/ci/
-#      files when python3 cannot import jsonschema and yaml (the validator
-#      suites need both), and puts it first on PATH.
+#      files when python3 is older than 3.10 or cannot import jsonschema and
+#      yaml (the validator suites need both), and puts it first on PATH.
 #
 # Then it runs bats. With no test paths it runs every suite: the top-level
 # tests/*.bats, tests/dev-lead/unit and tests/dev-lead/integration, which is a
@@ -40,7 +40,7 @@ while [ "$#" -gt 0 ]; do
     --jobs|-j) jobs="${2:?--jobs needs a number}"; shift 2 ;;
     --jobs=*) jobs="${1#--jobs=}"; shift ;;
     -h|--help) sed -n '3,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    -f|--filter|-F|--formatter|--report-formatter|--filter-status|--filter-tags|-o|--output|--gather-test-outputs-in|--line-reference-format|--code-quote-style) bats_args+=("$1" "${2:?$1 needs a value}"); shift 2 ;;
+    -f|--filter|--negative-filter|-F|--formatter|--report-formatter|--parallel-binary-name|--filter-status|--filter-tags|-o|--output|--gather-test-outputs-in|--line-reference-format|--code-quote-style) bats_args+=("$1" "${2:?$1 needs a value}"); shift 2 ;;
     -*) bats_args+=("$1"); shift ;;
     *) paths+=("$1"); shift ;;
   esac
@@ -108,17 +108,30 @@ if ! python3 -c 'import sys, jsonschema, yaml; sys.exit(sys.version_info < (3, 1
   [ -n "$py" ] || die "no python3 >= 3.10 found for the validator suites. Run: brew bundle --file=Brewfile"
 
   reqs=(requirements/ci/jsonschema.txt requirements/ci/pyyaml.txt requirements/ci/yamllint.txt)
-  venv="${COMBSMITH_TEST_VENV:-${XDG_CACHE_HOME:-$HOME/.cache}/combsmith-github-private/test-venv}"
+  venv_root="${COMBSMITH_TEST_VENV:-${XDG_CACHE_HOME:-$HOME/.cache}/combsmith-github-private/test-venv}"
   if command -v sha256sum >/dev/null 2>&1; then sha=(sha256sum); else sha=(shasum -a 256); fi
   stamp="$( { "$py" --version; cat "${reqs[@]}"; } | "${sha[@]}" | cut -d' ' -f1)"
-  if [ "$(cat "$venv/.stamp" 2>/dev/null || true)" != "$stamp" ]; then
-    echo "test-local: building the python venv at $venv" >&2
-    rm -rf "$venv"
-    "$py" -m venv "$venv"
-    "$venv/bin/python" -m pip install --quiet --require-hashes --only-binary ":all:" \
-      -r requirements/ci/jsonschema.txt -r requirements/ci/pyyaml.txt -r requirements/ci/yamllint.txt \
-      || die "pip install into $venv failed"
-    printf '%s\n' "$stamp" > "$venv/.stamp"
+  # One venv per interpreter + requirements, so a worktree on other
+  # requirements never replaces a venv another run is using. Concurrent runs
+  # that need the same new venv build it once, under a lock (flock is required
+  # on macOS above and standard on Linux).
+  venv="$venv_root/$stamp"
+  mkdir -p "$venv_root"
+  if [ ! -f "$venv/.complete" ]; then
+    if command -v flock >/dev/null 2>&1; then
+      exec 9>"$venv.lock"
+      flock 9
+    fi
+    if [ ! -f "$venv/.complete" ]; then
+      echo "test-local: building the python venv at $venv" >&2
+      rm -rf "$venv"
+      "$py" -m venv "$venv"
+      "$venv/bin/python" -m pip install --quiet --disable-pip-version-check --require-hashes --only-binary ":all:" \
+        -r requirements/ci/jsonschema.txt -r requirements/ci/pyyaml.txt -r requirements/ci/yamllint.txt \
+        || die "pip install into $venv failed"
+      : > "$venv/.complete"
+    fi
+    exec 9>&-
   fi
   PATH="$venv/bin:$PATH"
   export PATH
