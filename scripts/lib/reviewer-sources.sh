@@ -26,8 +26,9 @@ set -euo pipefail
 if [[ -z "${REVIEWER_SOURCES_MANIFEST:-}" ]]; then
   REVIEWER_SOURCES_MANIFEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reviewer-sources.tsv"
 fi
-# Scorecard-only sidecar of per-bot message-class patterns (#2504). Read only by
-# reviewer_sources_message_class_patterns, which only the reviewer scorecard calls.
+# Scorecard-only sidecar of per-bot message-class patterns (#2504) and expected-off
+# bot × repo cells (#2506). Read by reviewer_sources_message_class_patterns and
+# reviewer_sources_expected_off_cells, both called only by the reviewer scorecard.
 if [[ -z "${REVIEWER_MESSAGE_CLASSES_FILE:-}" ]]; then
   REVIEWER_MESSAGE_CLASSES_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/reviewer-message-classes.tsv"
 fi
@@ -202,7 +203,19 @@ reviewer_sources_expected_off_cells() {
     echo "reviewer_sources_expected_off_cells: sidecar file not found at $f" >&2
     return 1
   fi
-  awk -F'\t' '
+  local manifest="${REVIEWER_SOURCES_MANIFEST}"
+  if [[ ! -f "$manifest" ]]; then
+    echo "reviewer_sources_expected_off_cells: manifest file not found at $manifest" >&2
+    return 1
+  fi
+  awk -F'\t' \
+    -v manifest="$manifest" \
+    'BEGIN {
+      while ((getline < manifest) > 0) {
+        if ($1 !~ /^[[:space:]]*#/ && $1 != "") logins[$1] = 1
+      }
+      close(manifest)
+    }
     { sub(/\r$/, "") }
     /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
     $2 != "off" { next }
@@ -213,6 +226,9 @@ reviewer_sources_expected_off_cells() {
       }
       if ($1 == "" || NF != 4 || $4 !~ /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)?$/) {
         print where "an off row needs a login and a repo (owner/name or name)" > "/dev/stderr"; bad = 1; next
+      }
+      if (!($1 in logins)) {
+        print where "login \"" $1 "\" not registered in the reviewer sources" > "/dev/stderr"; bad = 1; next
       }
       print $1 "\t" $4
     }

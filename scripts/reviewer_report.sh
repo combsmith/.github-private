@@ -500,11 +500,12 @@ aggregate_snapshot() {
   local files=("$dir"/*.jsonl)
   [[ -e "${files[0]}" ]] || { echo '{"schema_version":3,"eligible_prs":0,"total_prs":0,"bots":{}}'; return 0; }
   jq -s '
+    def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
     (map(select(.kind=="pr"))) as $prs
     | (map(select(.kind=="bot_pr"))) as $bp
     | ($prs | length) as $total
-    # Bucket over ELIGIBLE (non-draft) PRs only, so the buckets sum to eligible.
-    | (reduce ($prs[] | select(.draft == false)) as $p ({}; .[$p.pr] = true)) as $elig_map
+    # Bucket over ELIGIBLE (non-draft, non-Dependabot) PRs only, so the buckets sum to eligible.
+    | (reduce ($prs[] | select(.draft == false and ((.author // "") | is_dependabot | not))) as $p ({}; .[$p.pr] = true)) as $elig_map
     | ($elig_map | length) as $eligible
     | ($bp | map(select($elig_map[.pr]))) as $bpe
     | ($bpe | group_by(.bot) | map(
@@ -649,7 +650,8 @@ _render_unclassified_samples() {
   [[ -e "${files[0]}" ]] || return 0
   local data
   data="$(jq -sc '
-    (reduce (.[] | select(.kind=="pr" and .draft == false)) as $p ({}; .[$p.pr] = true)) as $elig
+    def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
+    (reduce (.[] | select(.kind=="pr" and .draft == false and ((.author // "") | is_dependabot | not))) as $p ({}; .[$p.pr] = true)) as $elig
     | [ .[] | select(.kind=="bot_pr" and $elig[.pr] and ((.classes.unclassified // 0) > 0)) ]
     | group_by(.bot)
     | map({ key: .[0].bot,
@@ -990,7 +992,8 @@ render_reviewer_report() {
   # overlap — a status notice or refusal is not coverage (#2504).
   local co_review multi_bot
   co_review="$(jq -s '
-    (reduce (.[] | select(.kind=="pr" and .draft == false)) as $p ({}; .[$p.pr] = true)) as $elig
+    def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
+    (reduce (.[] | select(.kind=="pr" and .draft == false and ((.author // "") | is_dependabot | not))) as $p ({}; .[$p.pr] = true)) as $elig
     | [ .[] | select(.kind=="bot_pr" and (.real_responses // 0) > 0 and ($elig[.pr] // false)) ] | group_by(.pr)
     | map(select(length >= 2)) | length
   ' "$dir"/*.jsonl 2>/dev/null || echo 0)"

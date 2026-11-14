@@ -1276,6 +1276,19 @@ _single_repo_fixture() {
   [ "$status" -ne 0 ]
 }
 
+@test "sidecar: unregistered off-row login is rejected (#2506)" {
+  local bad
+  bad="$(mktemp "$BATS_TEST_TMPDIR/bad.XXXXXX")"
+  printf 'coderabbitai\toff\trepo\tcombsmith/software-factory\nunknown-bot\toff\trepo\tcombsmith/broodly\n' > "$bad"
+  REVIEWER_MESSAGE_CLASSES_FILE="$bad" run reviewer_sources_expected_off_cells
+  [ "$status" -ne 0 ]
+  local out="$output"
+  grep -qx $'coderabbitai\tcombsmith/software-factory' <<<"$out"
+  grep -q 'not registered' <<<"$out"
+  run grep -qx $'unknown-bot\tcombsmith/broodly' <<<"$out"
+  [ "$status" -ne 0 ]
+}
+
 @test "alerts: a failed computation says so instead of none (#2506)" {
   local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
   _rename_outage_fixture "$d"
