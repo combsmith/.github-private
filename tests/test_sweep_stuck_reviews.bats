@@ -1641,6 +1641,7 @@ write_head() {
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   [[ "$output" != *"already in flight"* ]]
+  grep -qF -- "-f wait=advisory-bots" "$GH_LOG"
 }
 
 @test "advisory wait: a PR in a repo that is not a pr-review consumer is deferred with nothing armed" {
