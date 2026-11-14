@@ -2052,7 +2052,8 @@ resolve_dispositioned_comments() {
   # requests and opt-outs are out of scope), so what the harness resolves is
   # exactly what the gate blocks on.
   local candidate_ids
-  candidate_ids=$(maintainer_gate_open_comment_ids "$all_comments" "$bot_user" || true)
+  # HEAD_SHA: a CI analysis of an earlier head is not a candidate (#2537).
+  candidate_ids=$(maintainer_gate_open_comment_ids "$all_comments" "$bot_user" "${HEAD_SHA:-}" || true)
 
   # #2008: edits re-open a dispositioned comment. CodeRabbit edits ONE summary
   # comment in place. On PR #2000 a Security Architecture finding was appended
