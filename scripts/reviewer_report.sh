@@ -506,7 +506,7 @@ aggregate_snapshot() {
     def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
     (map(select(.kind=="pr"))) as $prs
     | (map(select(.kind=="bot_pr"))) as $bp
-    | ($prs | select(((.author // "") | is_dependabot | not)) | length) as $total
+    | ([$prs[] | select(((.author // "") | is_dependabot | not))] | length) as $total
     # Bucket over ELIGIBLE (non-draft, non-Dependabot) PRs only, so the buckets sum to eligible.
     | (reduce ($prs[] | select(.draft == false and ((.author // "") | is_dependabot | not))) as $p ({}; .[$p.pr] = true)) as $elig_map
     | ($elig_map | length) as $eligible
