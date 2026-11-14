@@ -180,6 +180,12 @@ readonly _MAINTAINER_GATE_INFO_JQ_DEFS='
 #                    two differ. An analysis of the current head stays in scope:
 #                    it describes a failure that is still there. An unknown head
 #                    or a missing __typename clears nothing (fail closed).
+#   The head is the one the caller's snapshot was taken at. An analysis posted
+#   for a NEWER head after that snapshot reads as superseded until the next
+#   snapshot. That window is accepted: an approval is bound to the commit it
+#   reviewed, and the required checks at the head still block the merge.
+#   Every caller's comment nodes need author.__typename; a snapshot without it
+#   makes the rule never fire, which is the old behaviour.
 readonly _MAINTAINER_GATE_CI_ANALYST_JQ_DEFS='
   def stale_ci_analysis($headsha):
     ((.author?.__typename // "") == "Bot")

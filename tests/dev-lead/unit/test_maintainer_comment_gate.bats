@@ -1815,3 +1815,29 @@ _ci_snap() {
 @test "#2537: the resolver passes the PR head to the candidate list" {
   grep -q 'maintainer_gate_open_comment_ids "$all_comments" "$bot_user" "${HEAD_SHA:-}"' "$SCRIPT_DIR/dev-lead-fix-reviews.sh"
 }
+
+@test "#2537: a present but malformed head sha (short, uppercase, not a string) clears nothing → 1" {
+  _run_check "$(_ci_snap "$_CI_OLD" "d30f7bc")"
+  [ "$status" -eq 1 ]
+  _run_check "$(_ci_snap "$_CI_OLD" "D30F7BC0000000000000000000000000000000AA")"
+  [ "$status" -eq 1 ]
+  _run_check "$(_ci_snap "$_CI_OLD" "$_CI_HEAD" | jq -c '.headRefOid = 12345')"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2537: the REST login github-actions[bot] is the same app → 0" {
+  _run_check "$(_ci_snap "$_CI_OLD" "$_CI_HEAD" 'github-actions[bot]')"
+  [ "$status" -eq 0 ]
+}
+
+@test "#2537: with several analyses, only the ones for earlier heads clear; one for the head still blocks" {
+  local snap
+  snap=$(_ci_snap "$_CI_OLD" "$_CI_HEAD" | jq -c --arg h "$_CI_HEAD" '
+    .comments += [ (.comments[0] | .id = "IC_ci2" | .body = "<!-- ci-analyst sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -->\n## CI Failure: bats") ]')
+  _run_check "$snap"
+  [ "$status" -eq 0 ]
+  snap=$(jq -c --arg h "$_CI_HEAD" '.comments += [ (.comments[0] | .id = "IC_ci3" | .body = ("<!-- ci-analyst sha=" + $h + " -->\n## CI Failure: bats")) ]' <<< "$snap")
+  _run_check "$snap"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"1 PR issue comment(s)"* ]]
+}
