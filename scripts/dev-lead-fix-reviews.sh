@@ -52,6 +52,9 @@ source "$(dirname "$0")/lib/maintainer-comment-gate.sh"
 # bcr_fetch_pr_comments (#2017): the fail-closed paginated PR comment read that
 # export_stale_dispositions uses (#2166).
 source "$(dirname "$0")/lib/bot-comment-retry.sh"
+# QA Lead advisory pull (#2487, ADR-0016): qa_advisory_open lists the advisories
+# a review-changes pass must apply or decline.
+source "$(dirname "$0")/lib/qa-advisory-retry.sh"
 # Structured PR-body backfill (#1805): heal an existing PR whose body is still
 # missing 3+ required description sections, once, marker-keyed.
 # Absolute agent-scripts dir, captured before any cd into a PR worktree so later
@@ -4608,6 +4611,8 @@ case "$INTENT_TYPE" in
     }
     # OPEN_THREADS_JSON deliberately NOT exported (see build_and_run): unbounded payload.
     export -n OPEN_THREADS_JSON  # an inherited export would carry the payload into every exec
+    export QA_ADVISORIES_JSON
+    QA_ADVISORIES_JSON=$(export_qa_advisories)
     export BASE_REF="${BASE_REF:-main}"
     fetch_pr_context
     rc=0
