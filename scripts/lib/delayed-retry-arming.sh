@@ -69,15 +69,16 @@ delayed_retry_arm_decision() {
 
 # pr_review_consumer_repo <owner/repo> <agent_repo> [manifest]
 # True when <owner/repo> is reviewed by pr-review: the agent repository itself, or a
-# repo whose consumer-manifest.json entry references the pr-review reusable. Any
-# other repo, an empty name, or an unreadable manifest is false.
+# repo whose consumer-manifest.json entry references the pr-review reusable (any
+# supported variant: pr-review.yml or pr-review-reusable.yml). Any other repo, an
+# empty name, or an unreadable manifest is false.
 pr_review_consumer_repo() {
   local _repo="${1:-}" _agent="${2:-}" _manifest="${3:-}"
   [[ -n "$_repo" ]] || return 1
   [[ "$_repo" == "$_agent" ]] && return 0
   [[ -n "$_manifest" && -r "$_manifest" ]] || return 1
   jq -e --arg r "$_repo" \
-    'any(.consumers[]?; .repo == $r and any(.refs[]?; . == ".github-private/.github/workflows/pr-review.yml"))' \
+    'any(.consumers[]?; .repo == $r and any(.refs[]?; . == ".github-private/.github/workflows/pr-review.yml" or . == ".github-private/.github/workflows/pr-review-reusable.yml"))' \
     "$_manifest" >/dev/null 2>&1
 }
 
