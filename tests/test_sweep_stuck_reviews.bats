@@ -1082,6 +1082,23 @@ jobs:
     uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
     with:
       pr_url: ${{ inputs.pr_url }}'
+# Forwards force_review, but only in a job that does not call pr-review.
+CALLER_FORWARDS_FORCE_ELSEWHERE='on:
+  workflow_dispatch:
+    inputs:
+      pr_url:
+        type: string
+      force_review:
+        type: string
+jobs:
+  other:
+    uses: combsmith/.github/.github/workflows/something-reusable.yml@x/v1-stable
+    with:
+      force_review: ${{ inputs.force_review }}
+  pr-review:
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
+    with:
+      pr_url: ${{ inputs.pr_url }}'
 # Takes pr_url but not force_review.
 CALLER_WITHOUT_FORCE='on:
   workflow_dispatch:
@@ -1450,4 +1467,24 @@ GATE_RESOLVED_COMMENT='[{"id":"IC_done","author":{"login":"a-maintainer"},"autho
   [ "$status" -eq 0 ]
   grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2670) -f force_review=true" "$GH_LOG"
   [[ "$output" == *"does not take and forward force_review"* ]]
+}
+
+@test "pr_review_job_block: returns only the job that calls the pr-review reusable" {
+  load_sweep_fn pr_review_job_block
+  run pr_review_job_block "$CALLER_FORWARDS_FORCE_ELSEWHERE"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pr-review.yml@"* ]]
+  [[ "$output" != *"something-reusable"* ]]
+  [[ "$output" != *"force_review"* ]]
+}
+
+@test "routing: an orphan rescue keeps the agent-repo trigger when only another job forwards force_review" {
+  write_workflows combsmith/demo pr-review.yml:active
+  write_workflow_file combsmith/demo pr-review.yml "$CALLER_FORWARDS_FORCE_ELSEWHERE"
+  write_pr 2680 "REVIEW_REQUIRED" "$ROLLUP_PASS" "orph2680" "[]" '[{"body":"<!-- pr-review-agent v1 sha=orph2680 -->"}]'
+  url_for 2680 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2680) -f force_review=true" "$GH_LOG"
 }

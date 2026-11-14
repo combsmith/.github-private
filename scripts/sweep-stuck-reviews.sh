@@ -264,6 +264,24 @@ entrypoint_dispatch_inputs() {
   ' <<< "${1:-}"
 }
 
+# pr_review_job_block <workflow_yaml>
+# Print the job block(s) under `jobs:` that call the pr-review reusable, so a check
+# on what that job passes is not satisfied by another job. An indentation walk,
+# like entrypoint_dispatch_inputs. Pure.
+pr_review_job_block() {
+  awk '
+    function flush() { if (block ~ /\/\.github\/workflows\/pr-review\.yml@/) print block; block = "" }
+    /^[[:space:]]*(#.*)?$/ { next }
+    { match($0, /^ */); ind = RLENGTH; line = substr($0, ind + 1) }
+    !injobs { if (line ~ /^jobs:[[:space:]]*(#.*)?$/) { injobs = 1; jobs_ind = ind; job_ind = 0 } ; next }
+    ind <= jobs_ind { flush(); injobs = 0; next }
+    job_ind == 0 { job_ind = ind }
+    ind == job_ind { flush(); block = $0; next }
+    { block = block "\n" $0 }
+    END { flush() }
+  ' <<< "${1:-}"
+}
+
 # entrypoint_dispatches_pr_review <workflow_yaml>
 # True when a workflow file can take the sweep's dispatch: workflow_dispatch declares
 # a pr_url input, and the file calls the pr-review reusable. The standard
@@ -304,10 +322,12 @@ resolve_dispatch_target() {
                 -H "Accept: application/vnd.github.raw" 2>/dev/null) || _yaml=""
       if entrypoint_dispatches_pr_review "$_yaml"; then
         ENTRYPOINT_BY_REPO[$_repo]="$_file"
-        # The rescue needs force_review declared as an input AND forwarded to the
-        # reusable; a stub that declares it but drops it would run an unforced review.
+        # The rescue needs force_review declared as an input AND forwarded by the job
+        # that calls the pr-review reusable; a stub that declares it but drops it (or
+        # forwards it only in another job) would run an unforced review.
         if entrypoint_dispatch_inputs "$_yaml" | grep -qx 'force_review' \
-           && grep -Eq '^[[:space:]]*force_review:[[:space:]]*\$\{\{[^}]*inputs\.force_review' <<< "$_yaml"; then
+           && pr_review_job_block "$_yaml" \
+                | grep -Eq '^[[:space:]]*force_review:[[:space:]]*\$\{\{[^}]*inputs\.force_review'; then
           ENTRYPOINT_FORCE_BY_REPO[$_repo]=true
         else
           ENTRYPOINT_FORCE_BY_REPO[$_repo]=false
