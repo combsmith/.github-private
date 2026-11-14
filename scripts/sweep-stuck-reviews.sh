@@ -802,14 +802,14 @@ while IFS= read -r pr_url; do
   # not covered by the workflow_run fast path.
   if [ "$SCHEDULED_SWEEP" = "true" ]; then
     eventability=$(classify_rollup_eventability "$(jq '.statusCheckRollup? // []' <<< "$snapshot" 2>/dev/null || echo '[]')")
-    if [ "$eventability" = "eventable-only" ] && [ -z "$advisory_held_deadline_iso" ]; then
+    if [[ "$eventability" = "eventable-only" && -z "$advisory_held_deadline_iso" ]]; then
       echo "  skip $pr_url — all checks eventable (workflow_run fast path owns it); scheduled sweep is un-eventable-only (#1408)"
       continue
     fi
   fi
 
   # Handle the advisory-wait deferral if one was found
-  if [ -n "$advisory_held_deadline_iso" ]; then
+  if [[ -n "$advisory_held_deadline_iso" ]]; then
     echo "  defer $pr_url — waiting for advisory bots until $advisory_held_deadline_iso (head ${head_sha:0:8})"
     arm_delayed_retry "$pr_url" "$head_sha" "$advisory_held_deadline_iso" "$advisory_held_deadline_epoch" "$now_epoch" \
       "$snapshot" advisory-bots "$advisory_held_current_head"
