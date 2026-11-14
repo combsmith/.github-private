@@ -772,18 +772,6 @@ while IFS= read -r pr_url; do
     continue
   fi
 
-  # Scheduled-backstop narrowing (#1408): on the cron event, only re-review the
-  # un-eventable residue. A PR whose external checks are all eventable GitHub
-  # Actions runs is owned by the workflow_run fast path, so re-dispatching it here
-  # would be the redundant re-review this story removes.
-  if [ "$SCHEDULED_SWEEP" = "true" ]; then
-    eventability=$(classify_rollup_eventability "$(jq '.statusCheckRollup? // []' <<< "$snapshot" 2>/dev/null || echo '[]')")
-    if [ "$eventability" = "eventable-only" ]; then
-      echo "  skip $pr_url — all checks eventable (workflow_run fast path owns it); scheduled sweep is un-eventable-only (#1408)"
-      continue
-    fi
-  fi
-
   # Advisory-bot wait (#2533). A review dispatched now would only skip as
   # waiting-for-advisory-bots, and no event re-fires if the bots never report. Defer
   # it instead, and arm a retry for the gate's head-age deadline; past that deadline
@@ -796,6 +784,18 @@ while IFS= read -r pr_url; do
     arm_delayed_retry "$pr_url" "$head_sha" "$ADVISORY_DEADLINE_ISO" "$ADVISORY_DEADLINE_EPOCH" "$now_epoch" \
       "$snapshot" advisory-bots "$ADVISORY_CURRENT_HEAD"
     continue
+  fi
+
+  # Scheduled-backstop narrowing (#1408): on the cron event, only re-review the
+  # un-eventable residue. A PR whose external checks are all eventable GitHub
+  # Actions runs is owned by the workflow_run fast path, so re-dispatching it here
+  # would be the redundant re-review this story removes.
+  if [ "$SCHEDULED_SWEEP" = "true" ]; then
+    eventability=$(classify_rollup_eventability "$(jq '.statusCheckRollup? // []' <<< "$snapshot" 2>/dev/null || echo '[]')")
+    if [ "$eventability" = "eventable-only" ]; then
+      echo "  skip $pr_url — all checks eventable (workflow_run fast path owns it); scheduled sweep is un-eventable-only (#1408)"
+      continue
+    fi
   fi
 
   dispatch_review "$pr_url" "$snapshot" "stuck-green (head ${head_sha:0:8})"

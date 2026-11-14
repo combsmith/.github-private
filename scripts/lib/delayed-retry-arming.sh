@@ -16,6 +16,7 @@
 #
 # Everything here is pure (no gh, no network) so the decision is unit-tested in
 # tests/test_delayed_retry_arming.bats. The sweep supplies the facts.
+set -euo pipefail
 
 # delayed_retry_arm_decision <wait> <deadline_epoch> <now_epoch> <horizon_sec>
 #                            <armed_head> <current_head> <in_flight> <consumer>
