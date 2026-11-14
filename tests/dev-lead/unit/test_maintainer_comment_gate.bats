@@ -1743,3 +1743,75 @@ _rej_reply() {
   [ "$status" -eq 0 ]
   [ "$output" = '- `IC_kwDORyesfc8AAAABlGA5pw` (codeant-ai): your `fixed` reply citing `c293899b7406de4dc221b3ae14ba2a4a98a5d285`, posted 2026-11-13T07:08:23Z, was rejected: `fixed-unverified:content-no-token-removed`.' ]
 }
+
+# ────────────────────────────────────────────────────────────────────
+# #2537 — a CI Failure Analyst comment about an earlier head no longer holds
+# approval. Nothing dispositions those comments: no reviewer-bot retry answers
+# github-actions, and maintainer-resolve-comment.sh refuses them. On TalkTerm
+# PR 580 six of them, for heads long gone, held the gate for days.
+# ────────────────────────────────────────────────────────────────────
+
+_CI_OLD=916966afec326ad30cfe9434b01edfdb74263f0c
+_CI_HEAD=d30f7bc0000000000000000000000000000000aa
+
+# _ci_snap <marker sha> <head sha|""> [login] [__typename] [body prefix]
+_ci_snap() {
+  jq -cn --arg s "$1" --arg h "$2" --arg l "${3:-github-actions}" --arg t "${4-Bot}" --arg pre "${5:-}" '
+    {comments: [{id:"IC_ci", author:({login:$l} + (if $t == "" then {} else {__typename:$t} end)),
+       authorAssociation:"NONE", includesCreatedEdit:false, isMinimized:false, minimizedReason:"",
+       createdAt:"2026-11-11T01:51:39Z", lastEditedAt:null,
+       body:($pre + "<!-- ci-analyst sha=" + $s + " -->\n## CI Failure: SonarCloud Code Analysis\n**Root cause:** Lint/style")}]}
+    + (if $h == "" then {} else {headRefOid:$h} end)'
+}
+
+@test "#2537: a CI analysis of an earlier head does not hold the gate → 0" {
+  _run_check "$(_ci_snap "$_CI_OLD" "$_CI_HEAD")"
+  [ "$status" -eq 0 ]
+}
+
+@test "#2537: a CI analysis of the CURRENT head still holds the gate → 1" {
+  _run_check "$(_ci_snap "$_CI_HEAD" "$_CI_HEAD")"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2537: with no head sha in the snapshot nothing is treated as superseded → 1" {
+  _run_check "$(_ci_snap "$_CI_OLD" "")"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2537: the marker from a User account, an untyped author or another login still holds the gate → 1" {
+  _run_check "$(_ci_snap "$_CI_OLD" "$_CI_HEAD" github-actions User)"
+  [ "$status" -eq 1 ]
+  _run_check "$(_ci_snap "$_CI_OLD" "$_CI_HEAD" github-actions "")"
+  [ "$status" -eq 1 ]
+  _run_check "$(_ci_snap "$_CI_OLD" "$_CI_HEAD" some-app Bot)"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2537: a marker that is not the first thing in the body, or a short sha, still holds the gate → 1" {
+  _run_check "$(_ci_snap "$_CI_OLD" "$_CI_HEAD" github-actions Bot "Note: ")"
+  [ "$status" -eq 1 ]
+  _run_check "$(_ci_snap "916966a" "$_CI_HEAD")"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2537: a github-actions comment without the marker still holds the gate → 1" {
+  _run_check "$(_ci_snap "$_CI_OLD" "$_CI_HEAD" | jq -c '.comments[0].body = "## CI Failure: something"')"
+  [ "$status" -eq 1 ]
+}
+
+@test "#2537: dev-lead's candidate list drops a superseded CI analysis only when given the head" {
+  local comments
+  comments=$(_ci_snap "$_CI_OLD" "$_CI_HEAD" | jq -c .comments)
+  run bash -c "source '$GATE'; maintainer_gate_open_comment_ids \"\$1\" donpetry-bot \"\$2\"" _ "$comments" "$_CI_HEAD"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  run bash -c "source '$GATE'; maintainer_gate_open_comment_ids \"\$1\" donpetry-bot \"\$2\"" _ "$comments" "$_CI_OLD"
+  [ "$output" = "IC_ci" ]
+  run bash -c "source '$GATE'; maintainer_gate_open_comment_ids \"\$1\" donpetry-bot" _ "$comments"
+  [ "$output" = "IC_ci" ]
+}
+
+@test "#2537: the resolver passes the PR head to the candidate list" {
+  grep -q 'maintainer_gate_open_comment_ids "$all_comments" "$bot_user" "${HEAD_SHA:-}"' "$SCRIPT_DIR/dev-lead-fix-reviews.sh"
+}
