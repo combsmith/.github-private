@@ -1510,6 +1510,15 @@ GATE_RESOLVED_COMMENT='[{"id":"IC_done","author":{"login":"a-maintainer"},"autho
   [[ "$output" != *"force_review"* ]]
 }
 
+@test "pr_review_job_block: matches the pr-review-reusable.yml variant" {
+  load_sweep_fn pr_review_job_block
+  local y=$'jobs:\n  review:\n    uses: combsmith/.github/.github/workflows/pr-review-reusable.yml@main\n    with:\n      force_review: true\n'
+  run pr_review_job_block "$y"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pr-review-reusable.yml@"* ]]
+  [[ "$output" == *"force_review"* ]]
+}
+
 @test "routing: an orphan rescue keeps the agent-repo trigger when only another job forwards force_review" {
   write_workflows combsmith/demo pr-review.yml:active
   write_workflow_file combsmith/demo pr-review.yml "$CALLER_FORWARDS_FORCE_ELSEWHERE"

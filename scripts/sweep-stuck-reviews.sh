@@ -286,7 +286,7 @@ entrypoint_dispatch_inputs() {
 # like entrypoint_dispatch_inputs. Pure.
 pr_review_job_block() {
   awk '
-    function flush() { if (block ~ /\/\.github\/workflows\/pr-review\.yml@/) print block; block = "" }
+    function flush() { if (block ~ /\/\.github\/workflows\/pr-review(-reusable)?\.yml@/) print block; block = "" }
     /^[[:space:]]*(#.*)?$/ { next }
     { match($0, /^ */); ind = RLENGTH; line = substr($0, ind + 1) }
     !injobs { if (line ~ /^jobs:[[:space:]]*(#.*)?$/) { injobs = 1; jobs_ind = ind; job_ind = 0 } ; next }
