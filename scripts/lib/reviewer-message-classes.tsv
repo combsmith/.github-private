@@ -31,7 +31,10 @@
 # Matching order for one message:
 #   1. this bot's rows, top to bottom — the FIRST row that matches wins, so put the
 #      narrow rows (a refusal inside a summary, a finding marker) above the broad ones.
-#      Bot rows of any class now apply to inline comments when kind is "inline" or "any".
+#      A row of kind "inline" applies to inline comments whatever its class. A row of
+#      kind "any" reaches an inline comment only when its class is finding or clean
+#      (#2527), so a broad status / skipped / refused phrase quoted inside a real
+#      inline finding cannot drop it from threads and findings.
 #   2. the shared refusal fallback — ADVISORY_RATE_LIMIT_RE from advisory-review-gate.sh
 #      plus its author-scoped cubic clause (never applied to inline comments);
 #   3. structural defaults in reviewer_report.sh — the first inline comment of a thread
@@ -52,7 +55,7 @@ chatgpt-codex-connector	skipped	any	To use Codex here, (create an environment|\[
 chatgpt-codex-connector	clean	any	(Didn.t|did not) find any major issues
 chatgpt-codex-connector	finding	any	Here are some automated review suggestions
 coderabbitai	finding	any	Security architecture risk.*?(Low|Medium|Moderate|Elevated|High|Critical|Severe)
-coderabbitai	finding	any	Retained concerns(?:\*\*|(?!\*))[\s\n]*(?:[-*]|Low|Medium|High|Critical|Severity)|Hardening Proposals(?:\*\*|(?!\*))[\s\n]*(?:[-*]|proposed)|Actionable comments posted:\s*[1-9]|Outside diff range comments \(\s*[1-9]|Nitpick comments \(\s*[1-9]
+coderabbitai	finding	any	Retained concerns(?:\*\*|(?!\*))[\s\n]*(?:[-*]|Low|Medium|High|Critical|Severity)|Hardening Proposals(?:\*\*|(?!\*))[\s\n]*(?:[-*]|proposed)|Actionable comments posted:\s*[1-9]|Outside diff range comments \(\s*[1-9]|Nitpick comments \(\s*[1-9]|(?:Outside diff range|Nitpick) comments:[ \t]*[1-9]
 coderabbitai	finding	any	(?:Retained concerns|Hardening Proposals)\**[ \t]*(?:\r?\n[ \t]*)+(?!No (?:[a-z-]+ ){0,2}(?:concerns?|proposals?|issues?|findings?|risks?)(?: (?:were|are|have been))?(?: (?:identified|found|raised|retained|proposed|noted))?\.?[ \t]*(?:\r?\n[ \t]*)*(?:<|\*\*|Security review details|Retained concerns|Hardening Proposals|\z))(?!<|\*\*|Security review details|Retained concerns|Hardening Proposals|\z)\S
 coderabbitai	clean	any	No actionable comments were generated|Actionable comments posted:\s*0
 coderabbitai	refused	any	Review limit reached|used all (of )?(your )?free (OSS )?reviews|rate limit exceeded
