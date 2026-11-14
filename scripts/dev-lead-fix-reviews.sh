@@ -40,6 +40,9 @@ source "$(dirname "$0")/lib/test-regression-guard.sh"
 # push, then everything after a push). Empty runs the whole pass in one process,
 # suite included (local runs and tests).
 source "$(dirname "$0")/lib/test-job-handoff.sh"
+# Base-residue guard (#2216): uncommitted residue that restores PR files to base
+# content is dropped before the harness stages the pass.
+source "$(dirname "$0")/lib/base-residue-guard.sh"
 # Review-thread deferral verifier (#2045): the thread-side sibling of the
 # `out-of-scope` disposition. A bot thread deferred to an open tracking issue that
 # links it is resolved by resolve_deferred_bot_threads.
@@ -3327,12 +3330,52 @@ Auto-merge has been disabled and no commit was pushed. A human should restore th
   return 0
 }
 
+# drop_base_residue <intent> — restore to HEAD every uncommitted path that puts a
+# PR file back to its base content (lib/base-residue-guard.sh, #2216), with a
+# warning naming the paths. Fails open: an unresolvable base drops nothing.
+drop_base_residue() {
+  local intent="$1" residue brg_rc=0 paths base_ref="${BASE_REF:-}"
+  # BASE_REF defaults to main before the PR context is read; resolve the PR's real
+  # base like the test-tamper guard does, failing open to the BASE_REF value.
+  if [ -n "${PR_NUMBER:-}" ] && [ -n "${REPO:-}" ]; then
+    base_ref=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" 2>/dev/null | jq -r '.base.ref // empty' 2>/dev/null) || base_ref=""
+    [ -n "$base_ref" ] || base_ref="${BASE_REF:-}"
+  fi
+  residue=$(brg_find_residue "$base_ref") || brg_rc=$?
+  if [ "$brg_rc" -ne 0 ]; then
+    echo "::warning::Base-residue guard: could not check the ${intent} pass for base-content residue — nothing dropped (#2216)"
+    return 0
+  fi
+  [ -n "$residue" ] || return 0
+  paths=$(printf '%s\n' "$residue" | paste -sd ',' - | sed 's/,/, /g')
+  if [ "${DEV_LEAD_DRY_RUN:-false}" = "true" ]; then
+    echo "[dry-run] Base-residue guard: would drop uncommitted residue restoring PR file(s) to ${base_ref}: ${paths}"
+    return 0
+  fi
+  local -a residue_paths=()
+  IFS=$'\n' read -r -d '' -a residue_paths <<<"$residue" || true
+  if ! brg_drop_residue "${residue_paths[@]}"; then
+    echo "::error::Base-residue guard: could not drop uncommitted residue restoring PR file(s) to ${base_ref} [${paths}] — refusing to commit it (#2216)" >&2
+    retract_unlanded_claims "$intent" failed || true
+    exit 1
+  fi
+  echo "::warning::Base-residue guard: the ${intent} pass left uncommitted changes restoring PR file(s) to ${base_ref} content [${paths}] — dropped them, not committed (#2216)"
+}
+
 # commit_and_push: adds all changes, commits with an intent-specific message,
 # and pushes to the PR branch. Returns 0 if changes were made and pushed,
 # 1 if no changes were found, 3 if the no-op guard aborted the push (#1340).
 commit_and_push() {
   local intent="$1"
   local has_uncommitted=false has_unpushed=false
+
+  # Base-residue guard (#2216): drop uncommitted residue that restores PR files to
+  # base content (the #2198 `git checkout origin/main -- .` shape) BEFORE the
+  # `git add -A` below can commit it. Only for intents whose prompts make the
+  # agent commit its fixes — there, a deliberate restore is a commit, not residue.
+  case "$intent" in
+    fix-reviews|fix-bot-comment|review-changes|human-pr) drop_base_residue "$intent" ;;
+  esac
 
   # git status --porcelain covers untracked files that git diff misses
   [ -n "$(git status --porcelain 2>/dev/null)" ] && has_uncommitted=true

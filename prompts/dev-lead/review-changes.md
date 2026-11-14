@@ -148,6 +148,7 @@ Read all your changes from the reviewer's perspective:
 - If multiple threads conflict, prioritize: security > correctness > style
 - Maintain the existing code style and patterns
 - Commit your fixes locally so your claims can cite them, but **never push**. The CI workflow pushes after you finish, verifies the push landed, and retracts any claim that did not land (#2013)
+- To inspect the base branch, use `git show origin/<base>:<path>` or `git diff origin/<base> -- <path>`. Never check base content out into the worktree (`git checkout origin/<base> -- …`). Uncommitted changes that restore PR files to base content are dropped, not committed. A deliberate restore to base must be its own commit (#2216)
 - Never edit an existing test to match your change; an existing-test change needs a `Test-Change-Justification:` trailer (#2013)
 
 ## Output Format
