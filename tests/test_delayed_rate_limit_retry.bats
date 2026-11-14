@@ -404,6 +404,15 @@ url_in() { echo "https://github.com/$1/pull/$2"; }
   [[ "$output" == *"WAIT_KIND"* ]]
 }
 
+@test "an unparseable PR_URL fails with exit 2 instead of a silent no-op" {
+  export PR_URL="not-a-pr-url"
+  export HEAD_SHA="adv2106" NOT_BEFORE="$PAST_RESET" WAIT_KIND="rate-limit"
+
+  run bash "$RETRY"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"unparseable"* ]]
+}
+
 @test "delayed-retry workflow takes a wait input, passes it as WAIT_KIND, keeps the run-name dedup and stays dispatch-only" {
   run yq -r '.on.workflow_dispatch.inputs.wait.default' "$WORKFLOW"
   [ "$output" = "rate-limit" ]

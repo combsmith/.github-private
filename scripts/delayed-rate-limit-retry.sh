@@ -113,12 +113,14 @@ echo "  Not before: ${NOT_BEFORE:-<none>}"
 
 # Only pr-review consumers are retried (#2533): the delegated sweep would otherwise
 # dispatch a review for a repo pr-review does not serve.
-pr_repo=""
 if [[ "$PR_URL" =~ ^https?://[^/]+/([^/]+/[^/]+)/pull/[0-9]+ ]]; then
   pr_repo="${BASH_REMATCH[1]}"
+else
+  echo "::error::delayed-rate-limit-retry: PR_URL '${PR_URL:-<empty>}' is unparseable"
+  exit 2
 fi
 if ! pr_review_consumer_repo "$pr_repo" "$AGENT_REPO" "$CONSUMER_MANIFEST"; then
-  echo "  no-op: ${pr_repo:-<unparseable PR URL>} is not a pr-review consumer — nothing to retry"
+  echo "  no-op: $pr_repo is not a pr-review consumer — nothing to retry"
   exit 0
 fi
 
