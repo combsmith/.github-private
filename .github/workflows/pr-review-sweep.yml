@@ -34,6 +34,12 @@ name: PR Review Agent — Stuck-Review Sweep
 # dispatching workflow in the repo (initiative-planner.yml, auto-rebase-retry.yml,
 # scripts/initiative-planner/redispatch.sh). See scripts/sweep-stuck-reviews.sh.
 #
+# Fleet routing (#2530, ADR-0017): candidates span the whole org. A PR in another
+# repo is dispatched to THAT repo's own pr-review.yml / agent-ingress.yml, so the
+# token above also needs actions:write on the consumer repos. A PR held at the
+# maintainer-comment gate is not dispatched, and candidates rotate across repos so
+# MAX_DISPATCH reaches every repo.
+#
 # This workflow has no corresponding org template in standards/workflows/ and is
 # documented as a repo-specific exception in AGENTS.md; template syncs must not
 # remove it.
