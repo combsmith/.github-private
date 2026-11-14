@@ -331,7 +331,7 @@ resolve_dispatch_target() {
     ENTRYPOINT_BY_REPO[$_repo]=""
     # Ask for each file by name, in preference order: the workflow list is paged, so
     # an entrypoint on a later page would be missed. A missing file is a 404.
-    for _file in pr-review.yml agent-ingress.yml; do
+    for _file in pr-review.yml pr-review-reusable.yml agent-ingress.yml; do
       _state=$(gh api "repos/$_repo/actions/workflows/$_file" --jq '.state // ""' 2>/dev/null) || _state=""
       [[ "$_state" == "active" ]] || continue
       _yaml=$(gh api "repos/$_repo/contents/.github/workflows/$_file" \
