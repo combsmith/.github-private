@@ -498,7 +498,7 @@ arm_delayed_retry() {
   # gh exposes as displayTitle. Fail OPEN — a query error falls through to arm so
   # a transient gh failure can never strand the retry.
   local _in_flight=false
-  if delayed_retry_in_flight "$_url" "$_sha"; then
+  if delayed_retry_in_flight "$_url" "$_sha" "$_wait"; then
     _in_flight=true
   fi
   if ! delayed_retry_arm_decision "$_wait" "$_reset_epoch" "$_now_epoch" \
@@ -518,19 +518,22 @@ arm_delayed_retry() {
   fi
 }
 
-# delayed_retry_in_flight <pr_url> <head_sha>
+# delayed_retry_in_flight <pr_url> <head_sha> [wait]
 # True when a queued or in-progress pr-review-delayed-retry run already exists for
-# this exact (PR, head). Matches on the run-name the retry workflow sets
-# ("pr-review-delayed-retry <pr_url> @ <head_sha>"), surfaced by gh as
-# displayTitle. Fails OPEN (returns false) on any query error so a transient gh
+# this exact (PR, head, wait). Matches on the run-name the retry workflow sets
+# ("pr-review-delayed-retry <pr_url> @ <head_sha>", plus " (advisory-bots)" for that
+# wait), surfaced by gh as displayTitle. The wait is part of the key so an earlier
+# advisory-bots retry never hides a later rate-limit deadline at the same head. Fails OPEN (returns false) on any query error so a transient gh
 # failure never suppresses a needed arm.
 delayed_retry_in_flight() {
-  local _url="$1" _sha="$2" _runs
+  local _url="$1" _sha="$2" _w="${3:-rate-limit}" _runs _title
+  _title="$_url @ $_sha"
+  [[ "$_w" != "advisory-bots" ]] || _title+=" (advisory-bots)"
   _runs=$(gh run list --repo "$AGENT_REPO" --workflow "$DELAYED_RETRY_WORKFLOW" \
             --event workflow_dispatch --limit 50 \
             --json status,displayTitle 2>/dev/null) || return 1
   [ -n "$_runs" ] || return 1
-  jq -e --arg title "$_url @ $_sha" '
+  jq -e --arg title "$_title" '
     any(.[]?; (.status == "queued" or .status == "in_progress")
              and ((.displayTitle // "") | endswith($title)))' \
     <<< "$_runs" >/dev/null 2>&1
@@ -571,7 +574,8 @@ advisory_wait_deadline() {
   _oid=$(jq -r '.data.resource.commits.nodes[0].commit.oid // ""' <<< "$_raw" 2>/dev/null) || _oid=""
   _date=$(jq -r '.data.resource.commits.nodes[0].commit.committer.date // ""' <<< "$_raw" 2>/dev/null) || _date=""
   [[ -n "$_oid" && -n "$_date" ]] || return 1
-  _timeout=$(advisory_head_age_timeout)
+  advisory_head_age_timeout >/dev/null  # direct call: a $(...) would drop the cache assignment
+  _timeout="$ADVISORY_TIMEOUT_CACHE"
   _deadline=$(advisory_head_age_deadline "$_date" "$_timeout") || return 1
   # Past the deadline the gate proceeds on head age, so the review is due now.
   [[ "$_now" -lt "$_deadline" ]] || return 1

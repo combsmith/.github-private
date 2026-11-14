@@ -417,7 +417,7 @@ url_in() { echo "https://github.com/$1/pull/$2"; }
   run yq -r '.on.workflow_dispatch.inputs.wait.default' "$WORKFLOW"
   [ "$output" = "rate-limit" ]
   grep -qE '^[[:space:]]*WAIT_KIND: \$\{\{ inputs\.wait' "$WORKFLOW"
-  grep -qF 'run-name: "pr-review-delayed-retry ${{ inputs.pr_url }} @ ${{ inputs.head_sha }}"' "$WORKFLOW"
+  grep -qF 'run-name: "pr-review-delayed-retry ${{ inputs.pr_url }} @ ${{ inputs.head_sha }}${{ inputs.wait == '"'"'advisory-bots'"'"' && '"'"' (advisory-bots)'"'"' || '"'"''"'"' }}"' "$WORKFLOW"
   run yq -r '.on | keys | join(",")' "$WORKFLOW"
   [ "$output" = "workflow_dispatch" ]
 }

@@ -1622,13 +1622,25 @@ write_head() {
   write_head 2539 adv2539 $(( $(date -u +%s) - 300 ))
   url_for 2539 > "$SWEEP_PRS_FILE"
   # gh run list reports a queued retry for this exact (PR, head).
-  jq -cn --arg t "pr-review-delayed-retry $(url_for 2539) @ adv2539" \
+  jq -cn --arg t "pr-review-delayed-retry $(url_for 2539) @ adv2539 (advisory-bots)" \
     '[{status:"queued", displayTitle:$t}]' > "$FIXTURE_DIR/runs.json"
 
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   [ ! -s "$GH_LOG" ]
   [[ "$output" == *"already in flight"* ]]
+}
+
+@test "advisory wait: a rate-limit retry in flight at the same head does not suppress the advisory arm" {
+  write_pr 2589 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2589"
+  write_head 2589 adv2589 $(( $(date -u +%s) - 300 ))
+  url_for 2589 > "$SWEEP_PRS_FILE"
+  jq -cn --arg t "pr-review-delayed-retry $(url_for 2589) @ adv2589" \
+    '[{status:"queued", displayTitle:$t}]' > "$FIXTURE_DIR/runs.json"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"already in flight"* ]]
 }
 
 @test "advisory wait: a PR in a repo that is not a pr-review consumer is deferred with nothing armed" {
