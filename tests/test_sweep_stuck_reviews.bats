@@ -23,6 +23,13 @@ setup() {
   export PATH="$MOCK_BIN:$PATH"
   export SWEEP_PRS_FILE="$PRS_FILE"
   export AGENT_REPO="combsmith/.github-private"
+  # On a CI runner these hold the runner's own ref and summary file. Tests that
+  # need them set them explicitly.
+  unset GITHUB_REF GITHUB_STEP_SUMMARY
+  # The comment-gate pre-check (#2530) is exercised by its own tests below. These
+  # fixtures' marker comments carry no author (live ones come from donpetry-bot,
+  # outside the gate's scope), so the shared suite runs with it off.
+  export SKIP_GATE_HELD=false
 
   cat > "$MOCK_BIN/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -41,6 +48,42 @@ case "$1" in
   workflow)
     printf '%s\n' "$*" >> "$GH_LOG"
     exit 0
+    ;;
+  api)
+    case "$2" in
+      repos/*/actions/workflows/*)
+        # gh api repos/<owner>/<repo>/actions/workflows/<file> --jq '.state // ""'
+        # → that file's state from wf_<owner>__<repo>.json; a 404 when not listed.
+        r="${2#repos/}"; file="${r##*/}"; r="${r%%/actions/*}"
+        f="$FIXTURE_DIR/wf_${r%%/*}__${r#*/}.json"
+        [ -f "$f" ] || exit 1
+        state=$(jq -r --arg p ".github/workflows/$file" 'first(.workflows[] | select(.path == $p) | .state) // empty' "$f")
+        [ -n "$state" ] || exit 1
+        echo "$state"; exit 0
+        ;;
+      repos/*/contents/.github/workflows/*)
+        # gh api repos/<owner>/<repo>/contents/.github/workflows/<file> → wfc_<owner>__<repo>__<file>
+        r="${2#repos/}"; file="${r##*/}"; r="${r%%/contents/*}"
+        f="$FIXTURE_DIR/wfc_${r%%/*}__${r#*/}__${file}"
+        if [ -f "$f" ]; then cat "$f"; exit 0; fi
+        exit 1
+        ;;
+      rate_limit) echo "4990 4980"; exit 0 ;;
+      graphql)
+        # The comment-gate edit-time/author-type lookup: answer from the PR fixture,
+        # typing a "[bot]" login as Bot and anything else as User.
+        [ -z "${GH_GRAPHQL_FAIL:-}" ] || exit 1
+        url=""
+        for a in "$@"; do case "$a" in url=*) url="${a#url=}" ;; esac; done
+        f="$FIXTURE_DIR/pr_${url##*/}.json"
+        nodes='[]'
+        [ -f "$f" ] && nodes=$(jq -c '[(.comments // [])[] | select(.id != null)
+          | {id, lastEditedAt: (.lastEditedAt // null),
+             author: {__typename: (if ((.author.login // "") | endswith("[bot]")) then "Bot" else "User" end)}}]' "$f")
+        jq -cn --argjson n "$nodes" '{data:{resource:{comments:{pageInfo:{hasNextPage:false,endCursor:null},nodes:$n}}}}'
+        exit 0
+        ;;
+    esac
     ;;
 esac
 exit 0
@@ -996,4 +1039,452 @@ rl_and_escalation() {
   run bash "$SCRIPT"
   [ "$status" -eq 0 ]
   [ ! -s "$GH_LOG" ]
+}
+
+# ── Fleet routing, round-robin and the comment-gate pre-check (#2530) ─────────
+
+# load_sweep_fn <name> — source one top-level helper from the sweep script without
+# running the script itself.
+load_sweep_fn() {
+  local f
+  f="$(mktemp)"
+  sed -n "/^$1() {/,/^}/p" "$SCRIPT" > "$f"
+  # shellcheck disable=SC1090
+  source "$f"
+  rm -f "$f"
+}
+
+# A caller that takes the sweep's dispatch: workflow_dispatch with pr_url, calling
+# the pr-review reusable (the shape of the standard stub and markets' ingress).
+DISPATCHABLE_CALLER='on:
+  workflow_dispatch:
+    inputs:
+      pr_url:
+        type: string
+      force_review:
+        type: string
+jobs:
+  pr-review:
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
+    with:
+      pr_url: ${{ inputs.pr_url || '"''"' }}
+      force_review: ${{ inputs.force_review || '"''"' }}'
+# Declares force_review but never forwards it to the reusable.
+CALLER_DROPS_FORCE='on:
+  workflow_dispatch:
+    inputs:
+      pr_url:
+        type: string
+      force_review:
+        type: string
+jobs:
+  pr-review:
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
+    with:
+      pr_url: ${{ inputs.pr_url }}'
+# Forwards force_review, but only in a job that does not call pr-review.
+CALLER_FORWARDS_FORCE_ELSEWHERE='on:
+  workflow_dispatch:
+    inputs:
+      pr_url:
+        type: string
+      force_review:
+        type: string
+jobs:
+  other:
+    uses: combsmith/.github/.github/workflows/something-reusable.yml@x/v1-stable
+    with:
+      force_review: ${{ inputs.force_review }}
+  pr-review:
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
+    with:
+      pr_url: ${{ inputs.pr_url }}'
+# Takes pr_url but not force_review.
+CALLER_WITHOUT_FORCE='on:
+  workflow_dispatch:
+    inputs:
+      pr_url:
+        type: string
+jobs:
+  pr-review:
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable'
+# pr_url only as a reusable input under `with:`, never a dispatch input.
+CALLER_PR_URL_ONLY_IN_WITH='on:
+  workflow_dispatch:
+jobs:
+  pr-review:
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
+    with:
+      pr_url: ""'
+# The reference ingress shape: no workflow_dispatch, no pr-review job.
+UNDISPATCHABLE_INGRESS='on:
+  pull_request:
+jobs:
+  dev-lead:
+    uses: combsmith/.github-private/.github/workflows/dev-lead-reusable.yml@dev-lead/v139-stable'
+
+# write_workflows <owner/repo> <file:state>... — the repo's actions/workflows
+# listing. Each listed pr-review.yml / agent-ingress.yml also gets DISPATCHABLE_CALLER
+# as its contents; write_workflow_file overrides that.
+write_workflows() {
+  local repo="$1" json='[]' p
+  shift
+  for p in "$@"; do
+    json=$(jq -c --arg path ".github/workflows/${p%%:*}" --arg state "${p#*:}" '. + [{path:$path, state:$state}]' <<< "$json")
+    case "${p%%:*}" in
+      pr-review.yml|agent-ingress.yml) write_workflow_file "$repo" "${p%%:*}" "$DISPATCHABLE_CALLER" ;;
+    esac
+  done
+  jq -n --argjson w "$json" '{total_count: ($w | length), workflows: $w}' \
+    > "$FIXTURE_DIR/wf_${repo%%/*}__${repo#*/}.json"
+}
+
+# write_workflow_file <owner/repo> <file> <contents>
+write_workflow_file() {
+  printf '%s\n' "$3" > "$FIXTURE_DIR/wfc_${1%%/*}__${1#*/}__$2"
+}
+
+@test "interleave_by_repo: round-robins across repos, keeping each repo's order and the repos' first-seen order" {
+  load_sweep_fn interleave_by_repo
+  run interleave_by_repo <<'IN'
+https://github.com/o/.github-private/pull/1
+https://github.com/o/.github-private/pull/2
+https://github.com/o/.github-private/pull/3
+
+https://github.com/o/app/pull/9
+https://github.com/o/lib/pull/4
+https://github.com/o/app/pull/10
+IN
+  [ "$status" -eq 0 ]
+  [ "$output" = "https://github.com/o/.github-private/pull/1
+https://github.com/o/app/pull/9
+https://github.com/o/lib/pull/4
+https://github.com/o/.github-private/pull/2
+https://github.com/o/app/pull/10
+https://github.com/o/.github-private/pull/3" ]
+}
+
+@test "entrypoint_dispatches_pr_review: needs workflow_dispatch, a pr_url input and the pr-review reusable" {
+  load_sweep_fn entrypoint_dispatch_inputs
+  load_sweep_fn entrypoint_dispatches_pr_review
+  entrypoint_dispatches_pr_review "$DISPATCHABLE_CALLER"
+  run entrypoint_dispatches_pr_review "$UNDISPATCHABLE_INGRESS"
+  [ "$status" -ne 0 ]
+  run entrypoint_dispatches_pr_review "${DISPATCHABLE_CALLER/pr_url:/dry_run:}"
+  [ "$status" -ne 0 ]
+  run entrypoint_dispatches_pr_review "${DISPATCHABLE_CALLER/pr-review.yml@/dev-lead-reusable.yml@}"
+  [ "$status" -ne 0 ]
+  run entrypoint_dispatches_pr_review ""
+  [ "$status" -ne 0 ]
+}
+
+@test "sweep_cost_line: reports points spent, or unknown when unreadable or the window reset" {
+  load_sweep_fn sweep_cost_line
+  [ "$(sweep_cost_line "5000 4000" "4990 3980")" = "GraphQL 10, REST 20" ]
+  [ "$(sweep_cost_line "" "4990 3980")" = "unknown" ]
+  [ "$(sweep_cost_line "100 100" "4999 4999")" = "unknown" ]
+}
+
+@test "routing: a consumer PR is dispatched to that repo's own pr-review.yml, without the feature-branch ref" {
+  write_workflows combsmith/demo pr-review.yml:active
+  write_pr 2601 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  url_for 2601 > "$SWEEP_PRS_FILE"
+  export GITHUB_REF=refs/heads/some-feature
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review.yml --repo combsmith/demo -f pr_url=$(url_for 2601)" "$GH_LOG"
+  ! grep -qF -- "--ref" "$GH_LOG" || false
+  ! grep -qF "pr-review-trigger.yml" "$GH_LOG" || false
+  [[ "$output" == *"Dispatches by repo: combsmith/demo=1"* ]]
+}
+
+@test "routing: a repo on the ADR-0007 ingress stub is dispatched through agent-ingress.yml" {
+  write_workflows combsmith/demo agent-ingress.yml:active ci.yml:active
+  write_pr 2602 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  url_for 2602 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run agent-ingress.yml --repo combsmith/demo -f pr_url=$(url_for 2602)" "$GH_LOG"
+}
+
+@test "routing: the orphaned-marker rescue keeps force_review when routed to a consumer" {
+  write_workflows combsmith/demo pr-review.yml:active
+  write_pr 2603 "REVIEW_REQUIRED" "$ROLLUP_PASS" "orph2603" "[]" '[{"body":"<!-- pr-review-agent v1 sha=orph2603 -->"}]'
+  url_for 2603 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review.yml --repo combsmith/demo -f pr_url=$(url_for 2603) -f force_review=true" "$GH_LOG"
+}
+
+@test "routing: a repo with no pr-review entrypoint, or an unreadable workflow list, keeps the agent-repo trigger and its ref" {
+  write_workflows combsmith/demo ci.yml:active
+  write_pr 2604 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  write_pr 2605 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  printf '%s\n' "$(url_for 2604)" "https://github.com/combsmith/nolist/pull/2605" > "$SWEEP_PRS_FILE"
+  export GITHUB_REF=refs/heads/some-feature
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private --ref refs/heads/some-feature -f pr_url=$(url_for 2604)" "$GH_LOG"
+  grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private --ref refs/heads/some-feature -f pr_url=https://github.com/combsmith/nolist/pull/2605" "$GH_LOG"
+}
+
+@test "routing: an ingress that cannot take a pr_url dispatch is not used; the agent-repo trigger is" {
+  write_workflows combsmith/demo agent-ingress.yml:active
+  write_workflow_file combsmith/demo agent-ingress.yml "$UNDISPATCHABLE_INGRESS"
+  write_pr 2608 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  url_for 2608 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2608)" "$GH_LOG"
+  [[ "$output" == *"agent-ingress.yml does not take a pr_url dispatch"* ]]
+}
+
+@test "routing: a pr-review.yml that cannot take the dispatch falls through to a dispatchable agent-ingress.yml" {
+  write_workflows combsmith/demo pr-review.yml:active agent-ingress.yml:active
+  write_workflow_file combsmith/demo pr-review.yml "$UNDISPATCHABLE_INGRESS"
+  write_pr 2609 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  url_for 2609 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run agent-ingress.yml --repo combsmith/demo -f pr_url=$(url_for 2609)" "$GH_LOG"
+}
+
+@test "routing: a disabled pr-review.yml is skipped for an active agent-ingress.yml" {
+  write_workflows combsmith/demo pr-review.yml:disabled_manually agent-ingress.yml:active
+  write_pr 2615 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  url_for 2615 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run agent-ingress.yml --repo combsmith/demo -f pr_url=$(url_for 2615)" "$GH_LOG"
+}
+
+@test "routing: ROUTE_TO_REPO_ENTRYPOINT=false sends a consumer PR through the agent-repo trigger" {
+  write_workflows combsmith/demo pr-review.yml:active
+  write_pr 2606 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  url_for 2606 > "$SWEEP_PRS_FILE"
+  export ROUTE_TO_REPO_ENTRYPOINT=false
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2606)" "$GH_LOG"
+}
+
+@test "routing: an agent-repo PR always uses the trigger, even if a pr-review.yml listing exists" {
+  write_workflows combsmith/.github-private pr-review.yml:active
+  write_pr 2607 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  echo "https://github.com/combsmith/.github-private/pull/2607" > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=https://github.com/combsmith/.github-private/pull/2607" "$GH_LOG"
+}
+
+# A maintainer's finding posted as a PR issue comment, never dispositioned.
+GATE_OPEN_COMMENT='[{"id":"IC_open","author":{"login":"a-maintainer"},"authorAssociation":"OWNER","body":"This drops the exit status on line 42.","isMinimized":false,"minimizedReason":null}]'
+# The same comment after dev-lead's verified disposition: minimized RESOLVED.
+GATE_RESOLVED_COMMENT='[{"id":"IC_done","author":{"login":"a-maintainer"},"authorAssociation":"OWNER","body":"This drops the exit status on line 42.","isMinimized":true,"minimizedReason":"RESOLVED"}]'
+
+@test "comment gate: a PR the gate would hold is not dispatched, and does not spend MAX_DISPATCH" {
+  export SKIP_GATE_HELD=true MAX_DISPATCH=1
+  write_pr 2610 "REVIEW_REQUIRED" "$ROLLUP_PASS" "held2610" "[]" "$GATE_OPEN_COMMENT"
+  write_pr 2611 "REVIEW_REQUIRED" "$ROLLUP_PASS" "free2611"
+  printf '%s\n' "$(url_for 2610)" "$(url_for 2611)" > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  ! grep -qF -- "-f pr_url=$(url_for 2610)" "$GH_LOG" || false
+  grep -qF -- "-f pr_url=$(url_for 2611)" "$GH_LOG"
+  [[ "$output" == *"held at the maintainer-comment gate"* ]]
+  [[ "$output" == *"1 review(s) dispatched"*"1 held at the comment gate."* ]]
+}
+
+@test "comment gate: a dispositioned (minimized RESOLVED) comment does not hold the PR" {
+  export SKIP_GATE_HELD=true
+  write_pr 2612 "REVIEW_REQUIRED" "$ROLLUP_PASS" "done2612" "[]" "$GATE_RESOLVED_COMMENT"
+  url_for 2612 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "-f pr_url=$(url_for 2612)" "$GH_LOG"
+}
+
+@test "comment gate: our own marker comments do not hold the PR (the orphan rescue still fires)" {
+  export SKIP_GATE_HELD=true
+  write_pr 2613 "REVIEW_REQUIRED" "$ROLLUP_PASS" "orph2613" "[]" \
+    '[{"id":"IC_m","author":{"login":"donpetry-bot"},"authorAssociation":"NONE","body":"<!-- pr-review-agent v1 sha=orph2613 -->","isMinimized":false,"minimizedReason":null}]'
+  url_for 2613 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "-f pr_url=$(url_for 2613) -f force_review=true" "$GH_LOG"
+}
+
+@test "comment gate: SKIP_GATE_HELD=false dispatches a held PR as before" {
+  export SKIP_GATE_HELD=false
+  write_pr 2614 "REVIEW_REQUIRED" "$ROLLUP_PASS" "held2614" "[]" "$GATE_OPEN_COMMENT"
+  url_for 2614 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "-f pr_url=$(url_for 2614)" "$GH_LOG"
+}
+
+@test "round-robin: with MAX_DISPATCH=2, a second repo is reached before the first repo's backlog" {
+  write_pr 2620 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  write_pr 2621 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  write_pr 2622 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  write_pr 2623 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  printf '%s\n' \
+    "https://github.com/combsmith/.github-private/pull/2620" \
+    "https://github.com/combsmith/.github-private/pull/2621" \
+    "https://github.com/combsmith/.github-private/pull/2622" \
+    "https://github.com/combsmith/other/pull/2623" > "$SWEEP_PRS_FILE"
+  export MAX_DISPATCH=2
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "-f pr_url=https://github.com/combsmith/.github-private/pull/2620" "$GH_LOG"
+  grep -qF -- "-f pr_url=https://github.com/combsmith/other/pull/2623" "$GH_LOG"
+  [ "$(grep -c . "$GH_LOG")" -eq 2 ]
+}
+
+@test "summary: the job summary reports the counts, dispatches by repo and API points spent" {
+  write_workflows combsmith/demo pr-review.yml:active
+  write_pr 2630 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  url_for 2630 > "$SWEEP_PRS_FILE"
+  export GITHUB_STEP_SUMMARY="$FIXTURE_DIR/summary.md"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "| 1 | 1 | 0 | 0 | GraphQL 0, REST 0 |" "$GITHUB_STEP_SUMMARY"
+  grep -qF "Dispatches by repo: combsmith/demo=1" "$GITHUB_STEP_SUMMARY"
+  # The metrics parser's anchor survives.
+  [[ "$output" == *"1 review(s) dispatched"* ]]
+}
+
+@test "comment gate: a near-reset rate-limited PR the gate holds arms no delayed retry" {
+  export SKIP_GATE_HELD=true
+  local reset marker comments
+  reset="$(near_reset)"
+  marker=$(jq -cn --arg b "<!-- pr-review-agent rate-limited v1 sha=rl2640 status=rate-limited reset=$reset -->" \
+    '{id:"IC_rl", author:{login:"donpetry-bot"}, authorAssociation:"NONE", body:$b, isMinimized:false, minimizedReason:null}')
+  comments=$(jq -c --argjson m "$marker" '[$m] + .' <<< "$GATE_OPEN_COMMENT")
+  write_pr 2640 "REVIEW_REQUIRED" "$ROLLUP_PASS" "rl2640" "[]" "$comments"
+  url_for 2640 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"arm skipped $(url_for 2640) — held at the maintainer-comment gate"* ]]
+  [[ "$output" == *"1 held at the comment gate."* ]]
+}
+
+@test "comment gate: a near-reset rate-limited PR with only our own marker still arms its retry" {
+  export SKIP_GATE_HELD=true
+  local reset
+  reset="$(near_reset)"
+  write_pr 2641 "REVIEW_REQUIRED" "$ROLLUP_PASS" "rl2641" "[]" \
+    "$(jq -cn --arg b "<!-- pr-review-agent rate-limited v1 sha=rl2641 status=rate-limited reset=$reset -->" \
+        '[{id:"IC_rl", author:{login:"donpetry-bot"}, authorAssociation:"NONE", body:$b, isMinimized:false, minimizedReason:null}]')"
+  url_for 2641 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c -- 'workflow run pr-review-delayed-retry.yml' "$GH_LOG")" -eq 1 ]
+}
+
+@test "entrypoint_dispatch_inputs: lists only the keys under on.workflow_dispatch.inputs" {
+  load_sweep_fn entrypoint_dispatch_inputs
+  [ "$(entrypoint_dispatch_inputs "$DISPATCHABLE_CALLER" | tr '\n' ' ')" = "pr_url force_review " ]
+  [ -z "$(entrypoint_dispatch_inputs "$CALLER_PR_URL_ONLY_IN_WITH")" ]
+  [ -z "$(entrypoint_dispatch_inputs "$UNDISPATCHABLE_INGRESS")" ]
+  # Inline comments and blank lines are tolerated; a sibling trigger ends the block.
+  run entrypoint_dispatch_inputs $'on:\n  workflow_dispatch:   # manual\n    inputs:\n\n      pr_url:\n        description: x\n      dry_run:\n  repository_dispatch:\n    types: [pr_url]'
+  [ "$output" = $'pr_url\ndry_run' ]
+}
+
+@test "entrypoint_dispatches_pr_review: a pr_url under a job's with: is not a dispatch input" {
+  load_sweep_fn entrypoint_dispatch_inputs
+  load_sweep_fn entrypoint_dispatches_pr_review
+  run entrypoint_dispatches_pr_review "$CALLER_PR_URL_ONLY_IN_WITH"
+  [ "$status" -ne 0 ]
+}
+
+@test "routing: an orphan rescue keeps the agent-repo trigger when the entrypoint has no force_review input" {
+  write_workflows combsmith/demo pr-review.yml:active
+  write_workflow_file combsmith/demo pr-review.yml "$CALLER_WITHOUT_FORCE"
+  write_pr 2650 "REVIEW_REQUIRED" "$ROLLUP_PASS" "orph2650" "[]" '[{"body":"<!-- pr-review-agent v1 sha=orph2650 -->"}]'
+  write_pr 2651 "REVIEW_REQUIRED" "$ROLLUP_PASS"
+  printf '%s\n' "$(url_for 2650)" "$(url_for 2651)" > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2650) -f force_review=true" "$GH_LOG"
+  # An ordinary dispatch in the same repo still routes to the entrypoint.
+  grep -qF "workflow run pr-review.yml --repo combsmith/demo -f pr_url=$(url_for 2651)" "$GH_LOG"
+}
+
+@test "comment gate: a failed author-type lookup is undeterminable, so the PR is dispatched" {
+  export SKIP_GATE_HELD=true GH_GRAPHQL_FAIL=1
+  write_pr 2652 "REVIEW_REQUIRED" "$ROLLUP_PASS" "lk2652" "[]" "$GATE_OPEN_COMMENT"
+  url_for 2652 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "-f pr_url=$(url_for 2652)" "$GH_LOG"
+}
+
+@test "comment gate: a far-reset rate-limited PR is not gate-checked or counted as held (no arm is due)" {
+  export SKIP_GATE_HELD=true
+  local marker comments
+  marker=$(jq -cn --arg b "<!-- pr-review-agent rate-limited v1 sha=rl2660 status=rate-limited reset=$FUTURE_RESET -->" \
+    '{id:"IC_rl", author:{login:"donpetry-bot"}, authorAssociation:"NONE", body:$b, isMinimized:false, minimizedReason:null}')
+  comments=$(jq -c --argjson m "$marker" '[$m] + .' <<< "$GATE_OPEN_COMMENT")
+  write_pr 2660 "REVIEW_REQUIRED" "$ROLLUP_PASS" "rl2660" "[]" "$comments"
+  url_for 2660 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" != *"arm skipped"* ]]
+  [[ "$output" == *"0 held at the comment gate."* ]]
+}
+
+@test "routing: an orphan rescue keeps the agent-repo trigger when the entrypoint declares force_review but does not forward it" {
+  write_workflows combsmith/demo pr-review.yml:active
+  write_workflow_file combsmith/demo pr-review.yml "$CALLER_DROPS_FORCE"
+  write_pr 2670 "REVIEW_REQUIRED" "$ROLLUP_PASS" "orph2670" "[]" '[{"body":"<!-- pr-review-agent v1 sha=orph2670 -->"}]'
+  url_for 2670 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2670) -f force_review=true" "$GH_LOG"
+  [[ "$output" == *"does not take and forward force_review"* ]]
+}
+
+@test "pr_review_job_block: returns only the job that calls the pr-review reusable" {
+  load_sweep_fn pr_review_job_block
+  run pr_review_job_block "$CALLER_FORWARDS_FORCE_ELSEWHERE"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"pr-review.yml@"* ]]
+  [[ "$output" != *"something-reusable"* ]]
+  [[ "$output" != *"force_review"* ]]
+}
+
+@test "routing: an orphan rescue keeps the agent-repo trigger when only another job forwards force_review" {
+  write_workflows combsmith/demo pr-review.yml:active
+  write_workflow_file combsmith/demo pr-review.yml "$CALLER_FORWARDS_FORCE_ELSEWHERE"
+  write_pr 2680 "REVIEW_REQUIRED" "$ROLLUP_PASS" "orph2680" "[]" '[{"body":"<!-- pr-review-agent v1 sha=orph2680 -->"}]'
+  url_for 2680 > "$SWEEP_PRS_FILE"
+
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF "workflow run pr-review-trigger.yml --repo combsmith/.github-private -f pr_url=$(url_for 2680) -f force_review=true" "$GH_LOG"
 }
