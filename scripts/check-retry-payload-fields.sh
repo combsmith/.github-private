@@ -210,38 +210,69 @@ fields_read_at() {
 have_origin=false
 git -C "$ROOT" remote get-url origin >/dev/null 2>&1 && have_origin=true
 tags=()
+# --depth=1 only on a clone that is already shallow (a CI checkout): on a full
+# local clone it would make the repository shallow.
+depth=()
+[ "$(git -C "$ROOT" rev-parse --is-shallow-repository 2>/dev/null)" = true ] && depth=(--depth=1)
+
 if [ "$pinned" = "main" ]; then
-  tags=("main")
-elif [ -z "$major" ]; then
-  tags=("$pinned")
-else
-  # --depth=1 only on a clone that is already shallow (a CI checkout): on a full
-  # local clone it would make the repository shallow.
-  depth=()
-  [ "$(git -C "$ROOT" rev-parse --is-shallow-repository 2>/dev/null)" = true ] && depth=(--depth=1)
-  for ch in "${CHANNELS[@]}"; do
-    tag="dev-lead/${major}-${ch}"
   gone_upstream=false
-  if $have_origin && ! git -C "$ROOT" fetch --quiet --force ${depth[@]+"${depth[@]}"} origin "refs/tags/${tag}:refs/tags/${tag}" 2>/dev/null; then
-    # Tell "origin has no such tag" (ls-remote exit 2) apart from "origin could
-    # not be reached / the fetch broke" — only the latter risks a stale tag.
+  if $have_origin && ! git -C "$ROOT" fetch --quiet --force ${depth[@]+"${depth[@]}"} origin "refs/heads/main:refs/heads/main" 2>/dev/null; then
     rc=0
-    git -C "$ROOT" ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1 || rc=$?
+    git -C "$ROOT" ls-remote --exit-code --heads origin "refs/heads/main" >/dev/null 2>&1 || rc=$?
     if [ "$rc" -eq 2 ]; then
-      gone_upstream=true   # origin has no such tag: never trust a local copy
+      gone_upstream=true
     else
-      in_ci && die "could not fetch ${tag} from origin"
-      warn "could not fetch ${tag} from origin; using the local tag"
+      in_ci && die "could not fetch main from origin"
+      warn "could not fetch main from origin; using the local ref"
     fi
   fi
-  if ! $gone_upstream && git -C "$ROOT" rev-parse --verify --quiet "refs/tags/${tag}^{commit}" >/dev/null; then
-    tags+=("$tag")
-  elif [ "$tag" = "$pinned" ]; then
-    die "the pinned channel ${tag} does not resolve"
+  if ! $gone_upstream && git -C "$ROOT" rev-parse --verify --quiet "refs/heads/main^{commit}" >/dev/null 2>&1; then
+    tags=("main")
   else
-    warn "${tag} does not exist; skipping it"
+    die "the pinned ref main does not resolve"
   fi
-done
+elif [ -z "$major" ]; then
+  gone_upstream=false
+  if $have_origin && ! git -C "$ROOT" fetch --quiet --force ${depth[@]+"${depth[@]}"} origin "refs/tags/${pinned}:refs/tags/${pinned}" 2>/dev/null; then
+    rc=0
+    git -C "$ROOT" ls-remote --exit-code --tags origin "refs/tags/${pinned}" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -eq 2 ]; then
+      gone_upstream=true
+    else
+      in_ci && die "could not fetch ${pinned} from origin"
+      warn "could not fetch ${pinned} from origin; using the local tag"
+    fi
+  fi
+  if ! $gone_upstream && git -C "$ROOT" rev-parse --verify --quiet "refs/tags/${pinned}^{commit}" >/dev/null; then
+    tags=("$pinned")
+  else
+    die "the pinned ref ${pinned} does not resolve"
+  fi
+else
+  for ch in "${CHANNELS[@]}"; do
+    tag="dev-lead/${major}-${ch}"
+    gone_upstream=false
+    if $have_origin && ! git -C "$ROOT" fetch --quiet --force ${depth[@]+"${depth[@]}"} origin "refs/tags/${tag}:refs/tags/${tag}" 2>/dev/null; then
+      # Tell "origin has no such tag" (ls-remote exit 2) apart from "origin could
+      # not be reached / the fetch broke" — only the latter risks a stale tag.
+      rc=0
+      git -C "$ROOT" ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1 || rc=$?
+      if [ "$rc" -eq 2 ]; then
+        gone_upstream=true   # origin has no such tag: never trust a local copy
+      else
+        in_ci && die "could not fetch ${tag} from origin"
+        warn "could not fetch ${tag} from origin; using the local tag"
+      fi
+    fi
+    if ! $gone_upstream && git -C "$ROOT" rev-parse --verify --quiet "refs/tags/${tag}^{commit}" >/dev/null; then
+      tags+=("$tag")
+    elif [ "$tag" = "$pinned" ]; then
+      die "the pinned channel ${tag} does not resolve"
+    else
+      warn "${tag} does not exist; skipping it"
+    fi
+  done
 fi
 
 [ ${#tags[@]} -gt 0 ] || die "no resolvable tags for pinned ref ${pinned}; the check cannot verify parser coverage"
