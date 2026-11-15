@@ -296,7 +296,7 @@ fails, diff it against `main` before calling it a regression, and treat CI as au
   the guard — only a change to the mapper's output does, which then requires an explicit fixture update visible
   in the diff. It runs in the always-run `bats` job (no `paths:` filter) so it stays a stable check.
 - **Exception:** The `bats` job in `lint.yml` runs on `ubuntu-24.04`, not `ubuntu-latest` (#2547). On the
-  `ubuntu-26.04` image 42 tests in `tests/reviewer_report.bats` fail on a commit that is green on 24.04.
+  `ubuntu-26.04` image, 42 tests in `tests/reviewer_report.bats` fail on a commit that is green on `ubuntu-24.04`.
   This is a stopgap: template syncs must not reset it while #2547 is open. When #2547 is fixed, return the
   job to `ubuntu-latest` and remove this exception.
 - **Exception:** The `bats-negation` job in `lint.yml` (#2263) is a repo-specific lint with no org template
