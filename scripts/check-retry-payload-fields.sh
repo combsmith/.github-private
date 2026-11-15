@@ -72,9 +72,16 @@ in_ci() { [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; }
 [ -f "$ROOT/$SWEEP" ] || die "$SWEEP not found under $ROOT"
 pinned=$(sed -n 's/^[[:space:]]*agent_ref:[[:space:]]*["'\'']\{0,1\}\([^"'\''[:space:]#]*\).*/\1/p' "$ROOT/$STUB" | head -n1)
 [ -n "$pinned" ] || die "no agent_ref in $STUB"
-[[ "$pinned" =~ ^dev-lead/(v[0-9]+)-(next|ring0|ring1|stable)$ ]] \
-  || die "agent_ref '$pinned' in $STUB is not a dev-lead channel tag"
-major="${BASH_REMATCH[1]}"
+# Allow main, or dev-lead channel/release tags (matches dev-lead-reusable.yml validation)
+[[ "$pinned" =~ ^(main|dev-lead/(v[0-9]+(\.[0-9]+\.[0-9]+|-(stable|next|ring[0-9]+))|stable|next|ring[0-9]+))$ ]] \
+  || die "agent_ref '$pinned' in $STUB is not 'main' or a dev-lead channel/release tag"
+
+# Extract major version for channel tag processing (main has no major)
+if [ "$pinned" = "main" ]; then
+  major="main"
+else
+  [[ "$pinned" =~ ^dev-lead/(v[0-9]+) ]] && major="${BASH_REMATCH[1]}" || major=""
+fi
 
 # ── sent: execute each dispatcher with gh stubbed ────────────────────────────
 # Prints "<function> <field>" per top-level client_payload key, or
@@ -196,15 +203,19 @@ fields_read_at() {
 # CI checkouts carry no tags and a local tag may be stale after a promote, so each
 # channel tag is refreshed from origin. In CI a failed fetch is a setup error
 # (never a stale pass); locally it falls back to the local tag with a warning.
+# When pinned to "main", use "main" directly instead of iterating channels.
 have_origin=false
 git -C "$ROOT" remote get-url origin >/dev/null 2>&1 && have_origin=true
 tags=()
-# --depth=1 only on a clone that is already shallow (a CI checkout): on a full
-# local clone it would make the repository shallow.
-depth=()
-[ "$(git -C "$ROOT" rev-parse --is-shallow-repository 2>/dev/null)" = true ] && depth=(--depth=1)
-for ch in "${CHANNELS[@]}"; do
-  tag="dev-lead/${major}-${ch}"
+if [ "$pinned" = "main" ]; then
+  tags=("main")
+else
+  # --depth=1 only on a clone that is already shallow (a CI checkout): on a full
+  # local clone it would make the repository shallow.
+  depth=()
+  [ "$(git -C "$ROOT" rev-parse --is-shallow-repository 2>/dev/null)" = true ] && depth=(--depth=1)
+  for ch in "${CHANNELS[@]}"; do
+    tag="dev-lead/${major}-${ch}"
   gone_upstream=false
   if $have_origin && ! git -C "$ROOT" fetch --quiet --force ${depth[@]+"${depth[@]}"} origin "refs/tags/${tag}:refs/tags/${tag}" 2>/dev/null; then
     # Tell "origin has no such tag" (ls-remote exit 2) apart from "origin could
@@ -226,6 +237,7 @@ for ch in "${CHANNELS[@]}"; do
     warn "${tag} does not exist; skipping it"
   fi
 done
+fi
 
 # ── compare ──────────────────────────────────────────────────────────────────
 sent=$(sent_fields)
