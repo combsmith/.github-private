@@ -276,7 +276,12 @@ jobs:
             exit 1
           fi
 
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          # Fully qualify the ref so a same-named branch cannot shadow a release tag.
+          case "$ref" in
+            main) out="refs/heads/main" ;;
+            *) out="refs/tags/$ref" ;;
+          esac
+          echo "ref=$out" >> "$GITHUB_OUTPUT"
 
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -839,7 +844,12 @@ jobs:
             exit 1
           fi
 
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          # Fully qualify the ref so a same-named branch cannot shadow a release tag.
+          case "$ref" in
+            main) out="refs/heads/main" ;;
+            *) out="refs/tags/$ref" ;;
+          esac
+          echo "ref=$out" >> "$GITHUB_OUTPUT"
 
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1079,7 +1089,12 @@ jobs:
             exit 1
           fi
 
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          # Fully qualify the ref so a same-named branch cannot shadow a release tag.
+          case "$ref" in
+            main) out="refs/heads/main" ;;
+            *) out="refs/tags/$ref" ;;
+          esac
+          echo "ref=$out" >> "$GITHUB_OUTPUT"
 
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
