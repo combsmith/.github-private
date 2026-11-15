@@ -79,10 +79,10 @@ pinned=$(sed -n 's/^[[:space:]]*agent_ref:[[:space:]]*["'\'']\{0,1\}\([^"'\''[:s
 # Extract major version for channel tag processing (main has no major)
 if [ "$pinned" = "main" ]; then
   major="main"
-elif [[ "$pinned" =~ ^dev-lead/(v[0-9]+) ]]; then
+elif [[ "$pinned" =~ ^dev-lead/(v[0-9]+)-(stable|next|ring[0-9]+)$ ]]; then
   major="${BASH_REMATCH[1]}"
 else
-  major=""
+  major="" # bare channel or vX.Y.Z release -> use $pinned directly
 fi
 
 # ── sent: execute each dispatcher with gh stubbed ────────────────────────────
@@ -216,8 +216,12 @@ depth=()
 [ "$(git -C "$ROOT" rev-parse --is-shallow-repository 2>/dev/null)" = true ] && depth=(--depth=1)
 
 if [ "$pinned" = "main" ]; then
+  # Fetch into a dedicated ref outside refs/heads/: fetching into the checked-out
+  # branch (a push to main in CI) is refused by git. The same ref is used for the
+  # rev-parse check and every parser read.
+  main_ref="refs/check-retry-payload/main"
   gone_upstream=false
-  if $have_origin && ! git -C "$ROOT" fetch --quiet --force ${depth[@]+"${depth[@]}"} origin "refs/heads/main:refs/heads/main" 2>/dev/null; then
+  if $have_origin && ! git -C "$ROOT" fetch --quiet --force ${depth[@]+"${depth[@]}"} origin "refs/heads/main:${main_ref}" 2>/dev/null; then
     rc=0
     git -C "$ROOT" ls-remote --exit-code --heads origin "refs/heads/main" >/dev/null 2>&1 || rc=$?
     if [ "$rc" -eq 2 ]; then
@@ -225,10 +229,14 @@ if [ "$pinned" = "main" ]; then
     else
       in_ci && die "could not fetch main from origin"
       warn "could not fetch main from origin; using the local ref"
+      git -C "$ROOT" update-ref "$main_ref" "refs/heads/main" 2>/dev/null || true
     fi
   fi
-  if ! $gone_upstream && git -C "$ROOT" rev-parse --verify --quiet "refs/heads/main^{commit}" >/dev/null 2>&1; then
-    tags=("main")
+  if ! $have_origin; then
+    git -C "$ROOT" update-ref "$main_ref" "refs/heads/main" 2>/dev/null || true
+  fi
+  if ! $gone_upstream && git -C "$ROOT" rev-parse --verify --quiet "${main_ref}^{commit}" >/dev/null 2>&1; then
+    tags=("$main_ref")
   else
     die "the pinned ref main does not resolve"
   fi
