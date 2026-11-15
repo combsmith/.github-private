@@ -218,6 +218,82 @@ body-only suggestions Codex posts when it cannot attach a comment to the diff.
 **Coverage overlap** counts non-draft PRs *reviewed* (finding or clean) by ≥2 bots. It is a redundancy
 versus specialization signal.
 
+### Coverage matrix, outage alerts and quota timing
+
+The scorecard rows are org-wide, so they can hide a bot that stopped everywhere next to bots
+that are routinely quiet, or a bot that never runs on one repo
+([#2506](https://github.com/combsmith/.github-private/issues/2506)). After the 2026-10-14 org
+rename, gemini-code-assist, codeant-ai and cubic-dev-ai stopped reviewing for about four weeks
+and showed up only as "No response". graphite-app never reviewed `software-factory` for a month.
+Three sections cover this. Every count in them leaves out **Dependabot-authored PRs**.
+
+Terms used in all three:
+
+- **Opened**: a non-draft PR created in the window (on or after the window start, `CUTOFF`). A
+  PR created earlier but updated in the window is collected for the scorecard but is not opened.
+- **Reviewed**: an opened PR on which the bot left at least one `finding` or `clean` message,
+  as defined in [Message classes](#message-classes).
+- **Day**: the UTC calendar day the PR was opened.
+
+#### Coverage matrix
+
+One row per repo with at least one opened PR, one column per tracked bot. Each cell shows
+`reviewed / opened` for the window. A cell declared expected-off (see below) shows
+`off (by design)` instead.
+
+#### Outage alerts
+
+An **Outage alerts** section sits at the top of the report, right after Collection health. It
+uses two rules, and both look only at the cells where the bot is expected on:
+
+1. **Silence across repos.** The bot reviewed **0** PRs on **2 or more consecutive days**, and
+   **at least 3** PRs were opened on those days in the repos where it is expected on. A day's
+   count is the PRs opened that day, so a day counts as silent when the bot reviewed none of
+   them. Only days on which at least one such PR was opened count. A day with none, such as a
+   quiet weekend, neither ends nor extends a run. This is the rename-outage case.
+2. **Silence on one repo.** A bot × repo cell that is not expected-off has **at least 3**
+   opened PRs and **0** reviewed for the whole window. This is the `software-factory` ×
+   graphite-app case.
+
+Each alert names the bot, the repo or repos, and the **first silent day**: the first day of
+the run for rule 1, and the day the cell's earliest opened PR was opened for rule 2. One outage
+can fire both rules, for example rule 1 for the bot and rule 2 for each busy repo. With no
+alerts the section says `none`.
+
+A PR is credited to the day it was opened, so a PR opened in the last minutes before the
+report runs, and not reviewed yet, counts as unreviewed. A rule needs at least 3 PRs, so one
+late PR alone never raises an alert.
+
+#### Declaring an expected-off cell
+
+Some cells are off on purpose. For example, coderabbitai is on-demand only on `software-factory`,
+because that repo's `.coderabbit.yaml` turns auto review off. Declare such a cell in the
+scorecard-only sidecar `scripts/lib/reviewer-message-classes.tsv`, with class `off` and kind
+`repo`:
+
+```
+# coderabbitai is on-demand only on software-factory: its .coderabbit.yaml turns auto review off.
+coderabbitai<TAB>off<TAB>repo<TAB>combsmith/software-factory
+```
+
+- The last column is the repo, either `owner/name` or a bare `name`. A bare name matches the
+  repo of that name under any owner, so the row still applies after an org rename.
+- The login must be a registered reviewer source.
+- Put the reason in a comment above the row.
+
+The message-class loader skips `off` rows. `reviewer_sources_expected_off_cells` reads them and
+reports a malformed one on stderr; `tests/reviewer_report.bats` fails on it. An off cell renders
+`off (by design)` in the matrix, its PRs are left out of rule 1 for that bot, and rule 2 never
+fires for it. Like the rest of the sidecar, this changes the scorecard only, never a gate.
+
+#### Quota timing
+
+For each bot with `refused` messages in the window, the **Quota timing** section lists the
+refusals per UTC day and the time (UTC) of the first refusal that day. This shows when a daily
+quota runs out. For example, gemini-code-assist hit its daily quota at 02:41 UTC on 2026-11-11
+and posted 29 refusals after that. Each normalized `bot_pr` record carries the times of its
+refused messages in `refused_at`. With no refusals the section says `none`.
+
 ### Agent comment noise (our own automation)
 
 Distinct from the third-party scorecard above, the report also measures the **no-action share of
@@ -311,7 +387,7 @@ ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
 | File | Role |
 |---|---|
 | `scripts/lib/reviewer-sources.tsv` + `scripts/lib/reviewer-sources.sh` | The reviewer-source registry ([#1425](https://github.com/combsmith/.github-private/issues/1425)) + its sourced lookup helpers — the single source of truth for bot logins and the `check_run_name` map, projected by the gate and this report. |
-| `scripts/lib/reviewer-message-classes.tsv` | Scorecard-only per-bot message-class patterns ([#2504](https://github.com/combsmith/.github-private/issues/2504)), read through `reviewer_sources_message_class_patterns`. Neither gate reads it. |
+| `scripts/lib/reviewer-message-classes.tsv` | Scorecard-only per-bot message-class patterns ([#2504](https://github.com/combsmith/.github-private/issues/2504)), read through `reviewer_sources_message_class_patterns`, and the expected-off bot × repo cells ([#2506](https://github.com/combsmith/.github-private/issues/2506)), read through `reviewer_sources_expected_off_cells`. Neither gate reads it. |
 | `scripts/lib/advisory-review-gate.sh` | Advisory approval gate; rate-limit body patterns (reused, not forked). Its bot list is a registry projection. |
 | `scripts/lib/comment-noise.sh` | Pure no-action agent-comment classifier + `cn_render_noise_section` (the noise metric). Unit-tested in `tests/comment_noise.bats`. |
 | `scripts/reviewer_report.sh` | Org-wide GraphQL collection (`main` / `collect_org_reviews`) + pure normalization, aggregation, and rendering (`aggregate_snapshot`, `render_reviewer_report`). |
@@ -324,6 +400,7 @@ ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
 |---|---|
 | `ORG` | Org to scan (default `combsmith`). All non-archived repos discovered automatically. |
 | `LOOKBACK_DAYS` | Rolling window of PR activity to include (default `7`). |
+| `CUTOFF` / `REVIEWER_WINDOW_START` | Window start as an ISO-8601 UTC timestamp. `main()` sets `CUTOFF` from `LOOKBACK_DAYS`. The coverage matrix, outage alerts and quota timing count only PRs opened (and refusals posted) on or after it. `REVIEWER_WINDOW_START`, when set, takes precedence for those three sections (tests use it). With neither set, they count every collected PR. |
 | `GH_TOKEN` | PAT with repo read across the org — PRs + reviews are per-repo. Uses `GH_PAT_WORKFLOWS` in CI. |
 | `REVIEWER_REPORT_OUT` | Optional path to also write the report to (used by the workflow to post the issue comment). |
 | `REVIEWER_SNAPSHOT_OUT` | Optional path to write this week's per-bot snapshot (uploaded as the WoW artifact). |
