@@ -431,6 +431,7 @@ EOF
   tag_channels "${ALL[@]}"
   run bash "$CHECK" "$SANDBOX"
   [ "$status" -eq 0 ]
+  [[ "$output" == *"OK:"*"refs/check-retry-payload/main"* ]]
 }
 
 @test "a malformed agent_ref or an unparseable parser is a setup error" {
