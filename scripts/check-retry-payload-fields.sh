@@ -79,8 +79,10 @@ pinned=$(sed -n 's/^[[:space:]]*agent_ref:[[:space:]]*["'\'']\{0,1\}\([^"'\''[:s
 # Extract major version for channel tag processing (main has no major)
 if [ "$pinned" = "main" ]; then
   major="main"
+elif [[ "$pinned" =~ ^dev-lead/(v[0-9]+) ]]; then
+  major="${BASH_REMATCH[1]}"
 else
-  [[ "$pinned" =~ ^dev-lead/(v[0-9]+) ]] && major="${BASH_REMATCH[1]}" || major=""
+  major=""
 fi
 
 # ── sent: execute each dispatcher with gh stubbed ────────────────────────────
@@ -204,11 +206,14 @@ fields_read_at() {
 # channel tag is refreshed from origin. In CI a failed fetch is a setup error
 # (never a stale pass); locally it falls back to the local tag with a warning.
 # When pinned to "main", use "main" directly instead of iterating channels.
+# When pinned to a bare channel or release, use it directly instead of constructing variants.
 have_origin=false
 git -C "$ROOT" remote get-url origin >/dev/null 2>&1 && have_origin=true
 tags=()
 if [ "$pinned" = "main" ]; then
   tags=("main")
+elif [ -z "$major" ]; then
+  tags=("$pinned")
 else
   # --depth=1 only on a clone that is already shallow (a CI checkout): on a full
   # local clone it would make the repository shallow.
@@ -238,6 +243,8 @@ else
   fi
 done
 fi
+
+[ ${#tags[@]} -gt 0 ] || die "no resolvable tags for pinned ref ${pinned}; the check cannot verify parser coverage"
 
 # ── compare ──────────────────────────────────────────────────────────────────
 sent=$(sent_fields)
