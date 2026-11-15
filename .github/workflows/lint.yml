@@ -93,7 +93,10 @@ jobs:
         run: bash scripts/check-bats-negation.sh
 
   bats:
-    runs-on: ubuntu-latest
+    # Pinned to 24.04, not ubuntu-latest (#2547): on the ubuntu-26.04 image 42
+    # tests in tests/reviewer_report.bats fail on a commit that is green on 24.04.
+    # Return to ubuntu-latest when #2547 is fixed.
+    runs-on: ubuntu-24.04
     # 20, not 10: the suite list has grown until the job routinely takes 7 to 9
     # minutes (405 to 562 seconds across recent runs), so any change that adds a
     # suite was being cancelled at the limit rather than failing on a test.
