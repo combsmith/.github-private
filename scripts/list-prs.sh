@@ -162,11 +162,16 @@ search_namespace() {
       echo "::notice::list-prs: skipped repo $repo (reason: ghsa-temporary-private-fork)" >&2
       continue
     fi
-    raw=$(gh pr list \
+    # A failed per-repo listing (rate limit, network) drops that repo's PRs
+    # from the sweep; name the repo so the omission is never silent.
+    if ! raw=$(gh pr list \
       --repo "$repo" \
       --state open \
       --limit 1000 \
-      --json url,author,createdAt,isDraft 2>/dev/null || echo '[]')
+      --json url,author,createdAt,isDraft 2>/dev/null); then
+      echo "::warning::list-prs: 'gh pr list' failed for $repo — its open PRs are omitted from this sweep" >&2
+      raw='[]'
+    fi
     [ -z "$raw" ] && raw='[]'
     process_repo_prs "$raw"
   done <<< "$repo_lines"
