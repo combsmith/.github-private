@@ -236,3 +236,18 @@ EOF2
   run bash "$SCRIPT"
   [ "$status" -ne 0 ]
 }
+
+@test "a blank gh repo list payload fails the run" {
+  write_repos combsmith '   '
+  run bash "$SCRIPT"
+  [ "$status" -ne 0 ]
+}
+
+@test "a non-array or multi-value gh repo list payload fails the run" {
+  write_repos combsmith '{}'
+  run bash "$SCRIPT"
+  [ "$status" -ne 0 ]
+  write_repos combsmith '[] []'
+  run bash "$SCRIPT"
+  [ "$status" -ne 0 ]
+}

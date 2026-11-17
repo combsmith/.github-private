@@ -144,7 +144,13 @@ search_namespace() {
     echo "::error::list-prs: 'gh repo list $owner' failed — refusing to treat the namespace as empty" >&2
     exit 1
   fi
-  [ -z "$repos_json" ] && repos_json='[]'
+  # The payload must be exactly one JSON value and that value an array ('[]'
+  # stays valid). jq on blank input exits 0 with no output, which would read as
+  # an empty namespace, so slurp and check the shape explicitly.
+  if ! jq -s -e 'length == 1 and (.[0] | type == "array")' <<< "$repos_json" >/dev/null 2>&1; then
+    echo "::error::list-prs: 'gh repo list $owner' did not return exactly one JSON array — refusing to treat the namespace as empty" >&2
+    exit 1
+  fi
   repo_lines=$(jq -r "$JQ_REPOS" <<< "$repos_json") || {
     echo "::error::list-prs: could not parse the repo list for $owner" >&2
     exit 1
