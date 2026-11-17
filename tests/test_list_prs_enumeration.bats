@@ -24,6 +24,12 @@
 # stream) are captured to separate files so the two channels never bleed
 # together — the whole point of the fix is that they are distinct.
 #
+# GHSA temporary private forks (issue #2562): a security advisory makes a
+# private repo named <repo>-ghsa-xxxx-xxxx-xxxx with issues off. The review
+# can't complete there, so the sweep re-dispatched its PR every tick and each
+# pr-review-trigger.yml run failed. Such a repo is left out of enumeration
+# (same test as dev-lead-retry.sh list_repos_for_org) and the exclusion logged.
+#
 # Run with: bats tests/test_list_prs_enumeration.bats
 
 SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/scripts/list-prs.sh"
@@ -47,8 +53,19 @@ setup() {
 sub="$1 $2"
 case "$sub" in
   "repo list")
+    # list-prs.sh asks for JSON (nameWithOwner,isPrivate,hasIssuesEnabled) and
+    # filters it itself. <owner>.json is served as-is; a plain <owner>.txt of
+    # names becomes ordinary repos (public, issues enabled).
     owner="$3"
-    cat "$REPO_LIST_DIR/${owner}.txt" 2>/dev/null || true
+    if [ -f "$REPO_LIST_DIR/${owner}.json" ]; then
+      cat "$REPO_LIST_DIR/${owner}.json"
+    elif [ -f "$REPO_LIST_DIR/${owner}.txt" ]; then
+      jq -R -s -c 'split("\n") | map(select(length > 0)
+        | {nameWithOwner: ., isPrivate: false, hasIssuesEnabled: true})' \
+        "$REPO_LIST_DIR/${owner}.txt"
+    else
+      echo '[]'
+    fi
     exit 0
     ;;
   "pr list")
@@ -148,4 +165,58 @@ run_list_prs() {
   grep -qi 'enumeration' "$ERR"
   grep -qi 'seen' "$ERR"
   grep -qi 'excluded' "$ERR"
+}
+
+# --- GHSA temporary private forks (issue #2562) -----------------------------
+
+GHSA_PR='[{"url":"https://github.com/combsmith/.github-private-ghsa-vxf5-2jf3-4jxr/pull/1","author":{"login":"don-petry"},"createdAt":"2026-10-31T00:00:00Z","isDraft":false}]'
+MAIN_PR='[{"url":"https://github.com/combsmith/.github-private/pull/1710","author":{"login":"don-petry"},"createdAt":"2026-09-13T00:00:00Z","isDraft":false}]'
+
+# write_repos <owner> <json-array of {nameWithOwner,isPrivate,hasIssuesEnabled}>
+write_repos() {
+  printf '%s' "$2" > "$REPO_LIST_DIR/${1}.json"
+}
+
+@test "GHSA temporary private fork PRs are excluded from the pool and the repo is logged" {
+  write_repos combsmith '[
+    {"nameWithOwner":"combsmith/.github-private","isPrivate":false,"hasIssuesEnabled":true},
+    {"nameWithOwner":"combsmith/.github-private-ghsa-vxf5-2jf3-4jxr","isPrivate":true,"hasIssuesEnabled":false}]'
+  write_prs "combsmith/.github-private" "$MAIN_PR"
+  write_prs "combsmith/.github-private-ghsa-vxf5-2jf3-4jxr" "$GHSA_PR"
+
+  run_list_prs
+  grep -qx 'https://github.com/combsmith/.github-private/pull/1710' "$OUT"
+  ! grep -q 'ghsa' "$OUT" || false
+  grep -q '::notice::' "$ERR"
+  grep -q 'combsmith/.github-private-ghsa-vxf5-2jf3-4jxr' "$ERR"
+  grep -qi 'ghsa' "$ERR"
+}
+
+@test "GHSA-named repo that is public is still enumerated" {
+  write_repos combsmith '[
+    {"nameWithOwner":"combsmith/.github-private","isPrivate":false,"hasIssuesEnabled":true},
+    {"nameWithOwner":"combsmith/.github-private-ghsa-vxf5-2jf3-4jxr","isPrivate":false,"hasIssuesEnabled":false}]'
+  write_prs "combsmith/.github-private-ghsa-vxf5-2jf3-4jxr" "$GHSA_PR"
+
+  run_list_prs
+  grep -qx 'https://github.com/combsmith/.github-private-ghsa-vxf5-2jf3-4jxr/pull/1' "$OUT"
+}
+
+@test "GHSA-named private repo with issues enabled is still enumerated" {
+  write_repos combsmith '[
+    {"nameWithOwner":"combsmith/.github-private","isPrivate":false,"hasIssuesEnabled":true},
+    {"nameWithOwner":"combsmith/.github-private-ghsa-vxf5-2jf3-4jxr","isPrivate":true,"hasIssuesEnabled":true}]'
+  write_prs "combsmith/.github-private-ghsa-vxf5-2jf3-4jxr" "$GHSA_PR"
+
+  run_list_prs
+  grep -qx 'https://github.com/combsmith/.github-private-ghsa-vxf5-2jf3-4jxr/pull/1' "$OUT"
+}
+
+@test "GHSA-named private repo with no sibling repo in the listing is still enumerated" {
+  write_repos combsmith '[
+    {"nameWithOwner":"combsmith/.github-private-ghsa-vxf5-2jf3-4jxr","isPrivate":true,"hasIssuesEnabled":false}]'
+  write_prs "combsmith/.github-private-ghsa-vxf5-2jf3-4jxr" "$GHSA_PR"
+
+  run_list_prs
+  grep -qx 'https://github.com/combsmith/.github-private-ghsa-vxf5-2jf3-4jxr/pull/1' "$OUT"
 }
