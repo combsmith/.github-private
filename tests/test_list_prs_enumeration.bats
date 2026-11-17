@@ -220,3 +220,19 @@ write_repos() {
   run_list_prs
   grep -qx 'https://github.com/combsmith/.github-private-ghsa-vxf5-2jf3-4jxr/pull/1' "$OUT"
 }
+
+@test "a failing gh repo list fails the run instead of reading as an empty namespace" {
+  cat > "$MOCK_BIN/gh" <<'EOF2'
+#!/usr/bin/env bash
+exit 1
+EOF2
+  run bash "$SCRIPT"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"gh repo list"* ]]
+}
+
+@test "an unparseable gh repo list payload fails the run" {
+  write_repos combsmith 'not json'
+  run bash "$SCRIPT"
+  [ "$status" -ne 0 ]
+}

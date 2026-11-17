@@ -136,10 +136,19 @@ JQ_REPOS='"-ghsa(-[23456789cfghjmpqrvwx]{4}){3}$" as $ghsa
     end'
 
 search_namespace() {
-  local owner="$1" raw line repo repos_json
-  repos_json=$(gh repo list "$owner" --limit 1000 \
-    --json nameWithOwner,isPrivate,hasIssuesEnabled 2>/dev/null || echo '[]')
+  local owner="$1" raw line repo repos_json repo_lines
+  # A failed listing (token, rate limit, network) must fail the run, never
+  # read as an empty namespace that silently skips every review.
+  if ! repos_json=$(gh repo list "$owner" --limit 1000 \
+    --json nameWithOwner,isPrivate,hasIssuesEnabled 2>/dev/null); then
+    echo "::error::list-prs: 'gh repo list $owner' failed — refusing to treat the namespace as empty" >&2
+    exit 1
+  fi
   [ -z "$repos_json" ] && repos_json='[]'
+  repo_lines=$(jq -r "$JQ_REPOS" <<< "$repos_json") || {
+    echo "::error::list-prs: could not parse the repo list for $owner" >&2
+    exit 1
+  }
   while IFS= read -r line || [ -n "$line" ]; do
     [ -z "$line" ] && continue
     repo="${line#*$'\t'}"
@@ -154,7 +163,7 @@ search_namespace() {
       --json url,author,createdAt,isDraft 2>/dev/null || echo '[]')
     [ -z "$raw" ] && raw='[]'
     process_repo_prs "$raw"
-  done < <(jq -r "$JQ_REPOS" <<< "$repos_json" 2>/dev/null || true)
+  done <<< "$repo_lines"
 }
 
 # Bot's personal account
