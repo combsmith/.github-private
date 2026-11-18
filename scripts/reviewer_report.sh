@@ -287,8 +287,10 @@ _delta_arrow() {
 #       bot opened no thread (otherwise it is the summary of those threads).
 # shellcheck disable=SC2089  # this is a jq program; embedded quotes are meant to be literal
 _NORMALIZE_JQ='
-  def is_bot($login): ($login != null) and ($login | ascii_downcase) as $l
-    | ($bots | map(ascii_downcase) | index($l)) != null;
+  # The binding is parenthesized: jq 1.8 parses `A and B as $l | C` as `(A and B) as $l | C`,
+  # binding $l to a boolean, so every bot read as "not a bot" (ubuntu-latest moved to 26.04).
+  def is_bot($login): ($login != null)
+    and (($login | ascii_downcase) as $l | ($bots | map(ascii_downcase) | index($l)) != null);
   def class_rules: '"$REVIEWER_MESSAGE_CLASS_JSON"';
   def failed_conclusions: ["failure","cancelled","timed_out","action_required","stale","startup_failure"];
   def classify:
