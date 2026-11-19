@@ -618,6 +618,15 @@ _pct_num() {
 # clean. This is the in-report surfacing the issue requires: a silent stderr WARN
 # is not enough, because a dropped repo makes every count below a floor, not a
 # total, and that must be visible to whoever reads the scorecard.
+# short_pr_link — "[#123](url)" for a PR url; the bare text for anything else
+# (for example the "(pagination)" marker on a repo-level truncation).
+_SHORT_LINK_JQ_DEFS='
+  def short_pr_link:
+    (.pr // "") as $u
+    | ([ $u | capture("/pull/(?<n>[0-9]+)$")? | .n ] | first) as $n
+    | if $n then "[#\($n)](\($u))" else "(\($u | ltrimstr("(") | rtrimstr(")")))" end;
+'
+
 _render_collection_health() {
   local dir="$1" repo_count="$2"
   local files=("$dir"/*.jsonl)
@@ -638,24 +647,40 @@ _render_collection_health() {
   [ -n "$errs" ] && printf '%s\n' "$errs"
 
   local trunc
-  trunc="$(jq -rs '
+  # Grouped by connection, then repo, with short PR links, so a long list stays
+  # readable; the table sits in a collapsed block (#1908 keeps it never silent).
+  trunc="$(jq -rs "${_SHORT_LINK_JQ_DEFS}"'
     ([ .[] | select(.kind=="truncation") ] | unique_by([.repo, .pr, .connection])) as $t
     | if ($t | length) == 0 then empty
-      else "### Truncated connections\n\n"
-        + "These per-PR connections hit the GraphQL fetch cap, so the affected reviewer counts may **undercount** on these PRs (truncation is reported here, never silent — #1908):\n\n"
-        + ([ $t[] | "- `\(.repo)` PR `\(.pr)` — `\(.connection)` truncated" ] | join("\n"))
-        + "\n"
+      else
+        { "reviews": "50 per PR", "comments": "50 per PR", "reviewThreads": "50 per PR",
+          "reviewThreads.comments": "20 per thread", "reactions": "20 per PR",
+          "pullRequests": "MAX_PR_PAGES per repo" } as $cap
+        | ($t | map(select(.pr != "(pagination)")) | map(.pr) | unique | length) as $nprs
+        | "### Truncated connections\n\n"
+        + "<details><summary><b>\($t | length) connections on \($nprs) PRs</b> hit a GraphQL fetch cap, "
+        + "so reviewer counts on those PRs may <b>undercount</b> (#1908). Expand for the list.</summary>\n\n"
+        + "| Connection | Cap | PRs |\n|---|---|---|\n"
+        + ([ $t | group_by(.connection)[]
+             | . as $g
+             | "| `\($g[0].connection)` | \($cap[$g[0].connection] // "?") | "
+               + ([ $g | group_by(.repo)[]
+                    | "`\(.[0].repo | split("/") | last)` "
+                      + ([ .[] | short_pr_link ] | join(" ")) ] | join(" · "))
+               + " |" ] | join("\n"))
+        + "\n\n</details>\n"
       end
   ' "${files[@]}" 2>/dev/null || true)"
   [ -n "$trunc" ] && printf '%s\n' "$trunc"
 
   local crerr
-  crerr="$(jq -rs '
+  crerr="$(jq -rs "${_SHORT_LINK_JQ_DEFS}"'
     ([ .[] | select(.kind=="check_run_error") ] | unique_by([.repo, .pr])) as $c
     | if ($c | length) == 0 then empty
       else "### Check-run fetch failures\n\n"
         + "A check-run REST fetch failed on these PRs, so a check-run reporter clean pass may be missed and miscounted as No response (surfaced here, never silent — #1908):\n\n"
-        + ([ $c[] | "- `\(.repo)` PR `\(.pr)` — check-run fetch failed" ] | join("\n"))
+        + ([ $c | group_by(.repo)[]
+             | "- `\(.[0].repo | split("/") | last)` " + ([ .[] | short_pr_link ] | join(" ")) ] | join("\n"))
         + "\n"
       end
   ' "${files[@]}" 2>/dev/null || true)"
@@ -793,20 +818,58 @@ _render_outage_alerts() {
         | "- **\(bot_label($b))** — no PR reviewed on \(.days) consecutive days with PRs (\(.opened) PRs opened) in "
           + (.repos | map("`\(.)`") | join(", ")) + "; first silent day **\(.first)**." ]
     # Rule 2 — a cell with at least 3 opened PRs and none reviewed all window.
-    + [ $bots[] as $b | $repos[] as $r
-        | select(is_off($b; $r) | not)
-        | ($o | map(select(.repo == $r))) as $prs
-        | select(($prs | length) >= 3 and ($prs | map(select($rv[$b + " " + .pr])) | length) == 0)
-        | "- **\(bot_label($b))** — 0 of \($prs | length) PRs opened in `\($r)` reviewed in the whole window; "
-          + "first silent day **\($prs | map(.day) | min)**." ]
+    # One line per bot, listing every such repo, so a bot that is silent on many
+    # repos does not repeat itself once per repo.
+    + [ $bots[] as $b
+        | [ $repos[] as $r
+            | select(is_off($b; $r) | not)
+            | ($o | map(select(.repo == $r))) as $prs
+            | select(($prs | length) >= 3 and ($prs | map(select($rv[$b + " " + .pr])) | length) == 0)
+            | "`\($r)` (0 of \($prs | length), first silent day **\($prs | map(.day) | min)**)" ] as $cells
+        | select($cells | length > 0)
+        | "- **\(bot_label($b))** — no PR reviewed in the whole window on "
+          + ($cells | join(", ")) + "." ]
     | .[]')" || { _coverage_failed "outage alerts"; return 0; }
 
   if [[ -z "$alerts" ]]; then
     printf 'none\n\n'
+    _render_outage_grid "$dir"
     return 0
   fi
   printf '%s\n\n' "$alerts"
+  _render_outage_grid "$dir"
   printf '_Rules and how to mark a cell off by design: `docs/reviewer-report.md` (Outage alerts)._\n\n'
+}
+
+# _render_outage_grid <jsonl_dir> — PURE. A bot × day view of the window: for each
+# UTC day, the share of PRs opened that day (in the repos where the bot is expected
+# on) that the bot reviewed. A bot declared off on every repo ("*") is left out.
+#   🟩 half or more reviewed · 🟨 some · 🟥 none · ⬜ no PRs opened in its repos
+_render_outage_grid() {
+  local dir="$1" grid
+  grid="$(_coverage_jq "$dir" '
+    . as $all
+    | ($all | opened_prs) as $o
+    | ($all | reviewed_set) as $rv
+    | ($o | map(.day) | unique) as $days
+    | if ($days | length) == 0 then empty else
+        ("| Reviewer | " + ($days | map(.[5:10]) | join(" | ")) + " | Reviewed / opened |"),
+        ("|---|" + ($days | map(":-:|") | join("")) + "---:|"),
+        ( $bots[] as $b
+          | select(any($off[]; (.login | ascii_downcase) == ($b | ascii_downcase) and .repo == "*") | not)
+          | ($o | map(select(is_off($b; .repo) | not))) as $on
+          | ($on | map(select($rv[$b + " " + .pr]))) as $done
+          | "| \(bot_label($b)) | "
+            + ($days | map(. as $d
+                | ($on | map(select(.day == $d)) | length) as $n
+                | ($done | map(select(.day == $d)) | length) as $r
+                | if $n == 0 then "⬜" elif $r == 0 then "🟥" elif ($r * 2) >= $n then "🟩" else "🟨" end)
+              | join(" | "))
+            + " | \($done | length) / \($on | length) |" )
+      end')" || return 0
+  [[ -n "$grid" ]] || return 0
+  printf 'Day by day (UTC, by the day each PR was opened): 🟩 half or more reviewed · 🟨 some · 🟥 none · ⬜ no PRs opened in the repos where the bot is expected on.\n\n'
+  printf '%s\n\n' "$grid"
 }
 
 # _render_coverage_matrix <jsonl_dir> — PURE (#2506). One row per repo with an opened
@@ -866,6 +929,29 @@ _render_quota_timing() {
   printf '| Reviewer | Day (UTC) | Refusals | First refusal (UTC) |\n'
   printf '|---|---|---:|---:|\n'
   printf '%s\n\n' "$rows"
+}
+
+# _reviewed_badge <bot> <reviewed> <eligible> — PURE. A colored dot and the share of
+# eligible PRs the bot reviewed, so a weak reviewer stands out in the scorecard:
+# 🟢 >= 70% · 🟡 40–69% · 🟠 15–39% · 🔴 < 15%. A bot declared off on every repo ("*")
+# shows ⚪ off; no eligible PRs shows a dash.
+_reviewed_badge() {
+  local bot="$1" reviewed="${2:-0}" eligible="${3:-0}" pct
+  if jq -e --arg b "$bot" 'any(.[]; (.login | ascii_downcase) == ($b | ascii_downcase) and .repo == "*")' \
+       <<<"${REVIEWER_EXPECTED_OFF_JSON:-[]}" >/dev/null 2>&1; then
+    printf '⚪ off'
+    return 0
+  fi
+  if (( eligible <= 0 )); then
+    printf '—'
+    return 0
+  fi
+  pct=$(( (reviewed * 100 + eligible / 2) / eligible ))
+  if (( pct >= 70 )); then printf '🟢 %d%%' "$pct"
+  elif (( pct >= 40 )); then printf '🟡 %d%%' "$pct"
+  elif (( pct >= 15 )); then printf '🟠 %d%%' "$pct"
+  else printf '🔴 %d%%' "$pct"
+  fi
 }
 
 # render_reviewer_report <jsonl_dir> <lookback> <repo_count> [generated_at]
@@ -933,8 +1019,8 @@ render_reviewer_report() {
 
   # ---- Scorecard table (#2504) ---------------------------------------------
   printf '## Scorecard\n\n'
-  printf '| Reviewer | Total PRs | With findings | Clean | Refused | Skipped | No response | Findings raised | Resolved %% | Latency p50 | Latency p95 |\n'
-  printf '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n'
+  printf '| Reviewer | Reviewed | Total PRs | With findings | Clean | Refused | Skipped | No response | Findings raised | Resolved %% | Latency p50 | Latency p95 |\n'
+  printf '|---|:--|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n'
 
   local bot label wf clean refused skipped no_resp findings thr_total thr_res p50 p95
   local f pv pct prev_pct prev_tt prev_tr
@@ -978,10 +1064,12 @@ render_reviewer_report() {
       cells+=("$(_fmt_pct "$thr_res" "$thr_total") ")
     fi
 
-    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
-      "$label" "$(_fmt_int "$eligible")" "${cells[@]}" "$(_fmt_dur "$p50")" "$(_fmt_dur "$p95")"
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+      "$label" "$(_reviewed_badge "$bot" "$((wf + clean))" "${eligible:-0}")" "$(_fmt_int "$eligible")" \
+      "${cells[@]}" "$(_fmt_dur "$p50")" "$(_fmt_dur "$p95")"
   done
   printf '\n'
+  printf -- '- **Reviewed** — share of Total PRs the bot reviewed (With findings + Clean): 🟢 70%% or more · 🟡 40–69%% · 🟠 15–39%% · 🔴 under 15%% · ⚪ off by design on every repo.\n'
   printf -- '- **Total PRs** — review-eligible (non-draft) PRs in the window; the denominator each row is measured against.\n'
   printf -- '- **With findings** — PRs where the bot left at least one `finding` message (an inline thread, a review that requests changes, a body that reports issues).\n'
   printf -- '- **Clean** — PRs where the bot reviewed and reported nothing: at least one `clean` message and no `finding`.\n'
