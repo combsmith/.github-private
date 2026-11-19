@@ -286,8 +286,10 @@ scorecard-only sidecar `scripts/lib/reviewer-message-classes.tsv`, with class `o
 coderabbitai<TAB>off<TAB>repo<TAB>combsmith/software-factory
 ```
 
-- The last column is the repo, either `owner/name` or a bare `name`. A bare name matches the
-  repo of that name under any owner, so the row still applies after an org rename.
+- The last column is the repo: `owner/name`, a bare `name`, or `*`. A bare name matches the
+  repo of that name under any owner, so the row still applies after an org rename. `*` matches
+  every repo: use it for a bot that is tracked but not enabled anywhere (today
+  copilot-pull-request-reviewer and qodo-code-review), so it never raises an outage alert.
 - The login must be a registered reviewer source.
 - Put the reason in a comment above the row.
 

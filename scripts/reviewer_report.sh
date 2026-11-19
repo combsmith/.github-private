@@ -700,12 +700,15 @@ _render_unclassified_samples() {
 _COVERAGE_JQ_DEFS='
   def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
   # Is $bot expected off on $repo? A declared "owner/name" matches that repo; a bare
-  # "name" matches the repo of that name under any owner.
+  # "name" matches the repo of that name under any owner; "*" matches every repo
+  # (a bot that is not enabled anywhere).
   def is_off($bot; $repo):
     ($repo | ascii_downcase) as $r
     | any($off[]; (.login | ascii_downcase) == ($bot | ascii_downcase)
                   and ((.repo | ascii_downcase) as $d
-                       | if ($d | contains("/")) then $d == $r else $d == ($r | split("/") | last) end));
+                       | if $d == "*" then true
+                         elif ($d | contains("/")) then $d == $r
+                         else $d == ($r | split("/") | last) end));
   def opened_prs:
     [ .[] | select(.kind == "pr" and .draft == false
                    and ((.author // "") | is_dependabot | not)
