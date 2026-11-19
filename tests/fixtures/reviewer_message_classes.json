@@ -365,5 +365,19 @@
     "state": "APPROVED",
     "expect": "clean",
     "body": ""
+  },
+  {
+    "name": "codex: a thumbs-up on the PR is a clean review (#2576)",
+    "bot": "chatgpt-codex-connector",
+    "kind": "reaction",
+    "expect": "clean",
+    "body": ""
+  },
+  {
+    "name": "gemini: a thumbs-up on the PR with no sidecar rule is status (#2576)",
+    "bot": "gemini-code-assist",
+    "kind": "reaction",
+    "expect": "status",
+    "body": ""
   }
 ]
