@@ -142,7 +142,10 @@ jobs:
           set -euo pipefail
           permission=none
           if [[ "${AUTHOR}" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
-            permission=$(gh api "repos/${REPO}/collaborators/${AUTHOR}/permission" --jq '.permission' || echo none)
+            # No `|| echo none`: a failed lookup (API error, rate limit, token
+            # problem) must fail the step visibly under `set -e`, never be mapped to
+            # `none` and silently skip the dispatch (#1733 AC#4).
+            permission=$(gh api "repos/${REPO}/collaborators/${AUTHOR}/permission" --jq '.permission')
           fi
           case "${permission}" in
             admin | write) ;;
