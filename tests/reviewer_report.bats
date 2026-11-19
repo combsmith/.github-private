@@ -1188,6 +1188,13 @@ _single_repo_fixture() {
   run render_reviewer_report "$d" 7 2 2026-11-12
   [ "$(_section "$output" "Outage alerts" | grep -v '^$' | head -1)" = "none" ]
 
+  # Declared off everywhere with "*", the cell is off on every repo.
+  REVIEWER_EXPECTED_OFF_JSON='[{"login":"coderabbitai","repo":"*"}]'
+  run render_reviewer_report "$d" 7 2 2026-11-12
+  [ "$(_section "$output" "Outage alerts" | grep -v '^$' | head -1)" = "none" ]
+  _section "$output" "Coverage matrix" | grep -qF '| `combsmith/software-factory` | off (by design) |'
+  _section "$output" "Coverage matrix" | grep -qF '| `combsmith/markets` | off (by design) |'
+
   # Without the declaration both rules fire.
   REVIEWER_EXPECTED_OFF_JSON='[]'
   run render_reviewer_report "$d" 7 2 2026-11-12
@@ -1273,6 +1280,18 @@ _single_repo_fixture() {
   grep -q 'kind "repo"' <<<"$out"
   grep -q 'line 2: ' <<<"$out"
   run grep -qx $'coderabbitai\tcombsmith/software-factory' <<<"$out"
+  [ "$status" -ne 0 ]
+}
+
+@test "sidecar: an expected-off row accepts * for every repo, but no other pattern" {
+  local f
+  f="$(mktemp "$BATS_TEST_TMPDIR/off.XXXXXX")"
+  printf 'qodo-code-review\toff\trepo\t*\ngraphite-app\toff\trepo\tcombsmith/*\n' > "$f"
+  REVIEWER_MESSAGE_CLASSES_FILE="$f" run reviewer_sources_expected_off_cells
+  [ "$status" -ne 0 ]
+  grep -qxF $'qodo-code-review\t*' <<<"$output"
+  grep -q 'line 2: ' <<<"$output"
+  run grep -q $'^graphite-app\t' <<<"$output"
   [ "$status" -ne 0 ]
 }
 
