@@ -178,7 +178,7 @@ reviewer_sources_message_class_patterns() {
       if ($2 !~ /^(finding|clean|refused|skipped|status)$/) {
         print where "unknown class \"" $2 "\"" > "/dev/stderr"; bad = 1; next
       }
-      if ($3 !~ /^(any|review|inline|issue|check_run)$/) {
+      if ($3 !~ /^(any|review|inline|issue|check_run|reaction)$/) {
         print where "unknown kind \"" $3 "\"" > "/dev/stderr"; bad = 1; next
       }
       if ($1 == "" || pat == "") {
