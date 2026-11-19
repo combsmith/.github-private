@@ -94,6 +94,13 @@ Three diagnostic record kinds keep collection gaps visible (never silent, [#1908
 All are rendered in a **Collection health** section at the top of the report. Human authors
 and untracked bots are dropped at normalization time.
 
+If records were collected but `aggregate_snapshot` cannot compute the scorecard from them (its
+`jq` fails, for example on a malformed record), the report shows an **⚠️ Aggregation failed**
+section right after Collection health instead of the scorecard, and saves no snapshot, so the
+next report's change arrows compare against the last good one
+([#2543](https://github.com/combsmith/.github-private/issues/2543)). An empty collection is not
+a failure: it reports "No pull-request activity found".
+
 ## Message classes
 
 Every bot message (a PR review body, an inline review-thread comment, a top-level PR comment,
@@ -123,6 +130,9 @@ The class is decided in this order, and the first hit wins:
 4. Structural defaults:
    - the first comment of a review thread is a `finding`, and a later comment by the same bot (a reply) is `status`;
    - a `CHANGES_REQUESTED` review is a `finding` and an `APPROVED` one is `clean`;
+   - any other review with an empty or whitespace-only body is `status`: CodeRabbit submits one
+     only to carry its inline comments, and the comments themselves are classed on their own
+     ([#2543](https://github.com/combsmith/.github-private/issues/2543));
    - when no earlier pattern matches, a check run that succeeded, or whose summary says the review ran, is `clean`;
    - a check run skipped with a decline reason is `refused`, one skipped otherwise is `skipped`, and one with an empty summary is `status`.
 5. Otherwise `unclassified`.
@@ -331,7 +341,10 @@ rules. Findings raised needs a `schema_version: 3` prior
 ([#2527](https://github.com/combsmith/.github-private/issues/2527)): before that, CodeRabbit and
 Codex body findings beside their threads were not counted, so it shows no delta against a v2 week. The details
 deltas still compare. So in the first week after the change, the Reviews delta also reflects that
-status and quota comments are no longer counted.
+status and quota comments are no longer counted. Likewise, in the first week after
+[#2543](https://github.com/combsmith/.github-private/issues/2543), CodeRabbit's Reviews count drops
+because its empty-bodied reviews became `status` and no longer count as reviews. Its Unclassified messages
+drop for the same reason. Neither is a change in what CodeRabbit did.
 
 ## Known gaps (stated in every report)
 
