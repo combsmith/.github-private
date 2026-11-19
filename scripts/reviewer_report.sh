@@ -851,7 +851,17 @@ _render_outage_grid() {
     . as $all
     | ($all | opened_prs) as $o
     | ($all | reviewed_set) as $rv
-    | ($o | map(.day) | unique) as $days
+    # Every UTC day from the window start (or the first opened PR) to the last
+    # opened PR, so a quiet day shows as a column of ⬜ rather than vanishing.
+    | ($o | map(.day) | unique) as $opened_days
+    | (if ($opened_days | length) == 0 then []
+       else
+         ([ (if $start != "" then $start[0:10] else empty end), $opened_days[0] ] | min) as $first
+         | ($opened_days | last) as $last
+         | [ range(($first | strptime("%Y-%m-%d") | mktime);
+                   ($last | strptime("%Y-%m-%d") | mktime) + 1; 86400)
+             | strftime("%Y-%m-%d") ]
+       end) as $days
     | if ($days | length) == 0 then empty else
         ("| Reviewer | " + ($days | map(.[5:10]) | join(" | ")) + " | Reviewed / opened |"),
         ("|---|" + ($days | map(":-:|") | join("")) + "---:|"),

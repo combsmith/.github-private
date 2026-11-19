@@ -1218,6 +1218,23 @@ _rename_outage_fixture() {
   [ "$status" -ne 0 ]
 }
 
+@test "alerts: the day grid keeps a day with no PRs as a column of white cells" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  _cov_pr "$d" combsmith/markets 1 "2026-11-16T09:00:00Z"
+  _cov_bot "$d" combsmith/markets 1 graphite-app "2026-11-16T09:00:00Z" 1
+  _cov_pr "$d" combsmith/markets 2 "2026-11-18T09:00:00Z"
+  _cov_bot "$d" combsmith/markets 2 graphite-app "2026-11-18T09:00:00Z" 1
+  REVIEWER_BOTS=(graphite-app)
+  REVIEWER_EXPECTED_OFF_JSON='[]'
+  REVIEWER_WINDOW_START=2026-11-15T20:00:00Z
+  run render_reviewer_report "$d" 7 1 2026-11-19
+  [ "$status" -eq 0 ]
+  local alerts
+  alerts="$(_section "$output" "Outage alerts")"
+  grep -qF '| Reviewer | 11-15 | 11-16 | 11-17 | 11-18 | Reviewed / opened |' <<<"$alerts"
+  grep -qF '| Graphite | ⬜ | 🟩 | ⬜ | 🟩 | 2 / 2 |' <<<"$alerts"
+}
+
 @test "alerts: a bot silent on several repos gets one cell-alert line, not one per repo" {
   local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
   local day
