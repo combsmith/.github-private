@@ -22,9 +22,11 @@
 #               status   — progress, summary, marketing or bookkeeping text; no verdict.
 #             (`unclassified` is never written here: it is what a message gets when no
 #             row, the shared fallback or a structural default matches it.)
-#   kind    — any | review | inline | issue | check_run — which message kind the row applies to.
+#   kind    — any | review | inline | issue | check_run | reaction — which message kind the row applies to.
 #               review = PR review body, inline = review-thread comment,
-#               issue = top-level PR comment, check_run = the check-run summary.
+#               issue = top-level PR comment, check_run = the check-run summary,
+#               reaction = a thumbs-up on the PR itself, whose body is always THUMBS_UP (#2576).
+#               An `any` row never reaches a reaction.
 #   pattern — a jq/Oniguruma regex, matched CASE-INSENSITIVELY against the message's
 #             bodyText (or a check run's output summary). Unanchored unless you anchor it.
 #
@@ -62,6 +64,8 @@ chatgpt-codex-connector	status	any	^\s*Codex Review Summary
 chatgpt-codex-connector	skipped	any	To use Codex here, (create an environment|\[create an environment)
 chatgpt-codex-connector	clean	any	(Didn.t|did not) find any major issues
 chatgpt-codex-connector	finding	any	Here are some automated review suggestions
+# Codex marks a review that found nothing with a thumbs-up on the PR itself (#2576).
+chatgpt-codex-connector	clean	reaction	^THUMBS_UP$
 coderabbitai	finding	any	Security architecture risk.*?(Low|Medium|Moderate|Elevated|High|Critical|Severe)
 coderabbitai	finding	any	Retained concerns(?:\*\*|(?!\*))[\s\n]*(?:[-*]|Low|Medium|High|Critical|Severity)|Hardening Proposals(?:\*\*|(?!\*))[\s\n]*(?:[-*]|proposed)|Actionable comments posted:\s*[1-9]|Outside diff range comments \(\s*[1-9]|Nitpick comments \(\s*[1-9]|(?:Outside diff range|Nitpick) comments:[ \t]*[1-9]
 coderabbitai	finding	any	(?:Retained concerns|Hardening Proposals)\**[ \t]*(?:\r?\n[ \t]*)+(?!No (?:[a-z-]+ ){0,2}(?:concerns?|proposals?|issues?|findings?|risks?)(?: (?:were|are|have been))?(?: (?:identified|found|raised|retained|proposed|noted))?\.?[ \t]*(?:\r?\n[ \t]*)*(?:<|\*\*|Security review details|Retained concerns|Hardening Proposals|\z))(?!<|\*\*|Security review details|Retained concerns|Hardening Proposals|\z)\S
