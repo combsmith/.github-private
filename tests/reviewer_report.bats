@@ -1283,6 +1283,19 @@ _single_repo_fixture() {
   [ "$status" -ne 0 ]
 }
 
+@test "expected-off: the sidecar declares Copilot and Qodo off everywhere and Graphite off on the canary" {
+  run reviewer_sources_expected_off_cells
+  [ "$status" -eq 0 ]
+  grep -qxF $'copilot-pull-request-reviewer\t*' <<<"$output"
+  grep -qxF $'qodo-code-review\t*' <<<"$output"
+  grep -qxF $'graphite-app\tcombsmith/software-factory-canary' <<<"$output"
+  # The scorecard loaded them at source time, so they suppress alerts in a real run.
+  jq -e 'any(.[]; .login == "copilot-pull-request-reviewer" and .repo == "*")
+         and any(.[]; .login == "qodo-code-review" and .repo == "*")
+         and any(.[]; .login == "graphite-app" and .repo == "combsmith/software-factory-canary")' \
+    <<<"$REVIEWER_EXPECTED_OFF_JSON"
+}
+
 @test "sidecar: an expected-off row accepts * for every repo, but no other pattern" {
   local f
   f="$(mktemp "$BATS_TEST_TMPDIR/off.XXXXXX")"
