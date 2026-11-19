@@ -657,8 +657,11 @@ _render_collection_health() {
           "reviewThreads.comments": "20 per thread", "reactions": "20 per PR",
           "pullRequests": "MAX_PR_PAGES per repo" } as $cap
         | ($t | map(select(.pr != "(pagination)")) | map(.pr) | unique | length) as $nprs
+        | ($t | map(select(.pr == "(pagination)")) | map(.repo) | unique | length) as $nrepos
         | "### Truncated connections\n\n"
-        + "<details><summary><b>\($t | length) connections on \($nprs) PRs</b> hit a GraphQL fetch cap, "
+        + "<details><summary><b>\($t | length) connections on \($nprs) PRs"
+        + (if $nrepos > 0 then " and \($nrepos) repos (later PRs not fetched)" else "" end)
+        + "</b> hit a GraphQL fetch cap, "
         + "so reviewer counts on those PRs may <b>undercount</b> (#1908). Expand for the list.</summary>\n\n"
         + "| Connection | Cap | PRs |\n|---|---|---|\n"
         + ([ $t | group_by(.connection)[]
@@ -956,7 +959,9 @@ _reviewed_badge() {
     printf '—'
     return 0
   fi
-  pct=$(( (reviewed * 100 + eligible / 2) / eligible ))
+  # Rounded down, so the badge never shows a band the true share has not reached
+  # (16 of 23 is 69.6%: 🟡 69%, not 🟢 70%).
+  pct=$(( reviewed * 100 / eligible ))
   if (( pct >= 70 )); then printf '🟢 %d%%' "$pct"
   elif (( pct >= 40 )); then printf '🟡 %d%%' "$pct"
   elif (( pct >= 15 )); then printf '🟠 %d%%' "$pct"

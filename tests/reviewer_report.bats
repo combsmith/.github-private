@@ -585,7 +585,7 @@ JSON
 JSON
   run render_reviewer_report "$dir" 7 3 2026-11-19
   [ "$status" -eq 0 ]
-  [[ "$output" == *"<b>5 connections on 3 PRs</b>"* ]]
+  [[ "$output" == *"<b>5 connections on 3 PRs and 1 repos (later PRs not fetched)</b>"* ]]
   # One row per connection; repos grouped in it, each PR a short link.
   grep -qF '| `comments` | 50 per PR | `a` [#1](https://github.com/combsmith/a/pull/1) [#2](https://github.com/combsmith/a/pull/2) · `b` [#9](https://github.com/combsmith/b/pull/9) |' <<<"$output"
   grep -qF '| `reviews` | 50 per PR | `a` [#1](https://github.com/combsmith/a/pull/1) |' <<<"$output"
@@ -602,6 +602,8 @@ JSON
   [ "$(_reviewed_badge graphite-app 40 100)" = "🟡 40%" ]
   [ "$(_reviewed_badge graphite-app 15 100)" = "🟠 15%" ]
   [ "$(_reviewed_badge graphite-app 14 100)" = "🔴 14%" ]
+  # Rounded down: 16 of 23 is 69.6%, so it stays in the yellow band.
+  [ "$(_reviewed_badge graphite-app 16 23)" = "🟡 69%" ]
   [ "$(_reviewed_badge graphite-app 0 0)" = "—" ]
   [ "$(_reviewed_badge qodo-code-review 0 100)" = "⚪ off" ]
 }
