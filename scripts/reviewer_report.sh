@@ -304,11 +304,13 @@ _NORMALIZE_JQ='
       else
         ( [ (class_rules[$m.bot] // [])[]
             | select(.kind == $m.kind
-                     or (.kind == "any" and ($m.kind != "inline" or .class == "finding" or .class == "clean")))
+                     or (.kind == "any" and $m.kind != "reaction"
+                         and ($m.kind != "inline" or .class == "finding" or .class == "clean")))
             | select(.pattern as $p | $b | test($p; "i"))
             | select($m.kind != "review" or $m.state != "CHANGES_REQUESTED")
             | .class ] | first ) as $rule
         | if $rule != null then $rule
+          elif $m.kind == "reaction" then "status"
           elif $m.kind != "inline"
                and ($m.state != "CHANGES_REQUESTED")
                and (($b | test($rl; "i"))
@@ -412,6 +414,14 @@ _NORMALIZE_JQ='
         | { bot: (.author.login|ascii_downcase), at: .createdAt,
             kind: "issue", state: "COMMENTED", body: (.bodyText // ""),
             reactions_up: 0, reactions_down: 0, first_in_thread: false, resolved: false, outdated: false } ]
+    # A thumbs-up reaction on the PR itself (#2576): Codex marks a review that found
+    # nothing this way. The reacting login carries a "[bot]" suffix; strip it.
+    + [ (.reactions.nodes // [])[]
+        | ((.user.login // "") | sub("\\[bot\\]$"; "")) as $who
+        | select(is_bot($who))
+        | { bot: ($who|ascii_downcase), at: .createdAt,
+            kind: "reaction", state: "COMMENTED", body: "THUMBS_UP",
+            reactions_up: 0, reactions_down: 0, first_in_thread: false, resolved: false, outdated: false } ]
     # Check-run reviews (#1908): a bot that reports through a check run (Graphite)
     # posts each review as a `<name>` check run, not a PR review — a clean pass leaves
     # NO PR review, only a completed check run. The collector attaches the matched
@@ -430,7 +440,13 @@ _NORMALIZE_JQ='
         created: $pr.createdAt, merged: ($pr.mergedAt // null),
         draft: ($pr.isDraft // false), author: ($pr.author.login // "") } ),
     ( $subs | group_by(.bot)[] as $grp
-      | ($grp | map(. + {class: classify})) as $mine
+      | ($grp | map(. + {class: classify})) as $classed
+      # A clean reaction left before the bot last refused belongs to an earlier commit
+      # (#2576): the latest review was refused, so the reaction does not count.
+      | ([ $classed[] | select(.class == "refused") | .at // empty ] | max) as $last_refusal
+      | ($classed | map(if .kind == "reaction" and .class == "clean" and $last_refusal != null
+                             and (.at // "") != "" and .at < $last_refusal
+                          then .class = "status" else . end)) as $mine
       | ($mine | map(select(.class == "finding" or .class == "clean"))) as $real
       | ($mine | map(select(.class == "refused")))   as $refd
       # Messages that are not refusals, skips or status notices: the legacy review /
@@ -1114,6 +1130,7 @@ query($owner:String!, $name:String!, $cursor:String, $prFirst:Int!) {
           }
         }
         comments(first: 50) { nodes { author { login } createdAt bodyText } }
+        reactions(content: THUMBS_UP, first: 20) { nodes { user { login } createdAt } }
       }
     }
   }
@@ -1266,7 +1283,10 @@ _collect_one_repo() {
         ( if ((.reviewThreads?.nodes // []) | length) >= 50 then {kind:"truncation",repo:$repo,pr:($pr.url),connection:"reviewThreads"} else empty end),
         # Each reviewThread'"'"'s comments are fetched only up to 20 (comments(first: 20)); a
         # thread that exceeds that undercounts inline comments / thread metrics, so surface it too.
-        ( if any((.reviewThreads?.nodes // [])[]?; ((.comments?.nodes // []) | length) >= 20) then {kind:"truncation",repo:$repo,pr:($pr.url),connection:"reviewThreads.comments"} else empty end)
+        ( if any((.reviewThreads?.nodes // [])[]?; ((.comments?.nodes // []) | length) >= 20) then {kind:"truncation",repo:$repo,pr:($pr.url),connection:"reviewThreads.comments"} else empty end),
+        # Thumbs-up reactions on the PR are fetched only up to 20 (#2576); past that a
+        # Codex clean review could be missed, so surface it like the others.
+        ( if ((.reactions?.nodes // []) | length) >= 20 then {kind:"truncation",repo:$repo,pr:($pr.url),connection:"reactions"} else empty end)
     ' <<<"$resp" >> "$out" 2>/dev/null || true
 
     # Additive no-action-noise pass (#1411): emit one agent_comment record per
