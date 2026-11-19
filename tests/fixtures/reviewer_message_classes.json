@@ -264,7 +264,7 @@
     "bot": "codeant-ai",
     "kind": "inline",
     "expect": "finding",
-    "body": "Thanks for using CodeAnt! 🎉"
+    "body": "Thanks for using CodeAnt! \ud83c\udf89"
   },
   {
     "name": "codeant: inline finding containing Review Status stays a finding (#2527)",
@@ -292,7 +292,7 @@
     "bot": "coderabbitai",
     "kind": "review",
     "expect": "finding",
-    "body": "Nitpick comments: 1\n\nscripts/lib/x.sh: 1\n\n1-1: Trivial · Add the required safety flags after the shebang."
+    "body": "Nitpick comments: 1\n\nscripts/lib/x.sh: 1\n\n1-1: Trivial \u00b7 Add the required safety flags after the shebang."
   },
   {
     "name": "coderabbitai: new-format outside-diff-only review body is a finding (#2527)",
@@ -335,5 +335,35 @@
     "kind": "issue",
     "expect": "refused",
     "body": "Review limit reached\nRetained concerns\nNo architecture-level concerns identified.\nHardening Proposals\nNo hardening proposals identified."
+  },
+  {
+    "name": "coderabbit: an empty COMMENTED review (it only holds inline comments) is status (#2543)",
+    "bot": "coderabbitai",
+    "kind": "review",
+    "expect": "status",
+    "body": ""
+  },
+  {
+    "name": "cubic: a whitespace-only COMMENTED review is status (#2543)",
+    "bot": "cubic-dev-ai",
+    "kind": "review",
+    "expect": "status",
+    "body": "  \n "
+  },
+  {
+    "name": "coderabbit: an empty CHANGES_REQUESTED review stays a finding (#2543)",
+    "bot": "coderabbitai",
+    "kind": "review",
+    "state": "CHANGES_REQUESTED",
+    "expect": "finding",
+    "body": ""
+  },
+  {
+    "name": "coderabbit: an empty APPROVED review stays clean (#2543)",
+    "bot": "coderabbitai",
+    "kind": "review",
+    "state": "APPROVED",
+    "expect": "clean",
+    "body": ""
   }
 ]
