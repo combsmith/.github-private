@@ -614,7 +614,9 @@ _case_node() {
         comments: {nodes: (if $k == "issue" then [{author: {login: $c.bot}, createdAt: "2026-11-10T10:05:00Z",
                     bodyText: $c.body}] else [] end)},
         _checkRuns: (if $k == "check_run" then [{bot: $c.bot, status: "completed", conclusion: $c.conclusion,
-                    summary: $c.body, completed_at: "2026-11-10T10:05:00Z"}] else [] end) }' <<<"$1"
+                    summary: $c.body, completed_at: "2026-11-10T10:05:00Z"}] else [] end),
+        reactions: {nodes: (if $k == "reaction" then [{user: {login: ($c.bot + "[bot]")},
+                    createdAt: "2026-11-10T10:05:00Z"}] else [] end)} }' <<<"$1"
 }
 
 _all_bots_json() { printf '%s\n' "${REVIEWER_BOTS[@]}" | jq -R . | jq -sc .; }
@@ -622,6 +624,56 @@ _all_bots_json() { printf '%s\n' "${REVIEWER_BOTS[@]}" | jq -R . | jq -sc .; }
 # _normalize_node <node_json> — run _NORMALIZE_JQ over one node; prints a JSON array.
 _normalize_node() {
   jq -c --arg repo "o/r" --argjson bots "$(_all_bots_json)" --arg rl "$RATE_LIMIT_RE" "[ $_NORMALIZE_JQ ]" <<<"$1"
+}
+
+# _codex_node <reaction_at|-> <extra comments json> <extra threads json> — a PR node with an
+# optional Codex thumbs-up on the PR, for the #2576 tests.
+_codex_node() {
+  jq -nc --arg at "$1" --argjson comments "$2" --argjson threads "$3" '
+    { url: "https://github.com/o/r/pull/7", createdAt: "2026-11-10T10:00:00Z",
+      updatedAt: "2026-11-10T12:00:00Z", mergedAt: null, isDraft: false, author: {login: "h"},
+      reviews: {nodes: []}, reviewThreads: {nodes: $threads}, comments: {nodes: $comments},
+      reactions: {nodes: (if $at == "-" then [] else
+        [{user: {login: "chatgpt-codex-connector[bot]"}, createdAt: $at}] end)} }'
+}
+
+_codex_classes() { jq -c '[.[] | select(.kind=="bot_pr" and .bot=="chatgpt-codex-connector")] | .[0] | .classes'; }
+
+@test "codex: a thumbs-up alone makes the PR clean (#2576)" {
+  local out
+  out="$(_normalize_node "$(_codex_node 2026-11-10T10:07:00Z '[]' '[]')")"
+  _codex_classes <<<"$out" | jq -e '.clean == 1 and (.finding // 0) == 0'
+  jq -e '.[] | select(.kind=="bot_pr" and .bot=="chatgpt-codex-connector") | .real_responses == 1 and .latency_s == 420' <<<"$out"
+}
+
+@test "codex: a thumbs-up beside an inline finding is a PR with findings (#2576)" {
+  local threads out
+  threads='[{"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"author":{"login":"chatgpt-codex-connector"},"createdAt":"2026-11-10T10:06:00Z","bodyText":"P2: this loop never ends","path":"a.py","reactionGroups":[]}]}}]'
+  out="$(_normalize_node "$(_codex_node 2026-11-10T10:07:00Z '[]' "$threads")")"
+  _codex_classes <<<"$out" | jq -e '.finding == 1 and .clean == 1'
+  local d="$BATS_TEST_TMPDIR/cx"; mkdir -p "$d"
+  jq -c '.[]' <<<"$out" > "$d/r.jsonl"
+  aggregate_snapshot "$d" | jq -e '.bots["chatgpt-codex-connector"] | .with_findings_prs == 1 and .clean_prs == 0'
+}
+
+@test "codex: a usage-limit refusal with no thumbs-up is refused (#2576)" {
+  local comments out
+  comments='[{"author":{"login":"chatgpt-codex-connector"},"createdAt":"2026-11-10T10:06:00Z","bodyText":"You have reached your Codex usage limits for code reviews."}]'
+  out="$(_normalize_node "$(_codex_node - "$comments" '[]')")"
+  _codex_classes <<<"$out" | jq -e '.refused == 1 and (.clean // 0) == 0'
+}
+
+@test "codex: a thumbs-up older than the latest refusal does not make the PR clean (#2576)" {
+  local comments out d
+  comments='[{"author":{"login":"chatgpt-codex-connector"},"createdAt":"2026-11-10T11:00:00Z","bodyText":"You have reached your Codex usage limits for code reviews."}]'
+  out="$(_normalize_node "$(_codex_node 2026-11-10T10:07:00Z "$comments" '[]')")"
+  _codex_classes <<<"$out" | jq -e '.refused == 1 and (.clean // 0) == 0 and .status == 1'
+  d="$BATS_TEST_TMPDIR/cx2"; mkdir -p "$d"
+  jq -c '.[]' <<<"$out" > "$d/r.jsonl"
+  aggregate_snapshot "$d" | jq -e '.bots["chatgpt-codex-connector"] | .refused_prs == 1 and .clean_prs == 0'
+  # A thumbs-up AFTER the refusal (a later commit reviewed clean) does count.
+  out="$(_normalize_node "$(_codex_node 2026-11-10T12:00:00Z "$comments" '[]')")"
+  _codex_classes <<<"$out" | jq -e '.clean == 1'
 }
 
 @test "classes: every fixture message lands in its expected class (#2504)" {
@@ -1012,7 +1064,7 @@ JSON
   while IFS=$'\t' read -r login class kind _; do
     grep -qx "$login" <<<"$logins" || { echo "unregistered login: $login"; return 1; }
     [[ "$class" =~ ^(finding|clean|refused|skipped|status)$ ]] || { echo "bad class: $class"; return 1; }
-    [[ "$kind" =~ ^(any|review|inline|issue|check_run)$ ]] || { echo "bad kind: $kind"; return 1; }
+    [[ "$kind" =~ ^(any|review|inline|issue|check_run|reaction)$ ]] || { echo "bad kind: $kind"; return 1; }
   done <<<"$rows"
 }
 
