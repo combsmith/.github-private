@@ -495,3 +495,75 @@ fix_request_setup() {
   [ "$status" -eq 0 ]
   grep -q 'REMOVE_LABEL' "$EVENTS"
 }
+
+# ── #2495 tier 4 (adjudicate) ───────────────────────────────────────────────
+# review-one-pr.sh attaches a structured `.adjudication` record to the verdict it
+# hands this script. The record, not model text, decides the path and the note.
+
+write_adjudicated_verdict() { # <decision> <adjudication-json>
+  local f="$TEST_DIR/verdict.json"
+  jq -n --arg d "$1" --argjson a "$2" \
+    '{decision:$d, risk:"LOW", summary:"needs a human", body:"- some finding", adjudication:$a}' > "$f"
+  echo "$f"
+}
+
+@test "#2495: adjudicated request_changes posts a fix-request even with delegation off" {
+  export AI_DELEGATION_ENABLED="false"
+  local vf; vf=$(write_adjudicated_verdict escalate \
+    '{"trigger":"cascade-escalate","model":"claude-fable-5-2","outcome":"ok","decision":"request_changes","overrode":true,"guard":""}')
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2; cat "$COMMENT_OUT" >&2
+  [ "$status" -eq 0 ]
+  grep -q 'decision=fix-requested' "$COMMENT_OUT"
+  grep -q "<!-- pr-review-agent adjudicate v1 sha=$SHA trigger=cascade-escalate outcome=ok decision=request_changes overrode=true -->" "$COMMENT_OUT"
+  grep -q 'claude-fable-5-2' "$COMMENT_OUT"
+  grep -q 'FINAL_TIER=adjudicate' "$COMMENT_OUT"
+  ! grep -q 'ADD_LABEL' "$EVENTS" || false
+}
+
+@test "#2495: a confirmed escalate goes to a human with the tier-4 note in the escalation comment" {
+  local vf; vf=$(write_adjudicated_verdict escalate \
+    '{"trigger":"cascade-escalate","model":"claude-fable-5-2","outcome":"ok","decision":"escalate","overrode":false,"guard":""}')
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2; cat "$COMMENT_OUT" >&2
+  [ "$status" -eq 101 ]
+  grep -q '<!-- pr-review-agent human-escalation v1 -->' "$COMMENT_OUT"
+  grep -q 'Tier 4 (adjudicate)' "$COMMENT_OUT"
+  grep -q 'overrode the human escalation: \*\*no\*\*' "$COMMENT_OUT"
+  grep -q 'ADD_LABEL' "$EVENTS"
+}
+
+@test "#2495: a fallback (invalid JSON) still escalates to a human and says so" {
+  local vf; vf=$(write_adjudicated_verdict escalate \
+    '{"trigger":"cascade-escalate","model":"claude-fable-5-2","outcome":"invalid-json","decision":"","overrode":false,"guard":""}')
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  echo "$output" >&2; cat "$COMMENT_OUT" >&2
+  [ "$status" -eq 101 ]
+  grep -q 'outcome=invalid-json decision=none overrode=false' "$COMMENT_OUT"
+  grep -q 'falling back to human escalation' "$COMMENT_OUT"
+}
+
+@test "#2495: an adjudicated approve posts the review with the tier-4 note" {
+  local body="<!-- pr-review-agent v1 sha=${SHA} decision=approved risk=LOW -->
+
+## Automated review — APPROVED ✓ (adjudicated)
+
+**FINAL_TIER:** adjudicate"
+  local f="$TEST_DIR/verdict.json"
+  jq -n --arg b "$body" \
+    '{decision:"approve", risk:"LOW", summary:"ok", body:$b,
+      adjudication:{trigger:"max-cycles", model:"claude-fable-5-2", outcome:"ok", decision:"approve", overrode:true, guard:""}}' > "$f"
+  run bash "$POST_SCRIPT" "$PR_URL" "$f" "false"
+  echo "$output" >&2; cat "$REVIEW_OUT" >&2
+  [ "$status" -eq 0 ]
+  grep -q "decision=approved" "$REVIEW_OUT"
+  grep -q "<!-- pr-review-agent adjudicate v1 sha=$SHA trigger=max-cycles outcome=ok decision=approve overrode=true -->" "$REVIEW_OUT"
+  grep -q 'FINAL_TIER=adjudicate' "$REVIEW_OUT"
+}
+
+@test "#2495: a verdict with no adjudication record is unchanged (no tier-4 note)" {
+  local vf; vf=$(write_escalate_verdict)
+  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
+  [ "$status" -eq 101 ]
+  ! grep -q 'Tier 4' "$COMMENT_OUT" || false
+}

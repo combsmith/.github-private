@@ -41,8 +41,8 @@ external vendors.
 ## Data source: one batched GraphQL query per repo
 
 For each repo we paginate PRs newest-first and pull, in a **single round-trip per page**,
-each PR's `reviews`, `reviewThreads` (with `isResolved` / `isOutdated` and reaction
-counts), and issue `comments`. Pagination stops as soon as a page's PRs predate the
+each PR's `reviews`, `reviewThreads` (with `isResolved` / `isOutdated`, reaction
+counts, and each comment's path, lines and parent review id), and issue `comments`. Pagination stops as soon as a page's PRs predate the
 lookback window (PRs are ordered by `UPDATED_AT` descending), so we never walk a repo's
 entire history. This is far fewer API calls than per-PR REST fetches.
 
@@ -77,7 +77,8 @@ Each PR node is normalized (pure `jq`) into two record kinds:
 - `{kind:"bot_pr", …}` — one per tracked bot that left at least one message on the PR. It
   carries the per-class message counts (`classes`), `real_responses` (finding + clean
   messages), `refusals`, latency to the first finding or clean message, verdict counts, the
-  threads the bot opened and how many are resolved, `findings_raised`, reactions, and up to 3
+  threads the bot opened and how many are resolved, `findings_raised` with its two parts
+  `findings_threads` and `findings_body`, reactions, and up to 3
   truncated `unclassified_samples`. A check-run clean pass adds **0** to the review-event
   count but makes the PR count as reviewed.
 
@@ -110,7 +111,12 @@ or a completed check run) gets **exactly one** class ([#2504](https://github.com
 The class is decided in this order, and the first hit wins:
 
 1. A check run with a failed conclusion is `status`.
-2. The bot's own rows in `scripts/lib/reviewer-message-classes.tsv`, top to bottom.
+2. The bot's own rows in `scripts/lib/reviewer-message-classes.tsv`, top to bottom. A row of
+   kind `any` reaches an inline comment only when its class is `finding` or `clean`
+   ([#2527](https://github.com/combsmith/.github-private/issues/2527)). A broad `status`,
+   `skipped` or `refused` phrase ("Review Status", "review in progress", "review is skipped")
+   quoted inside a real inline finding must not drop it from threads and findings. A row of
+   kind `inline` still applies whatever its class.
 3. The shared refusal fallback, `ADVISORY_RATE_LIMIT_RE` from `scripts/lib/advisory-review-gate.sh`
    plus its author-scoped cubic clause, gives `refused`. It is never applied to inline comments,
    because a finding that talks about a rate limit is still a finding.
@@ -139,7 +145,9 @@ pattern), which match the markdown `body`, are not reused as they are.
 2. Add rows to `scripts/lib/reviewer-message-classes.tsv`, one pattern per row:
    `login<TAB>class<TAB>kind<TAB>pattern`.
    - `class` is `finding`, `clean`, `refused`, `skipped` or `status`.
-   - `kind` is `any`, `review`, `inline`, `issue` or `check_run`.
+   - `kind` is `any`, `review`, `inline`, `issue` or `check_run`. An `any` row of class `status`,
+     `skipped` or `refused` never reaches inline comments; write a `kind: inline` row if you
+     really mean one.
    - `pattern` is a jq (Oniguruma) regex, matched case-insensitively against the message's `bodyText`, or against a check run's output summary.
 3. Order matters: the first matching row wins. Put narrow rows above broad ones. For example, put
    a refusal row above a `status` row that matches the summary comment the refusal sits in, and
@@ -169,7 +177,7 @@ Clean, Refused, Skipped, No response. So the five PR columns sum to **Total PRs*
 | **Refused** | PRs with no finding or clean message and at least one `refused` message. |
 | **Skipped** | PRs with no finding, clean or refused message and at least one `skipped` message. |
 | **No response** | Every other eligible PR: the bot never appeared, or left only `status` or `unclassified` messages. A queued check run leaves the PR here too. |
-| **Findings raised** | Review threads the bot opened with a finding, plus `finding` review, comment or check-run bodies. On a PR where the bot opened threads, its body findings are taken to be the summary of those threads and are not counted again. |
+| **Findings raised** | Review threads the bot opened with a finding, plus the findings written in its `finding` review, comment or check-run bodies. See [Body findings](#body-findings) for how a body is counted. The Details section shows the two parts separately. |
 | **Resolved %** | Threads the bot opened that are resolved, out of all threads it opened (`n/a` when it opened none). |
 | **Latency p50 / p95** | Time from PR creation to the bot's first `finding` or `clean` message. Refusals and status notices never count, so they don't pollute the percentiles. Targets the "review arrived after auto-approval" failure mode (PR #453). |
 
@@ -185,9 +193,108 @@ collected, are in a **Details** section:
 | **Refusal events** | Every `refused` message, each occurrence. |
 | **👍 / 👎** | Reactions on the bot's inline comments. |
 | **Status messages / Unclassified messages** | Message counts. Neither ever makes a PR count as reviewed. |
+| **Findings: threads / bodies** | The two parts of **Findings raised**: review threads the bot opened with a finding, and findings counted from its bodies. |
+
+### Body findings
+
+Some bots write findings in a review body that never become review threads
+([#2527](https://github.com/combsmith/.github-private/issues/2527)). Each `finding` body that is
+not an inline comment is counted by its bot's rule:
+
+| Bot | Body findings counted |
+|---|---|
+| **coderabbitai** | The counts in its **Outside diff range comments** and **Nitpick comments** section headers, whether or not it opened threads on the PR. `bodyText` carries both header forms, `Outside diff range comments (2)` and `Nitpick comments: 2`. The unnumbered repeats in its "Prompt to fix all issues" block, and its "Duplicate comments" and "Additional comments" sections, add nothing. |
+| **chatgpt-codex-connector** | Each code location the body points at, read from `bodyText` as the permalink (`…/blob/<sha>/<path>#L<a>-L<b>`) or as the snippet GitHub renders from it (`<repo>/<path> Lines <a> to <b> in <sha>`). The snippet's leading repo name is dropped, so both forms give a repository-relative path. A location counts unless an inline comment **from the same review** has exactly that path and an overlapping line, on either the current or the original diff. |
+| Every other bot | Nothing beyond the fallback below. |
+
+Fallback, for every bot: a `finding` body for which the rule above found nothing counts **once**,
+and only on a PR where the bot opened no thread. On a PR with threads, such a body is the summary
+of those threads ("Actionable comments posted: 2", "Here are some automated review suggestions").
+
+In the 80 Codex reviews sampled across five repos when this rule was written, every body was
+boilerplate beside its inline comments, so the Codex rule usually adds nothing. It is there for the
+body-only suggestions Codex posts when it cannot attach a comment to the diff.
 
 **Coverage overlap** counts non-draft PRs *reviewed* (finding or clean) by ≥2 bots. It is a redundancy
 versus specialization signal.
+
+### Coverage matrix, outage alerts and quota timing
+
+The scorecard rows are org-wide, so they can hide a bot that stopped everywhere next to bots
+that are routinely quiet, or a bot that never runs on one repo
+([#2506](https://github.com/combsmith/.github-private/issues/2506)). After the 2026-10-14 org
+rename, gemini-code-assist, codeant-ai and cubic-dev-ai stopped reviewing for about four weeks
+and showed up only as "No response". graphite-app never reviewed `software-factory` for a month.
+Three sections cover this. Every count in them leaves out **Dependabot-authored PRs**.
+
+Terms used in all three:
+
+- **Opened**: a non-draft PR created in the window (on or after the window start, `CUTOFF`). A
+  PR created earlier but updated in the window is collected for the scorecard but is not opened.
+- **Reviewed**: an opened PR on which the bot left at least one `finding` or `clean` message,
+  as defined in [Message classes](#message-classes).
+- **Day**: the UTC calendar day the PR was opened.
+
+#### Coverage matrix
+
+One row per repo with at least one opened PR, one column per tracked bot. Each cell shows
+`reviewed / opened` for the window. A cell declared expected-off (see below) shows
+`off (by design)` instead.
+
+#### Outage alerts
+
+An **Outage alerts** section sits at the top of the report, right after Collection health. It
+uses two rules, and both look only at the cells where the bot is expected on:
+
+1. **Silence across repos.** The bot reviewed **0** PRs on **2 or more consecutive days**, and
+   **at least 3** PRs were opened on those days in the repos where it is expected on. A day's
+   count is the PRs opened that day, so a day counts as silent when the bot reviewed none of
+   them. Only days on which at least one such PR was opened count. A day with none, such as a
+   quiet weekend, neither ends nor extends a run. This is the rename-outage case.
+2. **Silence on one repo.** A bot × repo cell that is not expected-off has **at least 3**
+   opened PRs and **0** reviewed for the whole window. This is the `software-factory` ×
+   graphite-app case.
+
+Each alert names the bot, the repo or repos, and the **first silent day**: the first day of
+the run for rule 1, and the day the cell's earliest opened PR was opened for rule 2. One outage
+can fire both rules, for example rule 1 for the bot and rule 2 for each busy repo. With no
+alerts the section says `none`.
+
+A PR is credited to the day it was opened, so a PR opened in the last minutes before the
+report runs, and not reviewed yet, counts as unreviewed. A rule needs at least 3 PRs, so one
+late PR alone never raises an alert.
+
+#### Declaring an expected-off cell
+
+Some cells are off on purpose. For example, coderabbitai is on-demand only on `software-factory`,
+because that repo's `.coderabbit.yaml` turns auto review off. Declare such a cell in the
+scorecard-only sidecar `scripts/lib/reviewer-message-classes.tsv`, with class `off` and kind
+`repo`:
+
+```
+# coderabbitai is on-demand only on software-factory: its .coderabbit.yaml turns auto review off.
+coderabbitai<TAB>off<TAB>repo<TAB>combsmith/software-factory
+```
+
+- The last column is the repo: `owner/name`, a bare `name`, or `*`. A bare name matches the
+  repo of that name under any owner, so the row still applies after an org rename. `*` matches
+  every repo: use it for a bot that is tracked but not enabled anywhere (today
+  copilot-pull-request-reviewer and qodo-code-review), so it never raises an outage alert.
+- The login must be a registered reviewer source.
+- Put the reason in a comment above the row.
+
+The message-class loader skips `off` rows. `reviewer_sources_expected_off_cells` reads them and
+reports a malformed one on stderr; `tests/reviewer_report.bats` fails on it. An off cell renders
+`off (by design)` in the matrix, its PRs are left out of rule 1 for that bot, and rule 2 never
+fires for it. Like the rest of the sidecar, this changes the scorecard only, never a gate.
+
+#### Quota timing
+
+For each bot with `refused` messages in the window, the **Quota timing** section lists the
+refusals per UTC day and the time (UTC) of the first refusal that day. This shows when a daily
+quota runs out. For example, gemini-code-assist hit its daily quota at 02:41 UTC on 2026-11-11
+and posted 29 refusals after that. Each normalized `bot_pr` record carries the times of its
+refused messages in `refused_at`. With no refusals the section says `none`.
 
 ### Agent comment noise (our own automation)
 
@@ -217,9 +324,12 @@ First-ever runs (or an expired artifact) simply omit the deltas — never an err
 
 Deltas cover the headline columns With findings, Clean, Refused, Skipped, No response and
 Findings raised, plus Resolved % in percentage points. They also cover Reviews and Refusal events
-in the details section. Snapshots carry `schema_version: 2`. A prior snapshot without it (written
-before [#2504](https://github.com/combsmith/.github-private/issues/2504)) shows **no** headline
-delta, because its refused and no-response counts were made under the old rules. The details
+in the details section. Snapshots carry `schema_version: 3`. A prior snapshot without
+`schema_version` 2 or later (written before [#2504](https://github.com/combsmith/.github-private/issues/2504))
+shows **no** headline delta, because its refused and no-response counts were made under the old
+rules. Findings raised needs a `schema_version: 3` prior
+([#2527](https://github.com/combsmith/.github-private/issues/2527)): before that, CodeRabbit and
+Codex body findings beside their threads were not counted, so it shows no delta against a v2 week. The details
 deltas still compare. So in the first week after the change, the Reviews delta also reflects that
 status and quota comments are no longer counted.
 
@@ -279,7 +389,7 @@ ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
 | File | Role |
 |---|---|
 | `scripts/lib/reviewer-sources.tsv` + `scripts/lib/reviewer-sources.sh` | The reviewer-source registry ([#1425](https://github.com/combsmith/.github-private/issues/1425)) + its sourced lookup helpers — the single source of truth for bot logins and the `check_run_name` map, projected by the gate and this report. |
-| `scripts/lib/reviewer-message-classes.tsv` | Scorecard-only per-bot message-class patterns ([#2504](https://github.com/combsmith/.github-private/issues/2504)), read through `reviewer_sources_message_class_patterns`. Neither gate reads it. |
+| `scripts/lib/reviewer-message-classes.tsv` | Scorecard-only per-bot message-class patterns ([#2504](https://github.com/combsmith/.github-private/issues/2504)), read through `reviewer_sources_message_class_patterns`, and the expected-off bot × repo cells ([#2506](https://github.com/combsmith/.github-private/issues/2506)), read through `reviewer_sources_expected_off_cells`. Neither gate reads it. |
 | `scripts/lib/advisory-review-gate.sh` | Advisory approval gate; rate-limit body patterns (reused, not forked). Its bot list is a registry projection. |
 | `scripts/lib/comment-noise.sh` | Pure no-action agent-comment classifier + `cn_render_noise_section` (the noise metric). Unit-tested in `tests/comment_noise.bats`. |
 | `scripts/reviewer_report.sh` | Org-wide GraphQL collection (`main` / `collect_org_reviews`) + pure normalization, aggregation, and rendering (`aggregate_snapshot`, `render_reviewer_report`). |
@@ -292,6 +402,7 @@ ORG=combsmith LOOKBACK_DAYS=7 GH_TOKEN="$(gh auth token)" \
 |---|---|
 | `ORG` | Org to scan (default `combsmith`). All non-archived repos discovered automatically. |
 | `LOOKBACK_DAYS` | Rolling window of PR activity to include (default `7`). |
+| `CUTOFF` / `REVIEWER_WINDOW_START` | Window start as an ISO-8601 UTC timestamp. `main()` sets `CUTOFF` from `LOOKBACK_DAYS`. The coverage matrix, outage alerts and quota timing count only PRs opened (and refusals posted) on or after it. `REVIEWER_WINDOW_START`, when set, takes precedence for those three sections (tests use it). With neither set, they count every collected PR. |
 | `GH_TOKEN` | PAT with repo read across the org — PRs + reviews are per-repo. Uses `GH_PAT_WORKFLOWS` in CI. |
 | `REVIEWER_REPORT_OUT` | Optional path to also write the report to (used by the workflow to post the issue comment). |
 | `REVIEWER_SNAPSHOT_OUT` | Optional path to write this week's per-bot snapshot (uploaded as the WoW artifact). |

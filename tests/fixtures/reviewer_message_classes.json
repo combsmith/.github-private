@@ -253,18 +253,53 @@
     "body": "This code path does not properly handle edge cases."
   },
   {
-    "name": "coderabbitai: inline with skipped pattern (kind any) is skipped",
+    "name": "coderabbitai: inline finding quoting a skipped phrase (kind any) stays a finding (#2527)",
     "bot": "coderabbitai",
     "kind": "inline",
-    "expect": "skipped",
+    "expect": "finding",
     "body": "Review skipped\nAuto reviews are disabled on this branch."
   },
   {
-    "name": "codeant: inline with status pattern (kind any) is status",
+    "name": "codeant: inline finding quoting a status phrase (kind any) stays a finding (#2527)",
     "bot": "codeant-ai",
     "kind": "inline",
-    "expect": "status",
+    "expect": "finding",
     "body": "Thanks for using CodeAnt! 🎉"
+  },
+  {
+    "name": "codeant: inline finding containing Review Status stays a finding (#2527)",
+    "bot": "codeant-ai",
+    "kind": "inline",
+    "expect": "finding",
+    "body": "The Review Status enum is never persisted, so a restart loses it."
+  },
+  {
+    "name": "codeant: inline finding saying the review is skipped stays a finding (#2527)",
+    "bot": "codeant-ai",
+    "kind": "inline",
+    "expect": "finding",
+    "body": "When the flag is unset the security review is skipped silently; fail closed instead."
+  },
+  {
+    "name": "coderabbitai: inline finding containing review in progress stays a finding (#2527)",
+    "bot": "coderabbitai",
+    "kind": "inline",
+    "expect": "finding",
+    "body": "This lock is released while a review in progress still holds the row."
+  },
+  {
+    "name": "coderabbitai: new-format nitpick-only review body is a finding (#2527)",
+    "bot": "coderabbitai",
+    "kind": "review",
+    "expect": "finding",
+    "body": "Nitpick comments: 1\n\nscripts/lib/x.sh: 1\n\n1-1: Trivial · Add the required safety flags after the shebang."
+  },
+  {
+    "name": "coderabbitai: new-format outside-diff-only review body is a finding (#2527)",
+    "bot": "coderabbitai",
+    "kind": "review",
+    "expect": "finding",
+    "body": "Outside diff range comments: 2\n\nscripts/lib/x.sh: 2"
   },
   {
     "name": "coderabbit: numbered retained concern beside a rate limit is a finding",

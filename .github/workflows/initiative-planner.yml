@@ -265,7 +265,7 @@ jobs:
         env:
           # Bob materializes the epic + DAG in the TARGET repo via apply-plan.sh.
           GH_TOKEN: ${{ env.TARGET_GH_TOKEN }}
-        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
+        uses: anthropics/claude-code-action@9eb012b6d0900c2b9eede65ee1758cec4d2973e9 # v1.0.270
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # CRITICAL (same gotcha as feature-ideation): pass the target-repo write

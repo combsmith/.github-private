@@ -178,6 +178,25 @@ if declare -F reviewer_sources_message_class_patterns >/dev/null 2>&1; then
   unset _mc_rows
 fi
 
+# Expected-off bot × repo cells (#2506) from the same sidecar, as a JSON array
+#   [ {login, repo}, ... ]
+# where repo is "owner/name" or a bare "name". An off cell renders "off (by design)"
+# in the coverage matrix and never raises an outage alert. `[]` when the loader is
+# absent; a malformed row is dropped by the loader (and the bats suite fails on it).
+REVIEWER_EXPECTED_OFF_JSON='[]'
+if declare -F reviewer_sources_expected_off_cells >/dev/null 2>&1; then
+  _off_rows="$(reviewer_sources_expected_off_cells)" \
+    || echo "WARN: reviewer-message-classes.tsv has invalid expected-off rows — they are ignored (see above)" >&2
+  if [[ -n "$_off_rows" ]]; then
+    REVIEWER_EXPECTED_OFF_JSON="$(jq -Rsc '
+      split("\n") | map(select(length > 0) | split("\t")
+        | {login: (.[0] | ascii_downcase), repo: (.[1] // "")} | select(.repo != ""))
+    ' <<<"$_off_rows" 2>/dev/null)" || REVIEWER_EXPECTED_OFF_JSON='[]'
+    [[ -n "$REVIEWER_EXPECTED_OFF_JSON" ]] || REVIEWER_EXPECTED_OFF_JSON='[]'
+  fi
+  unset _off_rows
+fi
+
 # ---------------------------------------------------------------------------
 # Pure rendering / aggregation helpers (unit-tested, no network)
 # ---------------------------------------------------------------------------
@@ -229,9 +248,9 @@ _delta_arrow() {
 # a stream of normalized JSONL records. Emits:
 #   {kind:"pr", repo, pr, created, merged, draft, author}         (denominator)
 #   {kind:"bot_pr", repo, pr, bot, created, classes, real_responses, refusals,
-#      latency_s, reviews, approved, changes_req, inline_comments, threads_total,
-#      threads_resolved, findings_raised, thumbs_up, thumbs_down,
-#      unclassified_samples}                                       (participation)
+#      refused_at, latency_s, reviews, approved, changes_req, inline_comments, threads_total,
+#      threads_resolved, findings_threads, findings_body, findings_raised,
+#      thumbs_up, thumbs_down, unclassified_samples}                                       (participation)
 # Args: --arg repo, --argjson bots (login array), --arg rl (rate-limit regex).
 # A "bot_pr" record is emitted for every bot that left at least one message.
 #
@@ -241,7 +260,10 @@ _delta_arrow() {
 # decided in this order (first hit wins):
 #   0. a check run with a failed conclusion is `status` (the job broke; whatever its
 #      summary says, it carries no review — #1913);
-#   1. the bot's own rows in reviewer-message-classes.tsv, top to bottom;
+#   1. the bot's own rows in reviewer-message-classes.tsv, top to bottom. A row of
+#      kind `any` reaches an inline comment only when its class is `finding` or
+#      `clean` (#2527): a broad status, skip or refusal phrase inside a real inline
+#      finding must not drop it from threads and findings;
 #   2. the shared refusal fallback: $rl (ADVISORY_RATE_LIMIT_RE) or the author-scoped
 #      cubic clause → `refused`. Never applied to inline comments: a finding that talks
 #      about a rate limit is still a finding;
@@ -252,10 +274,26 @@ _delta_arrow() {
 #      `status`;
 #   4. otherwise `unclassified`.
 # A PR counts as reviewed by a bot only when it left a `finding` or `clean` message.
+#
+# Findings raised (#2527) = findings_threads + findings_body:
+#   findings_threads — review threads the bot opened with a finding;
+#   findings_body    — findings written in its review / comment / check-run bodies.
+#     coderabbitai: the counts in its "Outside diff range comments" and "Nitpick
+#       comments" headers, whether or not it opened threads (those items never
+#       become threads);
+#     chatgpt-codex-connector: each code location its body points at, unless an
+#       inline comment from the same review sits on the same file and line;
+#     a finding body with none of the above counts once, and only on a PR where the
+#       bot opened no thread (otherwise it is the summary of those threads).
 # shellcheck disable=SC2089  # this is a jq program; embedded quotes are meant to be literal
 _NORMALIZE_JQ='
-  def is_bot($login): ($login != null) and ($login | ascii_downcase) as $l
-    | ($bots | map(ascii_downcase) | index($l)) != null;
+  # if/else on purpose (#2547): jq 1.8 parses `A and B as $x | C` as
+  # `(A and B) as $x | C`, binding $l to the boolean, so every login read as
+  # "not a bot". jq 1.7 bound $l to B. The if/else has no such ambiguity.
+  def is_bot($login):
+    if $login == null then false
+    else ($login | ascii_downcase) as $l | any($bots[]; ascii_downcase == $l)
+    end;
   def class_rules: '"$REVIEWER_MESSAGE_CLASS_JSON"';
   def failed_conclusions: ["failure","cancelled","timed_out","action_required","stale","startup_failure"];
   def classify:
@@ -266,7 +304,7 @@ _NORMALIZE_JQ='
       else
         ( [ (class_rules[$m.bot] // [])[]
             | select(.kind == $m.kind
-                     or (.kind == "any" and ($m.kind != "inline" or .class != "refused")))
+                     or (.kind == "any" and ($m.kind != "inline" or .class == "finding" or .class == "clean")))
             | select(.pattern as $p | $b | test($p; "i"))
             | select($m.kind != "review" or $m.state != "CHANGES_REQUESTED")
             | .class ] | first ) as $rule
@@ -295,10 +333,62 @@ _NORMALIZE_JQ='
     (.body // "") | gsub("https?://[^\\s)]+"; "[url]") | gsub("[`\\s]+"; " ")
     | sub("^ "; "") | sub(" $"; "")
     | if length > 100 then .[0:100] + "…" else . end;
+  # CodeRabbit body findings (#2527): the counts in its section headers. bodyText
+  # carries two header forms, "Outside diff range comments (2)" and "Nitpick
+  # comments: 2". The unnumbered repeats in its "Prompt to fix all issues" block
+  # ("Outside diff comments:", "Nitpick comments:") carry no count and never match.
+  def coderabbit_body_count:
+    (.body // "") as $b
+    | [ ("Outside diff range", "Nitpick") as $s
+        | (first($b | match("\($s) comments[ \\t]*(?:\\([ \\t]*|:[ \\t]*)([0-9]+)"; "i"))
+           | .captures[0].string | tonumber) // 0 ]
+    | add;
+  # Codex body findings (#2527): each code location the body points at, read from
+  # bodyText as the permalink (…/blob/<sha>/<path>#L<a>-L<b>) or as the snippet
+  # GitHub renders from it (a <repo>/<path> line, then Lines <a> to <b> in <sha>; the
+  # whole line is the path, so a path with spaces survives; a path on the same line
+  # as the Lines label is read up to the first space). Both yield a
+  # repository-relative path: the leading repo-name segment (a repo
+  # name never contains "/") is stripped from the snippet form, so paths compare exactly.
+  # The permalink path is URL-encoded (a space is %20) while GraphQL paths are not,
+  # so ASCII escapes are decoded; a multi-byte escape is left as it is.
+  def codex_location: .captures | { path: .[0].string, from: (.[1].string | tonumber),
+                                    to: ((.[2].string // .[1].string) | tonumber) };
+  def url_decode_ascii:
+    gsub("%(?<h>[0-7][0-9A-Fa-f])";
+         .h | ascii_downcase | explode | map(if . >= 97 then . - 87 else . - 48 end)
+         | [.[0] * 16 + .[1]] | implode);
+  def codex_locations:
+    (.body // "") as $b
+    | [ ($b | match("/blob/[0-9a-f]{7,40}/([^#\\s]+)#L([0-9]+)(?:-L([0-9]+))?"; "g")
+            | codex_location | .path |= url_decode_ascii),
+        ($b | match("(?:([^\\n]*\\S)[ \\t]*\\n\\s*|(\\S+)[ \\t]+)Lines? ([0-9]+)(?: to ([0-9]+))?\\s+in\\s+[0-9a-f]{7,40}\\b"; "g")
+            | .captures | { path: (.[0].string // .[1].string), from: (.[2].string | tonumber),
+                            to: ((.[3].string // .[2].string) | tonumber) }
+            | .path |= (sub("^\\s+"; "") | sub("^[^/]*/"; ""))) ]
+    # One location written both ways counts once.
+    | unique_by([.path, .from, .to]);
+  # Does this inline comment sit on $loc? The same repository-relative path, and an
+  # overlapping line span on the current or the original diff.
+  def at_location($loc):
+    (.path // "") as $p
+    | ($p != "") and $loc.path == $p
+      and ([ [(.start_line // .line), .line], [(.original_start_line // .original_line), .original_line] ]
+           | any(.[]; .[0] != null and .[1] != null and .[0] <= $loc.to and .[1] >= $loc.from));
+  # Findings this body carries on its own, beyond the threads its bot opened. The
+  # argument is that same bot inline comments on the PR.
+  def body_finding_count($inline):
+    . as $m
+    | if $m.bot == "coderabbitai" then coderabbit_body_count
+      elif $m.bot == "chatgpt-codex-connector" then
+        [ codex_locations[] as $loc
+          | select(($inline | any(.[]; .review_id != null and .review_id == $m.id and at_location($loc))) | not) ]
+        | length
+      else 0 end;
   . as $pr
   | ([ (.reviews.nodes // [])[]
        | select(.author.login as $a | is_bot($a))
-       | { bot: (.author.login|ascii_downcase), at: .submittedAt,
+       | { bot: (.author.login|ascii_downcase), at: .submittedAt, id: (.id // null),
            kind: "review", state: (.state // "COMMENTED"),
            body: (.bodyText // ""), reactions_up: 0, reactions_down: 0,
            first_in_thread: false, resolved: false, outdated: false } ]
@@ -311,7 +401,10 @@ _NORMALIZE_JQ='
             reactions_up: ([ (.reactionGroups // [])[] | select(.content=="THUMBS_UP") | .users.totalCount ] | add // 0),
             reactions_down: ([ (.reactionGroups // [])[] | select(.content=="THUMBS_DOWN") | .users.totalCount ] | add // 0),
             first_in_thread: ($idx == 0),
-            resolved: ($t.isResolved // false), outdated: ($t.isOutdated // false) } ]
+            resolved: ($t.isResolved // false), outdated: ($t.isOutdated // false),
+            review_id: (.pullRequestReview.id // null), path: (.path // null),
+            line: (.line // null), original_line: (.originalLine // null),
+            start_line: (.startLine // null), original_start_line: (.originalStartLine // null) } ]
     + [ (.comments.nodes // [])[]
         | select(.author.login as $a | is_bot($a))
         | { bot: (.author.login|ascii_downcase), at: .createdAt,
@@ -345,13 +438,18 @@ _NORMALIZE_JQ='
       | ($substantive | map(select(.kind=="review")) | length) as $rev_events
       # Threads this bot OPENED with a finding — reply comments are not new threads.
       | ($mine | map(select(.kind=="inline" and .first_in_thread and .class=="finding"))) as $threads
-      | ($mine | map(select(.kind!="inline" and .class=="finding")) | length) as $body_findings
+      | ($mine | map(select(.kind=="inline"))) as $inline
+      | ($mine | map(select(.kind!="inline" and .class=="finding") | body_finding_count($inline))) as $body_counts
+      | (($body_counts | add // 0)
+         + (if ($threads | length) > 0 then 0 else ($body_counts | map(select(. == 0)) | length) end)) as $body_findings
       | { kind: "bot_pr", repo: $repo, pr: ($pr.url),
           bot: $grp[0].bot, created: $pr.createdAt,
           classes: (reduce ("finding","clean","refused","skipped","status","unclassified") as $c
                       ({}; .[$c] = ($mine | map(select(.class == $c)) | length))),
           real_responses: ($real | length),
           refusals:       ($refd | length),
+          # When each refusal was posted, oldest first — the quota-timing section (#2506).
+          refused_at:     ($refd | map(.at // empty) | sort),
           # Latency = time to first finding/clean message (null when the bot never
           # reviewed, so refusals and status notices never pollute the percentiles).
           latency_s: (if ($real | length) == 0 then null
@@ -367,10 +465,10 @@ _NORMALIZE_JQ='
           inline_comments:  ($mine | map(select(.kind=="inline" and .class=="finding")) | length),
           threads_total:    ($threads | length),
           threads_resolved: ($threads | map(select(.resolved)) | length),
-          # Findings raised = threads opened + findings in review/comment/check-run
-          # bodies. A body finding on a PR where the bot also opened threads is the
-          # summary of those threads, so it is not counted a second time.
-          findings_raised: (($threads | length) + (if ($threads | length) > 0 then 0 else $body_findings end)),
+          # Findings raised = threads opened + body findings (#2527, see above).
+          findings_threads: ($threads | length),
+          findings_body:    $body_findings,
+          findings_raised:  (($threads | length) + $body_findings),
           thumbs_up:   ($mine | map(.reactions_up // 0)   | add // 0),
           thumbs_down: ($mine | map(.reactions_down // 0) | add // 0),
           unclassified_samples: ($mine | map(select(.class == "unclassified") | sample) | .[0:3]) } )
@@ -390,9 +488,12 @@ _NORMALIZE_JQ='
 # *_events class counts are EVENT counts (each message counted); *_prs are PR counts.
 # schema_version 2 marks a snapshot carrying these fields, so the week-over-week
 # diff never compares them against a v1 snapshot whose buckets meant something else.
-#   { "schema_version": 2, "eligible_prs": N, "total_prs": N,
+# schema_version 3 (#2527) adds findings_threads / findings_body and counts
+# CodeRabbit and Codex body findings in findings_raised, so its delta needs a v3 prior.
+#   { "schema_version": 3, "eligible_prs": N, "total_prs": N,
 #     "bots": { "<login>": { with_findings_prs, clean_prs, refused_prs, skipped_prs,
 #               no_response_prs, reviewed_prs, engaged_prs, findings_raised,
+#               findings_threads, findings_body,
 #               finding_events, clean_events, skipped_events, status_events,
 #               unclassified_events, reviews, refusal_events, approved, changes_req,
 #               inline_comments, threads_total, threads_resolved, thumbs_up,
@@ -402,7 +503,7 @@ _NORMALIZE_JQ='
 aggregate_snapshot() {
   local dir="$1"
   local files=("$dir"/*.jsonl)
-  [[ -e "${files[0]}" ]] || { echo '{"schema_version":2,"eligible_prs":0,"total_prs":0,"bots":{}}'; return 0; }
+  [[ -e "${files[0]}" ]] || { echo '{"schema_version":3,"eligible_prs":0,"total_prs":0,"bots":{}}'; return 0; }
   jq -s '
     (map(select(.kind=="pr"))) as $prs
     | (map(select(.kind=="bot_pr"))) as $bp
@@ -428,6 +529,8 @@ aggregate_snapshot() {
             reviewed_prs:     ($reviewed | length),
             engaged_prs:      length,
             findings_raised:  ([.[].findings_raised // 0] | add),
+            findings_threads: ([.[].findings_threads // 0] | add),
+            findings_body:    ([.[].findings_body // 0] | add),
             finding_events:   ([.[].classes.finding // 0] | add),
             clean_events:     ([.[].classes.clean // 0] | add),
             skipped_events:   ([.[].classes.skipped // 0] | add),
@@ -445,8 +548,8 @@ aggregate_snapshot() {
             latency_p50: (if ($lat|length)==0 then null else $lat[(((($lat|length)-1)*0.50)|floor)] end),
             latency_p95: (if ($lat|length)==0 then null else $lat[(((($lat|length)-1)*0.95)|round)] end)
           } } ) | from_entries) as $bots
-    | { schema_version: 2, eligible_prs: $eligible, total_prs: $total, bots: $bots }
-  ' "${files[@]}" 2>/dev/null || echo '{"schema_version":2,"eligible_prs":0,"total_prs":0,"bots":{}}'
+    | { schema_version: 3, eligible_prs: $eligible, total_prs: $total, bots: $bots }
+  ' "${files[@]}" 2>/dev/null || echo '{"schema_version":3,"eligible_prs":0,"total_prs":0,"bots":{}}'
 }
 
 # _prev <snapshot_json_file> <bot> <field> — prior-week scalar or "" when absent.
@@ -456,21 +559,31 @@ _prev() {
   jq -r --arg b "$bot" --arg k "$field" '.bots?[$b]?[$k]? // empty' "$f" 2>/dev/null || printf ''
 }
 
-# _prev_v2 <snapshot_json_file> <bot> <field> — like _prev, but "" unless the prior
-# snapshot is schema_version >= 2 (#2504). A v1 snapshot has no with_findings_prs /
-# skipped_prs, and its refused_prs / no_response_prs were counted under the old
-# rules, so a headline delta against it would be wrong. No delta is shown instead.
-_prev_v2() {
-  local f="${1:-}" bot="$2" field="$3"
+# _prev_since <min_schema> <snapshot_json_file> <bot> <field> — like _prev, but ""
+# unless the prior snapshot is schema_version >= <min_schema>. A field whose meaning
+# changed in a schema bump must not show a delta against an older snapshot.
+_prev_since() {
+  local min="$1" f="${2:-}" bot="$3" field="$4"
   [[ -n "$f" ]] && [[ -f "$f" ]] || { printf ''; return 0; }
-  jq -r --arg b "$bot" --arg k "$field" '
-    if ((.schema_version? // 1) | tonumber? // 1) >= 2 then
+  jq -r --argjson min "$min" --arg b "$bot" --arg k "$field" '
+    if ((.schema_version? // 1) | tonumber? // 1) >= $min then
       (.bots?[$b]? // null) as $bot
       | if $bot == null then (if $k == "no_response_prs" then .eligible_prs else empty end)
         else ($bot[$k]? // empty) end
     else empty end
   ' "$f" 2>/dev/null || printf ''
 }
+
+# _prev_v2 <snapshot_json_file> <bot> <field> — "" unless the prior snapshot is
+# schema_version >= 2 (#2504). A v1 snapshot has no with_findings_prs / skipped_prs,
+# and its refused_prs / no_response_prs were counted under the old rules, so a
+# headline delta against it would be wrong. No delta is shown instead.
+_prev_v2() { _prev_since 2 "$@"; }
+
+# _prev_v3 <snapshot_json_file> <bot> <field> — "" unless the prior snapshot is
+# schema_version >= 3 (#2527): findings_raised before v3 left out CodeRabbit and
+# Codex body findings on PRs where the bot also opened threads.
+_prev_v3() { _prev_since 3 "$@"; }
 
 # _pct_num <numerator> <denominator> — integer percent, "" when denom is 0 (for deltas).
 _pct_num() {
@@ -569,6 +682,170 @@ _render_unclassified_samples() {
   return 0
 }
 
+# ---------------------------------------------------------------------------
+# Coverage matrix, outage alerts and quota timing (#2506) — PURE
+# ---------------------------------------------------------------------------
+# Every count in these three sections leaves out Dependabot-authored PRs.
+#   opened   — non-draft PRs created in the window (on or after the window start,
+#              REVIEWER_WINDOW_START, else CUTOFF; with neither set, every collected PR).
+#   reviewed — opened PRs on which the bot left a `finding` or `clean` message (#2504).
+#   day      — the UTC calendar day a PR was opened.
+# Expected-off cells come from REVIEWER_EXPECTED_OFF_JSON (the sidecar's `off` rows).
+_COVERAGE_JQ_DEFS='
+  def is_dependabot: test("^dependabot(-preview)?(\\[bot\\])?$"; "i");
+  # Is $bot expected off on $repo? A declared "owner/name" matches that repo; a bare
+  # "name" matches the repo of that name under any owner; "*" matches every repo
+  # (a bot that is not enabled anywhere).
+  def is_off($bot; $repo):
+    ($repo | ascii_downcase) as $r
+    | any($off[]; (.login | ascii_downcase) == ($bot | ascii_downcase)
+                  and ((.repo | ascii_downcase) as $d
+                       | if $d == "*" then true
+                         elif ($d | contains("/")) then $d == $r
+                         else $d == ($r | split("/") | last) end));
+  def opened_prs:
+    [ .[] | select(.kind == "pr" and .draft == false
+                   and ((.author // "") | is_dependabot | not)
+                   and ($start == "" or (.created // "") >= $start))
+          | {pr, repo, day: (.created[0:10])} ]
+    | unique_by(.pr);
+  # "<bot> <pr url>" → true for every PR the bot reviewed.
+  def reviewed_set:
+    reduce (.[] | select(.kind == "bot_pr" and (.real_responses // 0) > 0)) as $b
+      ({}; .[$b.bot + " " + $b.pr] = true);
+  def bot_label($b): $labels[$b] // $b;
+'
+
+# _coverage_jq <jsonl_dir> <jq program> — run a coverage program over the slurped
+# records with $bots, $off, $start and $labels bound. Returns non-zero when jq fails,
+# so a renderer never reads a failure as "no alerts".
+_coverage_jq() {
+  local dir="$1" prog="$2"
+  local files=("$dir"/*.jsonl)
+  [[ -e "${files[0]}" ]] || return 0
+  local bots_json labels_json b
+  bots_json="$(printf '%s\n' "${REVIEWER_BOTS[@]}" | jq -R . | jq -sc .)"
+  labels_json='{}'
+  for b in "${REVIEWER_BOTS[@]}"; do
+    labels_json="$(jq -c --arg k "$b" --arg v "${REVIEWER_LABELS[$b]:-$b}" '. + {($k): $v}' <<<"$labels_json")"
+  done
+  jq -rs --argjson bots "$bots_json" --argjson off "${REVIEWER_EXPECTED_OFF_JSON:-[]}" \
+    --arg start "${REVIEWER_WINDOW_START:-${CUTOFF:-}}" --argjson labels "$labels_json" \
+    "${_COVERAGE_JQ_DEFS} ${prog}" "${files[@]}"
+}
+
+# _coverage_failed <section> — the line a section prints when its jq program failed.
+_coverage_failed() {
+  printf '⚠️ The %s could not be computed (jq failed; see the run log). This is not the same as none.\n\n' "$1"
+}
+
+# _render_outage_alerts <jsonl_dir> — PURE (#2506). The "Outage alerts" section, put
+# at the top of the report. Two rules, each over the expected-on cells only:
+#   1. org-wide silence: on 2 or more consecutive days the bot reviewed none of the PRs
+#      opened that day in the repos where it is expected on, and those days have at
+#      least 3 opened PRs between them. Only days on which such a PR was opened count;
+#      a day with none neither ends nor extends a run.
+#   2. single-repo silence: a cell with at least 3 opened PRs and 0 reviewed.
+# Each alert names the bot, the repo(s) and the first silent day. Prints "none" when
+# no rule fires.
+_render_outage_alerts() {
+  local dir="$1" alerts
+  printf '## Outage alerts\n\n'
+  alerts="$(_coverage_jq "$dir" '
+    . as $all
+    | ($all | opened_prs) as $o
+    | ($all | reviewed_set) as $rv
+    | ($o | map(.repo) | unique) as $repos
+    # Rule 1 — runs of silent days per bot, over the repos where it is expected on.
+    | [ $bots[] as $b
+        | ($o | map(select(is_off($b; .repo) | not))) as $on
+        | ($on | group_by(.day)
+               | map({ day: .[0].day, opened: length, repos: (map(.repo) | unique),
+                       reviewed: (map(select($rv[$b + " " + .pr])) | length) })) as $days
+        | reduce ($days[], {reviewed: 1}) as $d ({runs: [], cur: null};
+            if $d.reviewed == 0 then
+              .cur = (if .cur == null then {first: $d.day, days: 1, opened: $d.opened, repos: $d.repos}
+                      else (.cur | .days += 1 | .opened += $d.opened | .repos = ((.repos + $d.repos) | unique)) end)
+            else (if .cur != null then .runs += [.cur] else . end) | .cur = null end)
+        | .runs[] | select(.days >= 2 and .opened >= 3)
+        | "- **\(bot_label($b))** — no PR reviewed on \(.days) consecutive days with PRs (\(.opened) PRs opened) in "
+          + (.repos | map("`\(.)`") | join(", ")) + "; first silent day **\(.first)**." ]
+    # Rule 2 — a cell with at least 3 opened PRs and none reviewed all window.
+    + [ $bots[] as $b | $repos[] as $r
+        | select(is_off($b; $r) | not)
+        | ($o | map(select(.repo == $r))) as $prs
+        | select(($prs | length) >= 3 and ($prs | map(select($rv[$b + " " + .pr])) | length) == 0)
+        | "- **\(bot_label($b))** — 0 of \($prs | length) PRs opened in `\($r)` reviewed in the whole window; "
+          + "first silent day **\($prs | map(.day) | min)**." ]
+    | .[]')" || { _coverage_failed "outage alerts"; return 0; }
+
+  if [[ -z "$alerts" ]]; then
+    printf 'none\n\n'
+    return 0
+  fi
+  printf '%s\n\n' "$alerts"
+  printf '_Rules and how to mark a cell off by design: `docs/reviewer-report.md` (Outage alerts)._\n\n'
+}
+
+# _render_coverage_matrix <jsonl_dir> — PURE (#2506). One row per repo with an opened
+# PR, one column per tracked bot; each cell is "reviewed / opened", or
+# "off (by design)" for an expected-off cell.
+_render_coverage_matrix() {
+  local dir="$1" table
+  printf '## Coverage matrix\n\n'
+  table="$(_coverage_jq "$dir" '
+    . as $all
+    | ($all | opened_prs) as $o
+    | ($all | reviewed_set) as $rv
+    | ($o | map(.repo) | unique) as $repos
+    | if ($repos | length) == 0 then empty
+      else
+        ("| Repo | " + ($bots | map(bot_label(.)) | join(" | ")) + " |"),
+        ("|---|" + ($bots | map("---:|") | join(""))),
+        ( $repos[] as $r
+          | ($o | map(select(.repo == $r))) as $prs
+          | "| `\($r)` | "
+            + ($bots | map(. as $b
+                | if is_off($b; $r) then "off (by design)"
+                  else "\($prs | map(select($rv[$b + " " + .pr])) | length) / \($prs | length)" end)
+              | join(" | "))
+            + " |" )
+      end')" || { _coverage_failed "coverage matrix"; return 0; }
+
+  if [[ -z "$table" ]]; then
+    printf 'No non-draft, non-Dependabot PRs were opened in the window.\n\n'
+    return 0
+  fi
+  printf 'PRs each bot reviewed (a `finding` or `clean` message) out of the non-draft PRs opened in each repo in the window. '
+  printf 'Dependabot PRs are left out. `off (by design)` marks a bot that is meant not to run on that repo '
+  printf '(declared in `scripts/lib/reviewer-message-classes.tsv`).\n\n'
+  printf '%s\n\n' "$table"
+}
+
+# _render_quota_timing <jsonl_dir> — PURE (#2506). For each bot with `refused`
+# messages in the window (Dependabot PRs left out): refusals per UTC day and the time
+# of the first refusal that day, so the hour a daily quota runs out is visible.
+_render_quota_timing() {
+  local dir="$1" rows
+  printf '## Quota timing\n\n'
+  rows="$(_coverage_jq "$dir" '
+    (reduce (.[] | select(.kind == "pr")) as $p ({}; .[$p.pr] = (($p.author // "") | is_dependabot))) as $dep
+    | [ .[] | select(.kind == "bot_pr" and ($dep[.pr] | not)) ] | unique_by([.bot, .pr])
+    | [ .[] | .bot as $b | (.refused_at // [])[] | select($start == "" or . >= $start) | {bot: $b, at: .} ] as $ev
+    | $bots[] as $b
+    | ($ev | map(select(.bot == $b)) | group_by(.at[0:10]))[]
+    | "| \(bot_label($b)) | \(.[0].at[0:10]) | \(length) | \(map(.at) | min | .[11:16]) |"')" || { _coverage_failed "quota timing"; return 0; }
+
+  if [[ -z "$rows" ]]; then
+    printf 'none\n\n'
+    return 0
+  fi
+  printf 'Refusals (quota, rate limit, trial or plan) per bot per UTC day, and the time of the first one that day. Dependabot PRs are left out.\n\n'
+  printf '| Reviewer | Day (UTC) | Refusals | First refusal (UTC) |\n'
+  printf '|---|---|---:|---:|\n'
+  printf '%s\n\n' "$rows"
+}
+
 # render_reviewer_report <jsonl_dir> <lookback> <repo_count> [generated_at]
 # Writes the full Markdown report to stdout. PURE: no network. Optional prior
 # snapshot for WoW deltas via REVIEWER_PREV_SNAPSHOT.
@@ -601,6 +878,9 @@ render_reviewer_report() {
     fi
     return 0
   fi
+
+  # Outage alerts (#2506) sit at the top so a bot that went silent is seen first.
+  _render_outage_alerts "$dir"
 
   printf 'Deterministic report — every figure is computed with `jq`/`awk` from GitHub review data; '
   printf 'no LLM is involved. Bots are identified by their GraphQL App login '
@@ -640,7 +920,11 @@ render_reviewer_report() {
     local -a cells=()
     for f in "with_findings_prs:$wf" "clean_prs:$clean" "refused_prs:$refused" \
              "skipped_prs:$skipped" "no_response_prs:$no_resp" "findings_raised:$findings"; do
-      pv="$(_prev_v2 "$prev" "$bot" "${f%%:*}")"
+      if [[ "${f%%:*}" == findings_raised ]]; then
+        pv="$(_prev_v3 "$prev" "$bot" "${f%%:*}")"
+      else
+        pv="$(_prev_v2 "$prev" "$bot" "${f%%:*}")"
+      fi
       cells+=("$(_fmt_int "${f#*:}") $(_delta_arrow "${f#*:}" "$pv")")
     done
     # Resolved % with a percentage-point delta (blank when either week had no threads).
@@ -665,42 +949,49 @@ render_reviewer_report() {
   printf -- '- **Refused** — PRs where the bot only declined for quota, rate limit, trial or plan reasons (no finding or clean message).\n'
   printf -- '- **Skipped** — PRs where the bot only reported that it skipped the review because of configuration (for example auto review turned off).\n'
   printf -- '- **No response** — every other eligible PR: the bot never appeared, or left only `status` or `unclassified` messages.\n'
-  printf -- '- **Findings raised** — review threads the bot opened plus findings in its review, comment or check-run bodies (a body that only introduces the bot'"'"'s own threads is not counted twice).\n'
+  printf -- '- **Findings raised** — review threads the bot opened plus findings written in its review, comment or check-run bodies. CodeRabbit'"'"'s outside-diff and nitpick items and Codex'"'"'s body suggestions without a matching inline comment always count; any other finding body counts once, and only on a PR where the bot opened no thread (otherwise it summarizes those threads). The Details section splits the two.\n'
   printf -- '- **Resolved %%** — threads the bot opened that are resolved, out of all threads it opened.\n\n'
 
   # ---- Details (#2504) — the old event counts, verdicts and reactions --------
   printf '## Details\n\n'
-  printf '| Reviewer | Reviews | ✅ / 🔄 | Refusal events | 👍 / 👎 | Status messages | Unclassified messages |\n'
-  printf '|---|---:|:--:|---:|:--:|---:|---:|\n'
-  local reviews refusal_events approved changes_req up down st_ev uc_ev prev_reviews prev_refusals
+  printf '| Reviewer | Reviews | ✅ / 🔄 | Refusal events | 👍 / 👎 | Status messages | Unclassified messages | Findings: threads / bodies |\n'
+  printf '|---|---:|:--:|---:|:--:|---:|---:|:--:|\n'
+  local reviews refusal_events approved changes_req up down st_ev uc_ev f_thr f_body prev_reviews prev_refusals
   for bot in "${REVIEWER_BOTS[@]}"; do
     label="${REVIEWER_LABELS[$bot]:-$bot}"
-    IFS=$'\t' read -r reviews refusal_events approved changes_req up down st_ev uc_ev <<<"$(
+    IFS=$'\t' read -r reviews refusal_events approved changes_req up down st_ev uc_ev f_thr f_body <<<"$(
       jq -r --arg b "$bot" '
         (.bots?[$b] // {}) as $x
         | [ ($x.reviews // 0), ($x.refusal_events // 0), ($x.approved // 0), ($x.changes_req // 0),
             ($x.thumbs_up // 0), ($x.thumbs_down // 0), ($x.status_events // 0),
-            ($x.unclassified_events // 0) ]
+            ($x.unclassified_events // 0), ($x.findings_threads // 0), ($x.findings_body // 0) ]
         | @tsv' <<<"$snap"
     )"
     prev_reviews="$(_prev "$prev" "$bot" reviews)"
     prev_refusals="$(_prev "$prev" "$bot" refusal_events)"
-    printf '| %s | %s %s | %s / %s | %s %s | %s / %s | %s | %s |\n' \
+    printf '| %s | %s %s | %s / %s | %s %s | %s / %s | %s | %s | %s / %s |\n' \
       "$label" \
       "$(_fmt_int "$reviews")" "$(_delta_arrow "$reviews" "$prev_reviews")" \
       "$(_fmt_int "$approved")" "$(_fmt_int "$changes_req")" \
       "$(_fmt_int "$refusal_events")" "$(_delta_arrow "$refusal_events" "$prev_refusals")" \
       "$(_fmt_int "$up")" "$(_fmt_int "$down")" \
-      "$(_fmt_int "$st_ev")" "$(_fmt_int "$uc_ev")"
+      "$(_fmt_int "$st_ev")" "$(_fmt_int "$uc_ev")" \
+      "$(_fmt_int "$f_thr")" "$(_fmt_int "$f_body")"
   done
   printf '\n'
   printf -- '- **Reviews** — formal reviews the bot submitted, **each occurrence** (a PR re-reviewed on 5 commits = 5), leaving out refusals, skips and status notices. A bot that posts no formal review but delivers its verdict as a comment (e.g. SonarCloud'"'"'s quality-gate comment) has its `finding` / `clean` comments counted instead.\n'
   printf -- '- **✅ / 🔄** — of those reviews, how many were APPROVED / CHANGES_REQUESTED (comment-only responses carry no verdict).\n'
   printf -- '- **Refusal events** — every `refused` message, each occurrence.\n'
   printf -- '- **👍 / 👎** — reactions on the bot'"'"'s inline comments.\n'
-  printf -- '- **Status / Unclassified messages** — message counts; neither ever makes a PR count as reviewed.\n\n'
+  printf -- '- **Status / Unclassified messages** — message counts; neither ever makes a PR count as reviewed.\n'
+  printf -- '- **Findings: threads / bodies** — the two parts of **Findings raised**: review threads the bot opened, and findings counted from its review, comment or check-run bodies.\n\n'
+
+  _render_quota_timing "$dir"
 
   _render_unclassified_samples "$dir"
+
+  # ---- Coverage matrix (#2506) ----------------------------------------------
+  _render_coverage_matrix "$dir"
 
   # ---- Coverage / overlap --------------------------------------------------
   # Only bots that actually REVIEWED (a finding or clean message) count toward
@@ -776,6 +1067,8 @@ _gh_timeout() {
 # GraphQL query: one repo's PRs (newest first) with reviews, threads, comments.
 # $prFirst is the per-page PR count (small, and halved on retry, see PR_PAGE_SIZE).
 # headRefOid feeds the separate per-PR check-run fetch (#1908) for check-run reporters.
+# Review ids and inline-comment path / lines let Codex body suggestions be matched to
+# the inline comments of the same review (#2527).
 _PR_QUERY='
 query($owner:String!, $name:String!, $cursor:String, $prFirst:Int!) {
   repository(owner:$owner, name:$name) {
@@ -784,13 +1077,14 @@ query($owner:String!, $name:String!, $cursor:String, $prFirst:Int!) {
       nodes {
         url number createdAt updatedAt mergedAt isDraft headRefOid
         author { login }
-        reviews(first: 50) { nodes { author { login } state submittedAt bodyText } }
+        reviews(first: 50) { nodes { id author { login } state submittedAt bodyText } }
         reviewThreads(first: 50) {
           nodes {
             isResolved isOutdated
             comments(first: 20) {
               nodes {
                 author { login } createdAt bodyText path
+                line originalLine startLine originalStartLine pullRequestReview { id }
                 reactionGroups { content users { totalCount } }
               }
             }
@@ -997,6 +1291,12 @@ _collect_one_repo() {
   done
 }
 
+# _window_cutoff — the window start, LOOKBACK_DAYS ago, as an ISO-8601 UTC timestamp.
+_window_cutoff() {
+  date -u -d "${LOOKBACK_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+    || date -u -v-"${LOOKBACK_DAYS}"d +%Y-%m-%dT%H:%M:%SZ
+}
+
 # collect_org_reviews <jsonl_dir>  (stdout: "<repo_count>")
 # Discover non-archived repos, then sweep each one's recent PRs in bounded parallel.
 collect_org_reviews() {
@@ -1014,8 +1314,7 @@ collect_org_reviews() {
   local repo_count
   repo_count="$(printf '%s\n' "$repos_raw" | awk 'NF{c++} END{print c+0}')"
 
-  CUTOFF="$(date -u -d "${LOOKBACK_DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
-    || date -u -v-"${LOOKBACK_DAYS}"d +%Y-%m-%dT%H:%M:%SZ)"
+  [ -n "${CUTOFF:-}" ] || CUTOFF="$(_window_cutoff)"
   export CUTOFF COLLECT_JSONL_DIR="$jsonl_dir" GH_OP_TIMEOUT MAX_PR_PAGES PR_PAGE_SIZE PR_FETCH_MAX_ATTEMPTS
   # shellcheck disable=SC2090  # jq/GraphQL program strings: literal content is intended
   export _PR_QUERY _NORMALIZE_JQ RATE_LIMIT_RE
@@ -1084,6 +1383,12 @@ main() {
   jsonl_dir="$(mktemp -d)"
   # shellcheck disable=SC2064
   trap "rm -rf '$jsonl_dir'" EXIT
+
+  # Compute the window start once, here: collect_org_reviews runs in a command
+  # substitution, so a CUTOFF it set would not reach the renderer, which needs it to
+  # tell PRs opened in the window from older PRs updated in it (#2506).
+  CUTOFF="${CUTOFF:-$(_window_cutoff)}"
+  export CUTOFF
 
   echo "Collecting PR review activity across ${ORG} (last ${LOOKBACK_DAYS} days)..." >&2
   repo_count="$(collect_org_reviews "$jsonl_dir")"

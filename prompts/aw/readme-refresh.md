@@ -60,6 +60,13 @@ Target type: `${TARGET_TYPE}`. Produce the complete, final Markdown body for thi
    and the section headings must make the mechanism obvious:
    - The `agents/*.md` profiles are **interactive** — invoked by `@mention` from GitHub.com/IDEs/CLI.
      Title that section **"@-Mention Agents"** (not just "Agents").
+     Note: PR comments do not support bare `@<name>` invocation of custom agents (the profile selection
+     mechanism only works in Copilot agents panel / IDE / CLI), so the heading describes the primary mechanism
+     of agent discovery and invocation. Where an agent's own file documents a different invocation method
+     (e.g., the `why-not-approved` agent in `.github-private` invoked with `bash
+     scripts/pr-approval-diagnostic.sh <pr-url>`, or the agent selector in the Copilot agents panel),
+     document that in the "Invoke with" column. If the target README has no such column (e.g.
+     `org-profile-member`), state the alternative invocation in the agent's row instead.
    - The facts bundle's *agentic workflows* are **autonomous GitHub Actions workflows** that run on
      events/schedules (dev-lead, PR review, triage, planners, etc.). The discovery gives each
      workflow's filename and one-line purpose but **not** which engine drives it, so do not attribute
@@ -74,6 +81,12 @@ Target type: `${TARGET_TYPE}`. Produce the complete, final Markdown body for thi
    section: fold any such detail into the `pr-review-trigger.yml` row of Automated Workflows and/or
    the `pr-reviewer` row of @-Mention Agents. Per rule 3, use only agents/workflows present in the
    facts.
+   
+   **Note on invocation metadata:** To reliably update or remove stale agent invocation references (particularly
+   bare `@<name>` PR-comment mentions that are no longer valid), the facts bundle should include agent invocation
+   metadata indicating which agents are invocable via PR comments, which are IDE-only, etc. When the facts show
+   that an agent's invocation method has changed, replace the entire row description rather than attempting to
+   surgically edit individual invocation references.
 7. **Link every listed item to its file.** Agents, agentic workflows, reporting workflows, and
    standards each carry a link target in the facts (the path/URL in parentheses, e.g.
    `(agents/pr-reviewer.md)`, `(.github/workflows/dev-lead.yml)`, or a full `(link: https://…)`). Make

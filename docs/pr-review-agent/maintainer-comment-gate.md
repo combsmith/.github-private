@@ -96,7 +96,10 @@ is minimized `RESOLVED`, **unless** it is in the exemption set recorded in
   with and pins the `**Quality Gate passed**` headline **and** the
   `[0 New issues]` and `[0 Security Hotspots]` lines, so a `Quality Gate failed`
   comment, or one still reporting new issues or hotspots, does **not** match and still
-  blocks. An unreadable registry degrades to "clear nothing", never to clearing
+  blocks. CodeAnt also re-posts on every push: a "Review Status" progress table (in
+  progress, then completed) and, on a first review, a share-us promo. Its pattern matches
+  only those complete bodies, so its nitpicks and PR Risk overviews still need dev-lead's
+  disposition. An unreadable registry degrades to "clear nothing", never to clearing
   something it cannot classify. **A pattern never clears a body with a
   finding-bearing section (#2008).** Such sections include a Security Architecture
   Review that lists retained concerns or hardening proposals or rates its risk
@@ -162,9 +165,10 @@ minimized with classifier `RESOLVED`. In practice:
   *registered info-status bot* whose finding-free status stranded the queue (chiefly
   SonarCloud, which re-posts `Quality Gate passed` on every push) — that bot's
   comment, requiring a `--reason` posted as a `<!-- maintainer-resolve … -->` reply
-  before the minimize. It refuses another human's comment and a finding-producing bot
-  such as `codeant-ai` or `graphite-app` (whose findings still require dev-lead's
-  verified-fix flow), and fails closed if it cannot confirm the comment's author, its
+  before the minimize. It refuses another human's comment and any bot comment whose
+  body does not match that bot's pattern, so a finding-producing bot's findings still
+  require dev-lead's verified-fix flow: `graphite-app` has no pattern, and `codeant-ai`'s
+  matches only its progress table and promo. It fails closed if it cannot confirm the comment's author, its
   actor type (`__typename == Bot`), or the invoking viewer.
 - **A registered clean info-status bot comment auto-clears (#1918)** — see the scope
   section above; no disposition action is needed for it.

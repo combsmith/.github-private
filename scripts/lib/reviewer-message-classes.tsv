@@ -31,7 +31,10 @@
 # Matching order for one message:
 #   1. this bot's rows, top to bottom — the FIRST row that matches wins, so put the
 #      narrow rows (a refusal inside a summary, a finding marker) above the broad ones.
-#      Bot rows of any class now apply to inline comments when kind is "inline" or "any".
+#      A row of kind "inline" applies to inline comments whatever its class. A row of
+#      kind "any" reaches an inline comment only when its class is finding or clean
+#      (#2527), so a broad status / skipped / refused phrase quoted inside a real
+#      inline finding cannot drop it from threads and findings.
 #   2. the shared refusal fallback — ADVISORY_RATE_LIMIT_RE from advisory-review-gate.sh
 #      plus its author-scoped cubic clause (never applied to inline comments);
 #   3. structural defaults in reviewer_report.sh — the first inline comment of a thread
@@ -39,6 +42,14 @@
 #      APPROVED one is clean; a successful check run is clean;
 #   4. otherwise `unclassified`. The report shows up to 3 samples per bot, so a new
 #      message shape is visible and can be given a row here.
+#
+# Expected-off cells (#2506). A row with class `off` and kind `repo` is not a message
+# pattern: it declares that the bot is off by design on one repo, and its last column
+# is the repo — `owner/name`, a bare `name` that matches the repo under any owner, or
+# `*` for every repo (a bot that is not enabled anywhere).
+# The scorecard's coverage matrix shows that cell as `off (by design)`, and it never
+# raises an outage alert. Read by reviewer_sources_expected_off_cells; the message-class
+# loader skips these rows. Say why in a comment above the row.
 #
 # login	class	kind	pattern
 copilot-pull-request-reviewer	finding	review	generated [1-9][0-9]* (new )?comments?
@@ -52,7 +63,7 @@ chatgpt-codex-connector	skipped	any	To use Codex here, (create an environment|\[
 chatgpt-codex-connector	clean	any	(Didn.t|did not) find any major issues
 chatgpt-codex-connector	finding	any	Here are some automated review suggestions
 coderabbitai	finding	any	Security architecture risk.*?(Low|Medium|Moderate|Elevated|High|Critical|Severe)
-coderabbitai	finding	any	Retained concerns(?:\*\*|(?!\*))[\s\n]*(?:[-*]|Low|Medium|High|Critical|Severity)|Hardening Proposals(?:\*\*|(?!\*))[\s\n]*(?:[-*]|proposed)|Actionable comments posted:\s*[1-9]|Outside diff range comments \(\s*[1-9]|Nitpick comments \(\s*[1-9]
+coderabbitai	finding	any	Retained concerns(?:\*\*|(?!\*))[\s\n]*(?:[-*]|Low|Medium|High|Critical|Severity)|Hardening Proposals(?:\*\*|(?!\*))[\s\n]*(?:[-*]|proposed)|Actionable comments posted:\s*[1-9]|Outside diff range comments \(\s*[1-9]|Nitpick comments \(\s*[1-9]|(?:Outside diff range|Nitpick) comments:[ \t]*[1-9]
 coderabbitai	finding	any	(?:Retained concerns|Hardening Proposals)\**[ \t]*(?:\r?\n[ \t]*)+(?!No (?:[a-z-]+ ){0,2}(?:concerns?|proposals?|issues?|findings?|risks?)(?: (?:were|are|have been))?(?: (?:identified|found|raised|retained|proposed|noted))?\.?[ \t]*(?:\r?\n[ \t]*)*(?:<|\*\*|Security review details|Retained concerns|Hardening Proposals|\z))(?!<|\*\*|Security review details|Retained concerns|Hardening Proposals|\z)\S
 coderabbitai	clean	any	No actionable comments were generated|Actionable comments posted:\s*0
 coderabbitai	refused	any	Review limit reached|used all (of )?(your )?free (OSS )?reviews|rate limit exceeded
@@ -80,3 +91,13 @@ graphite-app	status	issue	managed by Graphite|Graphite Merge Queue|graphite\.dev
 cubic-dev-ai	finding	any	found [1-9][0-9]* (potential )?issues?
 cubic-dev-ai	clean	any	found (no|0) (potential )?issues?|No issues found
 cubic-dev-ai	status	any	cubic is (reviewing|analyzing)|Review in progress
+#
+# Expected-off cells (#2506): <login>	off	repo	<repo>
+# coderabbitai is on-demand only on software-factory: its .coderabbit.yaml turns auto review off.
+coderabbitai	off	repo	combsmith/software-factory
+# copilot-pull-request-reviewer and qodo-code-review are not enabled on any repo: neither
+# reviewed a PR in November 2026, and without these rows they fill the outage alerts.
+copilot-pull-request-reviewer	off	repo	*
+qodo-code-review	off	repo	*
+# graphite-app is not installed on software-factory-canary (it reviews software-factory, which the canary mirrors).
+graphite-app	off	repo	combsmith/software-factory-canary

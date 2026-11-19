@@ -30,9 +30,23 @@
 # leaves the CI/advisory/maintainer gates armed, so a rescue can never bypass a
 # quality gate and a CI status that went red since this sweep's snapshot is
 # re-validated when review-one-pr.sh runs (issue #1590).
-# Each selected PR is re-dispatched through the normal trigger
-# (pr-review-trigger.yml -f pr_url=<url>); review-one-pr.sh remains the
-# authoritative gate, so the sweep only decides WHAT to re-trigger.
+# Each selected PR is re-dispatched with `-f pr_url=<url>`; review-one-pr.sh
+# remains the authoritative gate, so the sweep only decides WHAT to re-trigger.
+#
+# Fleet routing (#2530). Candidates come from the whole org (list-prs.sh). A PR in
+# this repository goes through TRIGGER_WORKFLOW, as before. A PR in another repo
+# goes to that repo's OWN pr-review entrypoint (an active pr-review.yml, else an
+# active agent-ingress.yml — ADR-0007), so it is reviewed at the channel that repo
+# pins, not at this repository's `next`. A repo with neither keeps the old path
+# through TRIGGER_WORKFLOW here. ADR-0017 records the hub and its credential.
+#
+# Dispatch budget (#2530). MAX_DISPATCH used to be spent before consumer repos were
+# reached: list-prs.sh puts .github/.github-private first, and their PRs held at the
+# maintainer-comment gate were re-dispatched every tick only to skip again with no
+# verdict. Now (a) candidates are taken round-robin across repos, and (b) a PR the
+# comment gate would hold is not dispatched — the same check review-one-pr.sh runs
+# first. dev-lead-retry's bot-comment scan still nudges dev-lead on those PRs, and
+# once the gate clears the next sweep dispatches them.
 #
 # IMPORTANT — the re-dispatch requires a PAT, not GITHUB_TOKEN:
 #   GitHub does not start new workflow runs from a workflow_dispatch fired with
@@ -47,8 +61,12 @@
 #                     unset, candidates are enumerated via list-prs.sh
 #   MAX_DISPATCH      cap on review dispatches per sweep (default: 20)
 #   DRY_RUN           "true"/"1" → log selections but never dispatch
-#   GITHUB_REF        passed through as --ref when it is a branch/tag (feature testing)
-#   GH_TOKEN          a PAT with workflow scope (required at the call site)
+#   GITHUB_REF        passed through as --ref when it is a branch/tag (feature testing);
+#                     applies to dispatches in AGENT_REPO only
+#   ROUTE_TO_REPO_ENTRYPOINT  "false" → send every PR through TRIGGER_WORKFLOW (default: true)
+#   SKIP_GATE_HELD    "false" → dispatch PRs the comment gate holds, as before (default: true)
+#   GH_TOKEN          a PAT with workflow scope on AGENT_REPO and the consumer repos
+#                     (required at the call site)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -69,6 +87,8 @@ source "$SCRIPT_DIR/lib/standing-approval.sh"
 AGENT_REPO="${AGENT_REPO:-combsmith/.github-private}"
 TRIGGER_WORKFLOW="${TRIGGER_WORKFLOW:-pr-review-trigger.yml}"
 MAX_DISPATCH="${MAX_DISPATCH:-20}"
+ROUTE_TO_REPO_ENTRYPOINT="${ROUTE_TO_REPO_ENTRYPOINT:-true}"
+SKIP_GATE_HELD="${SKIP_GATE_HELD:-true}"
 
 # Validate MAX_DISPATCH is a positive integer; fall back to the default otherwise.
 case "$MAX_DISPATCH" in
@@ -116,6 +136,14 @@ if [[ -n "${GITHUB_REF:-}" && ( "$GITHUB_REF" =~ ^refs/heads/ || "$GITHUB_REF" =
   REF_FLAGS=(--ref "$GITHUB_REF")
 fi
 
+# rate_limit_remaining — "<graphql> <core>" points left for GH_TOKEN, or empty when
+# unreadable. Read before candidate discovery and again at the end, so the reported
+# cost includes list-prs.sh's org-wide enumeration (#2530).
+rate_limit_remaining() {
+  gh api rate_limit --jq '"\(.resources.graphql.remaining) \(.resources.core.remaining)"' 2>/dev/null || true
+}
+rate_before=$(rate_limit_remaining)
+
 # ---------------------------------------------------------------------------
 # 1. Gather candidate PR URLs
 # ---------------------------------------------------------------------------
@@ -148,6 +176,33 @@ prs_from_workflow_run_event() {
   ' "$event_path" 2>/dev/null || true
 }
 
+# interleave_by_repo
+# Reorder PR URLs on stdin round-robin across repos (#2530): the first PR of each
+# repo, then the second of each, and so on. Repos keep the order of their first
+# appearance and each repo keeps its own order, so list-prs.sh's priority and
+# oldest-first ordering survive, but one repo's backlog can no longer use up
+# MAX_DISPATCH before another repo is inspected. Blank lines are dropped. Pure.
+interleave_by_repo() {
+  awk '
+    NF == 0 { next }
+    {
+      repo = $0
+      if (match($0, /^https?:\/\/[^\/]+\/[^\/]+\/[^\/]+\//)) repo = substr($0, 1, RLENGTH)
+      if (!(repo in count)) { order[++repos] = repo; count[repo] = 0 }
+      queue[repo, ++count[repo]] = $0
+    }
+    END {
+      for (round = 1; ; round++) {
+        printed = 0
+        for (i = 1; i <= repos; i++) {
+          r = order[i]
+          if (round <= count[r]) { print queue[r, round]; printed = 1 }
+        }
+        if (!printed) break
+      }
+    }'
+}
+
 if [[ -n "${SWEEP_PRS_FILE:-}" && -r "${SWEEP_PRS_FILE}" ]]; then
   grep -v '^[[:space:]]*$' "$SWEEP_PRS_FILE" > "$candidates_file" || true
 elif [[ "${GITHUB_EVENT_NAME:-}" == "workflow_run" && -n "${GITHUB_EVENT_PATH:-}" ]]; then
@@ -163,12 +218,17 @@ else
   bash "$SCRIPT_DIR/list-prs.sh" > "$candidates_file" || true
 fi
 
+interleaved_file="$(mktemp)"
+trap 'rm -f "$candidates_file" "$interleaved_file"' EXIT
+interleave_by_repo < "$candidates_file" > "$interleaved_file" && cp "$interleaved_file" "$candidates_file"
+
 candidate_count=$(grep -c . "$candidates_file" || true)
 echo "=== PR Review Sweep — re-trigger stuck-green reviews ==="
 echo "  Trigger:    $TRIGGER_WORKFLOW @ $AGENT_REPO"
 echo "  Candidates: $candidate_count"
 echo "  Dry run:    $DRY_RUN_BOOL"
 echo ""
+
 
 # ---------------------------------------------------------------------------
 # 2. Select stuck-green PRs and re-dispatch
@@ -177,37 +237,185 @@ inspected=0
 stuck=0
 dispatched=0
 armed=0
+held=0
+declare -A DISPATCHED_BY_REPO=()
+declare -A ENTRYPOINT_BY_REPO=()
+declare -A ENTRYPOINT_FORCE_BY_REPO=()
 
-# dispatch_review <pr_url> <label> [force]
-# Re-dispatch a review through the normal trigger. Honours DRY_RUN and updates
-# the counters. A 3rd arg of "force" appends `-f force_review=true`, used ONLY
-# for the orphaned-marker rescue (#1548): an unforced re-dispatch would hit
-# review-one-pr.sh's idempotency no-op on the orphan marker. The force_review
-# input is the NARROW idempotency bypass (FORCE_RE_REVIEW in pr-review.yml, #1590),
-# so the CI/advisory/maintainer gates stay armed for the rescue too — force here
-# defeats only the same-SHA no-op, never a quality gate.
-dispatch_review() {
-  local _url="$1" _label="$2" _force="${3:-}"
-  stuck=$((stuck + 1))
-  echo "  $_label: $_url — needs re-review"
-  if [ "$DRY_RUN_BOOL" = "true" ]; then
-    echo "    dry-run: would dispatch $TRIGGER_WORKFLOW for $_url"
+# entrypoint_dispatch_inputs <workflow_yaml>
+# Print the input names declared under on.workflow_dispatch.inputs, one per line.
+# Only that block counts, so a `pr_url:` under a job's `with:` is not an input.
+# An indentation walk, not a full YAML parse: enough for the caller stubs. Pure.
+entrypoint_dispatch_inputs() {
+  awk '
+    /^[[:space:]]*(#.*)?$/ { next }
+    {
+      match($0, /^ */); ind = RLENGTH; line = substr($0, ind + 1)
+      if (state == 2 && ind <= in_ind) state = (ind <= wd_ind) ? 0 : 1
+      if (state == 1 && ind <= wd_ind) state = 0
+    }
+    state == 2 {
+      if (key_ind == 0) key_ind = ind
+      if (ind == key_ind && line ~ /^[A-Za-z0-9_-]+:/) { k = line; sub(/:.*/, "", k); print k }
+      next
+    }
+    state == 1 && line ~ /^inputs:[[:space:]]*(#.*)?$/ { state = 2; in_ind = ind; key_ind = 0; next }
+    state == 0 && line ~ /^workflow_dispatch:[[:space:]]*(#.*)?$/ { state = 1; wd_ind = ind; next }
+  ' <<< "${1:-}"
+}
+
+# pr_review_job_block <workflow_yaml>
+# Print the job block(s) under `jobs:` that call the pr-review reusable, so a check
+# on what that job passes is not satisfied by another job. An indentation walk,
+# like entrypoint_dispatch_inputs. Pure.
+pr_review_job_block() {
+  awk '
+    function flush() { if (block ~ /\/\.github\/workflows\/pr-review\.yml@/) print block; block = "" }
+    /^[[:space:]]*(#.*)?$/ { next }
+    { match($0, /^ */); ind = RLENGTH; line = substr($0, ind + 1) }
+    !injobs { if (line ~ /^jobs:[[:space:]]*(#.*)?$/) { injobs = 1; jobs_ind = ind; job_ind = 0 } ; next }
+    ind <= jobs_ind { flush(); injobs = 0; next }
+    job_ind == 0 { job_ind = ind }
+    ind == job_ind { flush(); block = $0; next }
+    { block = block "\n" $0 }
+    END { flush() }
+  ' <<< "${1:-}"
+}
+
+# entrypoint_dispatches_pr_review <workflow_yaml>
+# True when a workflow file can take the sweep's dispatch: workflow_dispatch declares
+# a pr_url input, and the file calls the pr-review reusable. The standard
+# pr-review.yml stub and the markets-style agent-ingress.yml both do. The reference
+# agent-ingress.yml (docs/architecture/reference/) does not, and a dispatch to it
+# would fail or run no review. Pure.
+entrypoint_dispatches_pr_review() {
+  local _y="${1:-}"
+  entrypoint_dispatch_inputs "$_y" | grep -qx 'pr_url' \
+    && grep -Eq '/\.github/workflows/pr-review\.yml@' <<< "$_y"
+}
+
+# resolve_dispatch_target <pr_url> [force]
+# Set DISPATCH_REPO / DISPATCH_WORKFLOW for a PR (#2530). The repo's own entrypoint
+# is an active .github/workflows/pr-review.yml, else an active agent-ingress.yml
+# (ADR-0007), that passes entrypoint_dispatches_pr_review. AGENT_REPO's own PRs, an
+# unparseable URL, ROUTE_TO_REPO_ENTRYPOINT=false, and a repo with no such file (or
+# whose workflows cannot be read) all use TRIGGER_WORKFLOW in AGENT_REPO.
+# The lookup is cached per repo for the run. Sets globals rather than echoing, so
+# the cache survives (a command substitution would run in a subshell).
+resolve_dispatch_target() {
+  local _url="$1" _force="${2:-}" _repo="" _state="" _file="" _yaml=""
+  DISPATCH_REPO="$AGENT_REPO"
+  DISPATCH_WORKFLOW="$TRIGGER_WORKFLOW"
+  [[ "$ROUTE_TO_REPO_ENTRYPOINT" = "true" ]] || return 0
+  if [[ "$_url" =~ ^https?://[^/]+/([^/]+/[^/]+)/pull/[0-9]+ ]]; then
+    _repo="${BASH_REMATCH[1]}"
+  fi
+  [[ -n "$_repo" ]] && [[ "$_repo" != "$AGENT_REPO" ]] || return 0
+  if [[ -z "${ENTRYPOINT_BY_REPO[$_repo]+set}" ]]; then
+    ENTRYPOINT_BY_REPO[$_repo]=""
+    # Ask for each file by name, in preference order: the workflow list is paged, so
+    # an entrypoint on a later page would be missed. A missing file is a 404.
+    for _file in pr-review.yml agent-ingress.yml; do
+      _state=$(gh api "repos/$_repo/actions/workflows/$_file" --jq '.state // ""' 2>/dev/null) || _state=""
+      [[ "$_state" == "active" ]] || continue
+      _yaml=$(gh api "repos/$_repo/contents/.github/workflows/$_file" \
+                -H "Accept: application/vnd.github.raw" 2>/dev/null) || _yaml=""
+      if entrypoint_dispatches_pr_review "$_yaml"; then
+        ENTRYPOINT_BY_REPO[$_repo]="$_file"
+        # The rescue needs force_review declared as an input AND forwarded by the job
+        # that calls the pr-review reusable; a stub that declares it but drops it (or
+        # forwards it only in another job) would run an unforced review.
+        if entrypoint_dispatch_inputs "$_yaml" | grep -qx 'force_review' \
+           && pr_review_job_block "$_yaml" \
+                | grep -Eq '^[[:space:]]*force_review:[[:space:]]*\$\{\{[^}]*inputs\.force_review'; then
+          ENTRYPOINT_FORCE_BY_REPO[$_repo]=true
+        else
+          ENTRYPOINT_FORCE_BY_REPO[$_repo]=false
+        fi
+        break
+      fi
+      echo "    note: $_repo $_file does not take a pr_url dispatch for pr-review; not routing to it"
+    done
+  fi
+  [[ -n "${ENTRYPOINT_BY_REPO[$_repo]}" ]] || return 0
+  # The orphan rescue needs force_review. An entrypoint without that input would
+  # reject the dispatch (HTTP 422), and one that does not forward it to the reusable
+  # would ignore it, so either way the rescue keeps the agent-repo trigger.
+  if [[ "$_force" == "force" && "${ENTRYPOINT_FORCE_BY_REPO[$_repo]:-false}" != "true" ]]; then
+    echo "    note: $_repo ${ENTRYPOINT_BY_REPO[$_repo]} does not take and forward force_review; the rescue uses $TRIGGER_WORKFLOW"
     return 0
   fi
-  local force_flags=()
+  DISPATCH_REPO="$_repo"
+  DISPATCH_WORKFLOW="${ENTRYPOINT_BY_REPO[$_repo]}"
+}
+
+# held_at_comment_gate <pr_url> <snapshot>
+# True when the maintainer-comment gate would withhold approval (rc 1): the check
+# review-one-pr.sh runs before it reviews (#1813), with the same edit-time and
+# author-type merge (#2008). Dispatching such a PR only buys a skip with no verdict
+# (#2530). Any other outcome — clear, undeterminable (rc 2), or a failed author-type
+# lookup — is false, so the review itself still decides. Run in a subshell so the gate's helpers stay out of
+# this shell. SKIP_GATE_HELD=false turns the check off.
+held_at_comment_gate() {
+  local _url="$1" _snap="$2" _rc=0
+  [[ "$SKIP_GATE_HELD" = "true" ]] || return 1
+  (
+    # shellcheck source=lib/maintainer-comment-gate.sh
+    source "$SCRIPT_DIR/lib/maintainer-comment-gate.sh"
+    _merged=$(maintainer_gate_merge_edit_times "$_url" "$_snap")
+    # The merge returns the snapshot unchanged when its lookup fails, and the gate
+    # then cannot clear a registered bot's status comment. A comment still missing
+    # its author type means the lookup failed: undeterminable, so let the review run.
+    jq -e '[(.comments // [])[] | select((.author.__typename // null) == null)] | length == 0' \
+      <<< "$_merged" >/dev/null 2>&1 || exit 2
+    check_maintainer_comments "$_merged" "${BOT_USER:-donpetry-bot}"
+  ) >/dev/null 2>&1 || _rc=$?
+  [[ "$_rc" -eq 1 ]]
+}
+
+# dispatch_review <pr_url> <snapshot> <label> [force]
+# Re-dispatch a review, unless the comment gate would hold it. AGENT_REPO's PRs go
+# through TRIGGER_WORKFLOW; another repo's go to its own entrypoint
+# (resolve_dispatch_target). Honours DRY_RUN and updates the counters. A 4th arg of
+# "force" appends `-f force_review=true`, used ONLY for the orphaned-marker rescue
+# (#1548): an unforced re-dispatch would hit review-one-pr.sh's idempotency no-op
+# on the orphan marker. The force_review input is the NARROW idempotency bypass
+# (FORCE_RE_REVIEW in pr-review.yml, #1590), so the CI/advisory/maintainer gates
+# stay armed for the rescue too — force here defeats only the same-SHA no-op,
+# never a quality gate.
+dispatch_review() {
+  local _url="$1" _snap="$2" _label="$3" _force="${4:-}"
+  if held_at_comment_gate "$_url" "$_snap"; then
+    held=$((held + 1))
+    echo "  skip $_url — held at the maintainer-comment gate (undispositioned PR comment); not dispatching a review that would skip (#2530)"
+    return 0
+  fi
+  stuck=$((stuck + 1))
+  echo "  $_label: $_url — needs re-review"
+  resolve_dispatch_target "$_url" "$_force"
+  if [ "$DRY_RUN_BOOL" = "true" ]; then
+    echo "    dry-run: would dispatch $DISPATCH_WORKFLOW @ $DISPATCH_REPO for $_url"
+    return 0
+  fi
+  local force_flags=() ref_flags=()
   if [ "$_force" = "force" ]; then
     force_flags=(-f force_review=true)
   fi
-  if gh workflow run "$TRIGGER_WORKFLOW" --repo "$AGENT_REPO" "${REF_FLAGS[@]}" \
+  # A feature-branch ref exists only in AGENT_REPO; another repo runs its default branch.
+  if [[ "$DISPATCH_REPO" = "$AGENT_REPO" ]]; then
+    ref_flags=("${REF_FLAGS[@]}")
+  fi
+  if gh workflow run "$DISPATCH_WORKFLOW" --repo "$DISPATCH_REPO" "${ref_flags[@]}" \
        -f pr_url="$_url" "${force_flags[@]}"; then
     dispatched=$((dispatched + 1))
-    echo "    dispatched review for $_url"
+    DISPATCHED_BY_REPO[$DISPATCH_REPO]=$(( ${DISPATCHED_BY_REPO[$DISPATCH_REPO]:-0} + 1 ))
+    echo "    dispatched review for $_url ($DISPATCH_WORKFLOW @ $DISPATCH_REPO)"
   else
-    echo "::warning::sweep: failed to dispatch review for $_url"
+    echo "::warning::sweep: failed to dispatch review for $_url ($DISPATCH_WORKFLOW @ $DISPATCH_REPO)"
   fi
 }
 
-# arm_delayed_retry <pr_url> <head_sha> <reset_iso> <reset_epoch> <now_epoch>
+# arm_delayed_retry <pr_url> <head_sha> <reset_iso> <reset_epoch> <now_epoch> [snapshot]
 # Deterministic near-reset retry (#1994). Called from the rate-limit DEFER branch:
 # when a PR is withheld on an un-elapsed reset that is within
 # DELAYED_RETRY_HORIZON_SEC, dispatch pr-review-delayed-retry.yml, which sleeps
@@ -222,11 +430,19 @@ dispatch_review() {
 # when ARM_DELAYED_RETRY=false — the mode the
 # retry uses when it delegates back here, so it can never re-arm itself.
 arm_delayed_retry() {
-  local _url="$1" _sha="$2" _reset="$3" _reset_epoch="$4" _now_epoch="$5"
+  local _url="$1" _sha="$2" _reset="$3" _reset_epoch="$4" _now_epoch="$5" _snap="${6:-}"
   [ "$ARM_DELAYED_RETRY" = "true" ] || return 0
   [ -n "$_reset_epoch" ] || return 0
   local _delta=$(( _reset_epoch - _now_epoch ))
   { [ "$_delta" -gt 0 ] && [ "$_delta" -le "$DELAYED_RETRY_HORIZON_SEC" ]; } || return 0
+  # A retry armed for a PR the comment gate holds would only re-enter this sweep and
+  # be skipped there, so it is not armed and spends no MAX_DISPATCH (#2530). Checked
+  # only once arming is otherwise due, so a far reset costs no gate lookup.
+  if [[ -n "$_snap" ]] && held_at_comment_gate "$_url" "$_snap"; then
+    held=$((held + 1))
+    echo "    arm skipped $_url — held at the maintainer-comment gate (undispositioned PR comment) (#2530)"
+    return 0
+  fi
   if [ "$(( dispatched + armed ))" -ge "$MAX_DISPATCH" ]; then
     echo "    arm skipped $_url — reached MAX_DISPATCH=$MAX_DISPATCH (dispatches + armed retries) this sweep"
     return 0
@@ -416,10 +632,10 @@ while IFS= read -r pr_url; do
           continue
         fi
       fi
-      dispatch_review "$pr_url" "rate-limited (reset $rl_reset elapsed, head ${head_sha:0:8})"
+      dispatch_review "$pr_url" "$snapshot" "rate-limited (reset $rl_reset elapsed, head ${head_sha:0:8})"
     else
       echo "  defer $pr_url — rate-limited until $rl_reset (head ${head_sha:0:8})"
-      arm_delayed_retry "$pr_url" "$head_sha" "$rl_reset" "$reset_epoch" "$now_epoch"
+      arm_delayed_retry "$pr_url" "$head_sha" "$rl_reset" "$reset_epoch" "$now_epoch" "$snapshot"
     fi
     continue
   fi
@@ -459,7 +675,7 @@ while IFS= read -r pr_url; do
   # budget (#926) and the needs-human-review escalation gate (handled above) — so
   # the rescue can neither bypass a quality gate nor re-ignite a runaway.
   if [ "${marker_at_head:-0}" -gt 0 ]; then
-    dispatch_review "$pr_url" "orphaned-marker (head ${head_sha:0:8}, no verdict)" force
+    dispatch_review "$pr_url" "$snapshot" "orphaned-marker (head ${head_sha:0:8}, no verdict)" force
     continue
   fi
 
@@ -475,8 +691,42 @@ while IFS= read -r pr_url; do
     fi
   fi
 
-  dispatch_review "$pr_url" "stuck-green (head ${head_sha:0:8})"
+  dispatch_review "$pr_url" "$snapshot" "stuck-green (head ${head_sha:0:8})"
 done < "$candidates_file"
 
+# sweep_cost_line <before> <after> — "GraphQL G, REST R" points spent, from two
+# rate_limit_remaining readings; "unknown" when either is unreadable or the window
+# reset during the run (a negative spend). Pure.
+sweep_cost_line() {
+  local _b="${1:-}" _a="${2:-}" _bg _bc _ag _ac
+  read -r _bg _bc <<< "$_b"
+  read -r _ag _ac <<< "$_a"
+  if [[ "$_bg$_bc$_ag$_ac" =~ ^[0-9]+$ && -n "$_bg" && -n "$_bc" && -n "$_ag" && -n "$_ac" ]] \
+     && [[ "$_bg" -ge "$_ag" ]] && [[ "$_bc" -ge "$_ac" ]]; then
+    echo "GraphQL $(( _bg - _ag )), REST $(( _bc - _ac ))"
+  else
+    echo "unknown"
+  fi
+}
+
+cost=$(sweep_cost_line "$rate_before" "$(rate_limit_remaining)")
+by_repo=""
+for _r in "${!DISPATCHED_BY_REPO[@]}"; do
+  by_repo+="${by_repo:+, }$_r=${DISPATCHED_BY_REPO[$_r]}"
+done
+
 echo ""
-echo "Sweep summary: inspected $inspected candidate(s), $stuck stuck-green, $dispatched review(s) dispatched, $armed delayed retr$([ "$armed" -eq 1 ] && echo y || echo ies) armed."
+echo "Sweep summary: inspected $inspected candidate(s), $stuck stuck-green, $dispatched review(s) dispatched, $armed delayed retr$([[ "$armed" -eq 1 ]] && echo y || echo ies) armed, $held held at the comment gate."
+echo "  Dispatches by repo: ${by_repo:-none}"
+echo "  API points spent (shared GH_TOKEN quota): $cost"
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  {
+    echo "### PR review sweep"
+    echo ""
+    echo "| Inspected | Dispatched | Retries armed | Held at comment gate | API points spent |"
+    echo "|---:|---:|---:|---:|---|"
+    echo "| $inspected | $dispatched | $armed | $held | $cost |"
+    echo ""
+    echo "Dispatches by repo: ${by_repo:-none}"
+  } >> "$GITHUB_STEP_SUMMARY" || true
+fi
