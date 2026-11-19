@@ -551,7 +551,11 @@ aggregate_snapshot() {
             latency_p95: (if ($lat|length)==0 then null else $lat[(((($lat|length)-1)*0.95)|round)] end)
           } } ) | from_entries) as $bots
     | { schema_version: 3, eligible_prs: $eligible, total_prs: $total, bots: $bots }
-  ' "${files[@]}" 2>/dev/null || echo '{"schema_version":3,"eligible_prs":0,"total_prs":0,"bots":{},"aggregation_failed":true}'
+  ' "${files[@]}" || {
+    # jq's own error is already on stderr; name the step so the run log is searchable (#2543).
+    echo "ERROR: aggregate_snapshot: jq failed on the records in ${dir}; the report shows Aggregation failed" >&2
+    echo '{"schema_version":3,"eligible_prs":0,"total_prs":0,"bots":{},"aggregation_failed":true}'
+  }
 }
 
 # _prev <snapshot_json_file> <bot> <field> — prior-week scalar or "" when absent.
@@ -853,17 +857,24 @@ render_reviewer_report() {
   local prev="${REVIEWER_PREV_SNAPSHOT:-}"
 
   local snap; snap="$(aggregate_snapshot "$dir")"
-  local eligible total
+  local eligible total agg_failed pr_counts
   eligible="$(jq -r '.eligible_prs' <<<"$snap")"
   total="$(jq -r '.total_prs' <<<"$snap")"
+  agg_failed="$(jq -r '.aggregation_failed // false' <<<"$snap")"
+  # On a failed aggregation the zero totals are a fallback, not a count (#2543).
+  if [[ "$agg_failed" == "true" ]]; then
+    pr_counts='PR counts unavailable (aggregation failed)'
+  else
+    pr_counts="$(_fmt_int "$total") PRs active ($(_fmt_int "$eligible") non-draft, review-eligible)"
+  fi
 
   printf '# 🔎 Third-Party Reviewer Scorecard — %s-day Report\n\n' "$lookback"
   if [[ -n "$generated_at" ]]; then
-    printf '_Generated %s · org `%s` · %s repos scanned · %s PRs active (%s non-draft, review-eligible)_\n\n' \
-      "$generated_at" "$ORG" "$repo_count" "$(_fmt_int "$total")" "$(_fmt_int "$eligible")"
+    printf '_Generated %s · org `%s` · %s repos scanned · %s_\n\n' \
+      "$generated_at" "$ORG" "$repo_count" "$pr_counts"
   else
-    printf '_org `%s` · %s repos scanned · %s PRs active (%s non-draft, review-eligible)_\n\n' \
-      "$ORG" "$repo_count" "$(_fmt_int "$total")" "$(_fmt_int "$eligible")"
+    printf '_org `%s` · %s repos scanned · %s_\n\n' \
+      "$ORG" "$repo_count" "$pr_counts"
   fi
 
   # Surface collection failures / truncation FIRST and unconditionally, so a run
@@ -872,7 +883,7 @@ render_reviewer_report() {
 
   # A failed aggregation must not read as a quiet week (#2543). Say so, and write
   # no snapshot, so next week's deltas never compare against these zeros.
-  if [[ "$(jq -r '.aggregation_failed // false' <<<"$snap")" == "true" ]]; then
+  if [[ "$agg_failed" == "true" ]]; then
     printf '## ⚠️ Aggregation failed\n\n'
     printf 'PR activity was collected, but `aggregate_snapshot` could not compute the scorecard '
     printf '(`jq` failed on the collected records; see the run log). The counts above are not a quiet week. '

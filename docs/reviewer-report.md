@@ -339,7 +339,10 @@ rules. Findings raised needs a `schema_version: 3` prior
 ([#2527](https://github.com/combsmith/.github-private/issues/2527)): before that, CodeRabbit and
 Codex body findings beside their threads were not counted, so it shows no delta against a v2 week. The details
 deltas still compare. So in the first week after the change, the Reviews delta also reflects that
-status and quota comments are no longer counted.
+status and quota comments are no longer counted. Likewise, in the first week after
+[#2543](https://github.com/combsmith/.github-private/issues/2543), CodeRabbit's Reviews count drops
+because its empty-bodied reviews became `status` and no longer count as reviews. Its Unclassified messages
+drop for the same reason. Neither is a change in what CodeRabbit did.
 
 ## Known gaps (stated in every report)
 
