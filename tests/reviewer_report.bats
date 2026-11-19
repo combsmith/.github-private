@@ -572,6 +572,42 @@ JSON
   echo "$output" | grep -q "o/r/1"
 }
 
+@test "render: truncation is grouped by connection and repo with short PR links" {
+  local dir
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/trunc2.XXXXXX")"
+  cat > "$dir/r.jsonl" <<'JSON'
+{"kind":"pr","repo":"combsmith/a","pr":"https://github.com/combsmith/a/pull/1","created":"2026-11-18T10:00:00Z","merged":null,"draft":false,"author":"h"}
+{"kind":"truncation","repo":"combsmith/a","pr":"https://github.com/combsmith/a/pull/1","connection":"comments"}
+{"kind":"truncation","repo":"combsmith/a","pr":"https://github.com/combsmith/a/pull/2","connection":"comments"}
+{"kind":"truncation","repo":"combsmith/b","pr":"https://github.com/combsmith/b/pull/9","connection":"comments"}
+{"kind":"truncation","repo":"combsmith/a","pr":"https://github.com/combsmith/a/pull/1","connection":"reviews"}
+{"kind":"truncation","repo":"combsmith/c","pr":"(pagination)","connection":"pullRequests"}
+JSON
+  run render_reviewer_report "$dir" 7 3 2026-11-19
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"<b>5 connections on 3 PRs and 1 repos (later PRs not fetched)</b>"* ]]
+  # One row per connection; repos grouped in it, each PR a short link.
+  grep -qF '| `comments` | 50 per PR | `a` [#1](https://github.com/combsmith/a/pull/1) [#2](https://github.com/combsmith/a/pull/2) · `b` [#9](https://github.com/combsmith/b/pull/9) |' <<<"$output"
+  grep -qF '| `reviews` | 50 per PR | `a` [#1](https://github.com/combsmith/a/pull/1) |' <<<"$output"
+  grep -qF '| `pullRequests` | MAX_PR_PAGES per repo | `c` (pagination) |' <<<"$output"
+  # The old one-line-per-connection form is gone.
+  [[ "$output" != *"truncated"$'\n'"- \`"* ]]
+  [ "$(grep -c '^| `comments`' <<<"$output")" -eq 1 ]
+}
+
+@test "render: the Reviewed badge colors the share of PRs reviewed" {
+  REVIEWER_EXPECTED_OFF_JSON='[{"login":"qodo-code-review","repo":"*"}]'
+  [ "$(_reviewed_badge graphite-app 70 100)" = "🟢 70%" ]
+  [ "$(_reviewed_badge graphite-app 69 100)" = "🟡 69%" ]
+  [ "$(_reviewed_badge graphite-app 40 100)" = "🟡 40%" ]
+  [ "$(_reviewed_badge graphite-app 15 100)" = "🟠 15%" ]
+  [ "$(_reviewed_badge graphite-app 14 100)" = "🔴 14%" ]
+  # Rounded down: 16 of 23 is 69.6%, so it stays in the yellow band.
+  [ "$(_reviewed_badge graphite-app 16 23)" = "🟡 69%" ]
+  [ "$(_reviewed_badge graphite-app 0 0)" = "—" ]
+  [ "$(_reviewed_badge qodo-code-review 0 100)" = "⚪ off" ]
+}
+
 @test "render: no collection-failure section when every repo was collected" {
   run render_reviewer_report "$FIXTURES" 7 12 2026-07-13
   [ "$status" -eq 0 ]
@@ -823,7 +859,7 @@ JSON
   # Other bots keep the #2504 rule (#2527): threads 2, plus 1 body on the thread-less PR.
   echo "$output" | jq -e '.bots["gemini-code-assist"] | .findings_threads==2 and .findings_body==1'
   run render_reviewer_report "$dir" 7 1 2026-11-12
-  echo "$output" | grep -E '^\| Gemini Code Assist \| 2 \| 2 +\| 0 +\| 0 +\| 0 +\| 0 +\| 3 +\| 50% +\|'
+  echo "$output" | grep -E '^\| Gemini Code Assist \| 🟢 100% \| 2 \| 2 +\| 0 +\| 0 +\| 0 +\| 0 +\| 3 +\| 50% +\|'
 }
 
 # ---------------------------------------------------------------------------
@@ -957,7 +993,7 @@ JSON
   run render_reviewer_report "$dir" 7 1 2026-11-12
   [ "$status" -eq 0 ]
   echo "$output" | grep -qF "| Findings: threads / bodies |"
-  echo "$output" | grep -E '^\| CodeRabbit \| 1 \| 1 +\| 0 +\| 0 +\| 0 +\| 0 +\| 2 +\|'
+  echo "$output" | grep -E '^\| CodeRabbit \| [^|]+ \| 1 \| 1 +\| 0 +\| 0 +\| 0 +\| 0 +\| 2 +\|'
   echo "$output" | grep -E '^\| CodeRabbit \| 1 +\| 0 / 0 \| 0 +\| 0 / 0 \| 0 \| 0 \| 0 / 2 \|$'
 }
 
@@ -971,16 +1007,16 @@ JSON
   REVIEWER_PREV_SNAPSHOT="$prev" run render_reviewer_report "$dir" 7 1 2026-11-12
   [ "$status" -eq 0 ]
   # With findings keeps its v2 delta; Findings raised has none.
-  echo "$output" | grep -E '^\| CodeRabbit \| 1 \| 1 \(±0\) \| 0 \(±0\) \| 0 \(±0\) \| 0 \(±0\) \| 0 \(±0\) \| 2 +\|'
+  echo "$output" | grep -E '^\| CodeRabbit \| [^|]+ \| 1 \| 1 \(±0\) \| 0 \(±0\) \| 0 \(±0\) \| 0 \(±0\) \| 0 \(±0\) \| 2 +\|'
   echo '{"schema_version":3,"eligible_prs":1,"total_prs":1,"bots":{"coderabbitai":{"with_findings_prs":1,"clean_prs":0,"refused_prs":0,"skipped_prs":0,"no_response_prs":0,"findings_raised":1}}}' > "$prev"
   REVIEWER_PREV_SNAPSHOT="$prev" run render_reviewer_report "$dir" 7 1 2026-11-12
-  echo "$output" | grep -E '^\| CodeRabbit \| 1 \| .* \| 2 \(▲ \+1\) \|'
+  echo "$output" | grep -E '^\| CodeRabbit \| [^|]+ \| 1 \| .* \| 2 \(▲ \+1\) \|'
 }
 
 @test "render: headline table has the #2504 columns" {
   run render_reviewer_report "$FIXTURES" 7 12 2026-07-13
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qF "| Reviewer | Total PRs | With findings | Clean | Refused | Skipped | No response | Findings raised | Resolved % | Latency p50 | Latency p95 |"
+  echo "$output" | grep -qF "| Reviewer | Reviewed | Total PRs | With findings | Clean | Refused | Skipped | No response | Findings raised | Resolved % | Latency p50 | Latency p95 |"
 }
 
 @test "render: details section shows reviews, verdicts and reactions (#2504)" {
@@ -1023,7 +1059,7 @@ JSON
   REVIEWER_PREV_SNAPSHOT="$prev" run render_reviewer_report "$FIXTURES" 7 12 2026-07-13
   [ "$status" -eq 0 ]
   # Codex refused 2 → 1 and no-response 0 → 1.
-  echo "$output" | grep -E '^\| Codex \| 2 \| 0 \(±0\) \| 0 \(±0\) \| 1 \(▼ -1\) \| 0 \(±0\) \| 1 \(▲ \+1\) \|'
+  echo "$output" | grep -E '^\| Codex \| [^|]+ \| 2 \| 0 \(±0\) \| 0 \(±0\) \| 1 \(▼ -1\) \| 0 \(±0\) \| 1 \(▲ \+1\) \|'
 }
 
 @test "render: a prior snapshot without the new fields shows no headline delta and does not fail (#2504)" {
@@ -1034,7 +1070,7 @@ JSON
 JSON
   REVIEWER_PREV_SNAPSHOT="$prev" run render_reviewer_report "$FIXTURES" 7 12 2026-07-13
   [ "$status" -eq 0 ]
-  echo "$output" | grep -E '^\| Codex \| 2 \| 0 +\| 0 +\| 1 +\| 0 +\| 1 +\| 0 +\| n/a +\|'
+  echo "$output" | grep -E '^\| Codex \| [^|]+ \| 2 \| 0 +\| 0 +\| 1 +\| 0 +\| 1 +\| 0 +\| n/a +\|'
 }
 
 @test "snapshot: carries schema_version 3 and never the unclassified sample bodies (#2504, #2527)" {
@@ -1167,6 +1203,58 @@ _rename_outage_fixture() {
   a="$(grep -n '^## Outage alerts' <<<"$output" | cut -d: -f1)"
   s="$(grep -n '^## Scorecard' <<<"$output" | cut -d: -f1)"
   [ "$a" -lt "$s" ]
+}
+
+@test "alerts: the day grid shows each bot's days, and leaves out a bot off everywhere" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  _rename_outage_fixture "$d"
+  REVIEWER_BOTS=(gemini-code-assist qodo-code-review)
+  REVIEWER_EXPECTED_OFF_JSON='[{"login":"qodo-code-review","repo":"*"}]'
+  run render_reviewer_report "$d" 7 2 2026-11-13
+  [ "$status" -eq 0 ]
+  local alerts
+  alerts="$(_section "$output" "Outage alerts")"
+  grep -qF '| Reviewer | 11-08 | 11-09 | 11-10 | 11-11 | 11-12 | Reviewed / opened |' <<<"$alerts"
+  grep -qF '| Gemini Code Assist | 🟩 | 🟩 | 🟥 | 🟥 | 🟥 | 4 / 10 |' <<<"$alerts"
+  run grep -F 'Qodo Merge' <<<"$alerts"
+  [ "$status" -ne 0 ]
+}
+
+@test "alerts: the day grid keeps a day with no PRs as a column of white cells" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  _cov_pr "$d" combsmith/markets 1 "2026-11-16T09:00:00Z"
+  _cov_bot "$d" combsmith/markets 1 graphite-app "2026-11-16T09:00:00Z" 1
+  _cov_pr "$d" combsmith/markets 2 "2026-11-18T09:00:00Z"
+  _cov_bot "$d" combsmith/markets 2 graphite-app "2026-11-18T09:00:00Z" 1
+  REVIEWER_BOTS=(graphite-app)
+  REVIEWER_EXPECTED_OFF_JSON='[]'
+  REVIEWER_WINDOW_START=2026-11-15T20:00:00Z
+  run render_reviewer_report "$d" 7 1 2026-11-19
+  [ "$status" -eq 0 ]
+  local alerts
+  alerts="$(_section "$output" "Outage alerts")"
+  grep -qF '| Reviewer | 11-15 | 11-16 | 11-17 | 11-18 | Reviewed / opened |' <<<"$alerts"
+  grep -qF '| Graphite | ⬜ | 🟩 | ⬜ | 🟩 | 2 / 2 |' <<<"$alerts"
+}
+
+@test "alerts: a bot silent on several repos gets one cell-alert line, not one per repo" {
+  local d="$BATS_TEST_TMPDIR/cov"; mkdir -p "$d"
+  local day
+  for day in 08 09 10; do
+    _cov_pr "$d" combsmith/markets "1${day}" "2026-11-${day}T08:00:00Z"
+    _cov_bot "$d" combsmith/markets "1${day}" graphite-app "2026-11-${day}T08:00:00Z" 1
+    _cov_pr "$d" combsmith/software-factory "2${day}" "2026-11-${day}T10:00:00Z"
+    _cov_pr "$d" combsmith/broodly "3${day}" "2026-11-${day}T11:00:00Z"
+  done
+  REVIEWER_BOTS=(graphite-app)
+  REVIEWER_EXPECTED_OFF_JSON='[]'
+  run render_reviewer_report "$d" 7 3 2026-11-11
+  local alerts line
+  alerts="$(_section "$output" "Outage alerts")"
+  [ "$(grep -c -- '^- \*\*Graphite\*\*' <<<"$alerts")" -eq 1 ]
+  line="$(grep -F -- '- **Graphite**' <<<"$alerts")"
+  [[ "$line" == *'`combsmith/broodly` (0 of 3'* ]]
+  [[ "$line" == *'`combsmith/software-factory` (0 of 3'* ]]
 }
 
 @test "alerts: one silent day, or fewer than 3 PRs on the silent days, is not an outage (#2506)" {
