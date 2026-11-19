@@ -59,7 +59,12 @@ copilot-pull-request-reviewer	clean	review	generated (no|0) (new )?comments?
 copilot-pull-request-reviewer	status	any	(wasn.t|was not|was unable to|unable to) (able to )?review any files
 gemini-code-assist	refused	any	daily quota limit
 gemini-code-assist	status	any	Summary of Changes|I.m Gemini Code Assist|Gemini is currently reviewing|I.m currently reviewing
-gemini-code-assist	clean	review	I have no feedback to provide|no (further )?(feedback|comments|suggestions) (to provide|at this time)|did not find any (issues|problems)
+gemini-code-assist	clean	review	I have no feedback to provide|no (further )?(feedback|comments|suggestions) (to provide|at this time)|did not find any (issues|problems)|(there are|as there are|were) no review comments|no review comments were provided
+# Gemini notes it cannot review a PR: unsupported file types (configuration) or a PR too large (a limit).
+gemini-code-assist	skipped	any	unable to generate a review for this pull request due to the file types
+gemini-code-assist	refused	any	number of changes in this pull request is too large
+# The "Code Review" summary body of a review: its findings are the inline comments, classed on their own.
+gemini-code-assist	status	review	^\s*Code Review\b
 chatgpt-codex-connector	status	any	^\s*Codex Review Summary
 chatgpt-codex-connector	skipped	any	To use Codex here, (create an environment|\[create an environment)
 chatgpt-codex-connector	clean	any	(Didn.t|did not) find any major issues
@@ -70,9 +75,15 @@ coderabbitai	finding	any	Security architecture risk.*?(Low|Medium|Moderate|Eleva
 coderabbitai	finding	any	Retained concerns(?:\*\*|(?!\*))[\s\n]*(?:[-*]|Low|Medium|High|Critical|Severity)|Hardening Proposals(?:\*\*|(?!\*))[\s\n]*(?:[-*]|proposed)|Actionable comments posted:\s*[1-9]|Outside diff range comments \(\s*[1-9]|Nitpick comments \(\s*[1-9]|(?:Outside diff range|Nitpick) comments:[ \t]*[1-9]
 coderabbitai	finding	any	(?:Retained concerns|Hardening Proposals)\**[ \t]*(?:\r?\n[ \t]*)+(?!No (?:[a-z-]+ ){0,2}(?:concerns?|proposals?|issues?|findings?|risks?)(?: (?:were|are|have been))?(?: (?:identified|found|raised|retained|proposed|noted))?\.?[ \t]*(?:\r?\n[ \t]*)*(?:<|\*\*|Security review details|Retained concerns|Hardening Proposals|\z))(?!<|\*\*|Security review details|Retained concerns|Hardening Proposals|\z)\S
 coderabbitai	clean	any	No actionable comments were generated|Actionable comments posted:\s*0
+# The "Prompt to fix all issues" review body lists failed pre-merge checks or findings for an agent to fix.
+coderabbitai	finding	review	^\s*Prompt to fix all issues
+coderabbitai	finding	review	^\s*(Additional comments: [1-9]|Follow-up Comments)
+coderabbitai	skipped	any	Draft PR not reviewed
+coderabbitai	status	any	couldn.t post its review summary
 coderabbitai	refused	any	Review limit reached|used all (of )?(your )?free (OSS )?reviews|rate limit exceeded
 coderabbitai	skipped	any	Review skipped|Auto reviews are disabled|Skipped review
 coderabbitai	status	any	Walkthrough|Summary by CodeRabbit|Currently processing new changes|review in progress|Thank you for using CodeRabbit|Finishing Touches
+coderabbitai	status	issue	Action performed
 sonarqubecloud	finding	any	Quality Gate failed|\b[1-9][0-9]* New issues?\b|\b[1-9][0-9]* Security Hotspots?\b
 sonarqubecloud	clean	any	Quality Gate passed
 qodo-code-review	clean	any	No code suggestions found
@@ -84,16 +95,20 @@ codeant-ai	finding	any	Suggestion:
 codeant-ai	finding	any	[1-9][0-9]* code suggestions?\b
 codeant-ai	refused	any	(trial|monthly|usage) limit|trial has (ended|expired)
 codeant-ai	clean	any	No (issues|suggestions) (were )?found|found no issues
-codeant-ai	skipped	any	reviews? (has been |have been |was |were |is |are )?(skipped|disabled)|Skipping review
+codeant-ai	skipped	any	reviews? (has been |have been |was |were |is |are )?(skipped|disabled)|Skipping (PR |CodeAnt AI )?review
 codeant-ai	finding	any	PR Risk:\s*(Medium|Moderate|Elevated|High|Critical|Severe)
 codeant-ai	status	any	Thanks for using CodeAnt|Review Status|CodeAnt PR Risk|CodeAnt AI is (reviewing|running|analyzing)
-graphite-app	refused	check_run	hourly limit|daily limit|limit reached|too large
+codeant-ai	status	any	No threshold-suppressed suggestions
+graphite-app	refused	check_run	hourly limit|daily limit|limit reached|too large|reached the hourly AI review limit
 graphite-app	finding	check_run	left [1-9][0-9]* comments?
 graphite-app	clean	check_run	left (0|no) comments?|review ran
 graphite-app	skipped	check_run	not enabled|disabled for this|skipped by (config|configuration|rule)
 graphite-app	status	issue	managed by Graphite|Graphite Merge Queue|graphite\.dev|How to use the Graphite
+# cubic re-reviews: re-detected unresolved issues are findings; "N issue(s) found", "N existing issue remains" too.
+cubic-dev-ai	finding	any	re-detected [1-9][0-9]* unresolved issues?
+cubic-dev-ai	finding	any	\b[1-9][0-9]* (new |existing )?issues? (found|remains?)\b
 cubic-dev-ai	finding	any	found [1-9][0-9]* (potential )?issues?
-cubic-dev-ai	clean	any	found (no|0) (potential )?issues?|No issues found
+cubic-dev-ai	clean	any	found (no|0) (potential )?issues?|No issues found|All reported issues were addressed|Review completed against the latest diff
 cubic-dev-ai	status	any	cubic is (reviewing|analyzing)|Review in progress
 #
 # Expected-off cells (#2506): <login>	off	repo	<repo>

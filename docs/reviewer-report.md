@@ -91,8 +91,11 @@ Three diagnostic record kinds keep collection gaps visible (never silent, [#1908
 - `{kind:"check_run_error", repo, pr}` — a per-PR check-run REST fetch that failed, so a
   check-run reporter's clean pass on that PR may be missed and miscounted as *No response*.
 
-All are rendered in a **Collection health** section at the top of the report. Human authors
-and untracked bots are dropped at normalization time.
+All are rendered in a **Collection health** section at the top of the report. Truncated
+connections are summarized in one line (connections and PRs affected) with the detail in a
+collapsed block. That block is a table with one row per connection, giving its fetch cap and the
+affected PRs grouped by repo as short `#123` links. Check-run fetch failures are listed one line per
+repo, also as short links. Human authors and untracked bots are dropped at normalization time.
 
 If records were collected but `aggregate_snapshot` cannot compute the scorecard from them (its
 `jq` fails, for example on a malformed record), the report shows an **⚠️ Aggregation failed**
@@ -191,6 +194,7 @@ Clean, Refused, Skipped, No response. So the five PR columns sum to **Total PRs*
 
 | Column | Definition |
 |---|---|
+| **Reviewed** | Share of Total PRs the bot reviewed (With findings + Clean), with a colored dot: 🟢 70% or more, 🟡 40–69%, 🟠 15–39%, 🔴 under 15%. A bot declared off on every repo (`*`) shows ⚪ off. |
 | **Total PRs** | Review-eligible (non-draft) PRs active in the window; the denominator each row is measured against. |
 | **With findings** | PRs where the bot left at least one `finding` message. |
 | **Clean** | PRs where the bot left a `clean` message and no `finding`. |
@@ -277,8 +281,16 @@ uses two rules, and both look only at the cells where the bot is expected on:
 
 Each alert names the bot, the repo or repos, and the **first silent day**: the first day of
 the run for rule 1, and the day the cell's earliest opened PR was opened for rule 2. One outage
-can fire both rules, for example rule 1 for the bot and rule 2 for each busy repo. With no
-alerts the section says `none`.
+can fire both rules, for example rule 1 for the bot and rule 2 for its busy repos. Rule 2 gives
+one line per bot that lists every silent repo, not one line per repo. With no alerts the section
+says `none`.
+
+Below the alerts, whether there are any or not, a **day grid** shows each bot (except one declared
+off on every repo) against each UTC day of the window. The day is when the PR was opened, and only
+repos where the bot is expected on count. Each cell shows 🟩 when half or more of that day's PRs
+were reviewed, 🟨 for some, 🟥 for none, and ⬜ when no PRs were opened. A last column gives
+reviewed / opened for the window. A silent stretch shows as a run of 🟥 even when it is too short
+or too small to raise an alert.
 
 A PR is credited to the day it was opened, so a PR opened in the last minutes before the
 report runs, and not reviewed yet, counts as unreviewed. A rule needs at least 3 PRs, so one
@@ -354,7 +366,11 @@ deltas still compare. So in the first week after the change, the Reviews delta a
 status and quota comments are no longer counted. Likewise, in the first week after
 [#2543](https://github.com/combsmith/.github-private/issues/2543), CodeRabbit's Reviews count drops
 because its empty-bodied reviews became `status` and no longer count as reviews. Its Unclassified messages
-drop for the same reason. Neither is a change in what CodeRabbit did.
+drop for the same reason. Neither is a change in what CodeRabbit did. The patterns added on
+2026-11-19 for cubic, Gemini, CodeRabbit, CodeAnt and Graphite cut Unclassified messages from 412
+to 1 in a 7-day replay. In the first week after them, cubic's and Gemini's Clean counts rise, and
+CodeRabbit's With findings and CodeAnt's Skipped rise. The messages were already there; only
+their classes changed.
 
 ## Known gaps (stated in every report)
 
