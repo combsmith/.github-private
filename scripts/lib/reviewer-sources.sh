@@ -192,8 +192,8 @@ reviewer_sources_message_class_patterns() {
 # reviewer_sources_expected_off_cells
 #   The reviewer scorecard's expected-off bot × repo cells (#2506), read from the
 #   same scorecard-only sidecar: rows of the form "<login>\toff\trepo\t<repo>", where
-#   <repo> is "owner/name" or a bare "name" (a bare name matches that repo under any
-#   owner, so it survives an org rename). Emits "<login>\t<repo>" one per line. An
+#   <repo> is "owner/name", a bare "name" (a bare name matches that repo under any
+#   owner, so it survives an org rename), or "*" for every repo. Emits "<login>\t<repo>" one per line. An
 #   off cell renders "off (by design)" in the coverage matrix and never raises an
 #   outage alert. Neither gate calls this. A malformed off row is reported on stderr
 #   and left out, and the function then returns non-zero; the valid rows are still printed.
@@ -224,8 +224,8 @@ reviewer_sources_expected_off_cells() {
       if ($3 != "repo") {
         print where "an off row needs kind \"repo\", not \"" $3 "\"" > "/dev/stderr"; bad = 1; next
       }
-      if ($1 == "" || NF != 4 || $4 !~ /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)?$/) {
-        print where "an off row needs a login and a repo (owner/name or name)" > "/dev/stderr"; bad = 1; next
+      if ($1 == "" || NF != 4 || ($4 != "*" && $4 !~ /^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)?$/)) {
+        print where "an off row needs a login and a repo (owner/name, name or *)" > "/dev/stderr"; bad = 1; next
       }
       if (!(tolower($1) in logins)) {
         print where "login \"" $1 "\" not registered in the reviewer sources" > "/dev/stderr"; bad = 1; next
