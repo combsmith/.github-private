@@ -45,7 +45,8 @@
 #
 # Expected-off cells (#2506). A row with class `off` and kind `repo` is not a message
 # pattern: it declares that the bot is off by design on one repo, and its last column
-# is the repo — `owner/name`, or a bare `name` that matches the repo under any owner.
+# is the repo — `owner/name`, a bare `name` that matches the repo under any owner, or
+# `*` for every repo (a bot that is not enabled anywhere).
 # The scorecard's coverage matrix shows that cell as `off (by design)`, and it never
 # raises an outage alert. Read by reviewer_sources_expected_off_cells; the message-class
 # loader skips these rows. Say why in a comment above the row.
@@ -94,3 +95,9 @@ cubic-dev-ai	status	any	cubic is (reviewing|analyzing)|Review in progress
 # Expected-off cells (#2506): <login>	off	repo	<repo>
 # coderabbitai is on-demand only on software-factory: its .coderabbit.yaml turns auto review off.
 coderabbitai	off	repo	combsmith/software-factory
+# copilot-pull-request-reviewer and qodo-code-review are not enabled on any repo: neither
+# reviewed a PR in November 2026, and without these rows they fill the outage alerts.
+copilot-pull-request-reviewer	off	repo	*
+qodo-code-review	off	repo	*
+# graphite-app is not installed on software-factory-canary (it reviews software-factory, which the canary mirrors).
+graphite-app	off	repo	combsmith/software-factory-canary
