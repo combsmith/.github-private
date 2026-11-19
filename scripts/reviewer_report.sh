@@ -445,7 +445,7 @@ _NORMALIZE_JQ='
       # (#2576): the latest review was refused, so the reaction does not count.
       | ([ $classed[] | select(.class == "refused") | .at // empty ] | max) as $last_refusal
       | ($classed | map(if .kind == "reaction" and .class == "clean" and $last_refusal != null
-                             and (.at // "") < $last_refusal
+                             and (.at // "") != "" and .at < $last_refusal
                           then .class = "status" else . end)) as $mine
       | ($mine | map(select(.class == "finding" or .class == "clean"))) as $real
       | ($mine | map(select(.class == "refused")))   as $refd
@@ -1283,7 +1283,10 @@ _collect_one_repo() {
         ( if ((.reviewThreads?.nodes // []) | length) >= 50 then {kind:"truncation",repo:$repo,pr:($pr.url),connection:"reviewThreads"} else empty end),
         # Each reviewThread'"'"'s comments are fetched only up to 20 (comments(first: 20)); a
         # thread that exceeds that undercounts inline comments / thread metrics, so surface it too.
-        ( if any((.reviewThreads?.nodes // [])[]?; ((.comments?.nodes // []) | length) >= 20) then {kind:"truncation",repo:$repo,pr:($pr.url),connection:"reviewThreads.comments"} else empty end)
+        ( if any((.reviewThreads?.nodes // [])[]?; ((.comments?.nodes // []) | length) >= 20) then {kind:"truncation",repo:$repo,pr:($pr.url),connection:"reviewThreads.comments"} else empty end),
+        # Thumbs-up reactions on the PR are fetched only up to 20 (#2576); past that a
+        # Codex clean review could be missed, so surface it like the others.
+        ( if ((.reactions?.nodes // []) | length) >= 20 then {kind:"truncation",repo:$repo,pr:($pr.url),connection:"reactions"} else empty end)
     ' <<<"$resp" >> "$out" 2>/dev/null || true
 
     # Additive no-action-noise pass (#1411): emit one agent_comment record per

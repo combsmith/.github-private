@@ -374,7 +374,7 @@
     "body": ""
   },
   {
-    "name": "gemini: a thumbs-up on the PR with no reaction row is status (#2576)",
+    "name": "gemini: a thumbs-up on the PR with no sidecar rule is status (#2576)",
     "bot": "gemini-code-assist",
     "kind": "reaction",
     "expect": "status",
