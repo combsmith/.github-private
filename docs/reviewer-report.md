@@ -94,6 +94,13 @@ Three diagnostic record kinds keep collection gaps visible (never silent, [#1908
 All are rendered in a **Collection health** section at the top of the report. Human authors
 and untracked bots are dropped at normalization time.
 
+If records were collected but `aggregate_snapshot` cannot compute the scorecard from them (its
+`jq` fails, for example on a malformed record), the report shows an **⚠️ Aggregation failed**
+section right after Collection health instead of the scorecard, and saves no snapshot, so the
+next report's change arrows compare against the last good one
+([#2543](https://github.com/combsmith/.github-private/issues/2543)). An empty collection is not
+a failure: it reports "No pull-request activity found".
+
 ## Message classes
 
 Every bot message (a PR review body, an inline review-thread comment, a top-level PR comment,
@@ -123,6 +130,9 @@ The class is decided in this order, and the first hit wins:
 4. Structural defaults:
    - the first comment of a review thread is a `finding`, and a later comment by the same bot (a reply) is `status`;
    - a `CHANGES_REQUESTED` review is a `finding` and an `APPROVED` one is `clean`;
+   - any other review with an empty or whitespace-only body is `status`: CodeRabbit submits one
+     only to carry its inline comments, and the comments themselves are classed on their own
+     ([#2543](https://github.com/combsmith/.github-private/issues/2543));
    - when no earlier pattern matches, a check run that succeeded, or whose summary says the review ran, is `clean`;
    - a check run skipped with a decline reason is `refused`, one skipped otherwise is `skipped`, and one with an empty summary is `status`.
 5. Otherwise `unclassified`.

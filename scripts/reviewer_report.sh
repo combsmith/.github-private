@@ -317,6 +317,8 @@ _NORMALIZE_JQ='
           elif $m.kind == "inline" then (if $m.first_in_thread then "finding" else "status" end)
           elif $m.kind == "review" and $m.state == "CHANGES_REQUESTED" then "finding"
           elif $m.kind == "review" and $m.state == "APPROVED" then "clean"
+          # An empty COMMENTED review only carries inline comments (CodeRabbit), so it is status (#2543).
+          elif $m.kind == "review" and ($b | test("^\\s*$")) then "status"
           elif $m.kind == "check_run" then
             if $concl == "success" or ($b | test("review ran"; "i")) then "clean"
             elif $concl == "skipped" and ($b | test("did not run|too large|declin|rate.?limit|quota|usage limit"; "i")) then "refused"
@@ -549,7 +551,7 @@ aggregate_snapshot() {
             latency_p95: (if ($lat|length)==0 then null else $lat[(((($lat|length)-1)*0.95)|round)] end)
           } } ) | from_entries) as $bots
     | { schema_version: 3, eligible_prs: $eligible, total_prs: $total, bots: $bots }
-  ' "${files[@]}" 2>/dev/null || echo '{"schema_version":3,"eligible_prs":0,"total_prs":0,"bots":{}}'
+  ' "${files[@]}" 2>/dev/null || echo '{"schema_version":3,"eligible_prs":0,"total_prs":0,"bots":{},"aggregation_failed":true}'
 }
 
 # _prev <snapshot_json_file> <bot> <field> — prior-week scalar or "" when absent.
@@ -867,6 +869,16 @@ render_reviewer_report() {
   # Surface collection failures / truncation FIRST and unconditionally, so a run
   # that dropped repos never presents its partial counts as complete (#1908).
   _render_collection_health "$dir" "$repo_count"
+
+  # A failed aggregation must not read as a quiet week (#2543). Say so, and write
+  # no snapshot, so next week's deltas never compare against these zeros.
+  if [[ "$(jq -r '.aggregation_failed // false' <<<"$snap")" == "true" ]]; then
+    printf '## ⚠️ Aggregation failed\n\n'
+    printf 'PR activity was collected, but `aggregate_snapshot` could not compute the scorecard '
+    printf '(`jq` failed on the collected records; see the run log). The counts above are not a quiet week. '
+    printf 'No snapshot is saved for this run, so next week'"'"'s change arrows compare against the last good report.\n\n'
+    return 0
+  fi
 
   if [[ "${total:-0}" -eq 0 ]]; then
     printf 'No pull-request activity found in the last %s days.\n' "$lookback"

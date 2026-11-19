@@ -449,6 +449,35 @@ JSON
   echo "$output" | jq -e '.total_prs == 0 and (.bots | length == 0)'
 }
 
+@test "aggregate: an empty dir is not an aggregation failure (#2543)" {
+  local empty out
+  empty="$(mktemp -d "$BATS_TEST_TMPDIR/empty.XXXXXX")"
+  run aggregate_snapshot "$empty"
+  echo "$output" | jq -e 'has("aggregation_failed") | not'
+  out="$BATS_TEST_TMPDIR/snap-empty.json"
+  REVIEWER_SNAPSHOT_OUT="$out" run render_reviewer_report "$empty" 7 3 2026-11-19
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No pull-request activity found"* ]]
+  [[ "$output" != *"Aggregation failed"* ]]
+}
+
+@test "aggregate: a jq failure on collected records is reported and saves no snapshot (#2543)" {
+  local d out
+  d="$(mktemp -d "$BATS_TEST_TMPDIR/bad.XXXXXX")"
+  cat > "$d/r.jsonl" <<'JSON'
+{"kind":"pr","repo":"o/r","pr":"o/r/1","created":"2026-11-18T10:00:00Z","merged":null,"draft":false,"author":"h"}
+{"kind":"bot_pr","repo":"o/r","pr":"o/r/1","bot":"graphite-app", truncated mid-record
+JSON
+  run aggregate_snapshot "$d"
+  echo "$output" | jq -e '.aggregation_failed == true'
+  out="$BATS_TEST_TMPDIR/snap-bad.json"
+  REVIEWER_SNAPSHOT_OUT="$out" run render_reviewer_report "$d" 7 1 2026-11-19
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"## ⚠️ Aggregation failed"* ]]
+  [[ "$output" != *"No pull-request activity found"* ]]
+  [ ! -e "$out" ]
+}
+
 # ---------------------------------------------------------------------------
 # render_reviewer_report
 # ---------------------------------------------------------------------------
