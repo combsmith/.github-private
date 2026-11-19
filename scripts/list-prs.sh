@@ -21,6 +21,8 @@
 #   - self-authored (author == BOT_USER) — GitHub rejects self-approval
 #     unconditionally; queuing such a PR previously aborted the whole session
 #     and starved every later candidate (issue #96).
+#   - repos that are GHSA temporary private forks — skipped whole, before
+#     their PRs are listed (issue #2562; see search_namespace)
 #
 # CI filtering is intentionally omitted here — review-one-pr.sh enforces it
 # per-PR as a second layer. Filtering by CI status would exclude repos with no
@@ -114,18 +116,65 @@ process_repo_prs() {
 # are silently truncated: a hard cap would omit eligible open PRs beyond it,
 # reintroducing the very silent-omission defect this script exists to prevent
 # (issue #1744). gh paginates internally up to the requested limit.
+#
+# GHSA temporary private forks are left out (issue #2562). GitHub creates one
+# per security advisory, without the fork flag or a parent, and the review
+# cannot complete there (no check-run or label access), so the sweep
+# re-dispatched its PR on every tick and each pr-review-trigger.yml run failed.
+# No single field marks such a repo, so — the same test as dev-lead-retry.sh
+# list_repos_for_org — it is left out only when ALL of these hold: it is
+# private, its issues are disabled, and its name is another repo in the
+# listing plus `-ghsa-` and a GHSA id. Each skipped repo is logged.
+JQ_REPOS='"-ghsa(-[23456789cfghjmpqrvwx]{4}){3}$" as $ghsa
+  | [.[].nameWithOwner] as $names
+  | .[]
+  | if (.isPrivate == true and .hasIssuesEnabled == false
+        and (.nameWithOwner | test($ghsa))
+        and ((.nameWithOwner | sub($ghsa; "")) as $p | any($names[]; . == $p)))
+    then "SKIP\t" + .nameWithOwner
+    else "REPO\t" + .nameWithOwner
+    end'
+
 search_namespace() {
-  local owner="$1" raw
-  while IFS= read -r repo || [ -n "$repo" ]; do
-    [ -z "$repo" ] && continue
-    raw=$(gh pr list \
+  local owner="$1" raw line repo repos_json repo_lines
+  # A failed listing (token, rate limit, network) must fail the run, never
+  # read as an empty namespace that silently skips every review.
+  if ! repos_json=$(gh repo list "$owner" --limit 1000 \
+    --json nameWithOwner,isPrivate,hasIssuesEnabled 2>/dev/null); then
+    echo "::error::list-prs: 'gh repo list $owner' failed — refusing to treat the namespace as empty" >&2
+    exit 1
+  fi
+  # The payload must be exactly one JSON value and that value an array ('[]'
+  # stays valid). jq on blank input exits 0 with no output, which would read as
+  # an empty namespace, so slurp and check the shape explicitly.
+  if ! jq -s -e 'length == 1 and (.[0] | type == "array")' <<< "$repos_json" >/dev/null 2>&1; then
+    echo "::error::list-prs: 'gh repo list $owner' did not return exactly one JSON array — refusing to treat the namespace as empty" >&2
+    exit 1
+  fi
+  repo_lines=$(jq -r "$JQ_REPOS" <<< "$repos_json") || {
+    echo "::error::list-prs: could not parse the repo list for $owner" >&2
+    exit 1
+  }
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -z "$line" ] && continue
+    repo="${line#*$'\t'}"
+    if [ "${line%%$'\t'*}" = "SKIP" ]; then
+      echo "::notice::list-prs: skipped repo $repo (reason: ghsa-temporary-private-fork)" >&2
+      continue
+    fi
+    # A failed per-repo listing (rate limit, network) drops that repo's PRs
+    # from the sweep; name the repo so the omission is never silent.
+    if ! raw=$(gh pr list \
       --repo "$repo" \
       --state open \
       --limit 1000 \
-      --json url,author,createdAt,isDraft 2>/dev/null || echo '[]')
+      --json url,author,createdAt,isDraft 2>/dev/null); then
+      echo "::warning::list-prs: 'gh pr list' failed for $repo — its open PRs are omitted from this sweep" >&2
+      raw='[]'
+    fi
     [ -z "$raw" ] && raw='[]'
     process_repo_prs "$raw"
-  done < <(gh repo list "$owner" --limit 1000 --json nameWithOwner --jq '.[].nameWithOwner' 2>/dev/null || true)
+  done <<< "$repo_lines"
 }
 
 # Bot's personal account
