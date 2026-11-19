@@ -104,7 +104,7 @@ a failure: it reports "No pull-request activity found".
 ## Message classes
 
 Every bot message (a PR review body, an inline review-thread comment, a top-level PR comment,
-or a completed check run) gets **exactly one** class ([#2504](https://github.com/combsmith/.github-private/issues/2504)):
+a completed check run, or a 👍 reaction on the PR itself) gets **exactly one** class ([#2504](https://github.com/combsmith/.github-private/issues/2504)):
 
 | Class | Meaning | Example |
 |---|---|---|
@@ -134,8 +134,17 @@ The class is decided in this order, and the first hit wins:
      only to carry its inline comments, and the comments themselves are classed on their own
      ([#2543](https://github.com/combsmith/.github-private/issues/2543));
    - when no earlier pattern matches, a check run that succeeded, or whose summary says the review ran, is `clean`;
-   - a check run skipped with a decline reason is `refused`, one skipped otherwise is `skipped`, and one with an empty summary is `status`.
+   - a check run skipped with a decline reason is `refused`, one skipped otherwise is `skipped`, and one with an empty summary is `status`;
+   - a 👍 reaction that no row matches is `status`.
 5. Otherwise `unclassified`.
+
+**Codex clean reviews** ([#2576](https://github.com/combsmith/.github-private/issues/2576)). When a Codex
+review finds nothing, Codex no longer posts a "Didn't find any major issues" body. It sets its
+standing "Codex Review Summary" comment to `✅ Completed` (classed `status`) and adds a 👍 to the
+PR. The collector fetches the PR's 👍 reactions in the same GraphQL query, and the row
+`chatgpt-codex-connector clean reaction ^THUMBS_UP$` classes Codex's 👍 as `clean`. A 👍 posted
+before Codex's latest refusal on the same PR belongs to an earlier commit, so it is downgraded to
+`status` and the PR stays `refused`.
 
 A PR counts as **reviewed** by a bot only if the bot left at least one `finding` or `clean`
 message on it. A PR with only status messages, or only unclassified ones, never counts as
@@ -155,7 +164,8 @@ pattern), which match the markdown `body`, are not reused as they are.
 2. Add rows to `scripts/lib/reviewer-message-classes.tsv`, one pattern per row:
    `login<TAB>class<TAB>kind<TAB>pattern`.
    - `class` is `finding`, `clean`, `refused`, `skipped` or `status`.
-   - `kind` is `any`, `review`, `inline`, `issue` or `check_run`. An `any` row of class `status`,
+   - `kind` is `any`, `review`, `inline`, `issue`, `check_run` or `reaction`. A `reaction` message is a
+     👍 on the PR itself and its body is always `THUMBS_UP`; an `any` row never reaches it. An `any` row of class `status`,
      `skipped` or `refused` never reaches inline comments; write a `kind: inline` row if you
      really mean one.
    - `pattern` is a jq (Oniguruma) regex, matched case-insensitively against the message's `bodyText`, or against a check run's output summary.
