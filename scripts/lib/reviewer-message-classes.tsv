@@ -99,3 +99,5 @@ coderabbitai	off	repo	combsmith/software-factory
 # reviewed a PR in November 2026, and without these rows they fill the outage alerts.
 copilot-pull-request-reviewer	off	repo	*
 qodo-code-review	off	repo	*
+# graphite-app is not installed on software-factory-canary (it reviews software-factory, which the canary mirrors).
+graphite-app	off	repo	combsmith/software-factory-canary
