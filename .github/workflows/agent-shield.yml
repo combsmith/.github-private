@@ -31,4 +31,4 @@ permissions:
 
 jobs:
   agent-shield:
-    uses: combsmith/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-stable  # NOSONAR(githubactions:S7637) first-party channel ref
+    uses: combsmith/.github/.github/workflows/agent-shield-reusable.yml@agent-shield/v2-next  # NOSONAR(githubactions:S7637) first-party channel ref
