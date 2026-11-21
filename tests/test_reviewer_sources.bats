@@ -163,8 +163,9 @@ TSV
   # silently and weaken the gate's fail-closed guarantee. graphite-app is a
   # finding-producing reviewer and must stay out (#1995). codeant-ai declares a
   # pattern for its progress notices only; its own tests below pin that scope.
+  # gemini-code-assist declares one for its daily-quota and unsupported-file-types
+  # notices only; its own test below pins that scope.
   [[ "$patterns" != *"copilot-pull-request-reviewer"* ]]
-  [[ "$patterns" != *"gemini-code-assist"* ]]
   [[ "$patterns" != *"graphite-app"* ]]
   [[ "$patterns" != *"cubic-dev-ai"* ]]
 }
@@ -638,4 +639,21 @@ JSON
     run bash "$REPO_ROOT/scripts/dev-lead-intent.sh"
   [ "$status" -eq 0 ]
   grep -q "^INTENT_TYPE=fix-reviews$" "$out"
+}
+
+@test "info-status: gemini-code-assist matches its daily-quota and unsupported-files notices only" {
+  local pat
+  pat="$(_info_pattern_for gemini-code-assist)"
+  [ -n "$pat" ]
+  run _body_matches_pattern "$pat" $'> [!WARNING]\n> You have reached your daily quota limit. Please wait up to 24 hours and I will start processing your requests again!'
+  [ "$status" -eq 0 ]
+  run _body_matches_pattern "$pat" $'> [!NOTE]\n> Gemini is unable to generate a review for this pull request due to the file types involved not being currently supported.\n'
+  [ "$status" -eq 0 ]
+  # A notice followed by finding text must not clear (anchored at the end).
+  run _body_matches_pattern "$pat" $'> [!WARNING]\n> You have reached your daily quota limit. Please wait up to 24 hours and I will start processing your requests again!\n\n## Code Review\nThe retry loop never backs off.'
+  [ "$status" -eq 1 ]
+  # A real Gemini review that mentions a quota must not clear.
+  run _body_matches_pattern "$pat" "## Code Review
+This change raises the daily quota limit but never checks it."
+  [ "$status" -eq 1 ]
 }
