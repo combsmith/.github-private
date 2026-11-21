@@ -1841,3 +1841,18 @@ _ci_snap() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"1 PR issue comment(s)"* ]]
 }
+
+@test "Gemini daily-quota notice clears → 0" {
+  _run_check "$(_notice_json gemini-code-assist $'> [!WARNING]\n> You have reached your daily quota limit. Please wait up to 24 hours and I will start processing your requests again!')"
+  [ "$status" -eq 0 ]
+}
+
+@test "a real Gemini review body still blocks → 1" {
+  _run_check "$(_notice_json gemini-code-assist $'## Code Review\n\nThe new retry loop has no upper bound on attempts.')"
+  [ "$status" -eq 1 ]
+}
+
+@test "the Gemini quota notice from another author does not clear → 1" {
+  _run_check "$(_notice_json coderabbitai $'> [!WARNING]\n> You have reached your daily quota limit. Please wait up to 24 hours and I will start processing your requests again!')"
+  [ "$status" -eq 1 ]
+}
