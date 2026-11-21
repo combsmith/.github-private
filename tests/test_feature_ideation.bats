@@ -173,3 +173,76 @@ setup() {
   # under workflow_dispatch instead.
   [ "$(yq '.jobs.redispatch.uses' "$FEATURE_IDEATION_YML")" = "null" ]
 }
+
+# ── #1733: tooling_ref lockstep — the requirements file must resolve ──────────
+# The reusable checks out petry-projects/.github at `inputs.tooling_ref` (default
+# `v1`) and installs `.feature-ideation-tooling/scripts/feature-ideation-requirements.txt`.
+# That path does NOT exist at the frozen `v1` tag (it was added after v1), so the
+# stale default fails every run at "Install Python jsonschema". This repo pins the
+# reusable FILE to feature-ideation/v1-next, so it must also source the TOOLING from
+# that same channel — keeping the workflow file and its scripts in lockstep.
+# tooling_ref IS declared as a workflow_call input at the pinned channel, so this is
+# a safe forward (not the #1052 channel-skew case).
+
+@test "feature-ideation.yml forwards tooling_ref pinned to the reusable's channel" {
+  # Sourced directly (a fixed ref, not a dispatch input), so it may be a plain
+  # scalar on the ideate reusable call.
+  [ "$(yq '.jobs.ideate.with.tooling_ref' "$FEATURE_IDEATION_YML")" = "$CHANNEL" ]
+}
+
+@test "feature-ideation.yml does not leave tooling_ref at the stale v1 default" {
+  # The whole bug: the reusable's default tooling_ref=v1 predates the requirements
+  # file. A regression back to v1 (or omitting the forward) must fail here.
+  run yq '.jobs.ideate.with.tooling_ref' "$FEATURE_IDEATION_YML"
+  # Assert the yq invocation itself succeeded before trusting its output — a
+  # non-zero exit (bad path / parse error) would otherwise leave $output empty
+  # and satisfy both inequality checks, greening a broken test (gemini review).
+  [ "$status" -eq 0 ]
+  [ "$output" != "null" ]
+  [ "$output" != "v1" ]
+}
+
+# ── #1733 AC#4: the discussion bridge must not silently green over a dead run ──
+# The redispatch bridge fires a SEPARATE workflow_dispatch run and returns success
+# immediately. If that dispatched ideate run later fails, the discussion looked
+# "handed off" while nothing ran (the 3-week silent failure). A bridge-watch would
+# deadlock (concurrency: feature-ideation, cancel-in-progress: false → the dispatched
+# run queues behind the bridge). Instead the bridge surfaces the dispatched run on
+# the Idea Discussion, so a failed ideate is a visible red link, not a silent green.
+
+@test "feature-ideation.yml redispatch job can write to the Idea Discussion" {
+  # Needed to post the dispatched-run link back onto the Discussion.
+  [ "$(yq '.jobs.redispatch.permissions.discussions' "$FEATURE_IDEATION_YML")" = "write" ]
+}
+
+@test "feature-ideation.yml redispatch surfaces the dispatched run on the Discussion" {
+  # Posts a comment on the Idea Discussion (GraphQL addDiscussionComment) linking
+  # the dispatched run, keyed to the discussion node id from the event.
+  # Assertions are scoped to the redispatch job's steps (not the whole file) so
+  # comments or other jobs cannot cause false positives.
+  local steps_run steps_env
+  steps_run=$(yq '.jobs.redispatch.steps[].run' "$FEATURE_IDEATION_YML")
+  steps_env=$(yq '.jobs.redispatch.steps[].env[]' "$FEATURE_IDEATION_YML")
+  grep -qF "addDiscussionComment" <<<"$steps_run"
+  grep -qE "github\.event\.discussion\.node_id" <<<"$steps_env"
+  # The node id env key is bound to the mutation's discussionId, and the built
+  # body is what gets posted.
+  grep -qF 'DISCUSSION_NODE_ID' <<<"$(yq '.jobs.redispatch.steps[].env | keys | .[]' "$FEATURE_IDEATION_YML")"
+  grep -qF -- '-f discussionId="${DISCUSSION_NODE_ID}"' <<<"$steps_run"
+  grep -qF -- '-f body="${body}"' <<<"$steps_run"
+  # …and the comment text interpolates the dispatched run's URL.
+  grep -qF 'The BMAD Analyst runs in a separate workflow run: ${run_url}' <<<"$steps_run"
+}
+
+@test "feature-ideation.yml redispatch resolves the dispatched run without unsupported gh flags" {
+  # `gh workflow run` has no --json/-q flags and returns no run ID. The run is
+  # resolved afterwards via `gh run list --event workflow_dispatch --created`.
+  local steps_run
+  steps_run=$(yq '.jobs.redispatch.steps[].run' "$FEATURE_IDEATION_YML")
+  grep -qF 'dispatched_at=' <<<"$steps_run"
+  grep -qF -- '--workflow feature-ideation.yml' <<<"$steps_run"
+  grep -qF -- '--event workflow_dispatch' <<<"$steps_run"
+  grep -qF -- '--created ">=${dispatched_at}"' <<<"$steps_run"
+  # The dispatch command itself must not carry unsupported output flags (--json or -q).
+  ! grep -A3 'gh workflow run feature-ideation.yml' <<<"$steps_run" | grep -qE -- '(--json|-q)'
+}
