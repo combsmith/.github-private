@@ -258,8 +258,12 @@ elif [ -z "$major" ]; then
     die "the pinned ref ${pinned} does not resolve"
   fi
 else
-  for ch in "${CHANNELS[@]}"; do
-    tag="dev-lead/${major}-${ch}"
+  # The pinned tag is always resolved and checked, even when it is a numbered ring
+  # (e.g. ring2) outside the enumerated CHANNELS.
+  candidates=()
+  for ch in "${CHANNELS[@]}"; do candidates+=("dev-lead/${major}-${ch}"); done
+  case " ${candidates[*]} " in *" $pinned "*) ;; *) candidates+=("$pinned") ;; esac
+  for tag in "${candidates[@]}"; do
     gone_upstream=false
     if $have_origin && ! git -C "$ROOT" fetch --quiet --force ${depth[@]+"${depth[@]}"} origin "refs/tags/${tag}:refs/tags/${tag}" 2>/dev/null; then
       # Tell "origin has no such tag" (ls-remote exit 2) apart from "origin could
