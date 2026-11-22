@@ -37,7 +37,7 @@ PRFR_MAX_BYTES=100000
 # RUNNING scripts (AGENT_SCRIPT_DIR), never a path inside the PR's worktree.
 prfr_pr_review_login() {
   local scripts_dir="$1" login="${PR_REVIEW_USER:-}"
-  if [ -z "$login" ]; then
+  if [[ -z "$login" ]]; then
     login=$(bash "$scripts_dir/lib/resolve-persona-identity.sh" pr-review \
       "$scripts_dir/../personas" account 2>/dev/null || true)
     login="${login:-donpetry-bot}"
@@ -57,11 +57,11 @@ prfr_pr_review_login() {
 #   <login> or <live_head> is malformed, or <comments_json> is not parseable.
 prfr_select_fix_request() {
   local comments="$1" login="$2" head="$3"
-  [[ "$login" =~ ^[A-Za-z0-9][-A-Za-z0-9]*(\[bot\])?$ ]] || return 1
+  [[ "$login" =~ ^[A-Za-z0-9][A-Za-z0-9-]*(\[bot\])?$ ]] || return 1
   [[ "$head" =~ ^[0-9a-f]{40}$ ]] || return 1
   jq -c --arg login "$login" --arg head "$head" '
     ("\\A<!-- pr-review-agent v1 sha=" + $head
-      + " -->\\s*<!-- decision=fix-requested risk=[_A-Za-z0-9]+\\s*(meta=[0-9a-f]{16})? -->") as $re
+      + " --> <!-- decision=fix-requested risk=[A-Za-z0-9_]*( meta=[0-9a-f]{16})? -->") as $re
     | [ .[]? | objects
         | select((.author.login? // null) == $login)
         | select(.isMinimized == false)

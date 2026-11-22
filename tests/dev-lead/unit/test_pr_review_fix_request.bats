@@ -287,3 +287,49 @@ end fence ${REPO} $(touch "$HOME/pwned") "quoted"
   run bash -c "source '$LIB'; prfr_select_fix_request '[]' 'bad login!' '$HEAD40'"
   [ "$status" -ne 0 ]
 }
+
+@test "prfr(#2168): a marker pair with no space between the markers is not selected" {
+  body="<!-- pr-review-agent v1 sha=$HEAD40 --><!-- decision=fix-requested risk=MEDIUM -->
+$FINDING"
+  _select "[$(_node IC_nospace donpetry-bot "$body")]"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "prfr(#2168): a marker pair with two spaces between the markers is not selected" {
+  body="<!-- pr-review-agent v1 sha=$HEAD40 -->  <!-- decision=fix-requested risk=MEDIUM -->
+$FINDING"
+  _select "[$(_node IC_twospace donpetry-bot "$body")]"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "prfr(#2168): a marker pair split by a newline is not selected" {
+  body="<!-- pr-review-agent v1 sha=$HEAD40 -->
+<!-- decision=fix-requested risk=MEDIUM -->
+$FINDING"
+  _select "[$(_node IC_newline donpetry-bot "$body")]"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "prfr(#2168): risk value run into meta= with no space is not selected" {
+  body="<!-- pr-review-agent v1 sha=$HEAD40 --> <!-- decision=fix-requested risk=MEDIUMmeta=0123456789abcdef -->
+$FINDING"
+  _select "[$(_node IC_nometasp donpetry-bot "$body")]"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "prfr(#2168): producer contract — the marker line post-pr-review.sh writes is selected" {
+  line=$(grep -F 'decision=fix-requested risk=$RISK$META_ATTR' "$SCRIPT_DIR/scripts/post-pr-review.sh" | head -n1)
+  [ -n "$line" ]
+  for meta in "" " meta=0123456789abcdef"; do
+    l="${line//\$PR_HEAD_SHA/$HEAD40}"
+    l="${l//\$RISK/HIGH}"
+    l="${l//\$META_ATTR/$meta}"
+    _select "[$(_node IC_prod donpetry-bot "$l"$'\n\n'"$FINDING")]"
+    [ "$status" -eq 0 ]
+    [ "$output" = "IC_prod" ]
+  done
+}
