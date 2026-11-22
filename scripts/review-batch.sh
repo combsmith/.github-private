@@ -83,10 +83,13 @@ run_review_capture() {
 
 # Extract the last "reason":"…" value from a captured review log (the verdict
 # JSON is the final line review-one-pr.sh emits on a skip). Empty if none.
+# A capture with no "reason" field is an empty reason, not a failure (#2545):
+# under `set -euo pipefail` a no-match grep would otherwise fail the pipeline and
+# end the batch on the `reason=$(...)` assignment (exit 1, no Summary line).
 skip_reason_from() {
-  grep -oE '"reason"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" 2>/dev/null \
+  { grep -oE '"reason"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" 2>/dev/null \
     | tail -n1 \
-    | sed -E 's/.*"reason"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/'
+    | sed -E 's/.*"reason"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/'; } || true
 }
 
 # Pre-flight: validate engine availability before touching any PR.
