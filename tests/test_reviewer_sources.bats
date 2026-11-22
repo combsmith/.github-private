@@ -314,6 +314,69 @@ _codeant_promo_body() {
   [ "$status" -eq 1 ]
 }
 
+# #2597: once CodeAnt's trial limit is reached it posts this notice, complete body,
+# on every push. It carries no finding, so the comment gate may clear it. Only the
+# PR count may vary.
+_codeant_trial_notice='Your free trial PR review limit of 1000 PRs has been reached. Please upgrade your plan to continue using CodeAnt AI.'
+
+@test "info-status: codeant-ai matches its trial-limit notice (#2597)" {
+  local pat
+  pat="$(_info_pattern_for codeant-ai)"
+  [ -n "$pat" ]
+  run _body_matches_pattern "$pat" "$_codeant_trial_notice"
+  [ "$status" -eq 0 ]
+  run _body_matches_pattern "$pat" "${_codeant_trial_notice/1000/250}"
+  [ "$status" -eq 0 ]
+  # Trailing whitespace is allowed.
+  run _body_matches_pattern "$pat" "${_codeant_trial_notice}  "
+  [ "$status" -eq 0 ]
+  run _body_matches_pattern "$pat" "${_codeant_trial_notice}"$'\n\n'
+  [ "$status" -eq 0 ]
+}
+
+@test "info-status: codeant-ai's trial-limit match is the complete notice only (#2597)" {
+  local pat
+  pat="$(_info_pattern_for codeant-ai)"
+  [ -n "$pat" ]
+  # Text after the notice, on the same line or a new line, never clears.
+  run _body_matches_pattern "$pat" "${_codeant_trial_notice} Also, scripts/foo.sh:42 drops the exit status."
+  [ "$status" -eq 1 ]
+  run _body_matches_pattern "$pat" "${_codeant_trial_notice}"$'\n\nPossible bug: scripts/foo.sh:42 drops the exit status.'
+  [ "$status" -eq 1 ]
+  # Text before the notice, on the same line or a new line, never clears.
+  run _body_matches_pattern "$pat" "Earlier: ${_codeant_trial_notice}"
+  [ "$status" -eq 1 ]
+  run _body_matches_pattern "$pat" $'Possible bug: scripts/foo.sh:42 drops the exit status.\n\n'"${_codeant_trial_notice}"
+  [ "$status" -eq 1 ]
+  # A shortened notice never clears.
+  run _body_matches_pattern "$pat" "Your free trial PR review limit of 1000 PRs has been reached."
+  [ "$status" -eq 1 ]
+  run _body_matches_pattern "$pat" "${_codeant_trial_notice%.}"
+  [ "$status" -eq 1 ]
+  # Dots are literal: any other character in their place never clears.
+  run _body_matches_pattern "$pat" "${_codeant_trial_notice//./!}"
+  [ "$status" -eq 1 ]
+  # Only the PR count varies: a non-numeric or missing count never clears.
+  run _body_matches_pattern "$pat" "${_codeant_trial_notice/1000/many}"
+  [ "$status" -eq 1 ]
+  run _body_matches_pattern "$pat" "${_codeant_trial_notice/1000 /}"
+  [ "$status" -eq 1 ]
+  # A quoted notice never clears.
+  run _body_matches_pattern "$pat" "> ${_codeant_trial_notice}"
+  [ "$status" -eq 1 ]
+}
+
+@test "registry: the advisory gate still awaits codeant-ai after its trial-limit notice is cleared (#2597)" {
+  # Clearing the notice in the comment gate says only that there is nothing to
+  # answer; it must not drop codeant-ai from the advisory gate's awaited bots.
+  local gate
+  gate="$(reviewer_sources_advisory_gate_logins)"
+  grep -qx 'codeant-ai' <<<"$gate"
+  # shellcheck source=scripts/lib/advisory-review-gate.sh
+  source "$REPO_ROOT/scripts/lib/advisory-review-gate.sh"
+  [ -n "${ADVISORY_BOTS[codeant-ai]+set}" ]
+}
+
 @test "info-status: qodo-code-review matches its trial-ended notice, not a review (#1995)" {
   local pat
   pat="$(_info_pattern_for qodo-code-review)"
