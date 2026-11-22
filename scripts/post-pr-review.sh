@@ -523,6 +523,9 @@ fi
 if [ "$DECISION" = "skip" ]; then
   REASON=$(jq -r '.reason // "unspecified"' "$VERDICT_JSON")
   echo "    reviewer returned skip ($REASON) — treating as no-op"
+  # The verdict line review-batch.sh reads the skip reason from (#2545).
+  jq -cn --arg pr "$PR_URL" --arg sha "$PR_HEAD_SHA" --arg reason "$REASON" \
+    '{pr:$pr, sha:$sha, decision:"skip", reason:$reason}'
   exit 100
 fi
 if [ "$DECISION" != "approve" ] && [ "$DECISION" != "escalate" ]; then
