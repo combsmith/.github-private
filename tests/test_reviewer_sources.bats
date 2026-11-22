@@ -720,3 +720,13 @@ JSON
 This change raises the daily quota limit but never checks it."
   [ "$status" -eq 1 ]
 }
+
+@test "rate-limit regexes classify codeant-ai's trial-limit notice (#2597)" {
+  local re
+  for f in scripts/lib/advisory-review-gate.sh scripts/reviewer_report.sh; do
+    re="$(grep -oE "(ADVISORY_)?RATE_LIMIT_RE='[^']*'" "$f" | head -1 | sed "s/^[A-Z_]*='//; s/'\$//")"
+    [ -n "$re" ]
+    run grep -Eiq "$re" <<<"$_codeant_trial_notice"
+    [ "$status" -eq 0 ]
+  done
+}

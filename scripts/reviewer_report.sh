@@ -116,7 +116,7 @@ declare -gA REVIEWER_LABELS=(
 if declare -F _advisory_rate_limit_pattern >/dev/null 2>&1; then
   RATE_LIMIT_RE="$(_advisory_rate_limit_pattern)"
 else
-  RATE_LIMIT_RE='usage limit|rate[-_ ]?limit|too many requests|quota (exceeded|reached|exhausted)|out of (quota|credits|tokens|requests)|limit (reached|exceeded|exhausted)|(reached|exceeded|hit) (the |your )?(usage |rate |daily |monthly )?limit|used up its prepaid credits|Qodo.{0,40}(monthly|usage|PR|review) limit|CodeAnt.{0,40}(monthly|trial|usage) limit'
+  RATE_LIMIT_RE='usage limit|rate[-_ ]?limit|too many requests|quota (exceeded|reached|exhausted)|out of (quota|credits|tokens|requests)|limit (reached|exceeded|exhausted)|(reached|exceeded|hit) (the |your )?(usage |rate |daily |monthly )?limit|used up its prepaid credits|Qodo.{0,40}(monthly|usage|PR|review) limit|CodeAnt.{0,40}(monthly|trial|usage) limit|trial PR review limit of [0-9]+ PRs has been reached'
 fi
 
 # Author-scoped cubic rate-limit clause — reuse the gate's if present, else mirror

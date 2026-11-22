@@ -91,7 +91,7 @@ unset _gate_reg_sh
 # Kept reasonably specific so a genuine review that mentions "rate limit" in
 # passing does not arm a retry.
 # shellcheck disable=SC2034
-readonly ADVISORY_RATE_LIMIT_RE='usage limit|rate[-_ ]?limit|too many requests|quota (exceeded|reached|exhausted)|out of (quota|credits|tokens|requests)|limit (reached|exceeded|exhausted)|(reached|exceeded|hit) (the |your )?(usage |rate |daily |monthly )?limit|used up its prepaid credits|Qodo.{0,40}(monthly|usage|PR|review) limit|CodeAnt.{0,40}(monthly|trial|usage) limit'
+readonly ADVISORY_RATE_LIMIT_RE='usage limit|rate[-_ ]?limit|too many requests|quota (exceeded|reached|exhausted)|out of (quota|credits|tokens|requests)|limit (reached|exceeded|exhausted)|(reached|exceeded|hit) (the |your )?(usage |rate |daily |monthly )?limit|used up its prepaid credits|Qodo.{0,40}(monthly|usage|PR|review) limit|CodeAnt.{0,40}(monthly|trial|usage) limit|trial PR review limit of [0-9]+ PRs has been reached'
 
 # Author-scoped rate-limit clause for cubic (7-day trial added 2026-09-22 — a
 # trial-ended notice is a refusal, not a review or finding, #1903). This is kept
