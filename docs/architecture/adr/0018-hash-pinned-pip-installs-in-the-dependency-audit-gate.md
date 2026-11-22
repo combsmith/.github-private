@@ -40,12 +40,15 @@ subject is `retry`, so it fails. A command whose subject is `echo` or `printf` i
 judged.
 
 A package listed in the repo's `.github/pip-source-builds.json` may add
-`--no-binary <package>`, which must come after `--only-binary :all:` because pip drops
-it in the reverse order, and must also carry `--no-build-isolation`. An entry is
+`--no-binary <package>`, which must come after `--only-binary :all:` because pip applies
+these options left to right and a later one overrides an earlier one, so the
+per-package exception only takes effect after the general `:all:` restriction. It must
+also carry `--no-build-isolation`. An entry is
 approved by a code-owner review of the change to that JSON file.
 
 We will enforce this inside `dependency-audit-reusable.yml` with a job that sits in
-`audit-gate`'s `needs` and runs whatever `detect.outputs.pip` is. The job has two
+`audit-gate`'s `needs` and runs only when `detect.outputs.pip` is true (a job-level
+`if:` condition; the output is never executed as a command). The job has two
 parts:
 
 - Scorecard `--local` Pinned-Dependencies, where only pip findings in workflow `run:`
@@ -70,6 +73,11 @@ its own install-line parser.
 - What the check does not catch:
   - pip reached through a variable, an alias, a function, or a `bash -c` or `eval`
     string;
+  - how the build backend behind the `-e` form was installed: the classifier reads
+    command text only and Scorecard does not cover a preinstalled backend, so a backend
+    supplied by the runner image or an earlier non-pip step is not checked against a
+    hashed lock. This is an accepted risk; the rule that it come from a hashed lock is
+    a convention that the implementation issue may tighten;
   - scripts, composite actions and devcontainers;
   - npm, go and Dockerfiles, beyond what Scorecard writes to the job summary.
 - Checks that are not about the install line stay in their repos, such as empower's
