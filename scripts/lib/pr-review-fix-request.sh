@@ -57,7 +57,7 @@ prfr_pr_review_login() {
 #   <login> or <live_head> is malformed, or <comments_json> is not parseable.
 prfr_select_fix_request() {
   local comments="$1" login="$2" head="$3"
-  [[ "$login" =~ ^[A-Za-z0-9][A-Za-z0-9-]*(\[bot\])?$ ]] || return 1
+  [[ "$login" =~ ^[A-Za-z0-9][-A-Za-z0-9]*(\[bot\])?$ ]] || return 1
   [[ "$head" =~ ^[0-9a-f]{40}$ ]] || return 1
   jq -c --arg login "$login" --arg head "$head" '
     ("\\A<!-- pr-review-agent v1 sha=" + $head
