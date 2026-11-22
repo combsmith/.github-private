@@ -11,7 +11,7 @@ setup() {
   export PR_HEAD_SHA="2319231923192319231923192319231923192319"
   export PR_URL="https://github.com/combsmith/.github-private/pull/2319"
   export TEST_DIR="$BATS_TEST_TMPDIR"
-  mkdir -p "$TEST_DIR/bin"; cd "$TEST_DIR"
+  mkdir -p "$TEST_DIR/bin" && cd "$TEST_DIR" || exit 1
   export GH_LOG="$TEST_DIR/gh_calls.log"; : > "$GH_LOG"
   cat > "$TEST_DIR/bin/gh" <<EOF2
 #!/bin/bash
