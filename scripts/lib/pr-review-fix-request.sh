@@ -53,15 +53,15 @@ prfr_pr_review_login() {
 #       `<!-- pr-review-agent v1 sha=<live_head> --> <!-- decision=fix-requested risk=<RISK>[ meta=<16 hex>] -->`
 #       (a stale sha, a superseded body, or a marker quoted further down fails);
 #     - isMinimized is false and lastEditedAt is present and null.
-#   <live_head> must be a full 40-character sha; anything else selects nothing.
-#   Exit status is non-zero only when <comments_json> is not parseable.
+#   <live_head> must be a full 40-character sha. Exit status is non-zero when
+#   <login> or <live_head> is malformed, or <comments_json> is not parseable.
 prfr_select_fix_request() {
   local comments="$1" login="$2" head="$3"
-  [[ "$login" =~ ^[A-Za-z0-9][A-Za-z0-9-]*(\[bot\])?$ ]] || return 0
-  [[ "$head" =~ ^[0-9a-f]{40}$ ]] || return 0
+  [[ "$login" =~ ^[A-Za-z0-9][A-Za-z0-9-]*(\[bot\])?$ ]] || return 1
+  [[ "$head" =~ ^[0-9a-f]{40}$ ]] || return 1
   jq -c --arg login "$login" --arg head "$head" '
     ("\\A<!-- pr-review-agent v1 sha=" + $head
-      + " --> <!-- decision=fix-requested risk=[A-Za-z0-9_]*( meta=[0-9a-f]{16})? -->") as $re
+      + " -->\\s*<!-- decision=fix-requested risk=[A-Za-z0-9_]*( meta=[0-9a-f]{16})? -->") as $re
     | [ .[]? | objects
         | select((.author.login? // null) == $login)
         | select(.isMinimized == false)
