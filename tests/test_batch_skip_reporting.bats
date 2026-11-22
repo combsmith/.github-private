@@ -245,3 +245,31 @@ EOF
   [[ "$output" == *"0 reviews posted"* ]]
   [[ "$output" == *"1 escalated to human"* ]]
 }
+
+# ── Issue #2545: an exit-100 skip whose output carries no "reason" field ──────
+# post-pr-review.sh has exit-100 paths that print no verdict JSON line (a head
+# that moved mid-review, a refused self-approval, an unconfirmed escalation
+# artifact, and — before #2545 — a reviewer `skip`). skip_reason_from's grep
+# found nothing, pipefail made the pipeline fail, and set -e killed the batch on
+# the assignment: no notice, no Summary line, exit 1. A missing reason is an
+# empty reason, not a failure.
+_stub_skip_without_reason() {
+  cat > "scripts/review-one-pr.sh" <<'EOF2'
+#!/bin/bash
+echo "    reviewer returned skip (draft) — treating as no-op"
+exit 100
+EOF2
+  chmod +x "scripts/review-one-pr.sh"
+}
+
+@test "batch: an exit-100 skip with no reason field ends green with a Summary (#2545)" {
+  _stub_skip_without_reason
+
+  run bash scripts/review-batch.sh
+  echo "$output" >&2
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Summary:"* ]]
+  [[ "$output" == *"No-op"* ]]
+  [[ "$output" == *"1 no-ops skipped"* ]]
+}
