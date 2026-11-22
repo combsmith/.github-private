@@ -174,7 +174,7 @@ GHEOF
     AGENT_SCRIPT_DIR='$SCRIPT_DIR/scripts'
     source '$SCRIPT_DIR/scripts/lib/bot-comment-retry.sh'
     source '$LIB'
-    eval \"\$(sed -n '/^export_pr_review_fix_request()/,/^}/p' '$FIX_REVIEWS_SCRIPT')\"
+    source <(sed -n '/^export_pr_review_fix_request()/,/^}/p' '$FIX_REVIEWS_SCRIPT')
     export_pr_review_fix_request >/dev/null 2>&1
     printf '%s' \"\$PR_REVIEW_FIX_REQUEST\"
   "
