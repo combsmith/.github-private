@@ -263,6 +263,7 @@ end fence ${REPO} $(touch "$HOME/pwned") "quoted"
   json=$(printf '%s\n' "$output" | grep -m1 '^"')
   [ "$(jq -r 'length' <<< "$json")" -le 30000 ]
   [[ "$output" == *"truncated"* ]]
+  [[ "$output" != *"Read the rest"* ]]
 }
 
 @test "fix-reviews(#2168): an unreadable comment list gives could-not-be-determined, never None" {
@@ -280,4 +281,9 @@ end fence ${REPO} $(touch "$HOME/pwned") "quoted"
   [[ "$output" != *"$FINDING"* ]]
   _export_env "$nodes" "null"
   [[ "$output" == "Could not be determined"* ]]
+}
+
+@test "fix-reviews(#2168): a malformed login makes the selector fail (so the wrapper reports could-not-be-determined)" {
+  run bash -c "source '$LIB'; prfr_select_fix_request '[]' 'bad login!' '$HEAD40'"
+  [ "$status" -ne 0 ]
 }
