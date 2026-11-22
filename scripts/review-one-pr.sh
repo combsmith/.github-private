@@ -432,10 +432,22 @@ echo "    output_channel=$REVIEW_OUTPUT_CHANNEL"
 #                NEUTRAL covers informational checks that don't gate merging.
 #      failing — anything else (FAILURE, ACTION_REQUIRED, TIMED_OUT, CANCELLED,
 #                STALE, STARTUP_FAILURE, or unknown conclusions)
-PR_SNAPSHOT=$(gh pr view "$PR_URL" --json headRefOid,baseRefName,statusCheckRollup,reviewDecision,reviews,labels,comments,body,closingIssuesReferences)
+PR_SNAPSHOT=$(gh pr view "$PR_URL" --json headRefOid,baseRefName,statusCheckRollup,reviewDecision,reviews,labels,comments,body,closingIssuesReferences,isDraft)
 PR_HEAD_SHA=$(echo "$PR_SNAPSHOT" | jq -r '.headRefOid')
 export PR_HEAD_SHA
 echo "    head SHA: $PR_HEAD_SHA"
+
+# Draft gate (#2545): the reviewer prompts skip a draft unconditionally, so a
+# draft that reached the model tiers spent a triage and a confirmation call for
+# nothing. Skip it here, before the CI gate and any model call. This applies under
+# FORCE_REVIEW too (a forced run would only spend the calls). pr-review-trigger.yml
+# subscribes to `ready_for_review`, so marking the PR ready re-triggers review. An
+# absent isDraft counts as not a draft.
+if [ "$(jq -r '.isDraft // false' <<< "$PR_SNAPSHOT")" = "true" ]; then
+  echo "    skip: $PR_URL is a draft"
+  emit_verdict skip draft "the PR is marked ready for review"
+  exit 100
+fi
 
 # owner/repo from the PR URL — pure Bash regex, no printf|sed subprocess.
 _OWNER_REPO=""
@@ -549,7 +561,7 @@ if [ "$CI_STATUS" = "pending" ]; then
       echo "    force-review: CI pending, waiting ${_FORCE_POLL_SEC}s for checks to settle (attempt ${_poll}/${_FORCE_POLL_MAX})"
       sleep "$_FORCE_POLL_SEC"
       _gh_poll_err=$(mktemp 2>/dev/null || echo "/tmp/cascade/gh-poll-$$.err")
-      if ! PR_SNAPSHOT=$(gh pr view "$PR_URL" --json headRefOid,baseRefName,statusCheckRollup,reviewDecision,reviews,labels,comments,body,closingIssuesReferences 2>"$_gh_poll_err"); then
+      if ! PR_SNAPSHOT=$(gh pr view "$PR_URL" --json headRefOid,baseRefName,statusCheckRollup,reviewDecision,reviews,labels,comments,body,closingIssuesReferences,isDraft 2>"$_gh_poll_err"); then
         _gh_poll_err_content=$(cat "$_gh_poll_err" 2>/dev/null || true)
         rm -f "$_gh_poll_err"
         if is_rate_limited "$_gh_poll_err_content"; then
