@@ -1,0 +1,28 @@
+Potential fix for [https://github.com/petry-projects/.github-private/security/code-scanning/40](https://github.com/petry-projects/.github-private/security/code-scanning/40)
+
+## Summary
+
+Validate and constrain `inputs.agent_ref` before checkout to prevent untrusted refs in workflows. The fix:
+- Adds a reusable validation step in dispatch, push, and resume jobs that restricts `agent_ref` to `main` or dev-lead channel/release tags (e.g., `dev-lead/v1-stable`, `dev-lead/v1.0.0`), rejecting PR refs, raw SHAs, and other dangerous patterns.
+- Fully qualifies the ref to `refs/heads/main` or `refs/tags/<tag>` to prevent same-named branch shadowing.
+- Updates `scripts/check-retry-payload-fields.sh` to validate and handle `main`, versioned releases, and bare channel refs in the same allowlist.
+
+## Problem
+
+Code-scanning alert #40 flags checkout of untrusted code in workflows. When a caller passes an unvalidated `agent_ref` input, an attacker could inject arbitrary branch names, PR refs, or commit SHAs in an untrusted context.
+
+## Risk
+
+Medium — changes GitHub Actions workflow behavior, exercised only post-merge; verify via affected workflow runs.
+
+## Test plan
+
+Updated tests: `tests/test_retry_payload_fields.bats` now covers `agent_ref='main'` success and malformed-ref error reporting. Existing shell lint (shellcheck --severity=warning) and bats tests guard the changes.
+
+## Rollback
+
+Revert this PR. No non-revertible side effects (no tags, migrations, or external state).
+
+## Monitoring
+
+Watch affected workflow run(s) in the Actions tab and this PR's Lint check for regressions.
