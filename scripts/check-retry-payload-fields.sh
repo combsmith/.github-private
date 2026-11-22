@@ -81,8 +81,10 @@ if [ "$pinned" = "main" ]; then
   major="main"
 elif [[ "$pinned" =~ ^dev-lead/(v[0-9]+)-(stable|next|ring[0-9]+)$ ]]; then
   major="${BASH_REMATCH[1]}"
+elif [[ "$pinned" =~ ^dev-lead/(v[0-9]+)\.[0-9]+\.[0-9]+$ ]]; then
+  major="${BASH_REMATCH[1]}"
 else
-  major="" # bare channel or vX.Y.Z release -> use $pinned directly
+  major="" # bare channel -> use $pinned directly
 fi
 
 # ── sent: execute each dispatcher with gh stubbed ────────────────────────────
