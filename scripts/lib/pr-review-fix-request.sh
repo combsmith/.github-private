@@ -61,7 +61,7 @@ prfr_select_fix_request() {
   [[ "$head" =~ ^[0-9a-f]{40}$ ]] || return 1
   jq -c --arg login "$login" --arg head "$head" '
     ("\\A<!-- pr-review-agent v1 sha=" + $head
-      + " -->\\s*<!-- decision=fix-requested risk=[A-Za-z0-9_]*( meta=[0-9a-f]{16})? -->") as $re
+      + " -->\\s*<!-- decision=fix-requested risk=[A-Za-z0-9_]*\\s*(meta=[0-9a-f]{16})? -->") as $re
     | [ .[]? | objects
         | select((.author.login? // null) == $login)
         | select(.isMinimized == false)
