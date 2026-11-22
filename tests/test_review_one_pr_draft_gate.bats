@@ -104,3 +104,39 @@ EOF2
   [[ "$output" != *'"reason":"draft"'* ]]
   [[ "$output" == *'"reason":"ci-pending"'* ]]
 }
+
+@test "PR turns draft during FORCE_REVIEW poll with passing CI: skip draft, no engine call" {
+  _snapshot '"isDraft": false,'
+  cat > "$TEST_DIR/draft_passing.json" <<EOF2
+{
+  "headRefOid": "$SHA",
+  "isDraft": true,
+  "statusCheckRollup": [
+    { "name": "CI / build", "status": "COMPLETED", "conclusion": "SUCCESS" }
+  ],
+  "reviewDecision": "",
+  "reviews": [],
+  "labels": [],
+  "comments": []
+}
+EOF2
+  cp "$TEST_DIR/snapshot.json" "$TEST_DIR/first.json"
+  cat > "$TEST_DIR/bin/gh" <<EOF2
+#!/bin/bash
+printf '%s\n' "\$*" >> "$GH_LOG"
+if [ "\$1" = "pr" ] && [ "\$2" = "view" ]; then
+  if [ -e "$TEST_DIR/seen" ]; then cat "$TEST_DIR/draft_passing.json"; else touch "$TEST_DIR/seen"; cat "$TEST_DIR/first.json"; fi
+  exit 0
+fi
+exit 0
+EOF2
+  chmod +x "$TEST_DIR/bin/gh"
+  export FORCE_REVIEW="true" FORCE_REVIEW_POLL_ATTEMPTS=3 FORCE_REVIEW_POLL_INTERVAL_SEC=1
+  run timeout 25 bash "$REVIEW_SCRIPT" "$PR_URL"
+  echo "$output" >&2
+
+  [ "$status" -eq 100 ]
+  [[ "$output" == *'"decision":"skip"'* ]]
+  [[ "$output" == *'"reason":"draft"'* ]]
+  [ ! -s "$ENGINE_LOG" ]
+}

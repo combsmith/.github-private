@@ -443,7 +443,7 @@ echo "    head SHA: $PR_HEAD_SHA"
 # FORCE_REVIEW too (a forced run would only spend the calls). pr-review-trigger.yml
 # subscribes to `ready_for_review`, so marking the PR ready re-triggers review. An
 # absent isDraft counts as not a draft.
-if [ "$(jq -r '.isDraft // false' <<< "$PR_SNAPSHOT")" = "true" ]; then
+if [[ "$(jq -r '.isDraft // false' <<< "$PR_SNAPSHOT")" == "true" ]]; then
   echo "    skip: $PR_URL is a draft"
   emit_verdict skip draft "the PR is marked ready for review"
   exit 100
@@ -575,6 +575,12 @@ if [ "$CI_STATUS" = "pending" ]; then
       rm -f "$_gh_poll_err"
       PR_HEAD_SHA=$(jq -r '.headRefOid' <<< "$PR_SNAPSHOT")
       export PR_HEAD_SHA
+      # Draft gate (#2545): a PR marked draft during polling must not reach a model call.
+      if [[ "$(jq -r '.isDraft // false' <<< "$PR_SNAPSHOT")" == "true" ]]; then
+        echo "    skip: $PR_URL became a draft during CI polling"
+        emit_verdict skip draft "the PR is marked ready for review"
+        exit 100
+      fi
       # If the PR was retargeted mid-poll, the required-check set is base-branch-
       # specific, so refresh it against the new base before classifying — otherwise
       # CI is evaluated with the old base's ruleset. Only refetched when the base
