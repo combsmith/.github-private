@@ -72,9 +72,20 @@ in_ci() { [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; }
 [ -f "$ROOT/$SWEEP" ] || die "$SWEEP not found under $ROOT"
 pinned=$(sed -n 's/^[[:space:]]*agent_ref:[[:space:]]*["'\'']\{0,1\}\([^"'\''[:space:]#]*\).*/\1/p' "$ROOT/$STUB" | head -n1)
 [ -n "$pinned" ] || die "no agent_ref in $STUB"
-[[ "$pinned" =~ ^dev-lead/(v[0-9]+)-(next|ring0|ring1|stable)$ ]] \
-  || die "agent_ref '$pinned' in $STUB is not a dev-lead channel tag"
-major="${BASH_REMATCH[1]}"
+# Allow main, or dev-lead channel/release tags (matches dev-lead-reusable.yml validation)
+[[ "$pinned" =~ ^(main|dev-lead/(v[0-9]+(\.[0-9]+\.[0-9]+|-(stable|next|ring[0-9]+))|stable|next|ring[0-9]+))$ ]] \
+  || die "agent_ref '$pinned' in $STUB is not 'main' or a dev-lead channel/release tag"
+
+# Extract major version for channel tag processing (main has no major)
+if [ "$pinned" = "main" ]; then
+  major="main"
+elif [[ "$pinned" =~ ^dev-lead/(v[0-9]+)-(stable|next|ring[0-9]+)$ ]]; then
+  major="${BASH_REMATCH[1]}"
+elif [[ "$pinned" =~ ^dev-lead/(v[0-9]+)\.[0-9]+\.[0-9]+$ ]]; then
+  major="${BASH_REMATCH[1]}"
+else
+  major="" # bare channel -> use $pinned directly
+fi
 
 # ── sent: execute each dispatcher with gh stubbed ────────────────────────────
 # Prints "<function> <field>" per top-level client_payload key, or
@@ -196,6 +207,8 @@ fields_read_at() {
 # CI checkouts carry no tags and a local tag may be stale after a promote, so each
 # channel tag is refreshed from origin. In CI a failed fetch is a setup error
 # (never a stale pass); locally it falls back to the local tag with a warning.
+# When pinned to "main", use "main" directly instead of iterating channels.
+# When pinned to a bare channel or release, use it directly instead of constructing variants.
 have_origin=false
 git -C "$ROOT" remote get-url origin >/dev/null 2>&1 && have_origin=true
 tags=()
@@ -203,29 +216,80 @@ tags=()
 # local clone it would make the repository shallow.
 depth=()
 [ "$(git -C "$ROOT" rev-parse --is-shallow-repository 2>/dev/null)" = true ] && depth=(--depth=1)
-for ch in "${CHANNELS[@]}"; do
-  tag="dev-lead/${major}-${ch}"
+
+if [ "$pinned" = "main" ]; then
+  # Fetch into a dedicated ref outside refs/heads/: fetching into the checked-out
+  # branch (a push to main in CI) is refused by git. The same ref is used for the
+  # rev-parse check and every parser read.
+  main_ref="refs/check-retry-payload/main"
   gone_upstream=false
-  if $have_origin && ! git -C "$ROOT" fetch --quiet --force ${depth[@]+"${depth[@]}"} origin "refs/tags/${tag}:refs/tags/${tag}" 2>/dev/null; then
-    # Tell "origin has no such tag" (ls-remote exit 2) apart from "origin could
-    # not be reached / the fetch broke" — only the latter risks a stale tag.
+  if $have_origin && ! git -C "$ROOT" fetch --quiet --force ${depth[@]+"${depth[@]}"} origin "refs/heads/main:${main_ref}" 2>/dev/null; then
     rc=0
-    git -C "$ROOT" ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1 || rc=$?
+    git -C "$ROOT" ls-remote --exit-code --heads origin "refs/heads/main" >/dev/null 2>&1 || rc=$?
     if [ "$rc" -eq 2 ]; then
-      gone_upstream=true   # origin has no such tag: never trust a local copy
+      gone_upstream=true
     else
-      in_ci && die "could not fetch ${tag} from origin"
-      warn "could not fetch ${tag} from origin; using the local tag"
+      in_ci && die "could not fetch main from origin"
+      warn "could not fetch main from origin; using the local ref"
+      git -C "$ROOT" update-ref "$main_ref" "refs/heads/main" 2>/dev/null || true
     fi
   fi
-  if ! $gone_upstream && git -C "$ROOT" rev-parse --verify --quiet "refs/tags/${tag}^{commit}" >/dev/null; then
-    tags+=("$tag")
-  elif [ "$tag" = "$pinned" ]; then
-    die "the pinned channel ${tag} does not resolve"
-  else
-    warn "${tag} does not exist; skipping it"
+  if ! $have_origin; then
+    git -C "$ROOT" update-ref "$main_ref" "refs/heads/main" 2>/dev/null || true
   fi
-done
+  if ! $gone_upstream && git -C "$ROOT" rev-parse --verify --quiet "${main_ref}^{commit}" >/dev/null 2>&1; then
+    tags=("$main_ref")
+  else
+    die "the pinned ref main does not resolve"
+  fi
+elif [ -z "$major" ]; then
+  gone_upstream=false
+  if $have_origin && ! git -C "$ROOT" fetch --quiet --force ${depth[@]+"${depth[@]}"} origin "refs/tags/${pinned}:refs/tags/${pinned}" 2>/dev/null; then
+    rc=0
+    git -C "$ROOT" ls-remote --exit-code --tags origin "refs/tags/${pinned}" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -eq 2 ]; then
+      gone_upstream=true
+    else
+      in_ci && die "could not fetch ${pinned} from origin"
+      warn "could not fetch ${pinned} from origin; using the local tag"
+    fi
+  fi
+  if ! $gone_upstream && git -C "$ROOT" rev-parse --verify --quiet "refs/tags/${pinned}^{commit}" >/dev/null; then
+    tags=("$pinned")
+  else
+    die "the pinned ref ${pinned} does not resolve"
+  fi
+else
+  # The pinned tag is always resolved and checked, even when it is a numbered ring
+  # (e.g. ring2) outside the enumerated CHANNELS.
+  candidates=()
+  for ch in "${CHANNELS[@]}"; do candidates+=("dev-lead/${major}-${ch}"); done
+  case " ${candidates[*]} " in *" $pinned "*) ;; *) candidates+=("$pinned") ;; esac
+  for tag in "${candidates[@]}"; do
+    gone_upstream=false
+    if $have_origin && ! git -C "$ROOT" fetch --quiet --force ${depth[@]+"${depth[@]}"} origin "refs/tags/${tag}:refs/tags/${tag}" 2>/dev/null; then
+      # Tell "origin has no such tag" (ls-remote exit 2) apart from "origin could
+      # not be reached / the fetch broke" — only the latter risks a stale tag.
+      rc=0
+      git -C "$ROOT" ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1 || rc=$?
+      if [ "$rc" -eq 2 ]; then
+        gone_upstream=true   # origin has no such tag: never trust a local copy
+      else
+        in_ci && die "could not fetch ${tag} from origin"
+        warn "could not fetch ${tag} from origin; using the local tag"
+      fi
+    fi
+    if ! $gone_upstream && git -C "$ROOT" rev-parse --verify --quiet "refs/tags/${tag}^{commit}" >/dev/null; then
+      tags+=("$tag")
+    elif [ "$tag" = "$pinned" ]; then
+      die "the pinned channel ${tag} does not resolve"
+    else
+      warn "${tag} does not exist; skipping it"
+    fi
+  done
+fi
+
+[ ${#tags[@]} -gt 0 ] || die "no resolvable tags for pinned ref ${pinned}; the check cannot verify parser coverage"
 
 # ── compare ──────────────────────────────────────────────────────────────────
 sent=$(sent_fields)
