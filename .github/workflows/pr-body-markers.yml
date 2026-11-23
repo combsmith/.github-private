@@ -37,7 +37,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: pr-body-markers-${{ github.event.pull_request.number || github.ref }}
+  group: pr-body-markers-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
