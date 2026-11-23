@@ -420,14 +420,55 @@ EOF
   [[ "$output" == *"could not fetch dev-lead/v7-"* ]]
 }
 
-@test "a malformed agent_ref or an unparseable parser is a setup error" {
-  write_stub main
+@test "a pinned numbered ring outside the enumerated channels is itself checked" {
+  write_stub dev-lead/v7-ring2
   write_intent pr_number
   write_sweep pr_number
   tag_channels "${ALL[@]}"
   run bash "$CHECK" "$SANDBOX"
   [ "$status" -eq 2 ]
-  [[ "$output" == *"is not a dev-lead channel tag"* ]]
+  [[ "$output" == *"the pinned channel dev-lead/v7-ring2 does not resolve"* ]]
+
+  write_intent pr_number
+  write_sweep pr_number comment_node_id
+  git -C "$SANDBOX" add -A
+  git -C "$SANDBOX" commit -qm "ring2" --allow-empty
+  git -C "$SANDBOX" tag -f dev-lead/v7-ring2 >/dev/null
+  write_intent pr_number comment_node_id
+  tag_channels "${ALL[@]}"
+  run bash "$CHECK" "$SANDBOX"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"at dev-lead/v7-ring2"* ]]
+}
+
+@test "agent_ref='main' is accepted as valid" {
+  write_stub main
+  write_intent pr_number
+  write_sweep pr_number
+  git -C "$SANDBOX" add -A
+  git -C "$SANDBOX" commit -qm "release" --allow-empty
+  # Ensure 'main' branch exists
+  git -C "$SANDBOX" branch -M main
+  tag_channels "${ALL[@]}"
+  run bash "$CHECK" "$SANDBOX"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"OK:"*"refs/check-retry-payload/main"* ]]
+}
+
+@test "a malformed agent_ref or an unparseable parser is a setup error" {
+  write_stub dev-lead/v7-stable
+  write_intent pr_number
+  write_sweep pr_number
+  tag_channels "${ALL[@]}"
+  run bash "$CHECK" "$SANDBOX"
+  [ "$status" -eq 0 ]
+
+  write_stub malformed-ref
+  write_intent pr_number
+  tag_channels "${ALL[@]}"
+  run bash "$CHECK" "$SANDBOX"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"is not 'main' or a dev-lead channel/release tag"* ]]
 
   write_stub dev-lead/v7-stable
   echo 'route3() { if then; }' >> "$SANDBOX/scripts/dev-lead-intent.sh"
