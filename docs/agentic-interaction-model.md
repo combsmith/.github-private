@@ -247,6 +247,7 @@ keeps its own file) carries **no** job qualifier and remains exactly one row.
 > | `.github/workflows/auto-rebase.yml` | Thin caller stub — all logic in org-level reusable |
 > | `.github/workflows/agent-shield.yml` | Thin caller stub — all logic in org-level reusable |
 > | `.github/workflows/add-to-project.yml` | Thin caller stub — all logic in org-level reusable |
+> | `.github/workflows/pr-body-markers.yml` | Thin caller stub — a pull request check in an org-level reusable; it takes no action |
 > | `.github/workflows/dev-lead-reusable.yml` | Reusable workflow — invoked via `workflow_call`, not a direct entrypoint |
 > | `.github/workflows/ci-failure-analyst-reusable.yml` | Reusable workflow — invoked via `workflow_call`, not a direct entrypoint |
 > | `.github/workflows/persona-runner-reusable.yml` | Reusable workflow — invoked via `workflow_call`, not a direct entrypoint |

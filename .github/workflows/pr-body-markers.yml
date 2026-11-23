@@ -1,0 +1,43 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Reusable: combsmith/.github/.github/workflows/pr-body-markers-reusable.yml
+# Issue:    combsmith/.github#1571 (only the title's `!` marks a breaking change)
+#
+# AGENTS — READ BEFORE EDITING:
+#   • This file is a THIN CALLER STUB. The check and its scripts live in the
+#     reusable above, at the commit of the channel this file pins.
+#   • You MUST NOT change: the `uses:` ref. It pins the moving
+#     `pr-body-markers/v1-next` channel (this repo is the `next` ring in
+#     combsmith/.github standards/canary-rings.json), advanced centrally by the
+#     autocut. Never repoint it to `@main`, a SHA, or a frozen `@vX.Y.Z`.
+#   • Do not narrow the job permissions: a reusable gets no more than its caller,
+#     and it reads the branch's commits with them.
+#   • To change the behaviour, open a PR against the reusable in combsmith/.github.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Fails a pull request whose title, body or branch commit messages carry a marker
+# that would act on its own once it lands on main in the squash commit message:
+#   - a BREAKING CHANGE: line without `!` in the title (the canary autocut reads
+#     only the `!`, so the break would ship as a minor or a patch), or
+#   - a skip-CI marker, which would skip the push checks on main.
+# Runs on every pull request, again when the title or body is edited, and on a
+# merge queue's merge_group, where it passes (that event carries no pull request;
+# no queue is on today). Advisory: no ruleset requires it.
+name: pr-body-markers
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  merge_group:
+
+permissions: {}
+
+concurrency:
+  group: pr-body-markers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-body-markers:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: combsmith/.github/.github/workflows/pr-body-markers-reusable.yml@pr-body-markers/v1-next  # NOSONAR(githubactions:S7637) first-party channel ref
