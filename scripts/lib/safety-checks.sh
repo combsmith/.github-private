@@ -228,7 +228,7 @@ _sc_desc_filled_text() {
   local body="${1:-}"
   printf '%s' "$body" | jq -Rrs '
       gsub("\r\n?"; "\n")
-      | gsub("(?<c>(?<f>`{3,}|~{3,})[\\s\\S]*?(?:\n[ \t]*\\k<f>[`~]*[ \t]*(?=\n|$)|$)|`[^`\n]+`)"; "\(.c | gsub("<!--"; "<! --") | gsub("-->"; "-- >"))")
+      | gsub("(?<c>(?<![^\n])[ \t]*(?<f>`{3,}|~{3,})[\\s\\S]*?(?:\n[ \t]*\\k<f>[`~]*[ \t]*(?=\n|$)|$)|`[^`\n]+`)"; "\(.c | gsub("<!--"; "<! --") | gsub("-->"; "-- >"))")
       | gsub("<!--[\\s\\S]*?-->"; "")
       | gsub("(?:^|\n)[ \t]*<!--[\\s\\S]*$"; "")
       | if test("^(?!#)(?:(?!\n#)[\\s\\S])*?(?:^|\n)[ \t]*-->[ \t]*(?:\n|$)")
@@ -263,7 +263,7 @@ _sc_desc_filled_text() {
           kind[n] = "H"; h = t; sub(/[^#].*$/, "", h); lvl[n] = length(h)
           if (t ~ /^#+[ \t]+[^:]*:[ \t]*[^ \t]/) self[n] = 1
         }
-        else if (t ~ /<summary>.*<\/summary>/) { kind[n] = "H"; lvl[n] = 2 }
+        else if (t ~ /<summary>.*<\/summary>/) { kind[n] = "H"; lvl[n] = 2; isSummary[n] = 1 }
         else if (t ~ /^<\/details>$/) kind[n] = "X"
         else if (t == "" || t ~ /^([-*+]|[0-9]+[.)])$/ || t ~ /^([-*_][ \t]*)([-*_][ \t]*)([-*_][ \t]*)+$/ || t ~ /^<details[^>]*>$/) kind[n] = "E"
         else if (t ~ /^(([-*+]|[0-9]+[.)])[ \t]+)?[^: \t][^:]*:(\*\*)?$/ && length(t) <= 60) {
@@ -285,7 +285,7 @@ _sc_desc_filled_text() {
           if (self[i]) { keep[i] = 1; continue }
           for (j = i + 1; j <= n; j++) {
             if (kind[j] == "X") break
-            if (kind[j] == "H" && lvl[j] <= lvl[i]) break
+            if (kind[j] == "H" && lvl[j] <= lvl[i] && !isSummary[j]) break
             if (keep[j]) { keep[i] = 1; break }
           }
         }

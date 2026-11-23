@@ -1016,3 +1016,13 @@ _filled_body() {
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "CI_WEAKENING_DETECTED: true"
 }
+
+@test "description-quality: ~~~ in prose does not shield a template comment (#2605)" {
+  run _desc $'The formatter now emits ~~~ delimiters.\n<!--\nProblem: Describe the issue.\nRisk: Describe the risk.\nTest plan: List the checks.\nRollback: Describe the recovery.\nMonitoring: List the signals.\n-->'
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: a heading above a filled <details> block stays kept (#2605)" {
+  run _desc $'### Test plan\n<details><summary>Show</summary>\n\n- bats passes\n</details>\n\n## Risk\nlow'
+  [[ "$output" != *test-plan* ]]
+}
