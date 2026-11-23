@@ -1036,3 +1036,19 @@ _filled_body() {
   run _desc $'### Test plan\n<details><summary>Show</summary>\n\n- bats passes\n</details>\n\n## Risk\nlow'
   [[ "$output" != *test-plan* ]]
 }
+
+@test "description-quality: an inline code span after a list marker is not a fence (#2605)" {
+  run _desc $'- ```example```\n\n## Problem\n## Risk\n## Test plan\n## Rollback\n## Monitoring'
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: empty fenced blocks do not shield empty headings (#2605)" {
+  run _desc $'## Problem\n```\n```\n## Risk\n```\n\n```\n## Test plan\n~~~\n~~~\n## Rollback\n```\n```\n## Monitoring\n```\n```'
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: a plain label is not filled by a following Label: value line (#2605)" {
+  run _desc $'Risk:\nRollback: revert this pull request'
+  [[ "$output" == *risk* ]]
+  [[ "$output" != *rollback* ]]
+}

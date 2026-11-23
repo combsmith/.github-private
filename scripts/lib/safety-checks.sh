@@ -228,7 +228,7 @@ _sc_desc_filled_text() {
   local body="${1:-}"
   printf '%s' "$body" | jq -Rrs '
       gsub("\r\n?"; "\n")
-      | gsub("(?<c>(?<![^\n])[ \t]*(?:(?:[-*+]|[0-9]+[.)])[ \t]+)*(?<f>`{3,}|~{3,})[\\s\\S]*?(?:\n[ \t]*\\k<f>[`~]*[ \t]*(?=\n|$)|$)|`[^`\n]+`)"; "\(.c | gsub("<!--"; "<! --") | gsub("-->"; "-- >"))")
+      | gsub("(?<c>(?<![^\n])[ \t]*(?:(?:[-*+]|[0-9]+[.)])[ \t]+)*(?<f>`{3,}(?![^\n]*`)|~{3,})[\\s\\S]*?(?:\n[ \t]*\\k<f>[`~]*[ \t]*(?=\n|$)|$)|`[^`\n]+`)"; "\(.c | gsub("<!--"; "<! --") | gsub("-->"; "-- >"))")
       | gsub("<!--[\\s\\S]*?-->"; "")
       | gsub("(?:^|\n)[ \t]*<!--[\\s\\S]*$"; "")
       | if test("^(?!#)(?:(?!\n#)[\\s\\S])*?(?:^|\n)[ \t]*-->[ \t]*(?:\n|$)")
@@ -251,16 +251,20 @@ _sc_desc_filled_text() {
         ind[n] = indent($0); lvl[n] = 0; self[n] = 0
         ot = t
         while (ot ~ /^([-*+]|[0-9]+[.)])[ \t]+/) sub(/^([-*+]|[0-9]+[.)])[ \t]+/, "", ot)
-        if (!infence && ot ~ /^(```|~~~)/) {
+        bt = 0
+        if (ot ~ /^```/) { r = ot; sub(/^`+/, "", r); bt = (index(r, "`") > 0) }
+        if (!infence && ot ~ /^(```|~~~)/ && !bt) {
           fch = substr(ot, 1, 1); f = ot; sub("[^" fch "].*$", "", f); flen = length(f)
-          infence = 1; kind[n] = "T"; next
+          infence = 1; kind[n] = "E"; next
         }
         if (infence && substr(t, 1, 1) == fch) {
           f = t; sub("[^" fch "].*$", "", f)
           if (length(f) >= flen && f == t) infence = 0
-          kind[n] = "T"; next
+          kind[n] = (infence ? (t ~ /[^ \t]/ ? "T" : "E") : "E"); next
         }
-        if (infence) { kind[n] = "T"; next }
+        # Fence delimiters are not text, and only non-blank content inside a
+        # fence counts: an empty fence must not shield an empty heading.
+        if (infence) { kind[n] = (t == "" ? "E" : "T"); next }
         if (t ~ /^#+([ \t]|$)/) {
           kind[n] = "H"; h = t; sub(/[^#].*$/, "", h); lvl[n] = length(h)
           if (t ~ /^#+[ \t]+[^:]*:[ \t]*[^ \t]/) self[n] = 1
@@ -284,6 +288,9 @@ _sc_desc_filled_text() {
           for (j = i + 1; j <= n && kind[j] == "E"; j++) ;
           if (j > n || kind[j] != "T") continue
           if (bullet[i] && ind[j] <= ind[i]) continue
+          # A plain label is not given a value by the next `Label: value` line.
+          v = line[j]; sub(/^[ \t]*/, "", v); sub(/^([-*+]|[0-9]+[.)])[ \t]+/, "", v)
+          if (!bullet[i] && v ~ /^[^: \t][^:]*:[ \t]+[^ \t]/) continue
           keep[i] = 1
         }
         for (i = n; i >= 1; i--) {
