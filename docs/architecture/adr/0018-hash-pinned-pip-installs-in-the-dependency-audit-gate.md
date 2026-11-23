@@ -47,9 +47,8 @@ also carry `--no-build-isolation`. An entry is
 approved by a code-owner review of the change to that JSON file.
 
 We will enforce this inside `dependency-audit-reusable.yml` with a job that sits in
-`audit-gate`'s `needs` and runs only when `detect.outputs.pip` is true (a job-level
-`if:` condition; the output is never executed as a command). The job has two
-parts:
+`audit-gate`'s `needs` and runs unconditionally, whether `detect.outputs.pip` is true
+or false. The job has two parts:
 
 - Scorecard `--local` Pinned-Dependencies, where only pip findings in workflow `run:`
   steps fail.
