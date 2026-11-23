@@ -195,18 +195,71 @@ sc_large_pr() {
 # Counts how many of the 5 required description sections are missing from the PR
 # body: problem statement, risk category, test plan, rollback, monitoring.
 # Prints one line: "<missing_count>|<comma-separated missing section keys>".
+#
+# Only FILLED text counts (#2604): an unfilled template must score like an empty
+# body, or it passes the keyword match on its own guidance (#1976, and the org
+# default template of combsmith/.github#1566). _sc_desc_filled_text first drops
+# HTML comments, then every heading with no text under it and every empty
+# `Label:` line. The org template's headings are recognised: `## Why` and
+# `## What changed` count as the problem, its `Risk:` / `Rollback:` /
+# `Monitoring:` lines count once filled, and its "Checks and reviews" block
+# counts as the test plan.
+
+# _sc_desc_filled_text <body> — the body with HTML comments removed (an
+# unclosed one hides the rest, as on GitHub; text before a closing `-->` with
+# no opener is a template comment whose first line was deleted, as on #1976,
+# and is removed too), headings (`#`..`######`, or a
+# `<summary>` line) with no text before the next heading or `</details>`
+# dropped, and empty `Label:` lines dropped. An empty label is kept only when
+# text follows it: deeper-indented under a list-item label, or any text under a
+# plain label line (a "Test plan:" line over a list).
+_sc_desc_filled_text() {
+  local body="${1:-}"
+  jq -rn --arg b "$body" '$b | gsub("<!--[\\s\\S]*?-->"; "") | gsub("<!--[\\s\\S]*$"; "") | sub("^[\\s\\S]*?-->"; "")' 2>/dev/null \
+    | awk '
+      function indent(s,   i) { i = 0; while (substr(s, i + 1, 1) == " ") i++; return i }
+      {
+        n++; line[n] = $0; t = $0
+        gsub(/\r/, "", t); sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t)
+        if (t ~ /^#+([ \t]|$)/ || t ~ /<summary>.*<\/summary>/) kind[n] = "H"
+        else if (t ~ /^<\/?details>$/) kind[n] = "X"
+        else if (t == "" || t ~ /^([-*+]|[0-9]+[.)])$/) kind[n] = "E"
+        else if (t ~ /^([-*+][ \t]+)?(\*\*)?[A-Za-z][A-Za-z0-9 ()\/_-]*(\*\*)?:(\*\*)?$/) {
+          kind[n] = "L"; bullet[n] = (t ~ /^[-*+][ \t]/)
+        }
+        else kind[n] = "T"
+        ind[n] = indent($0)
+      }
+      END {
+        for (i = 1; i <= n; i++) {
+          keep[i] = (kind[i] == "T")
+          if (kind[i] != "L") continue
+          for (j = i + 1; j <= n && kind[j] == "E"; j++) ;
+          if (j > n || kind[j] != "T") continue
+          if (bullet[i] && ind[j] <= ind[i]) continue
+          keep[i] = 1
+        }
+        for (i = 1; i <= n; i++) {
+          if (kind[i] != "H") continue
+          for (j = i + 1; j <= n && kind[j] != "H" && kind[j] != "X"; j++) if (keep[j]) { keep[i] = 1; break }
+        }
+        for (i = 1; i <= n; i++) if (keep[i]) print line[i]
+      }'
+}
+
 sc_description_missing() {
   local meta="${1:-}"
   local body
   body=$(jq -r '.body? // ""' <<< "$meta" 2>/dev/null || echo "")
+  body=$(_sc_desc_filled_text "$body")
 
   local missing=0 csv=""
   _sc_desc_has() { grep -qiE "$1" <<< "$body"; }
   local -a keys=(problem risk test-plan rollback monitoring)
   local -a pats=(
-    'problem|background|motivation|context|summary|## *what'
+    'problem|background|motivation|context|summary|## *what|## *why'
     'risk'
-    'test plan|testing|tests?:|how.*test|test coverage|verif'
+    'test plan|testing|tests?:|how.*test|test coverage|verif|checks and reviews'
     'rollback|revert|back ?out'
     'monitor|observ|metric|alert|dashboard|telemetry'
   )

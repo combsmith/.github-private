@@ -366,6 +366,133 @@ diff --git a/b/unrelated.txt b/b/unrelated.txt
   [[ "$output" == 3\|* ]]
 }
 
+# --- Unfilled templates score like an empty body (#2604) ---------------------
+# The keyword match used to read the raw body, so an unfilled template passed on
+# its own HTML-comment guidance and bare headings: #1976 went through with this
+# repo's template, and the org default template of combsmith/.github#1566 scored
+# 1 of 5 missing. Only filled text counts now.
+
+# _org_template — the org default pull request template as combsmith/.github#1566
+# adds it (.github/pull_request_template.md), unfilled.
+_org_template() {
+  cat <<'TMPL'
+<!-- markdownlint-disable-file MD041 -->
+<!--
+Title: `area: plain verb phrase (#issue)`, at most 72 characters, one change.
+In combsmith/.github and combsmith/.github-private, keep the type: `feat(area): plain verb phrase (#issue)`.
+Breaking change? Put `!` after the scope in the title: `feat(area)!: plain verb phrase (#issue)`.
+This body is meant to become the squash commit's message. Whoever merges can edit it, so check the message before merging.
+This text becomes permanent public history: no secrets, tokens or raw logs. Security findings: count only.
+Rules: docs/initiatives/pull-request-and-commit-prose-adr.md in combsmith/.github.
+-->
+
+## Why
+
+<!-- One or two plain sentences: what was wrong or missing, and what a user would notice. Link the issue. -->
+
+## What changed
+
+- <!-- area or file: what -->
+
+## What to look at
+
+<!-- What a reviewer should check, and what this change leaves out. -->
+
+- Risk: <!-- low, medium or high, and why in a few words -->
+- Rollback: <!-- usually "revert this pull request", or what cannot be undone -->
+- Monitoring: <!-- the check or signal that shows a problem, or "none needed" -->
+
+## Decisions and protected edits
+
+<!-- The decision record this pull request adds, or "none". Any protected edit, and who approved it. -->
+
+<details><summary>Checks and reviews</summary>
+
+<!-- Tests and checks run. Each reviewer's findings, taken or declined, with reasons. -->
+
+</details>
+TMPL
+}
+
+_desc() { sc_description_missing "$(jq -n --arg b "$1" '{body:$b}')"; }
+
+@test "description-quality: the unfilled org template scores like an empty body, as #1976 should have (#2604)" {
+  run _desc "$(_org_template)"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(_desc "")" ]
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: the org template, filled, has all five sections (#2604)" {
+  local body
+  body="$(_org_template | sed \
+    -e 's|^<!-- One or two.*|The retry loop never stopped. Closes #1.|' \
+    -e 's|^- <!-- area or file.*|- scripts/retry.sh: stop after three tries.|' \
+    -e 's|^- Risk: .*|- Risk: low, one loop bound.|' \
+    -e 's|^- Rollback: .*|- Rollback: revert this pull request.|' \
+    -e 's|^- Monitoring: .*|- Monitoring: the retry count in the run log.|' \
+    -e 's|^<!-- Tests and checks.*|- bats tests/test_retry.bats passes.|')"
+  run _desc "$body"
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: a #1976-shaped body (template comment with its opener deleted) escalates (#2604)" {
+  local body
+  body=$'Keep the required sections — Problem, Risk, Test plan, Rollback, and Monitoring —\neven when brief.\n-->\n\n## Summary\n\n<!-- What does this PR change? -->\n\n## Problem\n\n<!-- What problem does this solve? -->\n\n## Risk\n\n## Test plan\n\n## Rollback\n\n## Monitoring\n'
+  run _desc "$body"
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: words inside HTML comments do not count (#2604)" {
+  run _desc $'<!-- problem risk test plan rollback monitoring -->\n<!--\nrisk\nrollback\n-->'
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: an unclosed comment hides the rest of the body (#2604)" {
+  run _desc $'## Problem\nthe bug\n<!-- unclosed\n## Risk\nlow\n## Rollback\nrevert'
+  [[ "$output" == 4\|* ]]
+  [[ "$output" != *problem* ]]
+}
+
+@test "description-quality: a heading with no text under it is missing; with text it counts (#2604)" {
+  run _desc $'## Risk\n\n## Rollback\nrevert this pull request'
+  [[ "$output" == *risk* ]]
+  [[ "$output" != *rollback* ]]
+}
+
+@test "description-quality: an empty Label: line is missing; a filled one counts (#2604)" {
+  run _desc $'- Risk:\n- Rollback: revert this pull request\n- Monitoring:   '
+  [[ "$output" == *risk* ]]
+  [[ "$output" == *monitoring* ]]
+  [[ "$output" != *rollback* ]]
+}
+
+@test "description-quality: a plain Label: line over a list still counts (#2604)" {
+  run _desc $'Test plan:\n- ran the unit tests\n\nRisk:\n  - low'
+  [[ "$output" != *test-plan* ]]
+  [[ "$output" != *risk* ]]
+}
+
+@test "description-quality: a list-item label with deeper-indented text counts; a sibling item does not (#2604)" {
+  run _desc $'- Risk:\n  - low, one loop bound\n- Rollback:\n- Monitoring: none needed'
+  [[ "$output" != *risk* ]]
+  [[ "$output" == *rollback* ]]
+}
+
+@test "description-quality: a Why heading with text counts as the problem (#2604)" {
+  run _desc $'## Why\n\nThe loop never stopped.'
+  [[ "$output" != *problem* ]]
+  run _desc $'## Why\n\n## Risk\nlow'
+  [[ "$output" == *problem* ]]
+}
+
+@test "description-quality: a filled Checks and reviews block counts as the test plan; an empty one does not (#2604)" {
+  run _desc $'<details><summary>Checks and reviews</summary>\n\n- shellcheck clean\n\n</details>'
+  [[ "$output" != *test-plan* ]]
+  run _desc $'<details><summary>Checks and reviews</summary>\n\n</details>\n\n## Rollback\nrevert'
+  [[ "$output" == *test-plan* ]]
+}
+
 # ---------------------------------------------------------------------------
 # Check 7 — Dependency risk (deterministic parse; LLM narrative lives in Tier 2)
 # ---------------------------------------------------------------------------
