@@ -220,14 +220,15 @@ sc_large_pr() {
 #     `</details>`. A heading that carries its own value (`## Risk: low`) is text.
 #   - An empty `Label:` line (bullet, number or plain) is dropped unless text
 #     follows it: deeper-indented under a list-item label, or any text under a
-#     plain label line ("Test plan:" over a list). Code fences are text.
+#     plain label line ("Test plan:" over a list). Code fences (``` or ~~~,
+#     closed only by the same character at least as long) are text.
 #   - HTML tags are removed, so `<summary>` does not read as the word summary.
 # The body goes in on stdin: a large body can pass Linux's per-argument limit.
 _sc_desc_filled_text() {
   local body="${1:-}"
   printf '%s' "$body" | jq -Rrs '
       gsub("\r\n?"; "\n")
-      | gsub("(?<c>```[\\s\\S]*?```|`[^`\n]+`)"; "\(.c | gsub("<!--"; "<! --") | gsub("-->"; "-- >"))")
+      | gsub("(?<c>(?<f>`{3,}|~{3,})[\\s\\S]*?(?:\n[ \t]*\\k<f>[`~]*[ \t]*(?=\n|$)|$)|`[^`\n]+`)"; "\(.c | gsub("<!--"; "<! --") | gsub("-->"; "-- >"))")
       | gsub("<!--[\\s\\S]*?-->"; "")
       | gsub("(?:^|\n)[ \t]*<!--[\\s\\S]*$"; "")
       | if test("^(?!#)(?:(?!\n#)[\\s\\S])*?(?:^|\n)[ \t]*-->[ \t]*(?:\n|$)")
@@ -248,7 +249,15 @@ _sc_desc_filled_text() {
         n++; line[n] = $0; t = $0
         sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t)
         ind[n] = indent($0); lvl[n] = 0; self[n] = 0
-        if (t ~ /^(```|~~~)/) { infence = !infence; kind[n] = "T"; next }
+        if (!infence && t ~ /^(```|~~~)/) {
+          fch = substr(t, 1, 1); f = t; sub("[^" fch "].*$", "", f); flen = length(f)
+          infence = 1; kind[n] = "T"; next
+        }
+        if (infence && substr(t, 1, 1) == fch) {
+          f = t; sub("[^" fch "].*$", "", f)
+          if (length(f) >= flen && f == t) infence = 0
+          kind[n] = "T"; next
+        }
         if (infence) { kind[n] = "T"; next }
         if (t ~ /^#+([ \t]|$)/) {
           kind[n] = "H"; h = t; sub(/[^#].*$/, "", h); lvl[n] = length(h)

@@ -520,6 +520,16 @@ _filled_body() {
   [ "$output" = "0|" ]
 }
 
+@test "description-quality: comment markers inside a tilde fence are text (#2605)" {
+  run _desc "$(printf '%s\n' '## Problem' '~~~html' '<!-- a sample -->' '<!--' '~~~')"$'\n'"$(_filled_body | tail -n +3)"
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: a shorter fence does not close a longer one (#2605)" {
+  run _desc "$(printf '%s\n' '````text' '```' 'example' '````' '## Problem' '## Risk' '## Test plan' '## Rollback' '## Monitoring')"
+  [[ "$output" == 5\|* ]]
+}
+
 @test "description-quality: a code fence line starting with # is not a heading (#2605)" {
   run _desc $'## Test plan\n\n```bash\n# run the suite\nbats tests\n```\n\n## Risk\nlow'
   [[ "$output" != *test-plan* ]]
