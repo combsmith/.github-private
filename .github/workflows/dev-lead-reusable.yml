@@ -272,13 +272,40 @@ jobs:
         with:
           token: ${{ secrets.GH_PAT_DON_PETRY_WRITER || secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
 
+      - &validate-agent-ref-step
+        name: Validate dev-lead ref input
+        id: agent-ref
+        shell: bash
+        env:
+          AGENT_REF: ${{ inputs.agent_ref }}
+        run: |
+          ref="$AGENT_REF"
+          if [ -z "$ref" ]; then
+            ref="main"
+          fi
+
+          # Explicit allowlist: main, or a dev-lead release/channel tag. Rejects
+          # PR refs (refs/pull/*, pull/<n>/head), commit SHAs (full or short) and
+          # arbitrary unmerged branch names.
+          if [[ ! "$ref" =~ ^(main|dev-lead/(v[0-9]+(\.[0-9]+\.[0-9]+|-(stable|next|ring[0-9]+))|stable|next|ring[0-9]+))$ ]]; then
+            echo "::error::inputs.agent_ref must be 'main' or a dev-lead channel/release tag: $ref"
+            exit 1
+          fi
+
+          # Fully qualify the ref so a same-named branch cannot shadow a release tag.
+          case "$ref" in
+            main) out="refs/heads/main" ;;
+            *) out="refs/tags/$ref" ;;
+          esac
+          echo "ref=$out" >> "$GITHUB_OUTPUT"
+
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: combsmith/.github-private
           # Pinned channel (e.g. dev-lead/stable) when a trigger stub passes it;
           # defaults to "main" → unchanged behaviour (#535/#506).
-          ref: ${{ inputs.agent_ref }}
+          ref: ${{ steps.agent-ref.outputs.ref }}
           path: .dev-lead
           # Cross-repo callers: github.token cannot read a private org repo — ensure
           # GH_PAT_WORKFLOWS is set as an org or repo secret in the calling repo.
@@ -816,11 +843,13 @@ jobs:
         with:
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
 
+      - *validate-agent-ref-step
+
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: combsmith/.github-private
-          ref: ${{ inputs.agent_ref }}
+          ref: ${{ steps.agent-ref.outputs.ref }}
           path: .dev-lead
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
           sparse-checkout: |
@@ -1041,13 +1070,15 @@ jobs:
           fi
           echo "engine token present — proceeding"
 
+      - *validate-agent-ref-step
+
       - name: Checkout dev-lead scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: combsmith/.github-private
           # Pinned channel (e.g. dev-lead/stable) when a trigger stub passes it;
           # defaults to "main" → unchanged behaviour (#535/#506).
-          ref: ${{ inputs.agent_ref }}
+          ref: ${{ steps.agent-ref.outputs.ref }}
           path: .dev-lead
           token: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
           persist-credentials: false
