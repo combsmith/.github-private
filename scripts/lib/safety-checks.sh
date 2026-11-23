@@ -221,7 +221,9 @@ sc_large_pr() {
 #   - An empty `Label:` line (bullet, number or plain) is dropped unless text
 #     follows it: deeper-indented under a list-item label, or any text under a
 #     plain label line ("Test plan:" over a list). Code fences (``` or ~~~,
-#     closed only by the same character at least as long) are text.
+#     closed only by the same character at least as long) are not text
+#     themselves: the delimiter lines are dropped, and only non-blank content
+#     inside a fence counts, so an empty fence does not shield an empty heading.
 #   - HTML tags are removed, so `<summary>` does not read as the word summary.
 # The body goes in on stdin: a large body can pass Linux's per-argument limit.
 _sc_desc_filled_text() {
