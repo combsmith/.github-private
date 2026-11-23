@@ -372,8 +372,8 @@ diff --git a/b/unrelated.txt b/b/unrelated.txt
 # repo's template, and the org default template of combsmith/.github#1566 scored
 # 1 of 5 missing. Only filled text counts now.
 
-# _org_template — the org default pull request template as combsmith/.github#1566
-# adds it (.github/pull_request_template.md), unfilled.
+# _org_template — a snapshot of the org default pull request template that
+# combsmith/.github#1566 adds (.github/pull_request_template.md, at 56a5e3e), unfilled.
 _org_template() {
   cat <<'TMPL'
 <!-- markdownlint-disable-file MD041 -->
@@ -381,6 +381,7 @@ _org_template() {
 Title: `area: plain verb phrase (#issue)`, at most 72 characters, one change.
 In combsmith/.github and combsmith/.github-private, keep the type: `feat(area): plain verb phrase (#issue)`.
 Breaking change? Put `!` after the scope in the title: `feat(area)!: plain verb phrase (#issue)`.
+A `BREAKING CHANGE:` line is not read; a check fails a body that has one without the `!`.
 This body is meant to become the squash commit's message. Whoever merges can edit it, so check the message before merging.
 This text becomes permanent public history: no secrets, tokens or raw logs. Security findings: count only.
 Rules: docs/initiatives/pull-request-and-commit-prose-adr.md in combsmith/.github.
@@ -448,7 +449,7 @@ _desc() { sc_description_missing "$(jq -n --arg b "$1" '{body:$b}')"; }
   [[ "$output" == 5\|* ]]
 }
 
-@test "description-quality: an unclosed comment hides the rest of the body (#2604)" {
+@test "description-quality: an unclosed comment at a line start hides the rest of the body (#2604)" {
   run _desc $'## Problem\nthe bug\n<!-- unclosed\n## Risk\nlow\n## Rollback\nrevert'
   [[ "$output" == 4\|* ]]
   [[ "$output" != *problem* ]]
@@ -491,6 +492,80 @@ _desc() { sc_description_missing "$(jq -n --arg b "$1" '{body:$b}')"; }
   [[ "$output" != *test-plan* ]]
   run _desc $'<details><summary>Checks and reviews</summary>\n\n</details>\n\n## Rollback\nrevert'
   [[ "$output" == *test-plan* ]]
+}
+
+# A filled body that the filter must not empty out (Claude review of #2605).
+_filled_body() {
+  printf '%s\n' '## Problem' 'The retry loop never stopped.' '## Risk' 'low' '## Test plan' 'bats passes' \
+    '## Rollback' 'revert this pull request' '## Monitoring' 'the retry count in the run log'
+}
+
+@test "description-quality: an arrow (-->) in prose or a diagram does not erase what comes before it (#2605)" {
+  run _desc "$(_filled_body)"$'\n\n```mermaid\nflowchart LR\n  A-->B\n```\n\nState goes open --> closed.'
+  [ "$output" = "0|" ]
+  run _desc $'Context first.\n-->\n'"$(_filled_body)"
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: a comment opener inside code is text, as GitHub shows it (#2605)" {
+  run _desc "$(_filled_body)"$'\n\nThe template starts with `<!--` and a fence:\n\n```\n<!-- not a comment\n```\n\n## Notes\nmore text'
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: dev-lead's body for an issue that quotes a comment opener mid-line still passes (#2605)" {
+  source "$(dirname "$BATS_TEST_FILENAME")/../scripts/lib/dev-lead-pr-body.sh"
+  local body
+  body="$(dlpb_build_body 7 "pr-review: the triage reads <!-- as a comment" $'The triage reads `<!--` in a body and hides the rest.' $'scripts/lib/safety-checks.sh')"
+  run _desc "$body"
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: a code fence line starting with # is not a heading (#2605)" {
+  run _desc $'## Test plan\n\n```bash\n# run the suite\nbats tests\n```\n\n## Risk\nlow'
+  [[ "$output" != *test-plan* ]]
+  [[ "$output" != *risk* ]]
+}
+
+@test "description-quality: a heading that carries its value counts (## Risk: low) (#2605)" {
+  run _desc $'## Problem: the loop never stopped\n## Risk: low\n## Test plan: bats passes\n## Rollback: revert\n## Monitoring: run log'
+  [ "$output" = "0|" ]
+  run _desc $'## Risk:\n## Rollback: revert'
+  [[ "$output" == *risk* ]]
+}
+
+@test "description-quality: a parent heading over filled subheadings counts (#2605)" {
+  run _desc $'## Test plan\n\n### Automated\n\n- bats passes\n\n## Risk\nlow'
+  [[ "$output" != *test-plan* ]]
+  run _desc $'## Test plan\n\n### Automated\n\n## Risk\nlow'
+  [[ "$output" == *test-plan* ]]
+}
+
+@test "description-quality: the <summary> tag is not the word summary (#2605)" {
+  run _desc $'<details><summary>Checks and reviews</summary>\n\n- shellcheck clean\n\n</details>'
+  [[ "$output" == *problem* ]]
+  [[ "$output" != *test-plan* ]]
+}
+
+@test "description-quality: empty numbered labels, horizontal rules and a details tag do not count (#2605)" {
+  run _desc $'1. Risk:\n2. Rollback:\n3. Monitoring:'
+  [[ "$output" == 5\|* ]]
+  run _desc $'## Problem\n\n---\n\n## Risk\n\n***\n\n<details open>\n\n## Rollback\n'
+  [[ "$output" == 5\|* ]]
+  run _desc $'- Risk & impact:\n- Monitoring:'
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: a tab-indented child keeps its list-item label (#2605)" {
+  run _desc $'- Risk:\n\t- low, one loop bound'
+  [[ "$output" != *risk* ]]
+}
+
+@test "description-quality: CR-only and CRLF line ends do not hide empty headings (#2605)" {
+  run _desc $'x\r## Problem\r## Risk\r## Test plan\r## Rollback\r## Monitoring\r'
+  [[ "$output" == 5\|* ]]
+  run _desc $'## Problem\r\nthe bug\r\n## Risk\r\n\r\n'
+  [[ "$output" != *problem* ]]
+  [[ "$output" == *risk* ]]
 }
 
 # ---------------------------------------------------------------------------

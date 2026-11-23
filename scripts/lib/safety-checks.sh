@@ -205,30 +205,62 @@ sc_large_pr() {
 # `Monitoring:` lines count once filled, and its "Checks and reviews" block
 # counts as the test plan.
 
-# _sc_desc_filled_text <body> — the body with HTML comments removed (an
-# unclosed one hides the rest, as on GitHub; text before a closing `-->` with
-# no opener is a template comment whose first line was deleted, as on #1976,
-# and is removed too), headings (`#`..`######`, or a
-# `<summary>` line) with no text before the next heading or `</details>`
-# dropped, and empty `Label:` lines dropped. An empty label is kept only when
-# text follows it: deeper-indented under a list-item label, or any text under a
-# plain label line (a "Test plan:" line over a list).
+# _sc_desc_filled_text <body> — the text an author filled in, for the keyword
+# match below. In order:
+#   - CR and CRLF line ends become LF.
+#   - `<!--` and `-->` inside code (fenced blocks and backtick spans) are
+#     defused, since GitHub shows them as text, not as a comment.
+#   - HTML comments are removed. An unclosed one hides the rest when it starts
+#     a line (an HTML block, as on GitHub); mid-line, it is shown as text.
+#   - A `-->` alone on its line, before any heading or comment, with no opener,
+#     is a template comment whose first line was deleted (#1976): the text
+#     above it is removed too.
+#   - A heading (`#`..., or a `<summary>` line) is dropped when no text sits
+#     under it before the next heading of the same or a higher level, or before
+#     `</details>`. A heading that carries its own value (`## Risk: low`) is text.
+#   - An empty `Label:` line (bullet, number or plain) is dropped unless text
+#     follows it: deeper-indented under a list-item label, or any text under a
+#     plain label line ("Test plan:" over a list). Code fences are text.
+#   - HTML tags are removed, so `<summary>` does not read as the word summary.
+# The body goes in on stdin: a large body can pass Linux's per-argument limit.
 _sc_desc_filled_text() {
   local body="${1:-}"
-  jq -rn --arg b "$body" '$b | gsub("<!--[\\s\\S]*?-->"; "") | gsub("<!--[\\s\\S]*$"; "") | sub("^[\\s\\S]*?-->"; "")' 2>/dev/null \
+  printf '%s' "$body" | jq -Rrs '
+      gsub("\r\n?"; "\n")
+      | gsub("(?<c>```[\\s\\S]*?```|`[^`\n]+`)"; "\(.c | gsub("<!--"; "<! --") | gsub("-->"; "-- >"))")
+      | gsub("<!--[\\s\\S]*?-->"; "")
+      | gsub("(?:^|\n)[ \t]*<!--[\\s\\S]*$"; "")
+      | if test("^(?!#)(?:(?!\n#)[\\s\\S])*?(?:^|\n)[ \t]*-->[ \t]*(?:\n|$)")
+        then sub("^(?!#)(?:(?!\n#)[\\s\\S])*?(?:^|\n)[ \t]*-->[ \t]*(?:\n|$)"; "\n")
+        else . end' 2>/dev/null \
     | awk '
-      function indent(s,   i) { i = 0; while (substr(s, i + 1, 1) == " ") i++; return i }
+      function indent(s,   i, c, w) {
+        w = 0
+        for (i = 1; i <= length(s); i++) {
+          c = substr(s, i, 1)
+          if (c == " ") w++
+          else if (c == "\t") w += 4
+          else break
+        }
+        return w
+      }
       {
         n++; line[n] = $0; t = $0
-        gsub(/\r/, "", t); sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t)
-        if (t ~ /^#+([ \t]|$)/ || t ~ /<summary>.*<\/summary>/) kind[n] = "H"
-        else if (t ~ /^<\/?details>$/) kind[n] = "X"
-        else if (t == "" || t ~ /^([-*+]|[0-9]+[.)])$/) kind[n] = "E"
-        else if (t ~ /^([-*+][ \t]+)?(\*\*)?[A-Za-z][A-Za-z0-9 ()\/_-]*(\*\*)?:(\*\*)?$/) {
-          kind[n] = "L"; bullet[n] = (t ~ /^[-*+][ \t]/)
+        sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t)
+        ind[n] = indent($0); lvl[n] = 0; self[n] = 0
+        if (t ~ /^(```|~~~)/) { infence = !infence; kind[n] = "T"; next }
+        if (infence) { kind[n] = "T"; next }
+        if (t ~ /^#+([ \t]|$)/) {
+          kind[n] = "H"; h = t; sub(/[^#].*$/, "", h); lvl[n] = length(h)
+          if (t ~ /^#+[ \t]+[^:]*:[ \t]*[^ \t]/) self[n] = 1
+        }
+        else if (t ~ /<summary>.*<\/summary>/) { kind[n] = "H"; lvl[n] = 2 }
+        else if (t ~ /^<\/details>$/) kind[n] = "X"
+        else if (t == "" || t ~ /^([-*+]|[0-9]+[.)])$/ || t ~ /^([-*_][ \t]*)([-*_][ \t]*)([-*_][ \t]*)+$/ || t ~ /^<details[^>]*>$/) kind[n] = "E"
+        else if (t ~ /^(([-*+]|[0-9]+[.)])[ \t]+)?[^: \t][^:]*:(\*\*)?$/ && length(t) <= 60) {
+          kind[n] = "L"; bullet[n] = (t ~ /^([-*+]|[0-9]+[.)])[ \t]/)
         }
         else kind[n] = "T"
-        ind[n] = indent($0)
       }
       END {
         for (i = 1; i <= n; i++) {
@@ -239,11 +271,16 @@ _sc_desc_filled_text() {
           if (bullet[i] && ind[j] <= ind[i]) continue
           keep[i] = 1
         }
-        for (i = 1; i <= n; i++) {
+        for (i = n; i >= 1; i--) {
           if (kind[i] != "H") continue
-          for (j = i + 1; j <= n && kind[j] != "H" && kind[j] != "X"; j++) if (keep[j]) { keep[i] = 1; break }
+          if (self[i]) { keep[i] = 1; continue }
+          for (j = i + 1; j <= n; j++) {
+            if (kind[j] == "X") break
+            if (kind[j] == "H" && lvl[j] <= lvl[i]) break
+            if (keep[j]) { keep[i] = 1; break }
+          }
         }
-        for (i = 1; i <= n; i++) if (keep[i]) print line[i]
+        for (i = 1; i <= n; i++) if (keep[i]) { l = line[i]; gsub(/<[^>]*>/, "", l); print l }
       }'
 }
 
