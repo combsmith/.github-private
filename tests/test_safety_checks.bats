@@ -525,6 +525,16 @@ _filled_body() {
   [ "$output" = "0|" ]
 }
 
+@test "description-quality: a fence opened after a list marker keeps its comment opener literal (#2605)" {
+  run _desc "$(printf '%s\n' '## Problem' '- ~~~html' '  <!--' '  ~~~')"$'\n'"$(_filled_body | tail -n +3)"
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: a single-line details block with content counts (#2605)" {
+  run _desc $'## Problem\nthe loop never stopped\n## Risk\nlow\n<details><summary>Test plan</summary>bats passed</details>\n## Rollback\nrevert\n## Monitoring\nrun log'
+  [ "$output" = "0|" ]
+}
+
 @test "description-quality: a shorter fence does not close a longer one (#2605)" {
   run _desc "$(printf '%s\n' '````text' '```' 'example' '````' '## Problem' '## Risk' '## Test plan' '## Rollback' '## Monitoring')"
   [[ "$output" == 5\|* ]]

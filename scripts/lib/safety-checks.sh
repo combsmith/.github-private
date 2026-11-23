@@ -228,7 +228,7 @@ _sc_desc_filled_text() {
   local body="${1:-}"
   printf '%s' "$body" | jq -Rrs '
       gsub("\r\n?"; "\n")
-      | gsub("(?<c>(?<![^\n])[ \t]*(?<f>`{3,}|~{3,})[\\s\\S]*?(?:\n[ \t]*\\k<f>[`~]*[ \t]*(?=\n|$)|$)|`[^`\n]+`)"; "\(.c | gsub("<!--"; "<! --") | gsub("-->"; "-- >"))")
+      | gsub("(?<c>(?<![^\n])[ \t]*(?:(?:[-*+]|[0-9]+[.)])[ \t]+)*(?<f>`{3,}|~{3,})[\\s\\S]*?(?:\n[ \t]*\\k<f>[`~]*[ \t]*(?=\n|$)|$)|`[^`\n]+`)"; "\(.c | gsub("<!--"; "<! --") | gsub("-->"; "-- >"))")
       | gsub("<!--[\\s\\S]*?-->"; "")
       | gsub("(?:^|\n)[ \t]*<!--[\\s\\S]*$"; "")
       | if test("^(?!#)(?:(?!\n#)[\\s\\S])*?(?:^|\n)[ \t]*-->[ \t]*(?:\n|$)")
@@ -249,8 +249,10 @@ _sc_desc_filled_text() {
         n++; line[n] = $0; t = $0
         sub(/^[ \t]+/, "", t); sub(/[ \t]+$/, "", t)
         ind[n] = indent($0); lvl[n] = 0; self[n] = 0
-        if (!infence && t ~ /^(```|~~~)/) {
-          fch = substr(t, 1, 1); f = t; sub("[^" fch "].*$", "", f); flen = length(f)
+        ot = t
+        while (ot ~ /^([-*+]|[0-9]+[.)])[ \t]+/) sub(/^([-*+]|[0-9]+[.)])[ \t]+/, "", ot)
+        if (!infence && ot ~ /^(```|~~~)/) {
+          fch = substr(ot, 1, 1); f = ot; sub("[^" fch "].*$", "", f); flen = length(f)
           infence = 1; kind[n] = "T"; next
         }
         if (infence && substr(t, 1, 1) == fch) {
@@ -263,7 +265,11 @@ _sc_desc_filled_text() {
           kind[n] = "H"; h = t; sub(/[^#].*$/, "", h); lvl[n] = length(h)
           if (t ~ /^#+[ \t]+[^:]*:[ \t]*[^ \t]/) self[n] = 1
         }
-        else if (t ~ /<summary>.*<\/summary>/) { kind[n] = "H"; lvl[n] = 2; isSummary[n] = 1 }
+        else if (t ~ /<summary>.*<\/summary>/) {
+          kind[n] = "H"; lvl[n] = 2; isSummary[n] = 1
+          r = t; sub(/^.*<\/summary>/, "", r); gsub(/<[^>]*>/, "", r)
+          if (r ~ /[^ \t]/) self[n] = 1
+        }
         else if (t ~ /^<\/details>$/) kind[n] = "X"
         else if (t == "" || t ~ /^([-*+]|[0-9]+[.)])$/ || t ~ /^([-*_][ \t]*)([-*_][ \t]*)([-*_][ \t]*)+$/ || t ~ /^<details[^>]*>$/) kind[n] = "E"
         else if (t ~ /^(([-*+]|[0-9]+[.)])[ \t]+)?[^: \t][^:]*:(\*\*)?$/ && length(t) <= 60) {
