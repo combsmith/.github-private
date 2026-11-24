@@ -228,7 +228,8 @@ sc_large_pr() {
 # The body goes in on stdin: a large body can pass Linux's per-argument limit.
 # If jq fails (say, a runner's Oniguruma rejects the pattern), the text is
 # empty, so the description scores as missing and escalates: the safe
-# direction. A warning on stderr says so, so the cause is not silent.
+# direction. jq's own error and a warning reach stderr, so the cause is not
+# silent (jq names the regex, not the body).
 _sc_desc_filled_text() {
   local body="${1:-}" filtered rc=0
   filtered="$(printf '%s' "$body" | jq -Rrs '
@@ -238,7 +239,7 @@ _sc_desc_filled_text() {
       | gsub("(?:^|\n)[ \t]*<!--[\\s\\S]*$"; "")
       | if test("^(?!#)(?:(?!\n#)[\\s\\S])*?(?:^|\n)[ \t]*-->[ \t]*(?:\n|$)")
         then sub("^(?!#)(?:(?!\n#)[\\s\\S])*?(?:^|\n)[ \t]*-->[ \t]*(?:\n|$)"; "\n")
-        else . end' 2>/dev/null)" || rc=$?
+        else . end')" || rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "::warning::safety-checks: the description filter (jq) failed with exit ${rc}; the description reads as empty, so it scores as missing" >&2
     filtered=""
