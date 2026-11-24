@@ -28,8 +28,6 @@
 name: pr-body-markers
 
 on:
-  pull_request:
-    types: [opened, edited, synchronize, reopened]
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
   merge_group:
