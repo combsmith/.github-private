@@ -20,9 +20,10 @@ name: PR Review Agent — Stuck-Review Sweep
 #     core CI workflow finishes, the sweep runs SCOPED to just that run's PR(s)
 #     (scripts/sweep-stuck-reviews.sh derives them from the event payload), so a PR
 #     that just went green is re-reviewed in seconds;
-#   • for a PR DEFERRED on an un-elapsed rate-limit marker whose reset is near, the
-#     sweep ARMS pr-review-delayed-retry.yml (#1994), a deterministic retry that
-#     fires within minutes of the reset without depending on the cron.
+#   • for a PR DEFERRED on an un-elapsed rate-limit marker whose reset is near, or
+#     on the advisory gate's head-age wait (#2533), the sweep ARMS
+#     pr-review-delayed-retry.yml (#1994), a deterministic retry that fires within
+#     minutes of the deadline without depending on the cron.
 # Neither path can strand a PR: whatever they miss, a later cron tick still catches
 # — the cron is the eventual, not the time-bounded, backstop.
 #
