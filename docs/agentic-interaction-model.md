@@ -200,7 +200,7 @@ keeps its own file) carries **no** job qualifier and remains exactly one row.
 | `.github/workflows/initiative-planner.yml` | 1 | — | `workflow_dispatch` only — human-explicit bridge for the `discussion:[labeled]` signal that cannot be subscribed to inline; §2 Class 1 by declaration (no schedule, no `timer_role`). |
 | `.github/workflows/decision-brief.yml` | 1 | — | `workflow_dispatch` only — human-explicit bridge for the `discussion:[labeled]` (`needs-brief`) signal that cannot be subscribed to inline, plus the `from_queue` sweep a caller's own timer dispatches; §2 Class 1 by declaration (no schedule, no `timer_role`). |
 | `.github/workflows/pr-auto-review.yml` | 1 | — | `workflow_run:[completed]`, `check_suite:[completed]`, `pull_request_review:[submitted, dismissed]`, `pull_request:[opened, reopened, synchronize, ready_for_review]` — multi-event readiness gate; no schedule. |
-| `.github/workflows/pr-review-delayed-retry.yml` | 1 | — | `workflow_dispatch` only — armed on demand by `pr-review-sweep.yml` to retry a rate-limited PR review near its `reset` without depending on the best-effort cron (#1994). §2 Class 1 by declaration (no schedule, no `timer_role`); the in-run sleep is a deterministic armed delay anchored to `not_before`, not a scheduled trigger — the fix for the convergence-clock pattern, not an instance of it. |
+| `.github/workflows/pr-review-delayed-retry.yml` | 1 | — | `workflow_dispatch` only — armed on demand by `pr-review-sweep.yml` to retry a deferred PR review near a known deadline — a rate-limit marker's `reset` (#1994) or the advisory gate's head-age deadline (#2533) — in this repo or any pr-review consumer, without depending on the best-effort cron. §2 Class 1 by declaration (no schedule, no `timer_role`); the in-run sleep is a deterministic armed delay anchored to `not_before`, not a scheduled trigger — the fix for the convergence-clock pattern, not an instance of it. |
 | `.github/workflows/pr-review-sweep.yml` | 2 | backstop | `schedule: '2,17,32,47 * * * *'` backstop **plus** `workflow_run:[completed]` fast path (#898) scoped to the completing CI run's PR(s); idempotent, per-branch `cancel-in-progress`. Dispatches a consumer PR to that repo's own pr-review entrypoint and skips PRs held at the maintainer-comment gate (#2530, ADR-0017). |
 | `.github/workflows/initiative-driver.yml` | 2 | safety-net | `issues:[closed, labeled]` fast path **plus** `schedule: '23 */6 * * *'` explicitly "safety net for missed close events"; sweeps every open `initiative:auto` epic idempotently. |
 | `.github/workflows/dev-lead-retry.yml` | 2 | self-heal | `schedule: '15 */2 * * *'` + `workflow_dispatch`; re-dispatches `status=rate-limited` PRs once the limit clears. **Leak flagged in §6** — no event fast-path, so it behaves as a de-facto convergence clock rather than a true backstop. |
@@ -301,8 +301,8 @@ re-discovers the actionable state by scanning — so it **must** satisfy the ful
 contract in §6 (stop condition, idempotency, human-gated markers). `pr-review-sweep.yml`'s
 scheduled backstop is exactly this: the net under its `workflow_run` fast path, nominally
 ≤15 min but best-effort — GitHub delays or drops scheduled runs under load (observed 3–7 h
-in #1952), so a time-bound retry must not rely on it (the rate-limit case is armed explicitly by
-`pr-review-delayed-retry.yml`, #1994).
+in #1952), so a time-bound retry must not rely on it (the rate-limit and advisory head-age waits are
+armed explicitly by `pr-review-delayed-retry.yml`, #1994/#2533).
 
 **Never** attempt to cross the boundary by having `GITHUB_TOKEN` emit the triggering event
 and hoping it fires — it will not, and the failure is silent.

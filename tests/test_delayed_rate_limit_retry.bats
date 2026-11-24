@@ -44,6 +44,15 @@ setup() {
   # test_sweep_stuck_reviews.bats. These marker comments carry no author (live ones
   # come from donpetry-bot, outside the gate's scope), so it is off here.
   export SKIP_GATE_HELD=false
+  # The retry runs only for pr-review consumers (#2533). combsmith/demo and
+  # combsmith/consumer are consumers here; combsmith/outsider is not.
+  export CONSUMER_MANIFEST="$FIXTURE_DIR/consumer-manifest.json"
+  cat > "$CONSUMER_MANIFEST" <<'EOF'
+{"consumers": [
+  {"repo": "combsmith/demo", "refs": [".github-private/.github/workflows/pr-review.yml"]},
+  {"repo": "combsmith/consumer", "refs": [".github-private/.github/workflows/pr-review.yml"]}
+]}
+EOF
 
   cat > "$MOCK_BIN/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -61,6 +70,19 @@ case "$1" in
   workflow)
     printf '%s\n' "$*" >> "$GH_LOG"
     exit 0
+    ;;
+  api)
+    # The sweep's entrypoint lookup (#2530): an active workflow and its contents,
+    # from wfc_<owner>__<repo>__<file>; a 404 when the test wrote none.
+    case "$2" in
+      repos/*/actions/workflows/*|repos/*/contents/.github/workflows/*)
+        r="${2#repos/}"; file="${r##*/}"; owner="${r%%/*}"; r="${r#*/}"; repo="${r%%/*}"
+        f="$FIXTURE_DIR/wfc_${owner}__${repo}__${file}"
+        [ -f "$f" ] || exit 1
+        case "$2" in */actions/workflows/*) echo active ;; *) cat "$f" ;; esac
+        exit 0
+        ;;
+    esac
     ;;
 esac
 exit 0
@@ -293,4 +315,109 @@ url_for() { echo "https://github.com/combsmith/demo/pull/$1"; }
   [ "$status" -eq 0 ]
   [[ "$output" == *"inputs.pr_url"* ]]
   [[ "$output" == *"inputs.head_sha"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Deadline-armed retries for consumer repos (#2533). The sweep also arms this
+# retry for the advisory gate's head-age deadline (wait=advisory-bots), in any
+# pr-review consumer. Such a retry has no marker to re-check: it fires once the
+# head is old enough, and the delegated sweep sends the PR to the consumer's own
+# entrypoint, never with force_review.
+# ---------------------------------------------------------------------------
+
+# The standard consumer stub: takes a pr_url dispatch and calls the pr-review reusable.
+CONSUMER_CALLER='on:
+  workflow_dispatch:
+    inputs:
+      pr_url:
+        type: string
+      force_review:
+        type: string
+jobs:
+  pr-review:
+    uses: combsmith/.github-private/.github/workflows/pr-review.yml@pr-review/v1-stable
+    with:
+      pr_url: ${{ inputs.pr_url }}
+      force_review: ${{ inputs.force_review }}'
+
+url_in() { echo "https://github.com/$1/pull/$2"; }
+
+@test "advisory-bots retry at an unchanged head re-dispatches the consumer repo's own review once, without force_review" {
+  printf '%s\n' "$CONSUMER_CALLER" > "$FIXTURE_DIR/wfc_combsmith__consumer__pr-review.yml"
+  write_pr 2101 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2101"
+  export PR_URL; PR_URL="$(url_in combsmith/consumer 2101)"
+  export HEAD_SHA="adv2101" NOT_BEFORE="$PAST_RESET" WAIT_KIND="advisory-bots"
+
+  run bash "$RETRY"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'workflow run' "$GH_LOG")" -eq 1 ]
+  grep -qF -- "workflow run pr-review.yml --repo combsmith/consumer -f pr_url=$PR_URL" "$GH_LOG"
+  ! grep -qF -- "force_review" "$GH_LOG" || false
+  ! grep -qF -- "pr-review-delayed-retry.yml" "$GH_LOG" || false
+  [[ "$output" == *"Wait:       advisory-bots"* ]]
+}
+
+@test "advisory-bots retry no-ops when the head moved" {
+  printf '%s\n' "$CONSUMER_CALLER" > "$FIXTURE_DIR/wfc_combsmith__consumer__pr-review.yml"
+  write_pr 2102 "REVIEW_REQUIRED" "$ROLLUP_PASS" "newer2102"
+  export PR_URL; PR_URL="$(url_in combsmith/consumer 2102)"
+  export HEAD_SHA="adv2102" NOT_BEFORE="$PAST_RESET" WAIT_KIND="advisory-bots"
+
+  run bash "$RETRY"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"superseded"* ]]
+}
+
+@test "rate-limit retry for a consumer-repo PR re-dispatches through that repo's own entrypoint" {
+  printf '%s\n' "$CONSUMER_CALLER" > "$FIXTURE_DIR/wfc_combsmith__consumer__pr-review.yml"
+  write_pr 2103 "REVIEW_REQUIRED" "$ROLLUP_PASS" "rl2103" "[]" "$(rl_comment rl2103 "$PAST_RESET")"
+  export PR_URL; PR_URL="$(url_in combsmith/consumer 2103)"
+  export HEAD_SHA="rl2103" NOT_BEFORE="$PAST_RESET" WAIT_KIND="rate-limit"
+
+  run bash "$RETRY"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'workflow run' "$GH_LOG")" -eq 1 ]
+  grep -qF -- "workflow run pr-review.yml --repo combsmith/consumer -f pr_url=$PR_URL" "$GH_LOG"
+  ! grep -qF -- "force_review" "$GH_LOG" || false
+}
+
+@test "retry no-ops for a PR in a repo that is not a pr-review consumer" {
+  write_pr 2104 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2104"
+  export PR_URL; PR_URL="$(url_in combsmith/outsider 2104)"
+  export HEAD_SHA="adv2104" NOT_BEFORE="$PAST_RESET" WAIT_KIND="advisory-bots"
+
+  run bash "$RETRY"
+  [ "$status" -eq 0 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"not a pr-review consumer"* ]]
+}
+
+@test "an unknown wait kind is rejected before any lookup" {
+  write_pr 2105 "REVIEW_REQUIRED" "$ROLLUP_PASS" "adv2105"
+  export PR_URL; PR_URL="$(url_for 2105)"
+  export HEAD_SHA="adv2105" NOT_BEFORE="$PAST_RESET" WAIT_KIND="ci-pending"
+
+  run bash "$RETRY"
+  [ "$status" -eq 2 ]
+  [ ! -s "$GH_LOG" ]
+  [[ "$output" == *"WAIT_KIND"* ]]
+}
+
+@test "an unparseable PR_URL fails with exit 2 instead of a silent no-op" {
+  export PR_URL="not-a-pr-url"
+  export HEAD_SHA="adv2106" NOT_BEFORE="$PAST_RESET" WAIT_KIND="rate-limit"
+
+  run bash "$RETRY"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"unparseable"* ]]
+}
+
+@test "delayed-retry workflow takes a wait input, passes it as WAIT_KIND, keeps the run-name dedup and stays dispatch-only" {
+  run yq -r '.on.workflow_dispatch.inputs.wait.default' "$WORKFLOW"
+  [ "$output" = "rate-limit" ]
+  grep -qE '^[[:space:]]*WAIT_KIND: \$\{\{ inputs\.wait' "$WORKFLOW"
+  grep -qF 'run-name: "pr-review-delayed-retry ${{ inputs.pr_url }} @ ${{ inputs.head_sha }}${{ inputs.wait == '"'"'advisory-bots'"'"' && '"'"' (advisory-bots)'"'"' || '"'"''"'"' }}"' "$WORKFLOW"
+  run yq -r '.on | keys | join(",")' "$WORKFLOW"
+  [ "$output" = "workflow_dispatch" ]
 }
