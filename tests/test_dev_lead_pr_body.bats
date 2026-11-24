@@ -198,11 +198,21 @@ tests/test_dev_lead_pr_body.bats'
 # ---------------------------------------------------------------------------
 # AC #4 — the repo PR template carries the same five headings
 # ---------------------------------------------------------------------------
+# Since #2604 only filled text counts, so the template is checked filled: one
+# line of text under every heading must give 0|. Unfilled, it scores like an
+# empty body, which is what escalates an unfilled pull request (#1976).
 
-@test "pull_request_template passes sc_description_missing with 0|" {
+@test "pull_request_template, filled, passes sc_description_missing with 0|" {
   local tmpl body
   tmpl="$(dirname "$BATS_TEST_FILENAME")/../.github/pull_request_template.md"
-  body=$(cat "$tmpl")
+  body=$(awk '{ print } /^## / { print "filled in by the author" }' "$tmpl")
   run _missing "$body"
   [ "$output" = "0|" ]
+}
+
+@test "pull_request_template, unfilled, scores like an empty body (#2604, #1976)" {
+  local tmpl
+  tmpl="$(dirname "$BATS_TEST_FILENAME")/../.github/pull_request_template.md"
+  run _missing "$(cat "$tmpl")"
+  [ "$output" = "$(_missing "")" ]
 }
