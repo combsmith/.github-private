@@ -10,7 +10,7 @@ standards, and agentic infrastructure.
 | [.github](https://github.com/combsmith/.github) | Organization-wide GitHub configuration and workflows | Shell |
 | [.github-private](https://github.com/combsmith/.github-private) | Org-wide Copilot custom agents and agentic workflow infrastructure | Shell |
 | [ContentTwin](https://github.com/combsmith/ContentTwin) | AI-powered Social Media Agent for small organizations — enterprise-quality social presence at non-profit pricing | Shell |
-| [TalkTerm](https://github.com/combsmith/TalkTerm) | Desktop AI agent interface with voice-enabled animated avatars | TypeScript |
+| [TalkTerm](https://github.com/combsmith/TalkTerm) | — | TypeScript |
 | [bmad-bgreat-suite](https://github.com/combsmith/bmad-bgreat-suite) | BMad Operations Suite — SRE and DevOps agents and workflows for the BMad Method ecosystem | Shell |
 | [broodly](https://github.com/combsmith/broodly) | Field-first beekeeping decision-support app — Expo/React Native mobile + Go GraphQL API on GCP | HTML |
 | [broodminder-data](https://github.com/combsmith/broodminder-data) | Unified Python client, CLI, bulk export, periodic delta sync, OpenAPI 3.1 spec, and MCP server for BroodMinder beehive data | Python |
