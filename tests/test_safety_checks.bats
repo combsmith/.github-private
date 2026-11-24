@@ -366,6 +366,228 @@ diff --git a/b/unrelated.txt b/b/unrelated.txt
   [[ "$output" == 3\|* ]]
 }
 
+# --- Unfilled templates score like an empty body (#2604) ---------------------
+# The keyword match used to read the raw body, so an unfilled template passed on
+# its own HTML-comment guidance and bare headings: #1976 went through with this
+# repo's template, and the org default template of combsmith/.github#1566 scored
+# 1 of 5 missing. Only filled text counts now.
+
+# _org_template — a snapshot of the org default pull request template that
+# combsmith/.github#1566 adds (.github/pull_request_template.md, at 56a5e3e), unfilled.
+_org_template() {
+  cat <<'TMPL'
+<!-- markdownlint-disable-file MD041 -->
+<!--
+Title: `area: plain verb phrase (#issue)`, at most 72 characters, one change.
+In combsmith/.github and combsmith/.github-private, keep the type: `feat(area): plain verb phrase (#issue)`.
+Breaking change? Put `!` after the scope in the title: `feat(area)!: plain verb phrase (#issue)`.
+A `BREAKING CHANGE:` line is not read; a check fails a body that has one without the `!`.
+This body is meant to become the squash commit's message. Whoever merges can edit it, so check the message before merging.
+This text becomes permanent public history: no secrets, tokens or raw logs. Security findings: count only.
+Rules: docs/initiatives/pull-request-and-commit-prose-adr.md in combsmith/.github.
+-->
+
+## Why
+
+<!-- One or two plain sentences: what was wrong or missing, and what a user would notice. Link the issue. -->
+
+## What changed
+
+- <!-- area or file: what -->
+
+## What to look at
+
+<!-- What a reviewer should check, and what this change leaves out. -->
+
+- Risk: <!-- low, medium or high, and why in a few words -->
+- Rollback: <!-- usually "revert this pull request", or what cannot be undone -->
+- Monitoring: <!-- the check or signal that shows a problem, or "none needed" -->
+
+## Decisions and protected edits
+
+<!-- The decision record this pull request adds, or "none". Any protected edit, and who approved it. -->
+
+<details><summary>Checks and reviews</summary>
+
+<!-- Tests and checks run. Each reviewer's findings, taken or declined, with reasons. -->
+
+</details>
+TMPL
+}
+
+_desc() { sc_description_missing "$(jq -n --arg b "$1" '{body:$b}')"; }
+
+@test "description-quality: the unfilled org template scores like an empty body, as #1976 should have (#2604)" {
+  run _desc "$(_org_template)"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(_desc "")" ]
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: the org template, filled, has all five sections (#2604)" {
+  local body
+  body="$(_org_template | sed \
+    -e 's|^<!-- One or two.*|The retry loop never stopped. Closes #1.|' \
+    -e 's|^- <!-- area or file.*|- scripts/retry.sh: stop after three tries.|' \
+    -e 's|^- Risk: .*|- Risk: low, one loop bound.|' \
+    -e 's|^- Rollback: .*|- Rollback: revert this pull request.|' \
+    -e 's|^- Monitoring: .*|- Monitoring: the retry count in the run log.|' \
+    -e 's|^<!-- Tests and checks.*|- bats tests/test_retry.bats passes.|')"
+  run _desc "$body"
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: a #1976-shaped body (template comment with its opener deleted) escalates (#2604)" {
+  local body
+  body=$'Keep the required sections — Problem, Risk, Test plan, Rollback, and Monitoring —\neven when brief.\n-->\n\n## Summary\n\n<!-- What does this PR change? -->\n\n## Problem\n\n<!-- What problem does this solve? -->\n\n## Risk\n\n## Test plan\n\n## Rollback\n\n## Monitoring\n'
+  run _desc "$body"
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: words inside HTML comments do not count (#2604)" {
+  run _desc $'<!-- problem risk test plan rollback monitoring -->\n<!--\nrisk\nrollback\n-->'
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: an unclosed comment at a line start hides the rest of the body (#2604)" {
+  run _desc $'## Problem\nthe bug\n<!-- unclosed\n## Risk\nlow\n## Rollback\nrevert'
+  [[ "$output" == 4\|* ]]
+  [[ "$output" != *problem* ]]
+}
+
+@test "description-quality: a heading with no text under it is missing; with text it counts (#2604)" {
+  run _desc $'## Risk\n\n## Rollback\nrevert this pull request'
+  [[ "$output" == *risk* ]]
+  [[ "$output" != *rollback* ]]
+}
+
+@test "description-quality: an empty Label: line is missing; a filled one counts (#2604)" {
+  run _desc $'- Risk:\n- Rollback: revert this pull request\n- Monitoring:   '
+  [[ "$output" == *risk* ]]
+  [[ "$output" == *monitoring* ]]
+  [[ "$output" != *rollback* ]]
+}
+
+@test "description-quality: a plain Label: line over a list still counts (#2604)" {
+  run _desc $'Test plan:\n- ran the unit tests\n\nRisk:\n  - low'
+  [[ "$output" != *test-plan* ]]
+  [[ "$output" != *risk* ]]
+}
+
+@test "description-quality: a list-item label with deeper-indented text counts; a sibling item does not (#2604)" {
+  run _desc $'- Risk:\n  - low, one loop bound\n- Rollback:\n- Monitoring: none needed'
+  [[ "$output" != *risk* ]]
+  [[ "$output" == *rollback* ]]
+}
+
+@test "description-quality: a Why heading with text counts as the problem (#2604)" {
+  run _desc $'## Why\n\nThe loop never stopped.'
+  [[ "$output" != *problem* ]]
+  run _desc $'## Why\n\n## Risk\nlow'
+  [[ "$output" == *problem* ]]
+}
+
+@test "description-quality: a filled Checks and reviews block counts as the test plan; an empty one does not (#2604)" {
+  run _desc $'<details><summary>Checks and reviews</summary>\n\n- shellcheck clean\n\n</details>'
+  [[ "$output" != *test-plan* ]]
+  run _desc $'<details><summary>Checks and reviews</summary>\n\n</details>\n\n## Rollback\nrevert'
+  [[ "$output" == *test-plan* ]]
+}
+
+# A filled body that the filter must not empty out (Claude review of #2605).
+_filled_body() {
+  printf '%s\n' '## Problem' 'The retry loop never stopped.' '## Risk' 'low' '## Test plan' 'bats passes' \
+    '## Rollback' 'revert this pull request' '## Monitoring' 'the retry count in the run log'
+}
+
+@test "description-quality: an arrow (-->) in prose or a diagram does not erase what comes before it (#2605)" {
+  run _desc "$(_filled_body)"$'\n\n```mermaid\nflowchart LR\n  A-->B\n```\n\nState goes open --> closed.'
+  [ "$output" = "0|" ]
+  run _desc $'Context first.\n-->\n'"$(_filled_body)"
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: a comment opener inside code is text, as GitHub shows it (#2605)" {
+  run _desc "$(_filled_body)"$'\n\nThe template starts with `<!--` and a fence:\n\n```\n<!-- not a comment\n```\n\n## Notes\nmore text'
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: dev-lead's body for an issue that quotes a comment opener mid-line still passes (#2605)" {
+  source "$(dirname "$BATS_TEST_FILENAME")/../scripts/lib/dev-lead-pr-body.sh"
+  local body
+  body="$(dlpb_build_body 7 "pr-review: the triage reads <!-- as a comment" $'The triage reads `<!--` in a body and hides the rest.' $'scripts/lib/safety-checks.sh')"
+  run _desc "$body"
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: comment markers inside a tilde fence are text (#2605)" {
+  run _desc "$(printf '%s\n' '## Problem' '~~~html' '<!-- a sample -->' '<!--' '~~~')"$'\n'"$(_filled_body | tail -n +3)"
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: a fence opened after a list marker keeps its comment opener literal (#2605)" {
+  run _desc "$(printf '%s\n' '## Problem' '- ~~~html' '  <!--' '  ~~~')"$'\n'"$(_filled_body | tail -n +3)"
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: a single-line details block with content counts (#2605)" {
+  run _desc $'## Problem\nthe loop never stopped\n## Risk\nlow\n<details><summary>Test plan</summary>bats passed</details>\n## Rollback\nrevert\n## Monitoring\nrun log'
+  [ "$output" = "0|" ]
+}
+
+@test "description-quality: a shorter fence does not close a longer one (#2605)" {
+  run _desc "$(printf '%s\n' '````text' '```' 'example' '````' '## Problem' '## Risk' '## Test plan' '## Rollback' '## Monitoring')"
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: a code fence line starting with # is not a heading (#2605)" {
+  run _desc $'## Test plan\n\n```bash\n# run the suite\nbats tests\n```\n\n## Risk\nlow'
+  [[ "$output" != *test-plan* ]]
+  [[ "$output" != *risk* ]]
+}
+
+@test "description-quality: a heading that carries its value counts (## Risk: low) (#2605)" {
+  run _desc $'## Problem: the loop never stopped\n## Risk: low\n## Test plan: bats passes\n## Rollback: revert\n## Monitoring: run log'
+  [ "$output" = "0|" ]
+  run _desc $'## Risk:\n## Rollback: revert'
+  [[ "$output" == *risk* ]]
+}
+
+@test "description-quality: a parent heading over filled subheadings counts (#2605)" {
+  run _desc $'## Test plan\n\n### Automated\n\n- bats passes\n\n## Risk\nlow'
+  [[ "$output" != *test-plan* ]]
+  run _desc $'## Test plan\n\n### Automated\n\n## Risk\nlow'
+  [[ "$output" == *test-plan* ]]
+}
+
+@test "description-quality: the <summary> tag is not the word summary (#2605)" {
+  run _desc $'<details><summary>Checks and reviews</summary>\n\n- shellcheck clean\n\n</details>'
+  [[ "$output" == *problem* ]]
+  [[ "$output" != *test-plan* ]]
+}
+
+@test "description-quality: empty numbered labels, horizontal rules and a details tag do not count (#2605)" {
+  run _desc $'1. Risk:\n2. Rollback:\n3. Monitoring:'
+  [[ "$output" == 5\|* ]]
+  run _desc $'## Problem\n\n---\n\n## Risk\n\n***\n\n<details open>\n\n## Rollback\n'
+  [[ "$output" == 5\|* ]]
+  run _desc $'- Risk & impact:\n- Monitoring:'
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: a tab-indented child keeps its list-item label (#2605)" {
+  run _desc $'- Risk:\n\t- low, one loop bound'
+  [[ "$output" != *risk* ]]
+}
+
+@test "description-quality: CR-only and CRLF line ends do not hide empty headings (#2605)" {
+  run _desc $'x\r## Problem\r## Risk\r## Test plan\r## Rollback\r## Monitoring\r'
+  [[ "$output" == 5\|* ]]
+  run _desc $'## Problem\r\nthe bug\r\n## Risk\r\n\r\n'
+  [[ "$output" != *problem* ]]
+  [[ "$output" == *risk* ]]
+}
+
 # ---------------------------------------------------------------------------
 # Check 7 — Dependency risk (deterministic parse; LLM narrative lives in Tier 2)
 # ---------------------------------------------------------------------------
@@ -803,4 +1025,43 @@ diff --git a/b/unrelated.txt b/b/unrelated.txt
   run compute_safety_checks "$meta" "$diff"
   [ "$status" -eq 0 ]
   echo "$output" | grep -q "CI_WEAKENING_DETECTED: true"
+}
+
+@test "description-quality: ~~~ in prose does not shield a template comment (#2605)" {
+  run _desc $'The formatter now emits ~~~ delimiters.\n<!--\nProblem: Describe the issue.\nRisk: Describe the risk.\nTest plan: List the checks.\nRollback: Describe the recovery.\nMonitoring: List the signals.\n-->'
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: a heading above a filled <details> block stays kept (#2605)" {
+  run _desc $'### Test plan\n<details><summary>Show</summary>\n\n- bats passes\n</details>\n\n## Risk\nlow'
+  [[ "$output" != *test-plan* ]]
+}
+
+@test "description-quality: an inline code span after a list marker is not a fence (#2605)" {
+  run _desc $'- ```example```\n\n## Problem\n## Risk\n## Test plan\n## Rollback\n## Monitoring'
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: empty fenced blocks do not shield empty headings (#2605)" {
+  run _desc $'## Problem\n```\n```\n## Risk\n```\n\n```\n## Test plan\n~~~\n~~~\n## Rollback\n```\n```\n## Monitoring\n```\n```'
+  [[ "$output" == 5\|* ]]
+}
+
+@test "description-quality: a plain label is not filled by a following Label: value line (#2605)" {
+  run _desc $'Risk:\nRollback: revert this pull request'
+  [[ "$output" == *risk* ]]
+  [[ "$output" != *rollback* ]]
+}
+
+@test "description-quality: a failed jq filter reads as empty and warns on stderr (#2605)" {
+  bats_require_minimum_version 1.5.0
+  jq() { [ "${1:-}" = "-Rrs" ] && return 3; command jq "$@"; }
+  run --separate-stderr _desc $'## Why\n\nThe triage misreads bodies.\n\n## Risk\n\nlow'
+  [ "$status" -eq 0 ]
+  [[ "$output" == 5\|* ]]
+  [[ "$stderr" == *"description filter (jq) failed with exit 3"* ]]
+  unset -f jq
+  run --separate-stderr _desc $'## Why\n\nThe triage misreads bodies.\n\n## Risk\n\nlow'
+  [[ "$output" == 3\|* ]]
+  [ -z "$stderr" ]
 }
