@@ -1052,3 +1052,16 @@ _filled_body() {
   [[ "$output" == *risk* ]]
   [[ "$output" != *rollback* ]]
 }
+
+@test "description-quality: a failed jq filter reads as empty and warns on stderr (#2605)" {
+  bats_require_minimum_version 1.5.0
+  jq() { [ "${1:-}" = "-Rrs" ] && return 3; command jq "$@"; }
+  run --separate-stderr _desc $'## Why\n\nThe triage misreads bodies.\n\n## Risk\n\nlow'
+  [ "$status" -eq 0 ]
+  [[ "$output" == 5\|* ]]
+  [[ "$stderr" == *"description filter (jq) failed with exit 3"* ]]
+  unset -f jq
+  run --separate-stderr _desc $'## Why\n\nThe triage misreads bodies.\n\n## Risk\n\nlow'
+  [[ "$output" == 3\|* ]]
+  [ -z "$stderr" ]
+}

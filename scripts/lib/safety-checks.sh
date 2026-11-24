@@ -226,16 +226,24 @@ sc_large_pr() {
 #     inside a fence counts, so an empty fence does not shield an empty heading.
 #   - HTML tags are removed, so `<summary>` does not read as the word summary.
 # The body goes in on stdin: a large body can pass Linux's per-argument limit.
+# If jq fails (say, a runner's Oniguruma rejects the pattern), the text is
+# empty, so the description scores as missing and escalates: the safe
+# direction. A warning on stderr says so, so the cause is not silent.
 _sc_desc_filled_text() {
-  local body="${1:-}"
-  printf '%s' "$body" | jq -Rrs '
+  local body="${1:-}" filtered rc=0
+  filtered="$(printf '%s' "$body" | jq -Rrs '
       gsub("\r\n?"; "\n")
       | gsub("(?<c>(?<![^\n])[ \t]*(?:(?:[-*+]|[0-9]+[.)])[ \t]+)*(?<f>`{3,}(?![^\n]*`)|~{3,})[\\s\\S]*?(?:\n[ \t]*\\k<f>[`~]*[ \t]*(?=\n|$)|$)|`[^`\n]+`)"; "\(.c | gsub("<!--"; "<! --") | gsub("-->"; "-- >"))")
       | gsub("<!--[\\s\\S]*?-->"; "")
       | gsub("(?:^|\n)[ \t]*<!--[\\s\\S]*$"; "")
       | if test("^(?!#)(?:(?!\n#)[\\s\\S])*?(?:^|\n)[ \t]*-->[ \t]*(?:\n|$)")
         then sub("^(?!#)(?:(?!\n#)[\\s\\S])*?(?:^|\n)[ \t]*-->[ \t]*(?:\n|$)"; "\n")
-        else . end' 2>/dev/null \
+        else . end' 2>/dev/null)" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "::warning::safety-checks: the description filter (jq) failed with exit ${rc}; the description reads as empty, so it scores as missing" >&2
+    filtered=""
+  fi
+  printf '%s\n' "$filtered" \
     | awk '
       function indent(s,   i, c, w) {
         w = 0
