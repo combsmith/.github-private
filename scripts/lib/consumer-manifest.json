@@ -52,7 +52,6 @@
       "refs": [
         ".github-private/.github/workflows/ci-failure-analyst-reusable.yml",
         ".github-private/.github/workflows/dev-lead-reusable.yml",
-        ".github-private/.github/workflows/pr-review-reusable.yml",
         ".github/.github/workflows/add-to-project-reusable.yml",
         ".github/.github/workflows/agent-shield-reusable.yml",
         ".github/.github/workflows/auto-rebase-reusable.yml",
@@ -86,7 +85,6 @@
       "refs": [
         ".github-private/.github/workflows/ci-failure-analyst-reusable.yml",
         ".github-private/.github/workflows/dev-lead-reusable.yml",
-        ".github-private/.github/workflows/pr-review-reusable.yml",
         ".github/.github/workflows/add-to-project-reusable.yml",
         ".github/.github/workflows/agent-shield-reusable.yml",
         ".github/.github/workflows/auto-rebase-reusable.yml",
