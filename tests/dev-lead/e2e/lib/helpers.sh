@@ -11,7 +11,7 @@ E2E_RESULTS_DIR="${E2E_RESULTS_DIR:-$(dirname "${BASH_SOURCE[0]}")/../results}"
 
 # Resolve token: prefer GH_TOKEN, fall back to GH_PAT
 GH_TOKEN="${GH_TOKEN:-${GH_PAT:-}}"
-if [ -z "$GH_TOKEN" ]; then
+if [[ -z "$GH_TOKEN" ]]; then
   echo "[helpers] WARNING: neither GH_TOKEN nor GH_PAT is set — API calls will fail" >&2
 fi
 export GH_TOKEN
@@ -38,7 +38,7 @@ create_test_branch() {
   main_sha=$(gh api "repos/${E2E_TARGET_REPO}/git/ref/heads/main" \
     --jq '.object.sha' 2>/dev/null)
 
-  if [ -z "$main_sha" ]; then
+  if [[ -z "$main_sha" ]]; then
     err "Failed to resolve main SHA on ${E2E_TARGET_REPO}"
     return 1
   fi
@@ -70,7 +70,7 @@ create_test_pr() {
     --body "${body}" \
     2>&1 | grep -oE '[0-9]+$' | head -1)
 
-  if [ -z "$pr_number" ]; then
+  if [[ -z "$pr_number" ]]; then
     err "Failed to create PR for branch ${branch}"
     return 1
   fi
@@ -101,12 +101,12 @@ wait_for_workflow() {
       --jq ".workflow_runs[] | select(.name == \"${workflow_name}\")" \
       2>/dev/null || true)
 
-    if [ -n "$run_data" ]; then
+    if [[ -n "$run_data" ]]; then
       local status conclusion
       status=$(echo "$run_data" | jq -r '.status' 2>/dev/null | head -1)
       conclusion=$(echo "$run_data" | jq -r '.conclusion // ""' 2>/dev/null | head -1)
 
-      if [ "$status" = "completed" ] && [ -n "$conclusion" ]; then
+      if [[ "$status" = "completed" ]] && [[ -n "$conclusion" ]]; then
         info "Workflow '${workflow_name}' completed: conclusion=${conclusion}"
         echo "${conclusion}"
         return 0
@@ -150,21 +150,21 @@ wait_for_workflow_by_event() {
       ".workflow_runs[] | select(.name == \"${workflow_name}\")" \
       2>/dev/null | head -c 4096 || true)
 
-    if [ -n "$run_data" ]; then
+    if [[ -n "$run_data" ]]; then
       # If created_after filter, select only runs newer than it
-      if [ -n "$created_after" ]; then
+      if [[ -n "$created_after" ]]; then
         run_data=$(echo "$runs_json" | jq -r \
           ".workflow_runs[] | select(.name == \"${workflow_name}\" and .created_at > \"${created_after}\")" \
           2>/dev/null | head -c 4096 || true)
       fi
     fi
 
-    if [ -n "$run_data" ]; then
+    if [[ -n "$run_data" ]]; then
       local status conclusion
       status=$(echo "$run_data" | jq -rs '.[0].status // ""')
       conclusion=$(echo "$run_data" | jq -rs '.[0].conclusion // ""')
 
-      if [ "$status" = "completed" ] && [ -n "$conclusion" ] && [ "$conclusion" != "null" ]; then
+      if [[ "$status" = "completed" ]] && [[ -n "$conclusion" ]] && [[ "$conclusion" != "null" ]]; then
         info "Workflow '${workflow_name}' completed: conclusion=${conclusion}"
         echo "${conclusion}"
         return 0
@@ -203,7 +203,7 @@ wait_for_comment() {
       --jq '.[].body' 2>/dev/null \
       | grep -F "$pattern" | head -1 || true)
 
-    if [ -n "$match" ]; then
+    if [[ -n "$match" ]]; then
       info "Found comment matching '${pattern}'"
       echo "$match"
       return 0
@@ -221,7 +221,7 @@ wait_for_comment() {
 # Deletes the branch from the remote, even if a PR is still open.
 cleanup_branch() {
   local branch="${1:?branch required}"
-  if [ "${E2E_CLEANUP}" != "true" ]; then
+  if [[ "${E2E_CLEANUP}" != "true" ]]; then
     warn "E2E_CLEANUP=false — skipping deletion of branch ${branch}"
     return 0
   fi
@@ -234,7 +234,7 @@ cleanup_branch() {
 # Closes a PR without merging.
 cleanup_pr() {
   local pr_number="${1:?pr_number required}"
-  if [ "${E2E_CLEANUP}" != "true" ]; then
+  if [[ "${E2E_CLEANUP}" != "true" ]]; then
     warn "E2E_CLEANUP=false — skipping closure of PR #${pr_number}"
     return 0
   fi
@@ -247,7 +247,7 @@ cleanup_pr() {
 # Closes an issue.
 cleanup_issue() {
   local issue_number="${1:?issue_number required}"
-  if [ "${E2E_CLEANUP}" != "true" ]; then
+  if [[ "${E2E_CLEANUP}" != "true" ]]; then
     warn "E2E_CLEANUP=false — skipping closure of issue #${issue_number}"
     return 0
   fi
@@ -263,7 +263,7 @@ assert_conclusion() {
   local expected="${2:?expected required}"
   local scenario="${3:?scenario required}"
 
-  if [ "$actual" = "$expected" ]; then
+  if [[ "$actual" = "$expected" ]]; then
     echo "[PASS] ${scenario}: conclusion=${actual}"
     return 0
   else
@@ -279,7 +279,7 @@ assert_eq() {
   local expected="${2:-}"
   local label="${3:-assert_eq}"
 
-  if [ "$actual" = "$expected" ]; then
+  if [[ "$actual" = "$expected" ]]; then
     echo "[PASS] ${label}: '${actual}' == '${expected}'"
     return 0
   else
@@ -332,7 +332,7 @@ push_file_to_branch() {
     --jq '.sha' 2>/dev/null || true)
 
   local payload
-  if [ -n "$existing_sha" ]; then
+  if [[ -n "$existing_sha" ]]; then
     payload=$(jq -n \
       --arg message "$commit_msg" \
       --arg content "$content_b64" \

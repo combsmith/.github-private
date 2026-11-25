@@ -30,13 +30,13 @@
 # counts as enabled, which is the pre-AI_ENGINES behaviour.
 _VALIDATE_ENGINES_CHAIN_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-chain.sh"
 # shellcheck source=lib/engine-chain.sh
-[ -f "$_VALIDATE_ENGINES_CHAIN_LIB" ] && source "$_VALIDATE_ENGINES_CHAIN_LIB"
+[[ -f "$_VALIDATE_ENGINES_CHAIN_LIB" ]] && source "$_VALIDATE_ENGINES_CHAIN_LIB"
 unset _VALIDATE_ENGINES_CHAIN_LIB
 # Provider model lists (AI_MODELS_*). Optional: without it the probe uses the
 # built-in flash model.
 _VALIDATE_ENGINES_MODELS_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-models.sh"
 # shellcheck source=lib/engine-models.sh
-[ -f "$_VALIDATE_ENGINES_MODELS_LIB" ] && source "$_VALIDATE_ENGINES_MODELS_LIB"
+[[ -f "$_VALIDATE_ENGINES_MODELS_LIB" ]] && source "$_VALIDATE_ENGINES_MODELS_LIB"
 unset _VALIDATE_ENGINES_MODELS_LIB
 
 # Copilot licensing/policy denial (#1546, #1960). Same phrases as engine.sh's
@@ -78,8 +78,8 @@ _validate_engine_enabled() {
 _gemini_probe_key() {
   local _key="$1" _raw _body _code _model
   _model="$(_gemini_probe_model)"
-  if [ -z "$_model" ]; then
-    if [ -z "${_GEMINI_PROBE_MODEL_WARNED:-}" ]; then
+  if [[ -z "$_model" ]]; then
+    if [[ -z "${_GEMINI_PROBE_MODEL_WARNED:-}" ]]; then
       echo "::warning::Gemini billing probe skipped: the configured flash model is not a probe-able id — credit depletion is undetermined." >&2
       _GEMINI_PROBE_MODEL_WARNED=1
     fi
@@ -100,8 +100,8 @@ _gemini_probe_key() {
   if printf '%s' "$_body" | grep -qiE "credits.*depleted"; then
     return 1
   fi
-  if [ "$_code" = "404" ] || printf '%s' "$_body" | grep -qiE "no longer available|is not found|NOT_FOUND"; then
-    if [ -z "${_GEMINI_PROBE_MODEL_WARNED:-}" ]; then
+  if [[ "$_code" = "404" ]] || printf '%s' "$_body" | grep -qiE "no longer available|is not found|NOT_FOUND"; then
+    if [[ -z "${_GEMINI_PROBE_MODEL_WARNED:-}" ]]; then
       echo "::warning::Gemini billing probe: model '${_model}' was not found — credit depletion is undetermined. Check AI_MODELS_GEMINI triage / GEMINI_FLASH_MODEL." >&2
       _GEMINI_PROBE_MODEL_WARNED=1
     fi
@@ -132,7 +132,7 @@ _gemini_billing_probe() {
   local _name _key _seen="" _any=0 _ok=0
   for _name in GEMINI_API_KEY GOOGLE_API_KEY GOOGLE_API_KEY_2 GOOGLE_API_KEY_3 GOOGLE_API_KEY_4; do
     _key="${!_name:-}"
-    [ -z "$_key" ] && continue
+    [[ -z "$_key" ]] && continue
     case "$_seen" in
       *"|${_key}|"*) continue ;;
     esac
@@ -156,9 +156,9 @@ validate_engines() {
   # Deliberate fleet pause (#1525): AGENTS_PAUSED=true is a maintainer decision,
   # not a misconfiguration — report it distinctly and skip availability probes
   # so the paused state is never mistaken for missing/broken engine credentials.
-  if [ "${AGENTS_PAUSED:-false}" = "true" ]; then
+  if [[ "${AGENTS_PAUSED:-false}" = "true" ]]; then
     echo "::notice::validate-engines: agent fleet deliberately paused (AGENTS_PAUSED=true) — engine availability not evaluated (#1525)"
-    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
       echo "**Engines: fleet paused** (\`AGENTS_PAUSED=true\`, #1525) — availability not evaluated." >> "$GITHUB_STEP_SUMMARY"
     fi
     export CLAUDE_AVAILABLE=false GEMINI_AVAILABLE=false COPILOT_AVAILABLE=false
@@ -169,7 +169,7 @@ validate_engines() {
   local _chain_problem="" _disabled=""
   if declare -F ai_engine_chain_problem >/dev/null 2>&1; then
     _chain_problem="$(ai_engine_chain_problem)"
-    if [ -n "$_chain_problem" ] && [ -z "${AI_ENGINES_PROBLEM_REPORTED:-}" ]; then
+    if [[ -n "$_chain_problem" ]] && [[ -z "${AI_ENGINES_PROBLEM_REPORTED:-}" ]]; then
       echo "::warning::$_chain_problem"
       export AI_ENGINES_PROBLEM_REPORTED=1
     fi
@@ -179,7 +179,7 @@ validate_engines() {
   # ── Claude ──────────────────────────────────────────────────────────────────
   if ! _validate_engine_enabled claude; then
     _disabled="${_disabled:+$_disabled, }claude"
-  elif command -v claude >/dev/null 2>&1 && [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+  elif command -v claude >/dev/null 2>&1 && [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
     claude_ok=true
   fi
 
@@ -189,7 +189,7 @@ validate_engines() {
 
   # Append <reason> to the semicolon-joined gemini_reasons list.
   append_gemini_reason() {
-    if [ -n "$gemini_reasons" ]; then
+    if [[ -n "$gemini_reasons" ]]; then
       gemini_reasons="$gemini_reasons; $1"
     else
       gemini_reasons="$1"
@@ -204,23 +204,23 @@ validate_engines() {
     fi
     # Check for any available Gemini API key: primary (GEMINI_API_KEY or GOOGLE_API_KEY)
     # or secondary rotation keys (GOOGLE_API_KEY_2, _3, _4) per issue #1777.
-    if [ -z "${GEMINI_API_KEY:-}" ] && [ -z "${GOOGLE_API_KEY:-}" ] && \
-       [ -z "${GOOGLE_API_KEY_2:-}" ] && [ -z "${GOOGLE_API_KEY_3:-}" ] && \
-       [ -z "${GOOGLE_API_KEY_4:-}" ]; then
+    if [[ -z "${GEMINI_API_KEY:-}" ]] && [[ -z "${GOOGLE_API_KEY:-}" ]] && \
+       [[ -z "${GOOGLE_API_KEY_2:-}" ]] && [[ -z "${GOOGLE_API_KEY_3:-}" ]] && \
+       [[ -z "${GOOGLE_API_KEY_4:-}" ]]; then
       append_gemini_reason "No Gemini API key configured (set GOOGLE_API_KEY, GOOGLE_API_KEY_2, GOOGLE_API_KEY_3 or GOOGLE_API_KEY_4)"
     fi
-    if [ "${GEMINI_CLI_TRUST_WORKSPACE:-false}" != "true" ]; then
+    if [[ "${GEMINI_CLI_TRUST_WORKSPACE:-false}" != "true" ]]; then
       append_gemini_reason "GEMINI_CLI_TRUST_WORKSPACE is not true (fix: set in env or pass --skip-trust)"
     fi
 
-    if [ -z "$gemini_reasons" ]; then
+    if [[ -z "$gemini_reasons" ]]; then
       # All basic checks pass — probe the REST API for billing depletion.
       # Depleted prepayment credits cause the Gemini CLI to retry 10× (~4 min)
       # before surfacing the error; detecting it here lets us skip Gemini entirely
       # and fall through to the next engine immediately.
       if _gemini_billing_probe; then
         gemini_ok=true
-        if [ -n "${GEMINI_DEPLETED_KEYS:-}" ]; then
+        if [[ -n "${GEMINI_DEPLETED_KEYS:-}" ]]; then
           echo "::warning::Gemini key(s) with depleted prepayment credits: ${GEMINI_DEPLETED_KEYS} — Gemini stays available on the remaining key(s); replenish via Google AI Studio (https://aistudio.google.com/billing)"
         fi
       else
@@ -228,7 +228,7 @@ validate_engines() {
       fi
     fi
 
-    if [ -n "$gemini_reasons" ]; then
+    if [[ -n "$gemini_reasons" ]]; then
       echo "::warning::Gemini fallback unavailable — ${gemini_reasons}. When Claude is rate-limited, runs will fall through to the next engine in AI_ENGINES."
     fi
   fi
@@ -246,7 +246,7 @@ validate_engines() {
   local _copilot_tok="${COPILOT_GITHUB_TOKEN:-}"
   if ! _validate_engine_enabled copilot; then
     _disabled="${_disabled:+$_disabled, }copilot"
-  elif [ -z "$_copilot_tok" ]; then
+  elif [[ -z "$_copilot_tok" ]]; then
     echo "::warning::Copilot unavailable — COPILOT_GITHUB_TOKEN is not set. Provide a fine-grained PAT with the Copilot entitlement or remove copilot from AI_ENGINES."
   elif [[ "$_copilot_tok" == ghp_* ]]; then
     echo "::warning::Copilot unavailable — COPILOT_GITHUB_TOKEN is a classic PAT (ghp_), which Copilot rejects. Use a fine-grained PAT or remove copilot from AI_ENGINES."
@@ -258,7 +258,7 @@ validate_engines() {
     _copilot_out="$(env GH_TOKEN="$_copilot_tok" gh copilot --version 2>&1)" || _copilot_rc=$?
     _denied="$(printf '%s\n' "$_copilot_out" | grep -oiE "$_VALIDATE_LICENSE_DENIED_RE" | head -n 1 \
       | tr '[:upper:]' '[:lower:]' || true)"
-    if [ -n "$_denied" ]; then
+    if [[ -n "$_denied" ]]; then
       echo "::warning::Copilot unavailable — ${_denied} (the token's account or org has no usable Copilot entitlement). Fix the Copilot policy/subscription or remove copilot from AI_ENGINES."
     elif [ "$_copilot_rc" -ne 0 ]; then
       echo "::warning::Copilot unavailable — \`gh copilot --version\` failed (exit ${_copilot_rc}). Check the gh CLI and COPILOT_GITHUB_TOKEN, or remove copilot from AI_ENGINES."
@@ -267,7 +267,7 @@ validate_engines() {
     fi
   fi
 
-  if [ -n "$_disabled" ]; then
+  if [[ -n "$_disabled" ]]; then
     echo "::notice::Engine(s) disabled by AI_ENGINES, not probed: ${_disabled}"
   fi
 
@@ -282,7 +282,7 @@ validate_engines() {
 
 # _engine_badge <bool>  →  "ok" or "unavailable"
 _engine_badge() {
-  [ "$1" = "true" ] && printf 'ok' || printf 'unavailable'
+  [[ "$1" = "true" ]] && printf 'ok' || printf 'unavailable'
 }
 
 # _emit_engine_summary <claude_ok> <gemini_ok> <copilot_ok>
@@ -292,7 +292,7 @@ _engine_badge() {
 _emit_engine_summary() {
   local claude_ok="$1" gemini_ok="$2" copilot_ok="$3"
   local dest="${GITHUB_STEP_SUMMARY:-}"
-  [ -z "$dest" ] && return 0
+  [[ -z "$dest" ]] && return 0
   {
     printf '### Engine availability (pre-flight)\n\n'
     printf '| Engine  | Status |\n'

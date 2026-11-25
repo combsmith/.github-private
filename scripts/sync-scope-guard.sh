@@ -21,7 +21,7 @@ source "${SCRIPT_DIR}/lib/sync-scope-check.sh"
 REPO="${REPO:-combsmith/.github-private}"
 PR_NUMBER="${PR_NUMBER:-}"
 
-if [ -z "$PR_NUMBER" ]; then
+if [[ -z "$PR_NUMBER" ]]; then
   echo "::error::sync-scope-guard: PR_NUMBER is not set."
   exit 2
 fi
@@ -41,7 +41,7 @@ if ! is_generated_sync_pr "$labels" "$body"; then
 fi
 
 declared=$(sync_extract_declared_paths <<< "$body")
-if [ -z "$declared" ]; then
+if [[ -z "$declared" ]]; then
   # Identified as a generated sync PR (label) but it declared no path set. With no
   # manifest there is nothing to bound the diff against, so the PR could touch any
   # path without tripping a violation — the exact #1523 hole this guard closes.
@@ -61,11 +61,11 @@ changed=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate \
 
 violations=$(sync_scope_violations "$declared" "$changed")
 
-if [ -n "$violations" ]; then
+if [[ -n "$violations" ]]; then
   echo ""
   echo "::error::Sync PR #${PR_NUMBER} touches paths outside its declared sync scope:"
   while IFS= read -r p; do
-    [ -n "$p" ] || continue
+    [[ -n "$p" ]] || continue
     echo "::error::  out of scope: ${p}"
   done <<< "$violations"
   echo ""

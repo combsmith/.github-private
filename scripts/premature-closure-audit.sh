@@ -55,7 +55,7 @@ echo ""
 # 0. Token selection — fall back to GH_PAT_FALLBACK if REPO is unreachable
 # ---------------------------------------------------------------------------
 if ! gh api "repos/${REPO}" >/dev/null 2>&1; then
-  if [ -n "${GH_PAT_FALLBACK:-}" ]; then
+  if [[ -n "${GH_PAT_FALLBACK:-}" ]]; then
     echo "::warning::GH_TOKEN cannot access ${REPO} — using GH_PAT_FALLBACK"
     export GH_TOKEN="$GH_PAT_FALLBACK"
     if ! gh api "repos/${REPO}" >/dev/null 2>&1; then
@@ -76,7 +76,7 @@ has_merged_closing_pr() {
   local number="$1" timeline
   timeline=$(gh api --paginate "repos/${REPO}/issues/${number}/timeline" \
     -H "Accept: application/vnd.github+json" 2>/dev/null) || { echo "unknown"; return 0; }
-  [ -n "$timeline" ] || { echo "unknown"; return 0; }
+  [[ -n "$timeline" ]] || { echo "unknown"; return 0; }
 
   # A `closed` event with a non-null commit_id means the close came from a commit
   # (a merged "Closes #N" PR). A `cross-referenced`/`connected` event whose source
@@ -108,7 +108,7 @@ has_linked_pr() {
   local number="$1" timeline linked
   timeline=$(gh api --paginate "repos/${REPO}/issues/${number}/timeline" \
     -H "Accept: application/vnd.github+json" 2>/dev/null) || { echo "unknown"; return 0; }
-  [ -n "$timeline" ] || { echo "unknown"; return 0; }
+  [[ -n "$timeline" ]] || { echo "unknown"; return 0; }
 
   linked=$(jq -s -r '
     [ .[] | .[]? |
@@ -135,7 +135,7 @@ issue_has_unretracted_completion_claim() {
     --jq '.[] | (.body // "") | @base64' 2>/dev/null) || { echo "unknown"; return 0; }
   local state="none"
   while IFS= read -r enc; do
-    [ -n "$enc" ] || continue
+    [[ -n "$enc" ]] || continue
     body=$(printf '%s' "$enc" | base64 -d 2>/dev/null) || continue
     # Process every comment in API order so a later retraction overrides an
     # earlier claim. A retracted body clears any prior claim state; a
@@ -249,9 +249,9 @@ trap 'rm -f "$candidates_file"' EXIT
 scanned=0
 
 while IFS=$'\t' read -r number created_at closed_at html_url title; do
-  [ -n "$number" ] || continue
+  [[ -n "$number" ]] || continue
   # Only audit issues actually closed within the lookback window.
-  [ -n "$closed_at" ] || continue
+  [[ -n "$closed_at" ]] || continue
   closed_epoch=$(date -u -d "$closed_at" +%s 2>/dev/null \
     || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$closed_at" +%s 2>/dev/null \
     || echo 0)
@@ -264,13 +264,13 @@ while IFS=$'\t' read -r number created_at closed_at html_url title; do
   # re-open on a lookup we could not resolve.
   merged_state=$(has_merged_closing_pr "$number")
   has_pr=true
-  [ "$merged_state" = "false" ] && has_pr=false
+  [[ "$merged_state" = "false" ]] && has_pr=false
 
   reason=$(premature_closure_reasons "completed" "$minutes_open" "$has_pr")
-  if [ -n "$reason" ]; then
+  if [[ -n "$reason" ]]; then
     safe_title="${title//[$'\n'$'\t'|]/ }"
     printf '%s\t%s\t%s\t%s\n' "$number" "$html_url" "$safe_title" "$reason" >> "$candidates_file"
-    if [ "$DRY_RUN" != "true" ]; then
+    if [[ "$DRY_RUN" != "true" ]]; then
       apply_action "$number" "$reason"
     else
       echo "::notice::[dry-run] would re-open issue #${number} — ${reason}"
@@ -311,24 +311,24 @@ open_issues=$(gh api --paginate \
 }
 
 while IFS=$'\t' read -r number html_url title; do
-  [ -n "$number" ] || continue
+  [[ -n "$number" ]] || continue
   # Only issues that actually carry a (non-retracted) completion claim are in
   # scope. "unknown"/"none" are skipped — fail-safe, never flag on a bad read.
   claim_state=$(issue_has_unretracted_completion_claim "$number")
-  [ "$claim_state" = "claim" ] || continue
+  [[ "$claim_state" = "claim" ]] || continue
   open_scanned=$(( open_scanned + 1 ))
 
   # Fail-safe: an undeterminable link state counts as "has backing PR" so an
   # unreadable timeline never flags a healthy issue.
   linked_state=$(has_linked_pr "$number")
   has_backing_pr=true
-  [ "$linked_state" = "false" ] && has_backing_pr=false
+  [[ "$linked_state" = "false" ]] && has_backing_pr=false
 
   reason=$(unbacked_completion_claim_reasons "true" "$has_backing_pr")
-  if [ -n "$reason" ]; then
+  if [[ -n "$reason" ]]; then
     safe_title="${title//[$'\n'$'\t'|]/ }"
     printf '%s\t%s\t%s\t%s\n' "$number" "$html_url" "$safe_title" "$reason" >> "$open_candidates_file"
-    if [ "$DRY_RUN" != "true" ]; then
+    if [[ "$DRY_RUN" != "true" ]]; then
       apply_open_action "$number" "$reason"
     else
       echo "::notice::[dry-run] would flag open issue #${number} — ${reason}"
@@ -344,7 +344,7 @@ echo "Scanned ${open_scanned} open claim-carrying issue(s); ${open_flagged_count
 # 3. Render report + export env flags
 # ---------------------------------------------------------------------------
 mode="live"
-if [ "$DRY_RUN" = "true" ]; then
+if [[ "$DRY_RUN" = "true" ]]; then
   mode="dry-run"
 fi
 {
@@ -356,9 +356,9 @@ fi
   generate_unbacked_claim_report "$open_candidates_file"
 } > "$REPORT_FILE"
 
-[ -n "${GITHUB_STEP_SUMMARY:-}" ] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+[[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
 
-if [ -n "${GITHUB_ENV:-}" ]; then
+if [[ -n "${GITHUB_ENV:-}" ]]; then
   echo "PREMATURE_CLOSURE_COUNT=${flagged_count}" >> "$GITHUB_ENV"
   if [ "$flagged_count" -gt 0 ]; then
     echo "HAS_PREMATURE_CLOSURE=true" >> "$GITHUB_ENV"

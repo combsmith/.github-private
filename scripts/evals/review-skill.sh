@@ -38,7 +38,7 @@ source "$REPO_ROOT/scripts/engine.sh"
 source "$REPO_ROOT/scripts/lib/review-registry.sh"
 
 CANDIDATE_PATH="${1:?usage: review-skill.sh <candidate-skill-edit>}"
-[ -s "$CANDIDATE_PATH" ] || { echo "::error::candidate skill edit '$CANDIDATE_PATH' missing or empty" >&2; exit 1; }
+[[ -s "$CANDIDATE_PATH" ]] || { echo "::error::candidate skill edit '$CANDIDATE_PATH' missing or empty" >&2; exit 1; }
 # Resolve to an absolute path so the rubric prompt can read it regardless of the
 # engine's working directory.
 CANDIDATE_PATH="$(cd "$(dirname "$CANDIDATE_PATH")" && pwd)/$(basename "$CANDIDATE_PATH")"
@@ -120,7 +120,7 @@ fi
 # Default the gate-consumption path to a stable temp file OUTSIDE WORK_DIR when
 # the caller didn't pin one — WORK_DIR is removed by the EXIT trap, so any path
 # within it would be deleted before the gate can consume the score.
-if [ -z "${SKILL_SCORE_OUTPUT:-}" ]; then
+if [[ -z "${SKILL_SCORE_OUTPUT:-}" ]]; then
   SKILL_SCORE_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/skill-score.json.XXXXXX")"
 fi
 export SKILL_SCORE_OUTPUT

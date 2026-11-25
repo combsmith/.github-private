@@ -80,13 +80,13 @@ qa_lead_gate_decision() {
   fi
 
   # AC #6 — automation budget exhausted (the #860/#926 runaway breaker tripped).
-  if [ "$budget_exhausted" = "1" ]; then
+  if [[ "$budget_exhausted" = "1" ]]; then
     echo "skip:budget-exhausted"
     return 1
   fi
 
   # AC #5 — one advisory per PR: don't stack open-as-draft + ready_for_review.
-  if [ "$existing_advisory" = "1" ]; then
+  if [[ "$existing_advisory" = "1" ]]; then
     echo "skip:already-advised"
     return 1
   fi
@@ -99,6 +99,6 @@ main() {
   qa_lead_gate_decision "$@"
 }
 
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

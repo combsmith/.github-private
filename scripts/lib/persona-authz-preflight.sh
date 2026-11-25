@@ -64,9 +64,9 @@
 #   a garbled field can never be mistaken for a grant.
 authz_write_capability() {
   local admin="${1:-}" maintain="${2:-}" push="${3:-}" triage="${4:-}"
-  if [ "$admin" = "true" ] || [ "$maintain" = "true" ] || [ "$push" = "true" ] || [ "$triage" = "true" ]; then
+  if [[ "$admin" = "true" ]] || [[ "$maintain" = "true" ]] || [[ "$push" = "true" ]] || [[ "$triage" = "true" ]]; then
     echo "yes"
-  elif [ -n "$admin" ] || [ -n "$maintain" ] || [ -n "$push" ] || [ -n "$triage" ]; then
+  elif [[ -n "$admin" ]] || [[ -n "$maintain" ]] || [[ -n "$push" ]] || [[ -n "$triage" ]]; then
     echo "no"
   else
     echo "unknown"
@@ -86,7 +86,7 @@ authz_write_capability() {
 #   argument says "no" — a read failure is never a definite negative (AC #4).
 authz_preflight_decision() {
   local probe_ok="${1:-}" capability="${2:-}"
-  if [ "$probe_ok" != "yes" ]; then
+  if [[ "$probe_ok" != "yes" ]]; then
     echo "INDETERMINATE"
     return 0
   fi
@@ -101,7 +101,7 @@ authz_preflight_decision() {
 #   Exit 0 (the preflight SHOULD fail the run) ONLY for a definite negative.
 #   AUTHORIZED and INDETERMINATE both proceed — the fail-open contract (AC #4).
 authz_preflight_should_fail() {
-  [ "${1:-}" = "UNAUTHORIZED" ]
+  [[ "${1:-}" = "UNAUTHORIZED" ]]
 }
 
 # authz_preflight_diagnostic <decision> <account> <credential> <repo>
