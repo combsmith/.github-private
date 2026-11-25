@@ -191,8 +191,10 @@ jobs:
           persist-credentials: false
       - name: Install PyYAML
         run: python3 -m pip install --quiet --require-hashes --only-binary ":all:" -r requirements/ci/pyyaml.txt
-      - name: Validate agent-shield.yml is pinned to the canonical @agent-shield/v2-stable ref
+      - name: Validate agent-shield.yml is pinned to a major-scoped @agent-shield/v<N>-<tier> channel
         run: python3 tests/dev-lead/integration/test_agent_shield_stub.py
+      - name: Run agent-shield stub validator fixture cases
+        run: python3 tests/dev-lead/integration/test_agent_shield_stub_cases.py
 
   auto-rebase-retry-resilience:
     runs-on: ubuntu-latest
