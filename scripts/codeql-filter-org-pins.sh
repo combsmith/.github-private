@@ -21,13 +21,14 @@ set -euo pipefail
 #   3. its message ends by naming a ref under 'ORG/'.
 # The line is the evidence; the message must agree, so neither a workflow name
 # nor a moved region can hide a third-party action. A result that cannot be read
-# this way is kept: no path, no line, a path outside SOURCE_ROOT, a missing file,
+# this way is kept: no path, no line, a path outside SOURCE_ROOT (a symlink
+# included), a missing file,
 # a percent-encoded path (not decoded), or a file holding a line break that sed
 # does not count but a YAML parser may (a lone CR, U+0085, U+2028, U+2029), as
 # then the line numbers could disagree.
 #
 # Fails closed: when IN is missing or is not a SARIF log (no `runs` array, a run
-# whose `results` is not an array, no run at all), it exits 2 and writes nothing,
+# whose `results` is present but not an array, no run at all), it exits 2 and writes nothing,
 # so the upload step that follows never runs and the CodeQL check goes red.
 # codeql.yml runs the base branch's copy of this script, so a pull request's
 # edit to it counts only after merge, and then checks in the workflow itself
@@ -42,10 +43,6 @@ RULE_ID="actions/unpinned-tag"
 die() {
   echo "codeql-filter-org-pins: $*" >&2
   exit 2
-}
-
-lower() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }
 
 # uses_ref_on_line LINE — print the `uses:` value on a workflow or action line
@@ -68,7 +65,7 @@ is_org_ref() {
   rest="${ref#*/}"
   repo="${rest%%[/@]*}"
   [[ -n "$owner" && "$repo" =~ ^[A-Za-z0-9._-]+$ && "$repo" != "." && "$repo" != ".." ]] || return 1
-  [[ "$(lower "$owner")" == "$(lower "$ORG")" ]]
+  [[ "${owner,,}" == "${ORG,,}" ]]
 }
 
 # message_names_org_ref MESSAGE — 0 when the message's closing clause names a
@@ -83,7 +80,8 @@ message_names_org_ref() {
   [[ "$msg" =~ $re ]] || return 1
   nwo="${BASH_REMATCH[2]}"
   [[ "$nwo" == */?* ]] || return 1
-  [[ "$(lower "${nwo%%/*}")" == "$(lower "$ORG")" ]]
+  local owner="${nwo%%/*}"
+  [[ "${owner,,}" == "${ORG,,}" ]]
 }
 
 # safe_relative_path PATH — 0 for a plain relative path inside the checkout.
@@ -100,6 +98,11 @@ drop_reason() {
   safe_relative_path "$uri" || return 0
   [[ "$line" =~ ^[1-9][0-9]*$ ]] || return 0
   [[ -f "$root/$uri" ]] || return 0
+  # Through a symlink, the file must still be inside the checkout.
+  local real_root real_file
+  real_root="$(cd "$root" && pwd -P)" || return 0
+  real_file="$(cd "$root" && realpath -- "$uri" 2>/dev/null)" || return 0
+  [[ "$real_file" == "$real_root"/* ]] || return 0
   # A lone CR (a CR not ending its line), NEL, LS or PS: keep the result.
   if LC_ALL=C grep -q -e $'\r.' -e $'\xc2\x85' -e $'\xe2\x80\xa8' -e $'\xe2\x80\xa9' "$root/$uri"; then
     return 0
@@ -142,12 +145,13 @@ main() {
         (.value.message.text // "") ]
     | map(tostring | gsub("[\u001f\n\r]"; " ")) | join("\u001f")' "$in")" || die "could not read the results of '$in'"
 
-  local drops=() kept_tags=0 r j uri line msg ref
+  local -a drop_list=()
+  local kept_tags=0 r j uri line msg ref
   while IFS=$'\x1f' read -r r j uri line msg; do
     [[ -n "$r" ]] || continue
     ref="$(drop_reason "$uri" "$line" "$msg" "$root")"
     if [[ -n "$ref" ]]; then
-      drops+=("[$r,$j]")
+      drop_list+=("[$r,$j]")
       echo "dropped: $uri:$line uses $ref (org ref, exempt from SHA pinning)" >&2
     else
       kept_tags=$((kept_tags + 1))
@@ -155,15 +159,15 @@ main() {
     fi
   done <<< "$candidates"
 
-  local before after dropped tmp drops_json="[]"
+  local drops
+  drops="[$(IFS=,; echo "${drop_list[*]}")]"
+
+  local before after dropped tmp
   before="$(jq '[.runs[].results // [] | length] | add // 0' "$in")"
-  dropped="${#drops[@]}"
-  if [[ $dropped -gt 0 ]]; then
-    drops_json="[$(IFS=,; echo "${drops[*]}")]"
-  fi
+  dropped="${#drop_list[@]}"
   mkdir -p "$(dirname "$out")"
   tmp="$(mktemp "$(dirname "$out")/.codeql-filter.XXXXXX")"
-  if ! jq --argjson drops "$drops_json" \
+  if ! jq --argjson drops "$drops" \
       'delpaths([$drops[] | ["runs", .[0], "results", .[1]]])' "$in" > "$tmp"; then
     rm -f "$tmp"
     die "could not write the filtered SARIF"

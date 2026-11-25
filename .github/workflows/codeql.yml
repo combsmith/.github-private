@@ -111,7 +111,8 @@ jobs:
       # A check on the script's output, kept in the workflow so a faulty script
       # cannot hide a result: everything outside the results is unchanged, no
       # result is added, every result of another rule is unchanged, and each
-      # unpinned-tag result that went missing names a `combsmith/` ref.
+      # unpinned-tag result that went missing names a `combsmith/` ref, run by
+      # run (a run is a category).
       - name: Check that only org-ref unpinned-tag results were dropped
         env:
           SARIF_IN: ${{ runner.temp }}/codeql-sarif/${{ matrix.language }}.sarif
@@ -120,16 +121,18 @@ jobs:
           jq -e --slurpfile out "$SARIF_OUT" '
             def rule: .ruleId // .rule.id // "";
             def tag: "actions/unpinned-tag";
-            def others: [.runs[] | (.results // [])[] | select(rule != tag)];
-            def tags: [.runs[] | (.results // [])[] | select(rule == tag)];
+            def others: [.runs[] | [(.results // [])[] | select(rule != tag)]];
+            def tags: [.runs[] | [(.results // [])[] | select(rule == tag)]];
             def org_ref: (.message.text // "")
               | test("(\\]\\([0-9]+\\) uses|\u0027 uses reusable workflow) \u0027combsmith/[^\u0027\\s]+\u0027 with ref \u0027[^\u0027]*\u0027, not a pinned commit hash$"; "i");
             $out[0] as $o
             | (del(.runs[].results) == ($o | del(.runs[].results)))
               and (others == ($o | others))
-              and (($o | tags) - tags == [])
-              and ((tags - ($o | tags)) | length) == ((tags | length) - ($o | tags | length))
-              and ((tags - ($o | tags)) | all(org_ref))' "$SARIF_IN" > /dev/null
+              and ([tags, ($o | tags)] | transpose | all(
+                    .[0] as $was | .[1] as $now
+                    | ($now - $was == [])
+                      and (($was - $now) | length) == (($was | length) - ($now | length))
+                      and (($was - $now) | all(org_ref))))' "$SARIF_IN" > /dev/null
       - name: Upload CodeQL results
         uses: github/codeql-action/upload-sarif@977e6ceaea7361825998245d787fa3b4d6b9e5df # codeql-bundle-v2.27.0
         with:

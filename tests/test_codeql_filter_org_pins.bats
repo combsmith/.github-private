@@ -171,6 +171,18 @@ _out_messages() {
   [ "$(jq '.runs[0].results | length' "$OUT")" -eq 5 ]
 }
 
+@test "a symlink that leads out of the checkout keeps its result" {
+  mkdir -p "$SANDBOX/outside"
+  cp "$SRC/.github/workflows/ci.yml" "$SANDBOX/outside/ci.yml"
+  ln -s "$SANDBOX/outside/ci.yml" "$SRC/.github/workflows/link.yml"
+  ln -s ci.yml "$SRC/.github/workflows/inside.yml"
+  _sarif "$(_result actions/unpinned-tag .github/workflows/link.yml 3 "$ORG_MSG")" \
+    "$(_result actions/unpinned-tag .github/workflows/inside.yml 3 "$ORG_MSG")"
+  _filter
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '[.runs[0].results[].locations[0].physicalLocation.artifactLocation.uri] | join(",")' "$OUT")" = ".github/workflows/link.yml" ]
+}
+
 @test "a path given only by artifact index is resolved" {
   _sarif "$(_result actions/unpinned-tag .github/workflows/ci.yml 3 "$ORG_MSG" | jq -c 'del(.locations[0].physicalLocation.artifactLocation.uri)')"
   _filter
@@ -267,9 +279,10 @@ _out_messages() {
   [ ! -e "$OUT" ]
 }
 
-@test "fails closed: no runs array, an empty runs array, or a results field that is not an array" {
+@test "fails closed: no runs array, an empty runs array, or a results field that is present but not an array" {
   local bad
-  for bad in '{"version":"2.1.0"}' '{"runs":[]}' '{"runs":{}}' '{"runs":[{"results":{}}]}' '[]' '{"runs":["x"]}'; do
+  for bad in '{"version":"2.1.0"}' '{"runs":[]}' '{"runs":{}}' '{"runs":[{"results":{}}]}' '[]' '{"runs":["x"]}' \
+    '{"runs":[{"results":null}]}' '{"runs":[{"results":false}]}'; do
     printf '%s\n' "$bad" > "$IN"
     _filter
     [ "$status" -eq 2 ] || { echo "accepted: $bad"; return 1; }
@@ -393,6 +406,26 @@ _mixed_sarif() {
   _guard "$SANDBOX/t.sarif"
   [ "$status" -ne 0 ]
   jq '.runs[0].automationDetails.id = "/language:other/"' "$IN" > "$SANDBOX/t.sarif"
+  _guard "$SANDBOX/t.sarif"
+  [ "$status" -ne 0 ]
+}
+
+@test "codeql.yml guard: compares run by run, so a result moved to another run fails" {
+  local org third other
+  org="$(_result actions/unpinned-tag .github/workflows/ci.yml 3 "$ORG_MSG")"
+  third="$(_result actions/unpinned-tag .github/workflows/ci.yml 7 "$THIRD_MSG")"
+  other="$(_result actions/untrusted-checkout/medium .github/workflows/ci.yml 5 "Potential unsafe checkout")"
+  jq -n --argjson a "$org" --argjson b "$third" --argjson c "$other" '{version: "2.1.0", runs: [
+    {tool: {driver: {name: "CodeQL"}}, results: [$a, $c]},
+    {tool: {driver: {name: "CodeQL"}}, results: [$b, $a]}]}' > "$IN"
+  _filter
+  [ "$status" -eq 0 ]
+  _guard "$OUT"
+  [ "$status" -eq 0 ]
+  jq '.runs[1].results += [.runs[0].results[0]] | del(.runs[0].results[0])' "$OUT" > "$SANDBOX/t.sarif"
+  _guard "$SANDBOX/t.sarif"
+  [ "$status" -ne 0 ]
+  jq '.runs[0].results += [.runs[1].results[0]] | del(.runs[1].results[0])' "$OUT" > "$SANDBOX/t.sarif"
   _guard "$SANDBOX/t.sarif"
   [ "$status" -ne 0 ]
 }
