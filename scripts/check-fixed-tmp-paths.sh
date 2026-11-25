@@ -51,7 +51,7 @@ hits_file="$(mktemp)" || { echo "::error::check-fixed-tmp-paths: cannot create a
 trap 'rm -f "$hits_file"' EXIT
 
 for d in "${SCAN_DIRS[@]}"; do
-  [ -d "$ROOT/$d" ] || continue
+  [[ -d "$ROOT/$d" ]] || continue
   # grep exits 0 (match), 1 (no match, clean) or >1 (a real scan error). Never
   # mask >1: that would report a false clean.
   rc=0
@@ -66,7 +66,7 @@ done
 LC_ALL=C sort -t: -k1,1 -k2,2n -o "$hits_file" "$hits_file"
 
 allow_file="$ROOT/$ALLOWLIST_REL"
-[ -f "$allow_file" ] || allow_file=/dev/null
+[[ -f "$allow_file" ]] || allow_file=/dev/null
 
 awk -v allow_rel="$ALLOWLIST_REL" '
   # note(tok, file, lno): count the path against its exception row, or record

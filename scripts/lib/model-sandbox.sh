@@ -34,11 +34,11 @@ DUCK_ENGINE DUCK_MODEL"
 MODEL_SANDBOX_SECRET_VARS="GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY
 GEMINI_API_KEY GOOGLE_API_KEY GOOGLE_API_KEY_2 GOOGLE_API_KEY_3 GOOGLE_API_KEY_4"
 
-model_sandbox_enabled() { [ -n "${PR_REVIEW_MODEL_USER:-}" ]; }
+model_sandbox_enabled() { [[ -n "${PR_REVIEW_MODEL_USER:-}" ]]; }
 
 # model_sandbox_require — non-zero when this run must be sandboxed and is not.
 model_sandbox_require() {
-  if [ "${PR_REVIEW_REQUIRE_MODEL_SANDBOX:-false}" = "true" ] && ! model_sandbox_enabled; then
+  if [[ "${PR_REVIEW_REQUIRE_MODEL_SANDBOX:-false}" = "true" ]] && ! model_sandbox_enabled; then
     echo "::error::PR_REVIEW_REQUIRE_MODEL_SANDBOX is set but PR_REVIEW_MODEL_USER is not — refusing to run a review model"
     return 1
   fi
@@ -61,11 +61,11 @@ model_sandbox_exec() {
   local arg cli="" keep="" prev=""
   local -a cmd=()
   for arg in "$@"; do
-    if [ -z "$cli" ]; then
+    if [[ -z "$cli" ]]; then
       case "$arg" in claude | gemini | gh) cli="$arg" ;; esac
     fi
     # The caller's checkout stays out of reach; the sandbox directory stands in.
-    [ "$prev" = "--add-dir" ] && arg="$MODEL_SANDBOX_ROOT/cwd"
+    [[ "$prev" = "--add-dir" ]] && arg="$MODEL_SANDBOX_ROOT/cwd"
     cmd+=("$arg")
     prev="$arg"
   done
@@ -73,7 +73,7 @@ model_sandbox_exec() {
     claude) keep="CLAUDE_CODE_OAUTH_TOKEN,ANTHROPIC_API_KEY" ;;
     gemini)
       # Off until its tool limits are shown to hold on a live run, with a control.
-      if [ "${MODEL_SANDBOX_ALLOW_GEMINI:-false}" != "true" ]; then
+      if [[ "${MODEL_SANDBOX_ALLOW_GEMINI:-false}" != "true" ]]; then
         echo "::error::Gemini is not enabled in the review model sandbox" >&2
         return 1
       fi
@@ -116,7 +116,7 @@ model_sandbox_render_prompt() {
     printf '\n## Runtime values\n\n'
     for name in $MODEL_SANDBOX_PROMPT_VARS; do
       value="${!name-}"
-      [ -n "$value" ] && printf -- '- `$%s`: %s\n' "$name" "$value"
+      [[ -n "$value" ]] && printf -- '- `$%s`: %s\n' "$name" "$value"
     done
     printf '\n---\n\n'
     cat "$prompt_file"
@@ -140,12 +140,12 @@ model_sandbox_call() {
   local _ENGINE_REVIEW_TOOLS="$MODEL_SANDBOX_TOOLS"
   # shellcheck disable=SC2034 # read by _mcp_review_flags
   local REVIEW_MCP_CONFIG=""
-  [ -n "${OUTPUT_FILE:-}" ] && rm -f "$OUTPUT_FILE"
+  [[ -n "${OUTPUT_FILE:-}" ]] && rm -f "$OUTPUT_FILE"
   "$run_fn" "$rendered" "$@" > "$out" || rc=$?
   cat "$out"
-  if [ "$rc" -eq 0 ] && [ -n "${OUTPUT_FILE:-}" ]; then
+  if [ "$rc" -eq 0 ] && [[ -n "${OUTPUT_FILE:-}" ]]; then
     extract_verdict_json "$out" "$OUTPUT_FILE" || true
-    [ -s "$OUTPUT_FILE" ] || rm -f "$OUTPUT_FILE"
+    [[ -s "$OUTPUT_FILE" ]] || rm -f "$OUTPUT_FILE"
   fi
   rm -f "$rendered" "$out"
   return "$rc"
@@ -168,7 +168,7 @@ model_sandbox_selftest() {
   for target in "${GITHUB_ENV:-}" "${GITHUB_PATH:-}" "${GITHUB_OUTPUT:-}" "${GITHUB_STEP_SUMMARY:-}" \
                 "${GITHUB_WORKSPACE:-}" "${GITHUB_WORKSPACE:+$GITHUB_WORKSPACE/scripts/post-pr-review.sh}" \
                 "$MODEL_SANDBOX_ROOT/cli" "$MODEL_SANDBOX_ROOT/cwd" "$MODEL_SANDBOX_CONTEXT_DIR"; do
-    [ -n "$target" ] && [ -e "$target" ] || continue
+    [[ -n "$target" ]] && [[ -e "$target" ]] || continue
     if _model_sandbox_as test -w "$target"; then
       echo "::error::model sandbox: the model user can write $target"
       failed=1
@@ -177,9 +177,9 @@ model_sandbox_selftest() {
   for target in "${GITHUB_ENV:-}" "${GITHUB_PATH:-}" "${GITHUB_OUTPUT:-}" "${RUNNER_TEMP:-}" \
                 "$HOME" "$HOME/.config/gh/hosts.yml" "$HOME/.npmrc" \
                 "${GITHUB_WORKSPACE:+$GITHUB_WORKSPACE/.git/config}"; do
-    [ -n "$target" ] && [ -e "$target" ] || continue
+    [[ -n "$target" ]] && [[ -e "$target" ]] || continue
     # A file under an unreadable directory fails this too, which is what we want.
-    if [ -d "$target" ]; then
+    if [[ -d "$target" ]]; then
       if _model_sandbox_as test -x "$target"; then
         echo "::error::model sandbox: the model user can enter $target"
         failed=1
@@ -190,7 +190,7 @@ model_sandbox_selftest() {
     fi
   done
   if command -v gemini >/dev/null 2>&1; then
-    if [ ! -f "$MODEL_SANDBOX_GEMINI_SETTINGS" ]; then
+    if [[ ! -f "$MODEL_SANDBOX_GEMINI_SETTINGS" ]]; then
       echo "::error::model sandbox: Gemini's tool limits are missing ($MODEL_SANDBOX_GEMINI_SETTINGS)"
       failed=1
     elif _model_sandbox_as test -w "$MODEL_SANDBOX_GEMINI_SETTINGS" \
@@ -205,7 +205,7 @@ model_sandbox_selftest() {
       failed=1
     fi
   done
-  if [ -n "${GITHUB_WORKSPACE:-}" ] && [ -d "$GITHUB_WORKSPACE/.git" ] \
+  if [[ -n "${GITHUB_WORKSPACE:-}" ]] && [[ -d "$GITHUB_WORKSPACE/.git" ]] \
     && git -C "$GITHUB_WORKSPACE" config --get-regexp 'extraheader' >/dev/null 2>&1; then
     echo "::error::model sandbox: the checkout kept a credential (persist-credentials must be false)"
     failed=1
@@ -225,7 +225,7 @@ model_sandbox_selftest() {
 # file to the known fields with a marker built here, never taken from model text.
 model_sandbox_validate_verdict() {
   local file="$1" sha="$2" name value tmp
-  if [ -L "$file" ] || [ ! -f "$file" ]; then
+  if [[ -L "$file" ]] || [[ ! -f "$file" ]]; then
     echo "::error::verdict is not a regular file"
     return 1
   fi
@@ -235,7 +235,7 @@ model_sandbox_validate_verdict() {
   fi
   for name in $MODEL_SANDBOX_SECRET_VARS; do
     value="${!name-}"
-    [ "${#value}" -ge 8 ] || continue
+    [[ "${#value}" -ge 8 ]] || continue
     if printf '%s\n' "$value" | grep -qFf - "$file"; then
       echo "::error::verdict contains the value of a credential; refusing to post it"
       return 1

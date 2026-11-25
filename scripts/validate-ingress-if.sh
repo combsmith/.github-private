@@ -49,7 +49,7 @@ viif_repo_root() {
 }
 
 viif_rulings_path() {
-  if [ -n "${VIIF_RULINGS:-}" ]; then
+  if [[ -n "${VIIF_RULINGS:-}" ]]; then
     printf '%s\n' "$VIIF_RULINGS"
   else
     printf '%s/tests/fixtures/agent-ingress/if-filter-rulings.tsv\n' "$(viif_repo_root)"
@@ -118,7 +118,7 @@ viif_reaches_unlisted_context() {
   # (a) a github.<x> reference outside the event allowlist (event_name / event.*).
   #     bare github.repository is the repo-identity construct's own concern.
   while IFS= read -r sub; do
-    [ -n "$sub" ] || continue
+    [[ -n "$sub" ]] || continue
     case "$sub" in
       event_name|event|repository) continue ;;
       *) return 0 ;;
@@ -158,12 +158,12 @@ viif_forbidden() {
   # body 'set vars.X please') is not mistaken for a context reference (#1781 AC #2).
   sexpr="$(printf '%s' "$nexpr" | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g")"
   rulings="$(viif_rulings_path)"
-  [ -f "$rulings" ] || { echo "::error::rulings table not found: $rulings" >&2; return 2; }
+  [[ -f "$rulings" ]] || { echo "::error::rulings table not found: $rulings" >&2; return 2; }
 
   # shellcheck disable=SC2034  # row_expr/row_rationale columns are consumed by the test, not here
-  while IFS=$'\t' read -r name verdict row_expr row_rationale || [ -n "$name" ]; do
+  while IFS=$'\t' read -r name verdict row_expr row_rationale || [[ -n "$name" ]]; do
     case "$name" in ''|'#'*) continue ;; esac
-    [ "$verdict" = "FORBID" ] || continue
+    [[ "$verdict" = "FORBID" ]] || continue
     if viif_expr_matches_construct "$sexpr" "$name"; then
       case " $hits " in *" $name "*) : ;; *) hits+="${hits:+ }$name" ;; esac
     fi
@@ -174,7 +174,7 @@ viif_forbidden() {
     case " $hits " in *" unlisted-context "*) : ;; *) hits+="${hits:+ }unlisted-context" ;; esac
   fi
 
-  [ -z "$hits" ] && return 0
+  [[ -z "$hits" ]] && return 0
   printf '%s\n' "$hits"
   return 1
 }
@@ -201,15 +201,15 @@ viif_group_exprs() {
       c="${rest:$i:1}"
       if (( in_quote )); then
         expr_body+="$c"
-        if [ "$c" = "$quote_char" ] && [ "${rest:$((i-1)):1}" != "\\" ]; then
+        if [[ "$c" = "$quote_char" ]] && [[ "${rest:$((i-1)):1}" != "\\" ]]; then
           in_quote=0
         fi
       else
-        if [ "$c" = '"' ] || [ "$c" = "'" ]; then
+        if [[ "$c" = '"' ]] || [[ "$c" = "'" ]]; then
           expr_body+="$c"
           in_quote=1
           quote_char="$c"
-        elif [ "$c" = "}" ] && [ "${rest:$((i+1)):1}" = "}" ]; then
+        elif [[ "$c" = "}" ]] && [[ "${rest:$((i+1)):1}" = "}" ]]; then
           # Found closing }}
           printf '%s\n' "$expr_body"
           rest="${rest:$((i+2))}"
@@ -243,7 +243,7 @@ viif_group_stems() {
   head="${group%%"$VIIF_EXPR_OPEN"*}"
   head="${head#"${head%%[![:space:]]*}"}"
   [[ "$group" == *"$VIIF_EXPR_OPEN"* ]] || head="${head%"${head##*[![:space:]]}"}"
-  if [ -n "$head" ]; then
+  if [[ -n "$head" ]]; then
     printf '%s\n' "$head"
     return 0
   fi
@@ -313,14 +313,14 @@ viif_group_stems() {
 # declares) needs the reusable at its pinned ref; validate-caller-inputs.sh owns it.
 viif_check_concurrency() {
   local role="$1" group="$2" cancel="$3" rc=0 expr bad stem stems group_exprs
-  if [ -z "$group" ]; then
+  if [[ -z "$group" ]]; then
     echo "concurrency: declares no group"
     return 1
   fi
 
   group_exprs="$(viif_group_exprs "$group")"
   while IFS= read -r expr; do
-    [ -n "$expr" ] || continue
+    [[ -n "$expr" ]] || continue
     if ! bad="$(viif_forbidden "$expr")"; then
       echo "concurrency.group reaches beyond the event payload — forbidden construct(s): ${bad}"
       rc=1
@@ -334,12 +334,12 @@ viif_check_concurrency() {
   esac
 
   stems="$(viif_group_stems "$group")"
-  if [ -z "$stems" ]; then
+  if [[ -z "$stems" ]]; then
     echo "concurrency.group carries no literal role prefix — it must begin with '${role}-'"
     rc=1
   fi
   while IFS= read -r stem; do
-    [ -n "$stem" ] || continue
+    [[ -n "$stem" ]] || continue
     case "$stem" in
       "$role"-*) : ;;
       "<dynamic>") echo "concurrency.group can resolve to a bare expression value without the role prefix — every possible leading result must begin with '${role}-'"; rc=1 ;;
@@ -365,9 +365,9 @@ viif_job_concurrency() {
       # Check that cancel-in-progress, if present, is a literal boolean (type "boolean" or "!!bool")
       local cancel_type
       cancel_type="$(yq ".jobs[\"$job\"].concurrency[\"cancel-in-progress\"] | type" "$file" 2>/dev/null)"
-      if [ "$cancel_type" = "boolean" ] || [ "$cancel_type" = "!!bool" ]; then
+      if [[ "$cancel_type" = "boolean" ]] || [[ "$cancel_type" = "!!bool" ]]; then
         cancel="$(yq ".jobs[\"$job\"].concurrency[\"cancel-in-progress\"]" "$file" 2>/dev/null)"
-      elif [ "$(yq ".jobs[\"$job\"].concurrency | has(\"cancel-in-progress\")" "$file" 2>/dev/null)" = "true" ]; then
+      elif [[ "$(yq ".jobs[\"$job\"].concurrency | has(\"cancel-in-progress\")" "$file" 2>/dev/null)" = "true" ]]; then
         # cancel-in-progress is present but not a boolean — this is an error, mark with special value
         cancel="__NOT_BOOLEAN__"
       fi
@@ -389,17 +389,17 @@ viif_validate_ingress() {
   local -a jobs
 
   mapfile -t jobs < <(yq '.jobs | keys | .[]' "$file" 2>/dev/null)
-  if [ "${#jobs[@]}" -eq 0 ]; then
+  if [[ "${#jobs[@]}" -eq 0 ]]; then
     echo "::error::agent-ingress $(basename "$file") declares no jobs"
     return 1
   fi
 
   for job in "${jobs[@]}"; do
-    [ -n "$job" ] || continue
+    [[ -n "$job" ]] || continue
 
     # (1) thin-caller structural check: the job MUST pin a reusable via uses:.
     uses="$(yq ".jobs[\"$job\"].uses // \"\"" "$file" 2>/dev/null)"
-    if [ -z "$uses" ] || [ "$uses" = "null" ]; then
+    if [[ -z "$uses" ]] || [[ "$uses" = "null" ]]; then
       echo "::error::agent-ingress job '$job' is not a thin caller — it has no reusable 'uses:' pin (an ingress job must be a thin caller)"
       rc=1
       continue
@@ -407,8 +407,8 @@ viif_validate_ingress() {
 
     # (2) if:-as-event-filter check.
     ifexpr="$(yq ".jobs[\"$job\"].if // \"\"" "$file" 2>/dev/null)"
-    [ "$ifexpr" = "null" ] && ifexpr=""
-    if [ -n "$ifexpr" ]; then
+    [[ "$ifexpr" = "null" ]] && ifexpr=""
+    if [[ -n "$ifexpr" ]]; then
       if bad="$(viif_forbidden "$ifexpr")"; then
         : # pure event filter
       else
@@ -420,11 +420,11 @@ viif_validate_ingress() {
     # (3) job-level concurrency: bounds (ADR-0010).
     local has_concurrency
     has_concurrency="$(yq ".jobs[\"$job\"] | has(\"concurrency\")" "$file" 2>/dev/null)"
-    if [ "$has_concurrency" = "true" ]; then
+    if [[ "$has_concurrency" = "true" ]]; then
       IFS=$'\x1f' read -r group cancel < <(viif_job_concurrency "$file" "$job")
       concurrency_checks="$(viif_check_concurrency "$job" "$group" "$cancel" || true)"
       while IFS= read -r reason; do
-        [ -n "$reason" ] || continue
+        [[ -n "$reason" ]] || continue
         echo "::error::agent-ingress job '$job' ${reason} (ADR-0010: a job-level concurrency group may read only the event surface an if: may read, must carry the role name as a prefix, and cancel-in-progress must be a literal boolean)"
         rc=1
       done <<< "$concurrency_checks"
@@ -438,7 +438,7 @@ viif_validate_ingress() {
 
 viif_scan() {
   local root="$1" ingress="$1/.github/workflows/agent-ingress.yml"
-  if [ ! -f "$ingress" ]; then
+  if [[ ! -f "$ingress" ]]; then
     echo "ingress-if: no agent-ingress.yml under ${root}/.github/workflows — nothing to check (clean pass)."
     return 0
   fi
@@ -455,12 +455,12 @@ viif_scan() {
 main() {
   command -v yq >/dev/null 2>&1 || { echo "::error::yq is required but not installed." >&2; return 1; }
   local root="${VIIF_ROOT:-}"
-  [ -n "$root" ] || root="$(viif_repo_root)"
+  [[ -n "$root" ]] || root="$(viif_repo_root)"
   viif_scan "$root"
 }
 
 # Run only when executed directly, so tests can source the helpers.
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   set -euo pipefail
   main "$@"
 fi

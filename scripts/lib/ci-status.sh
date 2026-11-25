@@ -124,23 +124,23 @@ _CI_STATUS_JQ_IS_AGENT_CHECK='
 # any error it degrades to "[]" (no agent filtering), which is safe: it only
 # reverts to the pre-#1427 behavior of counting those checks.
 _ci_status_agent_roles_json() {
-  if [ -n "${CI_STATUS_AGENT_ROLES_JSON:-}" ]; then
+  if [[ -n "${CI_STATUS_AGENT_ROLES_JSON:-}" ]]; then
     printf '%s' "$CI_STATUS_AGENT_ROLES_JSON"
     return 0
   fi
   local dir="${CI_STATUS_CONTRACTS_DIR:-$_CI_STATUS_LIB_DIR/../../interaction-contracts}"
   local roles_json="[]"
-  if [ -n "$dir" ] && [ -d "$dir" ]; then
+  if [[ -n "$dir" ]] && [[ -d "$dir" ]]; then
     local files
     files=("$dir"/*.yml)
-    if [ -e "${files[0]}" ]; then
+    if [[ -e "${files[0]}" ]]; then
       roles_json=$(
         grep -hE '^role:[[:space:]]' "${files[@]}" 2>/dev/null \
           | sed -E 's/^role:[[:space:]]*//; s/[[:space:]]+$//' \
           | jq -R 'select(length > 0)' 2>/dev/null \
           | jq -s 'unique' 2>/dev/null
       ) || roles_json="[]"
-      [ -n "$roles_json" ] || roles_json="[]"
+      [[ -n "$roles_json" ]] || roles_json="[]"
     fi
   fi
   printf '%s' "$roles_json"
@@ -170,17 +170,17 @@ _ci_status_agent_roles_json() {
 # passed only the rollup and so reverted to blocking on red non-required checks).
 ruleset_required_checks() {
   local repo="$1" branch="$2" out=""
-  [ -n "$repo" ] && [ -n "$branch" ] || return 0
+  [[ -n "$repo" ]] && [[ -n "$branch" ]] || return 0
   # Ruleset API (primary): collect every required_status_checks rule's contexts.
   out=$(gh api "repos/$repo/rules/branches/$branch" \
           --jq '[.[] | select(.type == "required_status_checks")
                       | .parameters.required_status_checks[]?.context]' 2>/dev/null) || out=""
-  if [ -z "$out" ] || [ "$out" = "[]" ]; then
+  if [[ -z "$out" ]] || [[ "$out" = "[]" ]]; then
     # Classic branch-protection fallback (404 on ruleset-only branches like main).
     local classic
     classic=$(gh api "repos/$repo/branches/$branch/protection/required_status_checks" \
                 --jq '[.checks[]?.context] // []' 2>/dev/null) || classic=""
-    if [ -n "$classic" ] && [ "$classic" != "[]" ]; then
+    if [[ -n "$classic" ]] && [[ "$classic" != "[]" ]]; then
       out="$classic"
     fi
   fi
@@ -197,7 +197,7 @@ compute_ci_status() {
   # fallback (fail closed) rather than erroring. Skip the jq subprocess for the
   # common empty/[] case (rulesets unconfigured or the API read empty) — this runs
   # inside the caller's polling loop.
-  if [ -z "$required_names" ] || [ "$required_names" = "[]" ]; then
+  if [[ -z "$required_names" ]] || [[ "$required_names" = "[]" ]]; then
     required_names="[]"
   else
     required_names="$(jq -c 'if type == "array" then . else [] end' <<< "$required_names" 2>/dev/null || echo '[]')"
@@ -273,7 +273,7 @@ ci_nonrequired_failures() {
   local required_names="${2:-[]}"
   local agent_roles
   agent_roles="$(_ci_status_agent_roles_json)"
-  if [ -z "$required_names" ] || [ "$required_names" = "[]" ]; then
+  if [[ -z "$required_names" ]] || [[ "$required_names" = "[]" ]]; then
     required_names="[]"
   else
     required_names="$(jq -c 'if type == "array" then . else [] end' <<< "$required_names" 2>/dev/null || echo '[]')"

@@ -68,7 +68,7 @@ assert_json_field() {
   local expected="$4"
   local got
   got=$(echo "$json_str" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d$field)" 2>/dev/null || echo "ERROR")
-  if [ "$got" = "$expected" ]; then
+  if [[ "$got" = "$expected" ]]; then
     ok "$name"
   else
     fail "$name" "expected '$expected', got '$got'"
@@ -174,7 +174,7 @@ PROMPT="$TMPDIR_TESTS/structure.txt"
 printf 'Check structure.\n' > "$PROMPT"
 PAYLOAD=$(build_payload "$PROMPT")
 MSG_ROLE=$(echo "$PAYLOAD" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['messages'][0]['role'])" 2>/dev/null || echo "ERROR")
-if [ "$MSG_ROLE" = "user" ]; then
+if [[ "$MSG_ROLE" = "user" ]]; then
   ok "messages[0].role is 'user'"
 else
   fail "messages[0].role is 'user'" "got '$MSG_ROLE'"
@@ -182,7 +182,7 @@ fi
 # temperature must be absent from the payload — o4-mini (and other reasoning
 # models) only support the default value and reject temperature=0 with HTTP 400.
 TEMPERATURE=$(echo "$PAYLOAD" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('temperature', 'ABSENT'))" 2>/dev/null || echo "ERROR")
-if [ "$TEMPERATURE" = "ABSENT" ]; then
+if [[ "$TEMPERATURE" = "ABSENT" ]]; then
   ok "temperature is absent from payload (required for o4-mini compatibility)"
 else
   fail "temperature is absent from payload" "got '$TEMPERATURE' — o4-mini rejects temperature != default"

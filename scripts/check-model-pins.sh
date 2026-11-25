@@ -42,7 +42,7 @@ is_allowed() {
 
 found=0
 for d in "${SCAN_DIRS[@]}"; do
-  [ -d "$ROOT/$d" ] || continue
+  [[ -d "$ROOT/$d" ]] || continue
   # Capture matches. grep exits 0 (match), 1 (no match — expected/clean) or >1
   # (a real scan error: missing grep, unreadable tree). Never mask >1 with
   # `|| true` — that would report a false clean and let hard pins pass; fail loud.
@@ -52,9 +52,9 @@ for d in "${SCAN_DIRS[@]}"; do
     echo "::error::check-model-pins: scan of '$d' failed (grep exit $rc) — cannot certify clean." >&2
     exit 2
   fi
-  [ -n "$hits" ] || continue
-  while IFS= read -r hit || [ -n "$hit" ]; do
-    [ -n "$hit" ] || continue
+  [[ -n "$hits" ]] || continue
+  while IFS= read -r hit || [[ -n "$hit" ]]; do
+    [[ -n "$hit" ]] || continue
     file="${hit%%:*}"
     rel="${file#"$ROOT"/}"
     is_allowed "$rel" && continue

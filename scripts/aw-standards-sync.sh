@@ -55,14 +55,14 @@ SKIP_LIST=()
 for _r in "${_SKIP_RAW[@]+"${_SKIP_RAW[@]}"}"; do
   _r="${_r#"${_r%%[![:space:]]*}"}"
   _r="${_r%"${_r##*[![:space:]]}"}"
-  [ -n "$_r" ] && SKIP_LIST+=("$_r")
+  [[ -n "$_r" ]] && SKIP_LIST+=("$_r")
 done
 
 _is_skipped() {
   local repo="$1"
   for skip in "${SKIP_LIST[@]+"${SKIP_LIST[@]}"}"; do
-    [ "$repo" = "$skip" ] && return 0
-    [ "${repo##*/}" = "$skip" ] && return 0
+    [[ "$repo" = "$skip" ]] && return 0
+    [[ "${repo##*/}" = "$skip" ]] && return 0
   done
   return 1
 }
@@ -74,7 +74,7 @@ echo "Enumerating repos in ${ORG}..."
 repos=$(gh api "orgs/${ORG}/repos?per_page=100&type=all" \
   --jq '[.[] | select(.archived == false)] | .[].full_name' 2>/dev/null || true)
 
-if [ -z "$repos" ]; then
+if [[ -z "$repos" ]]; then
   echo "::error::Could not enumerate repos for org ${ORG}."
   exit 1
 fi
@@ -91,7 +91,7 @@ for entry in "${REQUIRED_FILES[@]}"; do
   _template="${entry#*|}"
   content=$(gh api "repos/${STANDARDS_REPO}/contents/${_template}" \
     --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || true)
-  if [ -z "$content" ]; then
+  if [[ -z "$content" ]]; then
     echo "::warning::Template not found in ${STANDARDS_REPO}: ${_template} — skipping this requirement."
   fi
   TEMPLATE_CONTENT["$_template"]="$content"
@@ -133,7 +133,7 @@ while IFS= read -r repo; do
     fi
   done
 
-  if [ "$_repo_api_error" = "true" ]; then
+  if [[ "$_repo_api_error" = "true" ]]; then
     summary_rows="${summary_rows}| \`${repo}\` | (skip) | (skip) | API error during compliance check |\n"
     continue
   fi
@@ -148,14 +148,14 @@ while IFS= read -r repo; do
 
     current_val=$(gh api "repos/${repo}" --jq "${jq_path} // \"null\"" 2>/dev/null || echo "error")
 
-    if [ "$current_val" = "enabled" ]; then
+    if [[ "$current_val" = "enabled" ]]; then
       : # already enabled — nothing to do
-    elif [ "$current_val" = "error" ]; then
+    elif [[ "$current_val" = "error" ]]; then
       echo "  [warn] ${repo} — could not read ${setting_label}"
       security_notes="${security_notes} \`${setting_label}\`:error"
     else
       # dependabot_security_updates requires Dependabot alerts to be enabled first.
-      if [ "$setting_label" = "dependabot_security_updates" ]; then
+      if [[ "$setting_label" = "dependabot_security_updates" ]]; then
         gh api -X PUT "repos/${repo}/vulnerability-alerts" --silent 2>/dev/null || \
           echo "  [warn] ${repo} — could not enable vulnerability alerts (prerequisite for dependabot_security_updates)"
       fi
@@ -171,12 +171,12 @@ while IFS= read -r repo; do
     fi
   done
 
-  if [ "${#missing_files[@]}" -eq 0 ] && [ -z "$security_notes" ]; then
+  if [[ "${#missing_files[@]}" -eq 0 ]] && [[ -z "$security_notes" ]]; then
     compliant_count=$((compliant_count + 1))
     echo "  [ok]   ${repo}"
     summary_rows="${summary_rows}| \`${repo}\` | ✅ | ✅ | Compliant |\n"
     continue
-  elif [ "${#missing_files[@]}" -eq 0 ]; then
+  elif [[ "${#missing_files[@]}" -eq 0 ]]; then
     # Files compliant but security settings were applied/errored
     compliant_count=$((compliant_count + 1))
     echo "  [ok]   ${repo} (security settings updated)"
@@ -192,7 +192,7 @@ while IFS= read -r repo; do
     --json number \
     --jq '.[0].number // ""' 2>/dev/null || true)
 
-  if [ -n "$existing_pr" ]; then
+  if [[ -n "$existing_pr" ]]; then
     echo "  [skip] ${repo} — PR #${existing_pr} already open"
     summary_rows="${summary_rows}| \`${repo}\` | (see PR) | (see PR) | PR #${existing_pr} already open |\n"
     continue
@@ -203,7 +203,7 @@ while IFS= read -r repo; do
   base_sha=$(gh api "repos/${repo}/git/ref/heads/${default_branch}" \
     --jq '.object.sha' 2>/dev/null || true)
 
-  if [ -z "$base_sha" ]; then
+  if [[ -z "$base_sha" ]]; then
     echo "  [warn] ${repo} — could not get SHA for ${default_branch}, skipping"
     continue
   fi
@@ -232,7 +232,7 @@ while IFS= read -r repo; do
     template_key="${entry#*|}"
     file_content="${TEMPLATE_CONTENT[$template_key]:-}"
 
-    if [ -z "$file_content" ]; then
+    if [[ -z "$file_content" ]]; then
       echo "  [warn] ${repo} — no template for ${required_path}, skipping file"
       continue
     fi
@@ -264,7 +264,7 @@ while IFS= read -r repo; do
     --label "$SYNC_LABEL" \
     2>/dev/null || true)
 
-  if [ -n "$pr_url" ]; then
+  if [[ -n "$pr_url" ]]; then
     prs_opened=$((prs_opened + 1))
     echo "  [pr]   ${repo} — opened ${pr_url}"
     # Make the PR auto-rebase-eligible from creation (combsmith/.github#711):
@@ -299,7 +299,7 @@ gh issue list --repo "${REPORT_REPO}" --label "${SYNC_LABEL}" --state open \
   --json number,title \
   -q '.[] | select(.title | startswith("Standards Sync — ")) | .number' 2>/dev/null \
 | while read -r prev; do
-    [ -n "$prev" ] || continue
+    [[ -n "$prev" ]] || continue
     gh issue close "$prev" --repo "${REPORT_REPO}" \
       --comment "Superseded by the newer standards-sync summary." >/dev/null 2>&1 || true
   done || true
