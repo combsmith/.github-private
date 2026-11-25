@@ -66,18 +66,18 @@ INFORMATIONAL_FIELDS=(repo attempt)
 
 die() { echo "check-retry-payload-fields: $*" >&2; exit 2; }
 warn() { echo "check-retry-payload-fields: warning: $*" >&2; }
-in_ci() { [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; }
+in_ci() { [[ "${CI:-}" = "true" ]] || [[ "${GITHUB_ACTIONS:-}" = "true" ]]; }
 
-[ -f "$ROOT/$STUB" ] || die "$STUB not found under $ROOT"
-[ -f "$ROOT/$SWEEP" ] || die "$SWEEP not found under $ROOT"
+[[ -f "$ROOT/$STUB" ]] || die "$STUB not found under $ROOT"
+[[ -f "$ROOT/$SWEEP" ]] || die "$SWEEP not found under $ROOT"
 pinned=$(sed -n 's/^[[:space:]]*agent_ref:[[:space:]]*["'\'']\{0,1\}\([^"'\''[:space:]#]*\).*/\1/p' "$ROOT/$STUB" | head -n1)
-[ -n "$pinned" ] || die "no agent_ref in $STUB"
+[[ -n "$pinned" ]] || die "no agent_ref in $STUB"
 # Allow main, or dev-lead channel/release tags (matches dev-lead-reusable.yml validation)
 [[ "$pinned" =~ ^(main|dev-lead/(v[0-9]+(\.[0-9]+\.[0-9]+|-(stable|next|ring[0-9]+))|stable|next|ring[0-9]+))$ ]] \
   || die "agent_ref '$pinned' in $STUB is not 'main' or a dev-lead channel/release tag"
 
 # Extract major version for channel tag processing (main has no major)
-if [ "$pinned" = "main" ]; then
+if [[ "$pinned" = "main" ]]; then
   major="main"
 elif [[ "$pinned" =~ ^dev-lead/(v[0-9]+)-(stable|next|ring[0-9]+)$ ]]; then
   major="${BASH_REMATCH[1]}"
@@ -190,7 +190,7 @@ fields_read_at() {
   # Walk the source graph (a lib may source another lib), each lib once.
   local -a queue=() seen=()
   mapfile -t queue < <(grep -oE '/lib/[A-Za-z0-9_.-]+\.sh' <<<"$parsed" | sort -u)
-  while [ "${#queue[@]}" -gt 0 ]; do
+  while [[ "${#queue[@]}" -gt 0 ]]; do
     lib="${queue[0]}"; queue=("${queue[@]:1}")
     case " ${seen[*]} " in *" $lib "*) continue ;; esac
     seen+=("$lib")
@@ -215,9 +215,9 @@ tags=()
 # --depth=1 only on a clone that is already shallow (a CI checkout): on a full
 # local clone it would make the repository shallow.
 depth=()
-[ "$(git -C "$ROOT" rev-parse --is-shallow-repository 2>/dev/null)" = true ] && depth=(--depth=1)
+[[ "$(git -C "$ROOT" rev-parse --is-shallow-repository 2>/dev/null)" = true ]] && depth=(--depth=1)
 
-if [ "$pinned" = "main" ]; then
+if [[ "$pinned" = "main" ]]; then
   # Fetch into a dedicated ref outside refs/heads/: fetching into the checked-out
   # branch (a push to main in CI) is refused by git. The same ref is used for the
   # rev-parse check and every parser read.
@@ -300,12 +300,12 @@ grep -q '^INDIRECT$' <<<"$sent" \
 if nopayload=$(grep '^NOPAYLOAD ' <<<"$sent"); then
   die "dispatcher(s) sent no client_payload for the probe call, so their fields cannot be certified: $(cut -d' ' -f2 <<<"$nopayload" | tr '\n' ' ')"
 fi
-[ -n "$sent" ] || die "no dispatcher in ${SWEEP} sent a client_payload; the check may need updating"
+[[ -n "$sent" ]] || die "no dispatcher in ${SWEEP} sent a client_payload; the check may need updating"
 
 missing=0
 for tag in "${tags[@]}"; do
   read_fields=$(fields_read_at "$tag")
-  [ -n "$read_fields" ] || die "${PARSER} at ${tag} reads no client_payload fields; the check may need updating"
+  [[ -n "$read_fields" ]] || die "${PARSER} at ${tag} reads no client_payload fields; the check may need updating"
   while read -r fn field; do
     case " ${INFORMATIONAL_FIELDS[*]} " in *" $field "*) continue ;; esac
     if ! grep -qxF "$field" <<<"$read_fields"; then

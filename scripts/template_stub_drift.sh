@@ -102,7 +102,7 @@ readonly -a TEMPLATE_DRIFT_ALLOWLIST=(
 template_drift_allowlisted() {
   local path="${1:-}" a
   for a in "${TEMPLATE_DRIFT_ALLOWLIST[@]}"; do
-    [ "$a" = "$path" ] && return 0
+    [[ "$a" = "$path" ]] && return 0
   done
   return 1
 }
@@ -130,7 +130,7 @@ readonly -a TEMPLATE_DRIFT_REFERENCE=(
 template_drift_is_reference() {
   local path="${1:-}" r
   for r in "${TEMPLATE_DRIFT_REFERENCE[@]}"; do
-    [ "$r" = "$path" ] && return 0
+    [[ "$r" = "$path" ]] && return 0
   done
   return 1
 }
@@ -188,15 +188,15 @@ template_drift_covered() {
 #               never prints the bare re-seed remedy for a file it could not check.
 template_drift_classify() {
   local committed="${1:-}" expected_n="${2:-}" expected_n1="${3:-}" expected_head="${4:-}"
-  if [ -z "$committed" ] || [ "$committed" = "null" ]; then
+  if [[ -z "$committed" ]] || [[ "$committed" = "null" ]]; then
     printf 'MISSING\t\n'
-  elif [ -n "$expected_n" ] && [ "$committed" = "$expected_n" ]; then
+  elif [[ -n "$expected_n" ]] && [[ "$committed" = "$expected_n" ]]; then
     printf 'ALIGNED\tN\n'
-  elif [ -n "$expected_n1" ] && [ "$committed" = "$expected_n1" ]; then
+  elif [[ -n "$expected_n1" ]] && [[ "$committed" = "$expected_n1" ]]; then
     printf 'ALIGNED\tN-1\n'
-  elif [ "$expected_head" = "unknown" ]; then
+  elif [[ "$expected_head" = "unknown" ]]; then
     printf 'DRIFTED\tahead-unchecked\n'
-  elif [ -n "$expected_head" ] && [ "$committed" = "$expected_head" ]; then
+  elif [[ -n "$expected_head" ]] && [[ "$committed" = "$expected_head" ]]; then
     printf 'AHEAD\tHEAD\n'
   else
     printf 'DRIFTED\t\n'
@@ -225,11 +225,11 @@ template_drift_report_header() {
   # shellcheck disable=SC2016
   printf 'Baseline derived from standards ref `%s` (commit `%s`) on %s.\n' \
     "$ref" "${sha:0:12}" "$TEMPLATE_REPO"
-  if [ -n "$prev" ]; then
+  if [[ -n "$prev" ]]; then
     # shellcheck disable=SC2016
     printf 'Also accepting the immediately-preceding version (N-1) at ref `%s` while a promotion propagates.\n' "$prev"
   fi
-  if [ -n "$head" ]; then
+  if [[ -n "$head" ]]; then
     # shellcheck disable=SC2016
     printf 'A file matching neither is also compared against standards HEAD (commit `%s`): a match there is AHEAD (promote standards), not DRIFTED.\n' "${head:0:12}"
   fi
@@ -244,7 +244,7 @@ template_drift_report_header() {
 # 1 and annotates on any legacy pin found; 0 otherwise. Pure: reads args/stdin.
 template_drift_assert_major_scoped() {
   local content legacy
-  if [ $# -ge 1 ]; then
+  if [[ $# -ge 1 ]]; then
     content="$1"
   else
     content="$(cat)"
@@ -253,7 +253,7 @@ template_drift_assert_major_scoped() {
   legacy="$(printf '%s\n' "$content" \
     | grep -oE '[A-Za-z0-9._-]+-reusable\.yml@[A-Za-z0-9._-]+/(stable|next|ring0|ring1)([^A-Za-z0-9./-]|$)' \
     || true)"
-  if [ -n "$legacy" ]; then
+  if [[ -n "$legacy" ]]; then
     printf '::error::resolved standards content carries a pre-#1184 legacy non-major-scoped reusable pin (%s) — neither N nor N-1 may reintroduce it (#1448 AC #9).\n' \
       "${legacy%%$'\n'*}"
     return 1
@@ -282,34 +282,34 @@ template_drift_assert_major_scoped() {
 template_drift_annotate() {
   local f="${1:-}" n_ref="${2:-${STANDARDS_CHANNEL:-standards/v1-stable}}" head_sha="${3:-}"
   local row file status committed expected matched head_note="" drifted=0
-  [ -n "$f" ] && [ -f "$f" ] || return 0
-  if [ -n "$head_sha" ]; then
+  [[ -n "$f" ]] && [[ -f "$f" ]] || return 0
+  if [[ -n "$head_sha" ]]; then
     head_note=" (commit ${head_sha:0:12})"
   fi
   # Split each row on tabs WITHOUT collapsing empty fields — `IFS=$'\t' read`
   # treats a tab as whitespace-IFS and would coalesce the empty committed field on
   # a MISSING row, shifting every later column. Peel fields off explicitly instead.
   while IFS= read -r row; do
-    [ -n "$row" ] || continue
+    [[ -n "$row" ]] || continue
     file="${row%%$'\t'*}";      row="${row#*$'\t'}"
     status="${row%%$'\t'*}";    row="${row#*$'\t'}"
     committed="${row%%$'\t'*}"; row="${row#*$'\t'}"
     expected="${row%%$'\t'*}"
-    if [ "$row" != "$expected" ] || [[ "$row" == *$'\t'* ]]; then
+    if [[ "$row" != "$expected" ]] || [[ "$row" == *$'\t'* ]]; then
       row="${row#*$'\t'}"
       matched="${row%%$'\t'*}"
     else
       matched=""
     fi
-    [ -n "$file" ] || continue
+    [[ -n "$file" ]] || continue
     case "$status" in
       DRIFTED)
         drifted=1
-        if [ "$matched" = "ahead-unchecked" ]; then
+        if [[ "$matched" = "ahead-unchecked" ]]; then
           # shellcheck disable=SC2016
           printf '::error file=%s::Template stub %s has DRIFTED from the published baseline `%s` (committed blob %s != expected %s), but it could NOT be compared against standards HEAD, so it may be AHEAD of the channel rather than drifted. Do not re-seed yet: re-run with STANDARDS_REF=<standards main commit>. If that reports ALIGNED, promote standards (scripts/cut-standards-release.sh in the standards repo) instead of re-seeding, which would regress the template (#1926).\n' \
             "$file" "$file" "$n_ref" "${committed:0:12}" "${expected:0:12}"
-        elif [ -n "$head_sha" ]; then
+        elif [[ -n "$head_sha" ]]; then
           # HEAD is newer than the channel and the file matches neither, so it may
           # have been synced from a standards commit between them (#2237 AC #2).
           # shellcheck disable=SC2016
@@ -326,7 +326,7 @@ template_drift_annotate() {
           "$file" "$file" "$n_ref" "${committed:0:12}" "$head_note" "${expected:0:12}"
         ;;
       ALIGNED)
-        if [ "$matched" = "N-1" ]; then
+        if [[ "$matched" = "N-1" ]]; then
           printf '::notice file=%s::Template stub %s matches the immediately-preceding published standards version (N-1), not the current one (N) — propagation pending, accepted as ALIGNED (#1448 AC #8).\n' \
             "$file" "$file"
         fi
@@ -395,7 +395,7 @@ _template_drift_head_sha() {
 # is rejected rather than read as an answer (#2237 AC #1).
 _template_drift_compare() {
   local status
-  [ -n "${1:-}" ] && [ -n "${2:-}" ] || return 0
+  [[ -n "${1:-}" ]] && [[ -n "${2:-}" ]] || return 0
   status="$(gh api "repos/${STANDARDS_REPO:-combsmith/.github}/compare/${1}...${2}?per_page=1" \
     --jq '.status' 2>/dev/null)" || true
   case "$status" in
@@ -413,7 +413,7 @@ _template_drift_compare() {
 _template_drift_emit() {
   local content
   content="$(DRY_RUN=false STANDARDS_REF="${3:-}" bash "${TEMPLATE_DRIFT_DIR}/seed-repo-template.sh" "$1" "$2" 2>/dev/null)" || return 1
-  [ -n "$content" ] || return 1
+  [[ -n "$content" ]] || return 1
   printf '%s' "$content"
 }
 
@@ -436,7 +436,7 @@ _template_drift_committed_sha() {
   local out content
   out="$(gh api "repos/${TEMPLATE_REPO}/contents/${1}" 2>/dev/null)" || true
   content="$(printf '%s' "$out" | jq -r '.content // empty' 2>/dev/null | base64 -d 2>/dev/null)" || true
-  [ -n "$content" ] || return 0
+  [[ -n "$content" ]] || return 0
   printf '%s' "$content" | git hash-object --stdin
 }
 
@@ -469,12 +469,12 @@ main() {
   #   unknown — HEAD, or how it relates to N, could not be read: the comparison
   #             cannot be made.
   local head_sha="" head_state="none" relation
-  if [ "${n_src:-}" != "local" ]; then
+  if [[ "${n_src:-}" != "local" ]]; then
     head_sha="$(_template_drift_head_sha)"
-    if [ -z "$head_sha" ]; then
+    if [[ -z "$head_sha" ]]; then
       head_state="unknown"
       echo "::warning::Could not resolve the standards default-branch HEAD commit — a DRIFTED file cannot be checked for being AHEAD of ${n_ref:-<unresolved>} (#1926)."
-    elif [ "$head_sha" != "${n_sha:-}" ]; then
+    elif [[ "$head_sha" != "${n_sha:-}" ]]; then
       relation="$(_template_drift_compare "${n_sha:-}" "$head_sha")"
       case "$relation" in
         ahead) head_state="newer" ;;
@@ -513,7 +513,7 @@ main() {
     expected_n="$(printf '%s' "$content_n" | git hash-object --stdin)"
 
     expected_n1=""
-    if [ -n "$prev_ref" ]; then
+    if [[ -n "$prev_ref" ]]; then
       if content_n1="$(_template_drift_emit "$flag" "$arg" "$prev_ref")"; then
         template_drift_assert_major_scoped "$content_n1" || guard_rc=1
         expected_n1="$(printf '%s' "$content_n1" | git hash-object --stdin)"
@@ -527,7 +527,7 @@ main() {
     # Only a file that matches neither N nor N-1 pays for the HEAD emission.
     expected_head=""
     IFS=$'\t' read -r cls _ < <(template_drift_classify "$committed" "$expected_n" "$expected_n1")
-    if [ "$cls" = "DRIFTED" ]; then
+    if [[ "$cls" = "DRIFTED" ]]; then
       case "$head_state" in
         newer)
           if content_head="$(_template_drift_emit "$flag" "$arg" "$head_sha")"; then
@@ -555,6 +555,6 @@ main() {
 }
 
 # Source-guard: tests source this to exercise the pure helpers; CI executes it.
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   main "$@"
 fi

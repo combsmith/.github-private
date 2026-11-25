@@ -39,15 +39,15 @@ die() { echo "::error::eval-cost-estimate: $1" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || die "jq is required but not installed"
 
 skill="${1:-}"
-[ -n "$skill" ] || die "usage: eval-cost-estimate.sh <skill>"
+[[ -n "$skill" ]] || die "usage: eval-cost-estimate.sh <skill>"
 
 cases_file="$EVALS_DIR/$skill/holdout/cases.jsonl"
-[ -f "$cases_file" ] || die "no held-out cases for '$skill' (expected $cases_file)"
+[[ -f "$cases_file" ]] || die "no held-out cases for '$skill' (expected $cases_file)"
 
 # Declared tier (default triage) — same field run-eval.sh reads.
 scorer_config="$EVALS_DIR/$skill/scorer.json"
 declared_tier="triage"
-if [ -f "$scorer_config" ]; then
+if [[ -f "$scorer_config" ]]; then
   declared_tier="$(jq -r '.engine // "triage"' "$scorer_config")"
 fi
 case "$declared_tier" in
@@ -82,7 +82,7 @@ judge_out="${EVAL_COST_JUDGE_OUTPUT_TOKENS:-300}"
 price_call() {
   local model="$1" i="$2" o="$3" usd
   usd="$(cost_usd "$model" "$i" 0 "$o")"
-  [ -n "$usd" ] || die "no price row for model '$model' — cannot estimate cost (is $PRICING_TABLE present?)"
+  [[ -n "$usd" ]] || die "no price row for model '$model' — cannot estimate cost (is $PRICING_TABLE present?)"
   printf '%s' "$usd"
 }
 

@@ -178,7 +178,7 @@ trap 'rm -f "$candidates_file"' EXIT
 # covered by the scheduled (cron) sweep, and this repo never self-reviews forks.
 prs_from_workflow_run_event() {
   local event_path="${1:-}"
-  [ -n "$event_path" ] && [ -r "$event_path" ] || return 0
+  [[ -n "$event_path" ]] && [[ -r "$event_path" ]] || return 0
   # Single jq pass: bind the repo, drop out (empty stream) when it is absent, and
   # format the PR urls in one go — one process, one read of the payload.
   jq -r '
@@ -409,12 +409,12 @@ dispatch_review() {
   stuck=$((stuck + 1))
   echo "  $_label: $_url — needs re-review"
   resolve_dispatch_target "$_url" "$_force"
-  if [ "$DRY_RUN_BOOL" = "true" ]; then
+  if [[ "$DRY_RUN_BOOL" = "true" ]]; then
     echo "    dry-run: would dispatch $DISPATCH_WORKFLOW @ $DISPATCH_REPO for $_url"
     return 0
   fi
   local force_flags=() ref_flags=()
-  if [ "$_force" = "force" ]; then
+  if [[ "$_force" = "force" ]]; then
     force_flags=(-f force_review=true)
   fi
   # A feature-branch ref exists only in AGENT_REPO; another repo runs its default branch.
@@ -452,7 +452,7 @@ dispatch_review() {
 arm_delayed_retry() {
   local _url="$1" _sha="$2" _reset="$3" _reset_epoch="$4" _now_epoch="$5" _snap="${6:-}"
   local _wait="${7:-rate-limit}" _current="${8:-$2}" _repo="" _consumer=false _decision
-  [ "$ARM_DELAYED_RETRY" = "true" ] || return 0
+  [[ "$ARM_DELAYED_RETRY" = "true" ]] || return 0
   if [[ "$_url" =~ ^https?://[^/]+/([^/]+/[^/]+)/pull/[0-9]+ ]]; then
     _repo="${BASH_REMATCH[1]}"
   fi
@@ -483,7 +483,7 @@ arm_delayed_retry() {
     echo "    arm skipped $_url — reached MAX_DISPATCH=$MAX_DISPATCH (dispatches + armed retries) this sweep"
     return 0
   fi
-  if [ "$DRY_RUN_BOOL" = "true" ]; then
+  if [[ "$DRY_RUN_BOOL" = "true" ]]; then
     echo "    dry-run: would arm delayed retry for $_url (wait=$_wait, not_before=$_reset, head ${_sha:0:8})"
     armed=$((armed + 1))
     return 0
@@ -532,7 +532,7 @@ delayed_retry_in_flight() {
   _runs=$(gh run list --repo "$AGENT_REPO" --workflow "$DELAYED_RETRY_WORKFLOW" \
             --event workflow_dispatch --limit 50 \
             --json status,displayTitle 2>/dev/null) || return 1
-  [ -n "$_runs" ] || return 1
+  [[ -n "$_runs" ]] || return 1
   jq -e --arg title "$_title" '
     any(.[]?; (.status == "queued" or .status == "in_progress")
              and ((.displayTitle // "") | endswith($title)))' \
@@ -593,7 +593,7 @@ advisory_wait_deadline() {
 }
 
 while IFS= read -r pr_url; do
-  [ -z "$pr_url" ] && continue
+  [[ -z "$pr_url" ]] && continue
   if [ "$(( dispatched + armed ))" -ge "$MAX_DISPATCH" ]; then
     echo "::notice::sweep: reached MAX_DISPATCH=$MAX_DISPATCH (dispatches + armed retries) — deferring remaining PRs to the next sweep"
     break
@@ -607,7 +607,7 @@ while IFS= read -r pr_url; do
   fi
 
   head_sha=$(jq -r '.headRefOid // ""' <<< "$snapshot")
-  if [ -z "$head_sha" ]; then
+  if [[ -z "$head_sha" ]]; then
     echo "  skip $pr_url — head SHA is empty"
     continue
   fi
@@ -635,7 +635,7 @@ while IFS= read -r pr_url; do
     hold_items=$(jq -c '((.reviews? // []) + (.comments? // [])) | map({body: (.body? // "" | tostring)})' \
       <<< "$snapshot" 2>/dev/null || echo '[]')
     hold_kind=$(pr_hold_kind "$hold_items" "$head_sha")
-    if [ "$hold_kind" = "rate-limit-only" ]; then
+    if [[ "$hold_kind" = "rate-limit-only" ]]; then
       echo "  exempt $pr_url — held by $NEEDS_HUMAN_REVIEW_LABEL but hold is rate-limit-only (no escalation marker) — recovery not disabled, continuing to rate-limit retry (#1550)"
     else
       echo "  skip $pr_url — held ($hold_kind; $NEEDS_HUMAN_REVIEW_LABEL present); not re-reviewing (#946/#1550)"
@@ -644,7 +644,7 @@ while IFS= read -r pr_url; do
   fi
 
   review_decision=$(jq -r '.reviewDecision // ""' <<< "$snapshot")
-  if [ "$review_decision" != "REVIEW_REQUIRED" ]; then
+  if [[ "$review_decision" != "REVIEW_REQUIRED" ]]; then
     echo "  skip $pr_url — reviewDecision='$review_decision' (not REVIEW_REQUIRED)"
     continue
   fi
@@ -705,7 +705,7 @@ while IFS= read -r pr_url; do
       | select(test("<!-- pr-review-agent rate-limited v1 sha=" + $sha + " ") and test("reset=[^ ]+"))
       | capture("reset=(?<r>[^ ]+)") | .r ]
     | last // ""' <<< "$snapshot" 2>/dev/null || echo "")
-  if [ -n "$rl_reset" ]; then
+  if [[ -n "$rl_reset" ]]; then
     if [ "${standing_verdict_at_head:-0}" -gt 0 ]; then
       # A verdict that STANDS at head resolves the rate-limit state — a standing
       # approval (non-dismissed APPROVED review) or a terminal escalated/fix-
@@ -721,10 +721,10 @@ while IFS= read -r pr_url; do
     now_epoch=$(date -u +%s)
     # Dispatch once the reset has elapsed; an unparseable reset fails open to a
     # retry so a malformed marker can never strand the PR indefinitely.
-    if [ -z "$reset_epoch" ] || [ "$now_epoch" -ge "$reset_epoch" ]; then
-      if [ "$SCHEDULED_SWEEP" = "true" ]; then
+    if [[ -z "$reset_epoch" ]] || [ "$now_epoch" -ge "$reset_epoch" ]; then
+      if [[ "$SCHEDULED_SWEEP" = "true" ]]; then
         eventability=$(classify_rollup_eventability "$(jq '.statusCheckRollup' <<< "$snapshot")")
-        if [ "$eventability" = "eventable-only" ]; then
+        if [[ "$eventability" = "eventable-only" ]]; then
           echo "  skip $pr_url — rate-limited marker elapsed but all checks eventable; scheduled sweep is un-eventable-only (#1408)"
           continue
         fi
@@ -750,7 +750,7 @@ while IFS= read -r pr_url; do
   fi
   required_checks=$(ruleset_required_checks "$owner_repo" "$base_ref" || true)
   ci_status=$(compute_ci_status "$(jq '.statusCheckRollup' <<< "$snapshot")" "$required_checks")
-  if [ "$ci_status" != "passing" ]; then
+  if [[ "$ci_status" != "passing" ]]; then
     echo "  skip $pr_url — CI '$ci_status' (not green yet)"
     continue
   fi
@@ -800,7 +800,7 @@ while IFS= read -r pr_url; do
   # would be the redundant re-review this story removes. However, exclude PRs that
   # are waiting for advisory bots, since advisory checks are non-eventable and are
   # not covered by the workflow_run fast path.
-  if [ "$SCHEDULED_SWEEP" = "true" ]; then
+  if [[ "$SCHEDULED_SWEEP" = "true" ]]; then
     eventability=$(classify_rollup_eventability "$(jq '.statusCheckRollup? // []' <<< "$snapshot" 2>/dev/null || echo '[]')")
     if [[ "$eventability" = "eventable-only" && -z "$advisory_held_deadline_iso" ]]; then
       echo "  skip $pr_url — all checks eventable (workflow_run fast path owns it); scheduled sweep is un-eventable-only (#1408)"

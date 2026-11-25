@@ -18,7 +18,7 @@ id "$PR_REVIEW_MODEL_USER" >/dev/null 2>&1 \
 
 sudo -n rm -rf "$MODEL_SANDBOX_ROOT"
 sudo -n mkdir -p "$MODEL_SANDBOX_ROOT/cli" "$MODEL_SANDBOX_ROOT/cwd"
-if [ -d "$HOME/.npm-global" ]; then
+if [[ -d "$HOME/.npm-global" ]]; then
   sudo -n cp -a "$HOME/.npm-global/." "$MODEL_SANDBOX_ROOT/cli/"
 fi
 sudo -n cp -R "$SCRIPT_DIR/../prompts" "$MODEL_SANDBOX_ROOT/cwd/prompts"
@@ -47,7 +47,7 @@ chmod 755 "$MODEL_SANDBOX_CONTEXT_DIR"
 # Only Claude runs in the sandbox for now: Copilot authenticates with a user PAT, and
 # Gemini's tool limits are not yet shown to hold on a live run. An engine left out of
 # these lists is never selected, so nothing tries it and fails.
-if [ "${MODEL_SANDBOX_ALLOW_GEMINI:-false}" != "true" ] && [ -n "${GITHUB_ENV:-}" ]; then
+if [[ "${MODEL_SANDBOX_ALLOW_GEMINI:-false}" != "true" ]] && [[ -n "${GITHUB_ENV:-}" ]]; then
   {
     echo "AI_ENGINES=claude"
     echo "AI_DUCK_ENGINE=claude"

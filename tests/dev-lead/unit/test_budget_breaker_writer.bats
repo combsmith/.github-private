@@ -2032,7 +2032,7 @@ DELETE AGENTS_PAUSE_SOURCE" ]
 @test "static: a run that is not armed drops the write and notify credentials before it logs anything about the arming value" {
   # The branch taken when BUDGET_BREAKER_ARMED is not exactly `true`.
   local branch drop_line error_line
-  branch="$(awk '/^if \[ "\$ARMED_VALUE" != "true" \]; then$/ {f=1; next} f && /^elif / {exit} f' "$SCRIPT")"
+  branch="$(awk '/^if \[\[ "\$ARMED_VALUE" != "true" \]\]; then$/ {f=1; next} f && /^elif / {exit} f' "$SCRIPT")"
   [ -n "$branch" ]
   drop_line="$(grep -n '^  bbw_drop_write_credentials$' <<< "$branch" | head -n 1 | cut -d: -f1)"
   error_line="$(grep -n 'bbw_error ' <<< "$branch" | head -n 1 | cut -d: -f1)"

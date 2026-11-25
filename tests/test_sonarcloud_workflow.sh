@@ -18,14 +18,14 @@ if ! command -v yq >/dev/null 2>&1; then
   exit 2
 fi
 
-if [ ! -f "$WORKFLOW" ]; then
+if [[ ! -f "$WORKFLOW" ]]; then
   echo "FAIL: $WORKFLOW not found"
   exit 1
 fi
 
 args=$(yq '.jobs.sonarcloud.steps[] | select(.name == "SonarCloud Scan") | .with.args' "$WORKFLOW")
 
-if [ -z "$args" ] || [ "$args" = "null" ]; then
+if [[ -z "$args" ]] || [[ "$args" = "null" ]]; then
   echo "FAIL: could not find SonarCloud Scan step args in $WORKFLOW"
   exit 1
 fi
