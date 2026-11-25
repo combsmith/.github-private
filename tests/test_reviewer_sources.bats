@@ -250,6 +250,34 @@ _body_matches_pattern() {
   [ "$status" -eq 1 ]
 }
 
+# #2622: CodeRabbit posts an acknowledgement each time it is asked to act. It
+# carries no finding, but it held the comment gate and, sent to dev-lead's
+# fix-bot-comment, baited a drift commit. The body below is the live one
+# (repo-template#273, comment 7146057066). Only the whole body clears.
+_coderabbit_ack_body=$'<!-- coderabbit-ai-generated:v1 -->\n\n<!-- CodeRabbit review command invocation: v2:509ba9fc607b25b96782f139c4c81c83338e0433c94a5b18a90a1c533720900d -->\nI received your request for code changes.'
+
+@test "info-status: coderabbitai matches its code-change acknowledgement as a whole body only (#2622)" {
+  local pat
+  pat="$(_info_pattern_for coderabbitai)"
+  [ -n "$pat" ]
+  run _body_matches_pattern "$pat" "$_coderabbit_ack_body"
+  [ "$status" -eq 0 ]
+  run _body_matches_pattern "$pat" "I received your request for code changes."
+  [ "$status" -eq 0 ]
+  # A real CodeRabbit finding does not match.
+  run _body_matches_pattern "$pat" $'_⚠️ Potential issue_ | _🟠 Major_\n\n**Guard `cfg` before dereferencing it.**\n\n`load_config` can return nil here, so `cfg.timeout` panics on a missing file.'
+  [ "$status" -eq 1 ]
+  # The acknowledgement followed by finding text does not match.
+  run _body_matches_pattern "$pat" "$_coderabbit_ack_body"$'\n\nActionable: the lookback window is too short.'
+  [ "$status" -eq 1 ]
+  # A comment that quotes the acknowledgement mid-body does not match.
+  run _body_matches_pattern "$pat" "Earlier CodeRabbit said: I received your request for code changes."
+  [ "$status" -eq 1 ]
+  # Prose that opens with the acknowledgement's words and goes on does not match.
+  run _body_matches_pattern "$pat" "I received your request for code changes. The retry loop never terminates."
+  [ "$status" -eq 1 ]
+}
+
 # codeant-ai posts a "Review Status" table (in progress, then completed) and, on a
 # first review, a share-us promo on every push. Neither carries a finding, but each
 # blocked the comment gate until dev-lead dispositioned it, so they piled up faster

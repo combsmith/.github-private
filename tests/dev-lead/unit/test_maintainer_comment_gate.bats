@@ -359,6 +359,18 @@ Earlier this run reported: You have reached your Codex usage limits for code rev
   [ "$status" -eq 1 ]
 }
 
+# #2622: CodeRabbit's code-change acknowledgement (live body, repo-template#273)
+# carries no finding and clears; the same body followed by a finding still blocks.
+@test "#2622: CodeRabbit's code-change acknowledgement clears → 0" {
+  _run_check "$(_notice_json 'coderabbitai[bot]' $'<!-- coderabbit-ai-generated:v1 -->\n\n<!-- CodeRabbit review command invocation: v2:509ba9fc607b25b96782f139c4c81c83338e0433c94a5b18a90a1c533720900d -->\nI received your request for code changes.')"
+  [ "$status" -eq 0 ]
+}
+
+@test "#2622: CodeRabbit's acknowledgement followed by a finding still blocks → 1" {
+  _run_check "$(_notice_json coderabbitai $'<!-- coderabbit-ai-generated:v1 -->\nI received your request for code changes.\n\n**Guard `cfg` before dereferencing it.**')"
+  [ "$status" -eq 1 ]
+}
+
 @test "AC1(#1995): Qodo trial-ended notice clears → 0" {
   _run_check "$(_notice_json qodo-code-review "Qodo reviews are paused because your trial has ended.")"
   [ "$status" -eq 0 ]
