@@ -76,6 +76,6 @@ persona_event_pregate() {
 }
 
 # Allow direct CLI use for debugging: persona-pr-pregate.sh <persona> <surface> …
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   persona_event_pregate "$@"
 fi

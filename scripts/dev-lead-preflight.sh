@@ -16,7 +16,7 @@ WARN="optional"
 # Exits 1 if the variable is unset or empty.
 check_required() {
   local var="$1" purpose="$2"
-  if [ -z "${!var:-}" ]; then
+  if [[ -z "${!var:-}" ]]; then
     echo "::error::Required secret not set: $var ($purpose)"
     return 1
   fi
@@ -27,7 +27,7 @@ check_required() {
 # Emits a warning if the variable is unset but does not exit.
 check_optional() {
   local var="$1" purpose="$2"
-  if [ -z "${!var:-}" ]; then
+  if [[ -z "${!var:-}" ]]; then
     echo "  [warn] $var not set — $purpose will be unavailable"
   else
     echo "  [ok] $var — $purpose"
@@ -46,12 +46,12 @@ FAILED=0
 CLAUDE_REQUIRED=required
 _PREFLIGHT_CHAIN_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/engine-chain.sh"
 # shellcheck source=lib/engine-chain.sh
-[ -f "$_PREFLIGHT_CHAIN_LIB" ] && source "$_PREFLIGHT_CHAIN_LIB"
+[[ -f "$_PREFLIGHT_CHAIN_LIB" ]] && source "$_PREFLIGHT_CHAIN_LIB"
 if declare -F ai_engine_enabled >/dev/null 2>&1 && ! ai_engine_enabled claude; then
   CLAUDE_REQUIRED=optional
 fi
 
-if [ "$CLAUDE_REQUIRED" = required ]; then
+if [[ "$CLAUDE_REQUIRED" = required ]]; then
   check_required "CLAUDE_CODE_OAUTH_TOKEN" "Claude Code CLI authentication" || FAILED=1
 else
   check_optional "CLAUDE_CODE_OAUTH_TOKEN" "Claude Code CLI authentication (claude not in AI_ENGINES)"
@@ -66,7 +66,7 @@ echo "────────────────────────�
 
 # ── step summary ──────────────────────────────────────────────────────────────
 
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
     echo "## Dev-Lead Pre-Flight Check"
     echo ""
@@ -75,9 +75,9 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 
     _row() {
       local var="$1" purpose="$2" required="${3:-optional}"
-      if [ -n "${!var:-}" ]; then
+      if [[ -n "${!var:-}" ]]; then
         echo "| \`$var\` | $PASS | $purpose |"
-      elif [ "$required" = "required" ]; then
+      elif [[ "$required" = "required" ]]; then
         echo "| \`$var\` | $FAIL | $purpose |"
       else
         echo "| \`$var\` | $WARN | $purpose |"

@@ -111,7 +111,7 @@ has_trigger_phrase() {
   local phrases
   phrases=$(echo "${TRIGGER_PHRASES:-@dev-lead}" | tr ',' '\n')
   while IFS= read -r phrase; do
-    [ -z "$phrase" ] && continue
+    [[ -z "$phrase" ]] && continue
     if echo "$body" | grep -qF "$phrase"; then
       return 0
     fi
@@ -127,7 +127,7 @@ has_trigger_phrase() {
 # branch of the routing section.
 has_label() {
   local name="$1"
-  [ -n "$EVENT_PATH" ] && [ -f "$EVENT_PATH" ] || return 1
+  [[ -n "$EVENT_PATH" ]] && [[ -f "$EVENT_PATH" ]] || return 1
   jq -e --arg n "$name" '
     any(.pull_request.labels[]?, .issue.labels[]?; .name == $n)
   ' "$EVENT_PATH" >/dev/null 2>&1
@@ -140,7 +140,7 @@ is_fork_pr() {
   local head_repo base_repo
   head_repo=$(jq -r '.pull_request.head.repo.full_name // .head.repo.full_name // empty' "$event_path" 2>/dev/null || true)
   base_repo="${GITHUB_REPOSITORY:-}"
-  [ -n "$head_repo" ] && [ "$head_repo" != "$base_repo" ]
+  [[ -n "$head_repo" ]] && [[ "$head_repo" != "$base_repo" ]]
 }
 
 # pr_head_location <pr_number>
@@ -173,14 +173,14 @@ pr_head_location() {
 # head ref AND no author) returns 1, so callers skip rather than seize a PR whose
 # ownership cannot be established.
 is_dev_lead_authored() {
-  [ -n "$EVENT_PATH" ] && [ -f "$EVENT_PATH" ] || return 1
+  [[ -n "$EVENT_PATH" ]] && [[ -f "$EVENT_PATH" ]] || return 1
   local head_ref author
   head_ref=$(jq -r '(.pull_request?.head?.ref // "" | tostring)' "$EVENT_PATH" 2>/dev/null || true)
   author=$(jq -r '(.pull_request?.user?.login // .issue?.user?.login // "" | tostring)' "$EVENT_PATH" 2>/dev/null || true)
   case "$head_ref" in
     dev-lead/issue-*) return 0 ;;
   esac
-  [ -n "$author" ] && [ "$author" = "$BOT_USER" ] && return 0
+  [[ -n "$author" ]] && [[ "$author" = "$BOT_USER" ]] && return 0
   return 1
 }
 
@@ -202,7 +202,7 @@ matches_info_status_pattern() {
   # A registry failure still fails closed (the comment routes normally), but it
   # is surfaced: a silent fallback would quietly bring back the engine run this
   # skip exists to save.
-  if [ ! -f "$reg_sh" ]; then
+  if [[ ! -f "$reg_sh" ]]; then
     echo "::warning::dev-lead-intent: reviewer-sources helper not found at $reg_sh — info-status skip disabled, routing normally" >&2
     return 1
   fi
@@ -215,12 +215,12 @@ matches_info_status_pattern() {
     return 1
   fi
   pattern="$(printf '%s\n' "$patterns" | awk -F'\t' -v l="$bare" '$1==l {print $2; exit}')" || return 1
-  [ -n "$pattern" ] || return 1
+  [[ -n "$pattern" ]] || return 1
   if ! result="$(jq -nr --arg b "$body" --arg p "$pattern" '($b | test($p))' 2>/dev/null)"; then
     echo "::warning::dev-lead-intent: info_status_pattern for ${bare} failed to evaluate — routing normally" >&2
     return 1
   fi
-  [ "$result" = "true" ]
+  [[ "$result" = "true" ]]
 }
 
 # classify_bot_comment_retry <pr_number>
@@ -244,7 +244,7 @@ classify_bot_comment_retry() {
       id author{login __typename} body createdAt lastEditedAt isMinimized minimizedReason
       pullRequest{number state isCrossRepository author{login} repository{nameWithOwner}} }}}' \
     -f id="$node_id" 2>/dev/null | jq -ce '.data.node | objects | select(.id != null)' 2>/dev/null) || node=""
-  if [ -z "$node" ]; then
+  if [[ -z "$node" ]]; then
     emit_skip "bot-comment-retry-fetch-failed"
     return 0
   fi
@@ -262,32 +262,32 @@ classify_bot_comment_retry() {
 
   # The comment must be on THIS PR of THIS repository — a payload cannot aim a pass
   # at another PR's comment, nor at a same-numbered PR in another repository.
-  if [ "$pr_of" != "$pr_number" ] || [ -z "$pr_repo" ] || [ "$pr_repo" != "${GITHUB_REPOSITORY:-}" ]; then
+  if [[ "$pr_of" != "$pr_number" ]] || [[ -z "$pr_repo" ]] || [[ "$pr_repo" != "${GITHUB_REPOSITORY:-}" ]]; then
     emit_skip "bot-comment-retry-pr-mismatch"
     return 0
   fi
-  if [ "$state" != "OPEN" ]; then
+  if [[ "$state" != "OPEN" ]]; then
     emit_skip "pr-already-closed"
     return 0
   fi
   # GraphQL reports a bot's login without the [bot] suffix the webhook uses.
   login="${login%"[bot]"}"
   # Only a genuine Bot author: a missing or unknown type fails closed.
-  if [ -z "$login" ] || [ "$typename" != "Bot" ] || ! is_trusted_bot "${login}[bot]"; then
+  if [[ -z "$login" ]] || [[ "$typename" != "Bot" ]] || ! is_trusted_bot "${login}[bot]"; then
     emit_skip "bot-comment-retry-untrusted-author"
     return 0
   fi
   # Authorship gate (#1311), from the PR the comment belongs to: dev-lead must be
   # the PR's AUTHOR and the head must live in this repository. The branch name is
   # never evidence of ownership — any contributor (or fork) can choose it.
-  if [ -z "$pr_author" ] || [ "$pr_author" != "$BOT_USER" ] || [ "$cross_repo" != "false" ]; then
+  if [[ -z "$pr_author" ]] || [[ "$pr_author" != "$BOT_USER" ]] || [[ "$cross_repo" != "false" ]]; then
     emit_skip "not-dev-lead-authored"
     return 0
   fi
   # A RESOLVED comment is done unless it was edited since: the gate re-blocks one
   # edited after its newest disposition (#2008), so the decision below decides
   # whether it still needs a pass (#2166).
-  if [ "$minimized" = "resolved" ] && [ "$(jq -r '.lastEditedAt // ""' <<< "$node")" = "" ]; then
+  if [[ "$minimized" = "resolved" ]] && [[ "$(jq -r '.lastEditedAt // ""' <<< "$node")" = "" ]]; then
     emit_skip "bot-comment-already-resolved"
     return 0
   fi
@@ -322,7 +322,7 @@ classify_bot_comment_retry() {
   esac
   # An edited RESOLVED comment the decision does not list has a disposition newer
   # than its edit: the gate still clears it.
-  if [ "$minimized" = "resolved" ] && [ -z "$reason" ]; then
+  if [[ "$minimized" = "resolved" ]] && [[ -z "$reason" ]]; then
     emit_skip "bot-comment-already-resolved"
     return 0
   fi
@@ -353,13 +353,13 @@ BOT_USER="${BOT_USER:-donpetry-bot}"
 # sources.tsv) so this list can never drift from the gate/scorecard again — the
 # #1425 fix that unblocks graphite-app/qodo-code-review/codeant-ai threads. The
 # literal is a fallback for when the registry helper cannot be sourced.
-if [ -z "${TRUSTED_BOTS:-}" ]; then
+if [[ -z "${TRUSTED_BOTS:-}" ]]; then
   _reg_sh="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/reviewer-sources.sh"
   # shellcheck source=scripts/lib/reviewer-sources.sh
-  if [ -f "$_reg_sh" ]; then
+  if [[ -f "$_reg_sh" ]]; then
     source "$_reg_sh" || { echo "::error::dev-lead-intent: failed to source reviewer-sources registry at $_reg_sh" >&2; exit 1; }
     TRUSTED_BOTS="$(reviewer_sources_trusted_bots_csv)" || { echo "::error::dev-lead-intent: reviewer_sources_trusted_bots_csv failed — registry may be malformed" >&2; exit 1; }
-    if [ -z "$TRUSTED_BOTS" ]; then
+    if [[ -z "$TRUSTED_BOTS" ]]; then
       echo "::error::dev-lead-intent: reviewer_sources_trusted_bots_csv returned empty — registry has no trusted bots" >&2
       exit 1
     fi
@@ -368,7 +368,7 @@ fi
 TRUSTED_BOTS="${TRUSTED_BOTS:-copilot-pull-request-reviewer[bot],gemini-code-assist[bot],sonarqubecloud[bot],coderabbitai[bot],chatgpt-codex-connector[bot],qodo-code-review[bot],codeant-ai[bot],graphite-app[bot],cubic-dev-ai[bot]}"
 TRIGGER_PHRASES="${TRIGGER_PHRASES:-@dev-lead}"
 
-if [ -z "$EVENT_NAME" ]; then
+if [[ -z "$EVENT_NAME" ]]; then
   echo "::error::GITHUB_EVENT_NAME is not set"
   exit 1
 fi
@@ -377,7 +377,7 @@ echo "dev-lead-intent: processing event=$EVENT_NAME"
 
 # ── check_run: not handled here (ci-relay job) ───────────────────────────────
 
-if [ "$EVENT_NAME" = "check_run" ]; then
+if [[ "$EVENT_NAME" = "check_run" ]]; then
   emit_skip "check-run-handled-by-ci-relay"
   exit 0
 fi
@@ -396,13 +396,13 @@ fi
 # issue comments on PRs, issue labeling). repository_dispatch payloads carry no
 # labels; those are checked via the API in the dispatch branch below.
 _event_labels=""
-if [ -n "$EVENT_PATH" ] && [ -f "$EVENT_PATH" ]; then
+if [[ -n "$EVENT_PATH" ]] && [[ -f "$EVENT_PATH" ]]; then
   _event_labels="$(jq -r '[.pull_request.labels[]?, .issue.labels[]?] | .[].name' "$EVENT_PATH" 2>/dev/null || true)"
 fi
 if _hold_label="$(hold_gate_first_match "$_event_labels")"; then
   # The subject number lets the workflow post the one-time hold notice (#1767).
   _hold_subject=""
-  if [ -n "$EVENT_PATH" ] && [ -f "$EVENT_PATH" ]; then
+  if [[ -n "$EVENT_PATH" ]] && [[ -f "$EVENT_PATH" ]]; then
     _hold_subject="$(jq -r '.pull_request.number // .issue.number // empty' "$EVENT_PATH" 2>/dev/null || true)"
   fi
   emit_hold_skip "$_hold_label" "$_hold_subject"
@@ -414,11 +414,11 @@ unset _event_labels _hold_label _hold_subject
 # If the synchronize event was triggered by BOT_USER's own commit, skip to
 # prevent an infinite fix → push → trigger → fix loop.
 
-if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$EVENT_PATH" ] && [ -f "$EVENT_PATH" ]; then
+if [[ "$EVENT_NAME" = "pull_request" ]] && [[ -n "$EVENT_PATH" ]] && [[ -f "$EVENT_PATH" ]]; then
   pr_action=$(jq -r '.action // empty' "$EVENT_PATH" 2>/dev/null || true)
-  if [ "$pr_action" = "synchronize" ]; then
+  if [[ "$pr_action" = "synchronize" ]]; then
     sender_login=$(jq -r '.sender.login // empty' "$EVENT_PATH" 2>/dev/null || true)
-    if [ "$sender_login" = "$BOT_USER" ]; then
+    if [[ "$sender_login" = "$BOT_USER" ]]; then
       emit_skip "dev-lead-own-commit"
       exit 0
     fi
@@ -431,7 +431,7 @@ case "$EVENT_NAME" in
 
   # ── pull_request ─────────────────────────────────────────────────────────
   pull_request)
-    if [ -z "$EVENT_PATH" ] || [ ! -f "$EVENT_PATH" ]; then
+    if [[ -z "$EVENT_PATH" ]] || [[ ! -f "$EVENT_PATH" ]]; then
       emit_skip "no-event-path"
       exit 0
     fi
@@ -490,7 +490,7 @@ case "$EVENT_NAME" in
 
   # ── pull_request_review ───────────────────────────────────────────────────
   pull_request_review)
-    if [ -z "$EVENT_PATH" ] || [ ! -f "$EVENT_PATH" ]; then
+    if [[ -z "$EVENT_PATH" ]] || [[ ! -f "$EVENT_PATH" ]]; then
       emit_skip "no-event-path"
       exit 0
     fi
@@ -509,7 +509,7 @@ case "$EVENT_NAME" in
     reviewer_assoc=$(jq -r '(.review?.author_association // "" | tostring)' "$EVENT_PATH")
 
     # Skip if actor is BOT_USER (self-review)
-    if [ "$reviewer" = "$BOT_USER" ]; then
+    if [[ "$reviewer" = "$BOT_USER" ]]; then
       pr_number=$(jq -r '.pull_request.number // empty' "$EVENT_PATH" 2>/dev/null || true)
       context=$(jq -nc --argjson pr_number "${pr_number:-0}" '{"pr_number":$pr_number}')
       emit_intent "skip" "self-review" "$context"
@@ -539,7 +539,7 @@ case "$EVENT_NAME" in
       '{"pr_number":$pr_number,"head_sha":$head_sha,"actor":$actor,"body":$body}')
 
     if is_trusted_bot "$reviewer"; then
-      if [ "$review_state" = "APPROVED" ]; then
+      if [[ "$review_state" = "APPROVED" ]]; then
         emit_intent "enable-auto-merge" "bot-approved" "$context"
       else
         emit_intent "fix-reviews" "bot-review-${review_state}" "$context"
@@ -553,7 +553,7 @@ case "$EVENT_NAME" in
 
   # ── pull_request_review_comment ───────────────────────────────────────────
   pull_request_review_comment)
-    if [ -z "$EVENT_PATH" ] || [ ! -f "$EVENT_PATH" ]; then
+    if [[ -z "$EVENT_PATH" ]] || [[ ! -f "$EVENT_PATH" ]]; then
       emit_skip "no-event-path"
       exit 0
     fi
@@ -596,13 +596,13 @@ case "$EVENT_NAME" in
 
   # ── issue_comment ─────────────────────────────────────────────────────────
   issue_comment)
-    if [ -z "$EVENT_PATH" ] || [ ! -f "$EVENT_PATH" ]; then
+    if [[ -z "$EVENT_PATH" ]] || [[ ! -f "$EVENT_PATH" ]]; then
       emit_skip "no-event-path"
       exit 0
     fi
     # Only handle comments on PRs (issues with pull_request field)
     is_pr=$(jq -r '.issue.pull_request // empty' "$EVENT_PATH" 2>/dev/null || true)
-    if [ -z "$is_pr" ]; then
+    if [[ -z "$is_pr" ]]; then
       emit_skip "not-a-pr-comment"
       exit 0
     fi
@@ -639,7 +639,7 @@ case "$EVENT_NAME" in
     # skips: auto-rebase does not repost for the same base, so a green skip would
     # lose the rebase with nothing to show for it.
     if echo "$comment_body" | grep -qF "<!-- auto-rebase-conflict:" \
-      && { [ "$commenter" = "$BOT_USER" ] || is_human_trusted "$author_assoc"; }; then
+      && { [[ "$commenter" = "$BOT_USER" ]] || is_human_trusted "$author_assoc"; }; then
       case "$(pr_head_location "${pr_number:-0}")" in
         same)
           context=$(printf '{"pr_number":%s}' "${pr_number:-0}")
@@ -655,7 +655,7 @@ case "$EVENT_NAME" in
     fi
 
     # Skip self (BOT_USER) unless it's the rebase sentinel
-    if [ "$commenter" = "$BOT_USER" ]; then
+    if [[ "$commenter" = "$BOT_USER" ]]; then
       emit_skip "self-comment"
       exit 0
     fi
@@ -698,12 +698,12 @@ case "$EVENT_NAME" in
 
   # ── issues ────────────────────────────────────────────────────────────────
   issues)
-    if [ -z "$EVENT_PATH" ] || [ ! -f "$EVENT_PATH" ]; then
+    if [[ -z "$EVENT_PATH" ]] || [[ ! -f "$EVENT_PATH" ]]; then
       emit_skip "no-event-path"
       exit 0
     fi
     issues_action=$(jq -r '.action // empty' "$EVENT_PATH" 2>/dev/null || true)
-    if [ "$issues_action" != "labeled" ]; then
+    if [[ "$issues_action" != "labeled" ]]; then
       emit_skip "issues-not-labeled"
       exit 0
     fi
@@ -722,7 +722,7 @@ case "$EVENT_NAME" in
 
   # ── repository_dispatch ───────────────────────────────────────────────────
   repository_dispatch)
-    if [ -z "$EVENT_PATH" ] || [ ! -f "$EVENT_PATH" ]; then
+    if [[ -z "$EVENT_PATH" ]] || [[ ! -f "$EVENT_PATH" ]]; then
       emit_skip "no-event-path"
       exit 0
     fi
@@ -736,7 +736,7 @@ case "$EVENT_NAME" in
     # resolve under repos/<repo>/issues/<n>/labels (PRs are issues for labels),
     # so an issue-only payload is no longer dropped before routing.
     subject_number="${pr_number:-$issue_number}"
-    if [ -z "$subject_number" ]; then
+    if [[ -z "$subject_number" ]]; then
       emit_skip "no-subject-number-in-payload"
       exit 0
     fi
@@ -759,7 +759,7 @@ case "$EVENT_NAME" in
 
     case "$dispatch_type" in
       dev-lead-ci-failure)
-        if [ -z "$pr_number" ]; then
+        if [[ -z "$pr_number" ]]; then
           emit_skip "no-pr-number-in-payload"
           exit 0
         fi
@@ -772,7 +772,7 @@ case "$EVENT_NAME" in
         emit_intent "fix-ci" "ci-failure-dispatch" "$context"
         ;;
       dev-lead-reviews-retry)
-        if [ -z "$pr_number" ]; then
+        if [[ -z "$pr_number" ]]; then
           emit_skip "no-pr-number-in-payload"
           exit 0
         fi
@@ -813,7 +813,7 @@ case "$EVENT_NAME" in
         # intent so the same handler re-runs the implementation. The issue
         # handler re-derives all context fresh from the issue, so a re-dispatch
         # has full fidelity (like the PR-side retryable intents).
-        if [ -z "$issue_number" ]; then
+        if [[ -z "$issue_number" ]]; then
           emit_skip "no-issue-number-in-payload"
           exit 0
         fi

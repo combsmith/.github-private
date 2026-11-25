@@ -153,7 +153,7 @@ RESULT_TEXT=""
 
 # write_summary — the run as a job-summary table (best effort).
 write_summary() {
-  [ -n "${GITHUB_STEP_SUMMARY:-}" ] || return 0
+  [[ -n "${GITHUB_STEP_SUMMARY:-}" ]] || return 0
   {
     printf '## Budget breaker\n\n'
     printf '| Field | Value |\n|---|---|\n'
@@ -198,7 +198,7 @@ state_read_failed() {
 # rotation policy. The token itself has no expiry, so rotation is manual.
 report_secret_age() {
   local at days rotate="${BUDGET_BREAKER_ROTATE_DAYS:-90}"
-  [ -n "$SECRET_NAME" ] && [ -n "$NOTIFY_REPO" ] || return 0
+  [[ -n "$SECRET_NAME" ]] && [[ -n "$NOTIFY_REPO" ]] || return 0
   bbw_has_read_credential || return 0
   [[ "$rotate" =~ ^[0-9]{1,5}$ ]] || rotate=90
   if ! at=$(bbw_secret_updated_at "$NOTIFY_REPO" "$SECRET_NAME"); then
@@ -242,14 +242,14 @@ report_previous_run() {
 exit_early_if_covered() {
   local interval="${BUDGET_BREAKER_MIN_INTERVAL_MIN:-10}" slot earlier recent fresh
   # A scheduled run is the backstop and always decides.
-  [ "$EVENT" = "workflow_run" ] || return 0
+  [[ "$EVENT" = "workflow_run" ]] || return 0
   if ! [[ "$interval" =~ ^[0-9]{1,4}$ ]]; then
     bbw_warn "BUDGET_BREAKER_MIN_INTERVAL_MIN is not a whole number of minutes; using 10"
     interval=10
   fi
   interval="$((10#$interval))"
   [ "$interval" -gt 0 ] || return 0
-  [ "$PREV_OK" = "true" ] || return 0
+  [[ "$PREV_OK" = "true" ]] || return 0
   slot="$(bbw_slot_start "$NOW" "$interval")" || return 0
   earlier="$(bbw_runs_since "$BBW_PREV_RUNS" "$slot")"
   [[ "$earlier" =~ ^[0-9]+$ ]] && [ "$earlier" -gt 0 ] || return 0
@@ -258,7 +258,7 @@ exit_early_if_covered() {
     bbw_log "no early exit: the quota markers of ${NOTIFY_REPO} since ${slot} could not be read, so this run decides"
     return 0
   fi
-  if [ "$fresh" != "0" ]; then
+  if [[ "$fresh" != "0" ]]; then
     bbw_log "no early exit: ${fresh} quota marker(s) appeared in ${NOTIFY_REPO} since ${slot}, so this run decides"
     return 0
   fi
@@ -283,7 +283,7 @@ collect() {
   fi
   out=$(bbw_collect "$ORG" 2>"$errf") || rc=$?
   while IFS= read -r line; do
-    [ -n "$line" ] || continue
+    [[ -n "$line" ]] || continue
     printf '%s\n' "$(bbw_redact "$line")"
   done < "$errf"
   UNTRUSTED=$(bbw_untrusted_count "$errf")
@@ -298,7 +298,7 @@ collect() {
 
 # run_url — this run's page, "" outside Actions.
 run_url() {
-  if [ -n "${GITHUB_SERVER_URL:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ]; then
+  if [[ -n "${GITHUB_SERVER_URL:-}" ]] && [[ -n "${GITHUB_REPOSITORY:-}" ]] && [[ -n "${GITHUB_RUN_ID:-}" ]]; then
     printf '%s' "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
   fi
 }
@@ -324,7 +324,7 @@ pause_notice_body() {
 # failed; returns when there was nothing to do.
 announce_held_pause() {
   local at rc=0 body url
-  [ "$ACTION" = "hold" ] && [ "${PAUSED,,}" = "true" ] && [ "$SOURCE" = "$BUDGET_BREAKER_PAUSE_SOURCE" ] || return 0
+  [[ "$ACTION" = "hold" ]] && [[ "${PAUSED,,}" = "true" ]] && [[ "$SOURCE" = "$BUDGET_BREAKER_PAUSE_SOURCE" ]] || return 0
   [[ "$UNTIL" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || return 0
   at="$(jq -r --arg n "$BBW_VAR_PAUSED" '.[$n].updated_at // ""' <<< "$BBW_VARS" 2>/dev/null || printf '')"
   bbw_notice_lookup_due "$at" "$NOW" || return 0
@@ -345,7 +345,7 @@ announce_held_pause() {
     "the fleet is paused with the breaker's own source, and no notice of this pause was on this issue: the run that set it could not post one. The reason for the pause is in that run's log" \
     "- not listed in a late notice: see the log of the run that set the pause")"
   url="$(run_url)"
-  if [ -n "$url" ]; then
+  if [[ -n "$url" ]]; then
     body="${body}"$'\n\n'"Run: ${url}"
   fi
   if ! bbw_notify "$NOTIFY_REPO" "$(bbw_redact "$body")"; then
@@ -363,11 +363,11 @@ announce_held_pause() {
 # credential was refused.
 guard_stopped_trip() {
   local cause removed="nothing" kept="" state_note
-  if [ "${#BBW_ROLLED_BACK[@]}" -gt 0 ]; then
+  if [[ "${#BBW_ROLLED_BACK[@]}" -gt 0 ]]; then
     removed="$(printf '%s; ' "${BBW_ROLLED_BACK[@]}")"
     removed="${removed%; }"
   fi
-  if [ "${#BBW_ROLLBACK_KEPT[@]}" -gt 0 ]; then
+  if [[ "${#BBW_ROLLBACK_KEPT[@]}" -gt 0 ]]; then
     kept="$(printf '%s; ' "${BBW_ROLLBACK_KEPT[@]}")"
     kept=" Left as found: ${kept%; }."
   fi
@@ -380,8 +380,8 @@ guard_stopped_trip() {
       cause="the state could not be read again before the pause was set (HTTP ${BBW_GUARD_HTTP:-none}; ${BBW_GUARD_ERR:-no detail})" ;;
   esac
 
-  if [ -n "$BBW_ROLLBACK_FAILED" ]; then
-    if [ "$BBW_ROLLBACK_OWN_SOURCE" = "true" ]; then
+  if [[ -n "$BBW_ROLLBACK_FAILED" ]]; then
+    if [[ "$BBW_ROLLBACK_OWN_SOURCE" = "true" ]]; then
       state_note="${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} is STILL SET, and ${BBW_VAR_UNTIL}=${DECISION_UNTIL} was left with it on purpose: if the fleet is paused, the breaker will take that pause for its own and lift it after ${DECISION_UNTIL}. Delete ${BBW_VAR_SOURCE} by hand now to keep a pause set by hand, then delete ${BBW_VAR_UNTIL}."
     else
       state_note="${BBW_VAR_SOURCE} was removed, so a pause set by hand stays a human pause; ${BBW_VAR_UNTIL} is left over and has no effect without the source. Delete ${BBW_VAR_UNTIL} by hand."
@@ -393,12 +393,12 @@ guard_stopped_trip() {
   # Defence in depth: this run removes a leftover source before it ever plans a
   # trip (section 1b), so a trip here always writes the source itself and this
   # is not expected to be reached. If it ever is, it must be loud, not green.
-  if [ "$BBW_GUARD" = "paused" ] && [ "$BBW_ROLLBACK_OWN_SOURCE" = "true" ]; then
+  if [[ "$BBW_GUARD" = "paused" ]] && [[ "$BBW_ROLLBACK_OWN_SOURCE" = "true" ]]; then
     bbw_error "${cause}. But ${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} was already set before this run (an earlier run left it; this run did not write it, so it does not remove it), and that makes the pause look like the breaker's own: the breaker will lift it after ${DECISION_UNTIL}. To keep the pause, delete ${BBW_VAR_SOURCE} from the organisation's Actions variables by hand. ${BBW_VAR_PAUSED} was not set by this run. Removed: ${removed}.${kept}"
     finish 1 "FAILED: trip stopped (paused by someone else); an earlier run's ${BBW_VAR_SOURCE} is still set"
   fi
 
-  if [ "$BBW_GUARD" = "unreadable" ]; then
+  if [[ "$BBW_GUARD" = "unreadable" ]]; then
     case "$BBW_GUARD_HTTP" in
       401|403|404)
         BBW_HTTP="$BBW_GUARD_HTTP" BBW_ERR="$BBW_GUARD_ERR"
@@ -420,14 +420,14 @@ guard_stopped_trip() {
 # regard to case), so a value like `TRUE` reaches this step WITH the write
 # credential, which is dropped here, unused.
 ARMED_VALUE="${BUDGET_BREAKER_ARMED:-}"
-if [ "$ARMED_VALUE" != "true" ]; then
+if [[ "$ARMED_VALUE" != "true" ]]; then
   MODE="disarmed"
   HANDED_NOTE=""
   if bbw_has_write_credential; then
     HANDED_NOTE=" The workflow handed the write credential to this step all the same, because its own test of the variable ignores case; the script has dropped it and uses it for nothing."
   fi
   bbw_drop_write_credentials
-  if [ -n "$ARMED_VALUE" ] && [ "$ARMED_VALUE" != "false" ]; then
+  if [[ -n "$ARMED_VALUE" ]] && [[ "$ARMED_VALUE" != "false" ]]; then
     bbw_error "BUDGET_BREAKER_ARMED is set to \"$(bbw_show "$ARMED_VALUE")\", which is neither the exact lowercase string true nor the exact lowercase string false, so the breaker is DISARMED and writes nothing. Only true arms it: TRUE, True, 1, yes, on and a value with a space before or after it do not.${HANDED_NOTE} Set the repository variable to true to arm, or to false (or delete it) to disarm (AGENTS.md, \"Budget breaker\")."
     MODE_NOTE=" (BUDGET_BREAKER_ARMED is set but is neither true nor false)"
   fi
@@ -466,7 +466,7 @@ report_previous_run
 
 # --- 1. the pause state -----------------------------------------------------
 
-if [ "$MODE" = "armed" ]; then
+if [[ "$MODE" = "armed" ]]; then
   STATE_ORIGIN="organisation API"
   rc=0
   bbw_read_org_vars "$ORG" || rc=$?
@@ -499,12 +499,12 @@ bbw_log "pause state from ${STATE_ORIGIN}: [${BBW_VAR_PAUSED}, ${BBW_VAR_SOURCE}
 # the only window for a pause set by hand to slip in is that one call. A source
 # with any other value is not the breaker's and is never touched.
 LEFTOVER="$(bbw_leftover_plan "$BBW_VARS")"
-if [ -n "$LEFTOVER" ] && [ "$LEFTOVER" != "[]" ]; then
+if [[ -n "$LEFTOVER" ]] && [[ "$LEFTOVER" != "[]" ]]; then
   PLAN_TEXT="$(bbw_plan_text "$LEFTOVER")"
   MARKERS_TEXT="not collected (leftover ownership markers are dealt with first)"
   DECISION_TEXT="not taken this run: ${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} is set while the fleet is not paused, and removing it is this run's one state change"
   bbw_log "decision: ${DECISION_TEXT}"
-  if [ "$MODE" != "armed" ]; then
+  if [[ "$MODE" != "armed" ]]; then
     bbw_warn "${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} is set while the fleet is not paused. A pause set by hand now would look like the breaker's own. An armed run removes these leftover ownership markers; this run is not armed, so delete ${BBW_VAR_SOURCE} (and ${BBW_VAR_UNTIL}) from the organisation's Actions variables by hand."
     bbw_log "NOT WRITING (${MODE}). Would have written: ${PLAN_TEXT}"
     finish 0 "no write (${MODE}); would have written: ${PLAN_TEXT}"
@@ -512,10 +512,10 @@ if [ -n "$LEFTOVER" ] && [ "$LEFTOVER" != "[]" ]; then
   bbw_log "writing: ${PLAN_TEXT}"
   if ! bbw_apply "$ORG" "$LEFTOVER"; then
     DONE_TEXT="nothing"
-    if [ "${#BBW_DONE[@]}" -gt 0 ]; then
+    if [[ "${#BBW_DONE[@]}" -gt 0 ]]; then
       DONE_TEXT="$(printf '%s; ' "${BBW_DONE[@]}")"
     fi
-    if [ "${#BBW_DONE[@]}" -eq 0 ]; then
+    if [[ "${#BBW_DONE[@]}" -eq 0 ]]; then
       LEFT_NOTE="${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} is still set, so a pause set by hand now would read as the breaker's own and be lifted by it: delete ${BBW_VAR_SOURCE} (and ${BBW_VAR_UNTIL}) by hand."
     else
       LEFT_NOTE="${BBW_VAR_SOURCE} is gone, so a pause set by hand is a human pause; ${BBW_VAR_UNTIL} is left over and has no effect without the source: delete it by hand."
@@ -532,7 +532,7 @@ fi
 
 # --- 2. the evidence --------------------------------------------------------
 
-if [ "${PAUSED,,}" = "true" ]; then
+if [[ "${PAUSED,,}" = "true" ]]; then
   MARKERS_TEXT="not collected (the fleet is paused; the decision does not consult them)"
   bbw_log "the fleet is paused: quota markers are not consulted while paused, so none are collected"
 else
@@ -540,7 +540,7 @@ else
   # apply. It is never reached on a paused fleet.
   exit_early_if_covered
   collect
-  if [ "$COLLECT_OK" = "true" ]; then
+  if [[ "$COLLECT_OK" = "true" ]]; then
     MARKERS_TEXT="${TRUSTED} trusted, ${UNTRUSTED} dropped as untrusted"
     bbw_log "quota markers read: ${TRUSTED} trusted, ${UNTRUSTED} dropped as untrusted (author not an owner, member or collaborator as the read credential sees it)"
     if [ "$UNTRUSTED" -gt 0 ] && [ "$TRUSTED" -eq 0 ]; then
@@ -553,7 +553,7 @@ fi
 
 # --- 3. the decision --------------------------------------------------------
 
-if [ "$COLLECT_OK" = "true" ]; then
+if [[ "$COLLECT_OK" = "true" ]]; then
   DECISION="$(bb_decide "$OBS" "$PAUSED" "$SOURCE" "$UNTIL" "$NOW")"
 else
   DECISION='{"action":"none","until":null,"reason":"the collector could not read the fleet; failing open","evidence_count":0}'
@@ -574,7 +574,7 @@ bbw_log "decision: ${DECISION_TEXT}"
 
 # Minimum hold: a resume waits until the pause switch has stood long enough.
 HOLD_DEFERRED="false"
-if [ "$ACTION" = "resume" ]; then
+if [[ "$ACTION" = "resume" ]]; then
   MIN_HOLD="${BUDGET_BREAKER_MIN_HOLD_MIN:-30}"
   if ! [[ "$MIN_HOLD" =~ ^[0-9]{1,6}$ ]]; then
     bbw_warn "BUDGET_BREAKER_MIN_HOLD_MIN is not a whole number of minutes; using 30"
@@ -592,7 +592,7 @@ if [ "$ACTION" = "resume" ]; then
   # most the minimum hold after the end time, with nothing kept between runs.
   # A run that is not writing has no such time at all (the vars context does not
   # carry one), so it only logs the resume it would make, as before.
-  if [ "$MODE" = "armed" ] && ! bbw_time_not_after "$PAUSED_AT" "$NOW"; then
+  if [[ "$MODE" = "armed" ]] && ! bbw_time_not_after "$PAUSED_AT" "$NOW"; then
     if bbw_time_not_after "$UNTIL" "$NOW"; then
       HOLD_FROM="$UNTIL"
       HOLD_FROM_TEXT="measured from the pause's end time ${UNTIL}"
@@ -607,27 +607,27 @@ if [ "$ACTION" = "resume" ]; then
     bbw_log "resume deferred by the minimum hold: ${HOLD_FROM_TEXT}, ${REMAINING}s of the ${MIN_HOLD} min hold remain"
     DECISION_TEXT="${DECISION_TEXT} [deferred: ${REMAINING}s of the ${MIN_HOLD} min minimum hold remain]"
     HOLD_DEFERRED="true"
-  elif [ -z "$PAUSED_AT" ] && [ "$MODE" != "armed" ]; then
+  elif [[ -z "$PAUSED_AT" ]] && [[ "$MODE" != "armed" ]]; then
     bbw_log "minimum hold not evaluated: the time ${BBW_VAR_PAUSED} was set is not known from ${STATE_ORIGIN}"
   fi
 fi
 
 # --- 4. the plan ------------------------------------------------------------
 
-if [ "$HOLD_DEFERRED" = "true" ]; then
+if [[ "$HOLD_DEFERRED" = "true" ]]; then
   PLAN="[]"
-elif ! PLAN="$(bbw_plan "$DECISION" "$BBW_VARS")" || [ -z "$PLAN" ]; then
+elif ! PLAN="$(bbw_plan "$DECISION" "$BBW_VARS")" || [[ -z "$PLAN" ]]; then
   bbw_warn "the decision (${ACTION}) does not fit the pause state that was read; failing open: nothing is written"
   PLAN="[]"
 fi
 PLAN_TEXT="$(bbw_plan_text "$PLAN")"
 
-if [ "$MODE" != "armed" ]; then
+if [[ "$MODE" != "armed" ]]; then
   bbw_log "NOT WRITING (${MODE}). Would have written: ${PLAN_TEXT}"
   finish 0 "no write (${MODE}); would have written: ${PLAN_TEXT}"
 fi
 
-if [ "$PLAN" = "[]" ]; then
+if [[ "$PLAN" = "[]" ]]; then
   bbw_log "nothing to write (${ACTION})"
   announce_held_pause
   finish 0 "no write: ${ACTION}"
@@ -645,20 +645,20 @@ if [ "$rc" -ne 0 ]; then
   state_read_failed "$rc"
 fi
 AFTER="$(bbw_state_key "$BBW_VARS")"
-if [ "$BEFORE" != "$AFTER" ]; then
+if [[ "$BEFORE" != "$AFTER" ]]; then
   bbw_warn "the pause state changed while this run was deciding (was ${BEFORE}, now ${AFTER}); nothing is written, the next run decides on the new state"
   finish 0 "no write: the pause state changed during the run"
 fi
 
 bbw_log "writing: ${PLAN_TEXT}"
 if ! bbw_apply "$ORG" "$PLAN"; then
-  if [ "$BBW_FAILED_KIND" = "guard" ]; then
+  if [[ "$BBW_FAILED_KIND" = "guard" ]]; then
     for step in "${BBW_DONE[@]}"; do
       bbw_log "wrote: ${step}"
     done
     guard_stopped_trip
   fi
-  if [ "$BBW_FAILED_KIND" = "setup" ]; then
+  if [[ "$BBW_FAILED_KIND" = "setup" ]]; then
     # Not a credential problem: a step could not be worked out, so no call was
     # made. In practice: a variable has to be created and its visibility
     # cannot be read from the organisation.
@@ -666,7 +666,7 @@ if ! bbw_apply "$ORG" "$PLAN"; then
     finish 1 "FAILED before any write: cannot ${BBW_FAILED_STEP}"
   fi
   DONE_TEXT="nothing"
-  if [ "${#BBW_DONE[@]}" -gt 0 ]; then
+  if [[ "${#BBW_DONE[@]}" -gt 0 ]]; then
     DONE_TEXT="$(printf '%s; ' "${BBW_DONE[@]}")"
   fi
   permission_error "Writing the fleet pause (step: ${BBW_FAILED_STEP})" "Planned: ${PLAN_TEXT}. Completed before the failure: ${DONE_TEXT%; }. The steps after the failed one were not attempted, so check the three variables by hand."
@@ -678,7 +678,7 @@ done
 
 RUN_URL="$(run_url)"
 
-if [ "$ACTION" = "trip" ]; then
+if [[ "$ACTION" = "trip" ]]; then
   bbw_notice "fleet PAUSED until ${DECISION_UNTIL} (${REASON})"
   ITEMS="$(jq -r '[.[] | "\(.repo)#\(.item)"] | unique | .[:20] | map("- `\(.)`") | join("\n")' <<< "$OBS" 2>/dev/null || printf '')"
   BODY="$(pause_notice_body "$DECISION_UNTIL" "Fleet paused by the budget breaker." "$REASON" "$ITEMS")"
@@ -687,13 +687,13 @@ else
   BODY="$(printf '**Fleet resumed by the budget breaker.**\n\n- **Why:** %s\n- **Set:** `%s=false`, and `%s` and `%s` removed, on the organisation `%s`\n\nIf the provider is still refusing work, the next refusals pause the fleet again.' \
     "$REASON" "$BBW_VAR_PAUSED" "$BBW_VAR_SOURCE" "$BBW_VAR_UNTIL" "$ORG")"
 fi
-if [ -n "$RUN_URL" ]; then
+if [[ -n "$RUN_URL" ]]; then
   BODY="${BODY}"$'\n\n'"Run: ${RUN_URL}"
 fi
 
 if ! bbw_notify "$NOTIFY_REPO" "$(bbw_redact "$BODY")"; then
   LATE_NOTE=""
-  if [ "$ACTION" = "trip" ]; then
+  if [[ "$ACTION" = "trip" ]]; then
     LATE_NOTE=" A later run that holds this pause posts the missing notice, once, while the pause is less than ${BBW_NOTICE_CATCHUP_MIN} min old."
   fi
   bbw_error "the fleet pause state was changed (${PLAN_TEXT}) but the notice could not be posted on the tracking issue in ${NOTIFY_REPO} (HTTP ${BBW_HTTP:-none}; ${BBW_ERR:-no detail}). The variables are correct; this run is failed so the change does not go unannounced.${LATE_NOTE}"

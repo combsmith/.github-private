@@ -644,7 +644,7 @@ _render_collection_health() {
         + "\n"
       end
   ' "${files[@]}" 2>/dev/null || true)"
-  [ -n "$errs" ] && printf '%s\n' "$errs"
+  [[ -n "$errs" ]] && printf '%s\n' "$errs"
 
   local trunc
   # Grouped by connection, then repo, with short PR links, so a long list stays
@@ -674,7 +674,7 @@ _render_collection_health() {
         + "\n\n</details>\n"
       end
   ' "${files[@]}" 2>/dev/null || true)"
-  [ -n "$trunc" ] && printf '%s\n' "$trunc"
+  [[ -n "$trunc" ]] && printf '%s\n' "$trunc"
 
   local crerr
   crerr="$(jq -rs "${_SHORT_LINK_JQ_DEFS}"'
@@ -687,7 +687,7 @@ _render_collection_health() {
         + "\n"
       end
   ' "${files[@]}" 2>/dev/null || true)"
-  [ -n "$crerr" ] && printf '%s\n' "$crerr"
+  [[ -n "$crerr" ]] && printf '%s\n' "$crerr"
   return 0
 }
 
@@ -1172,7 +1172,7 @@ render_reviewer_report() {
   printf -- '_Source: `scripts/reviewer_report.sh` · `.github/workflows/reviewer-report.yml` — no LLM in this pipeline._\n'
 
   # ---- Persist this week's snapshot for next week's WoW diff ----------------
-  if [ -n "${REVIEWER_SNAPSHOT_OUT:-}" ]; then
+  if [[ -n "${REVIEWER_SNAPSHOT_OUT:-}" ]]; then
     printf '%s\n' "$snap" > "$REVIEWER_SNAPSHOT_OUT"
   fi
 }
@@ -1252,32 +1252,32 @@ query($owner:String!, $name:String!, $cursor:String, $prFirst:Int!) {
 _collect_check_runs_for_page() {
   local owner="$1" name="$2" resp="$3" out="${4:-}"
   local reporters_json="${REVIEWER_CHECK_RUN_JSON:-"{}"}"
-  [ "$reporters_json" = "{}" ] && { printf '{}'; return 0; }
+  [[ "$reporters_json" = "{}" ]] && { printf '{}'; return 0; }
 
   local prs
   prs="$(jq -c --arg cutoff "$CUTOFF" '
     [ .data?.repository?.pullRequests?.nodes[]?
       | select(.updatedAt >= $cutoff)
       | {url, sha: (.headRefOid // "")} | select(.sha != "") ]' <<<"$resp" 2>/dev/null || printf '[]')"
-  { [ -z "$prs" ] || [ "$prs" = "[]" ]; } && { printf '{}'; return 0; }
+  { [[ -z "$prs" ]] || [[ "$prs" = "[]" ]]; } && { printf '{}'; return 0; }
 
   # Stream the (url, sha) pairs as TSV from a SINGLE jq, then loop — no per-row jq
   # to read fields. @tsv also escapes embedded newlines, hardening against a
   # crafted PR URL splitting a row. `|| [ -n "$url" ]` processes a final row with
   # no trailing newline.
   local acc='{}' url sha
-  while IFS=$'\t' read -r url sha || [ -n "$url" ]; do
-    [ -z "$url" ] && continue
+  while IFS=$'\t' read -r url sha || [[ -n "$url" ]]; do
+    [[ -z "$url" ]] && continue
     local cr_resp matched
     # `--paginate` follows Link headers so a reporter's run past the first 100 check
     # runs is still seen — reading only page 1 would falsely report "No response"
     # when the configured run sorts after the 100th (#1908). Assign first, then test,
     # so a fetch failure under `set -e` is a clean skip, not a swallowed error.
     if ! cr_resp="$(_gh_timeout api --paginate "repos/${owner}/${name}/commits/${sha}/check-runs?per_page=100" 2>/dev/null)" \
-         || [ -z "$cr_resp" ]; then
+         || [[ -z "$cr_resp" ]]; then
       # Fetch failed: without a record this PR's check-run reporters are silently absent,
       # so a Graphite clean pass would miscount as "No response". Surface it (#1908).
-      [ -n "$out" ] && jq -cn --arg repo "${owner}/${name}" --arg pr "$url" \
+      [[ -n "$out" ]] && jq -cn --arg repo "${owner}/${name}" --arg pr "$url" \
         '{kind:"check_run_error", repo:$repo, pr:$pr, reason:"check-run REST fetch failed"}' \
         >> "$out" 2>/dev/null || true
       continue
@@ -1291,7 +1291,7 @@ _collect_check_runs_for_page() {
           | { bot: $byname[.name], status: .status, conclusion: .conclusion,
               summary: (.output.summary // ""), completed_at: .completed_at } ]' \
       <<<"$cr_resp" 2>/dev/null || printf '[]')"
-    { [ -z "$matched" ] || [ "$matched" = "[]" ]; } && continue
+    { [[ -z "$matched" ]] || [[ "$matched" = "[]" ]]; } && continue
     acc="$(jq -c --arg url "$url" --argjson m "$matched" '. + {($url): $m}' <<<"$acc" 2>/dev/null || printf '%s' "$acc")"
   done < <(jq -r '.[] | [.url, .sha] | @tsv' <<<"$prs" 2>/dev/null || true)
   printf '%s' "$acc"
@@ -1335,9 +1335,9 @@ _collect_one_repo() {
       attempt=$((attempt + 1))
       local gql_args
       gql_args=(api graphql -f query="$_PR_QUERY" -F owner="$owner" -F name="$name" -F prFirst="$this_first")
-      [ -n "$cursor" ] && gql_args+=(-F cursor="$cursor")
+      [[ -n "$cursor" ]] && gql_args+=(-F cursor="$cursor")
       resp="$(_gh_timeout "${gql_args[@]}" 2>/dev/null || true)"
-      if [ -n "$resp" ] \
+      if [[ -n "$resp" ]] \
            && jq -e '((.errors // []) | length) == 0 and (.data?.repository?.pullRequests != null)' <<<"$resp" >/dev/null 2>&1; then
         fetched=1; break
       fi
@@ -1366,7 +1366,7 @@ _collect_one_repo() {
     # the configured reporters and inject them as ._checkRuns so normalization can
     # count a clean pass (check run only, no PR review) as a real response.
     local crmap='{}'
-    if [ "${REVIEWER_CHECK_RUN_JSON:-"{}"}" != "{}" ]; then
+    if [[ "${REVIEWER_CHECK_RUN_JSON:-"{}"}" != "{}" ]]; then
       crmap="$(_collect_check_runs_for_page "$owner" "$name" "$resp" "$out")" || crmap='{}'
     fi
 
@@ -1396,7 +1396,7 @@ _collect_one_repo() {
     # marker-bearing comment/review on each in-window PR, regardless of author
     # (our agents commit as human logins). A distinct record kind, so it never
     # perturbs the bot scorecard aggregation above.
-    if [ -n "${CN_AGENT_COMMENT_JQ:-}" ] && [ -n "${CN_MARKER_RE:-}" ] && [ -n "${CN_NOACTION_RE:-}" ]; then
+    if [[ -n "${CN_AGENT_COMMENT_JQ:-}" ]] && [[ -n "${CN_MARKER_RE:-}" ]] && [[ -n "${CN_NOACTION_RE:-}" ]]; then
       jq -c --arg repo "$repo" --arg mark "$CN_MARKER_RE" --arg noact "$CN_NOACTION_RE" --arg cutoff "$CUTOFF" \
         '.data?.repository?.pullRequests?.nodes[]? | select(.updatedAt >= $cutoff) | '"${CN_AGENT_COMMENT_JQ}" \
         <<<"$resp" >> "$out" 2>/dev/null || true
@@ -1419,7 +1419,7 @@ _collect_one_repo() {
     # PR — the deterministic false-negative signal (accepted advisory-bot findings
     # after a pr-review approval, plus caught/partial-evidence counts). A distinct
     # record kind, so it never perturbs the bot scorecard aggregation above.
-    if [ -n "${PR_REVIEW_MISS_COLLECT_JQ:-}" ] && [ -n "${_MISS_JQ_DEFS:-}" ]; then
+    if [[ -n "${PR_REVIEW_MISS_COLLECT_JQ:-}" ]] && [[ -n "${_MISS_JQ_DEFS:-}" ]]; then
       jq -c --arg repo "$repo" --argjson bots "$bots_json" \
         --arg approver "${PR_REVIEW_APPROVER:-donpetry-bot}" \
         --arg approval_re "${PR_REVIEW_APPROVAL_RE:-}" --arg partial_re "${PR_REVIEW_PARTIAL_RE:-}" \
@@ -1432,7 +1432,7 @@ _collect_one_repo() {
     local has_next end_cursor
     has_next="$(jq -r '.data?.repository?.pullRequests?.pageInfo?.hasNextPage // false' <<<"$resp" 2>/dev/null || echo false)"
     end_cursor="$(jq -r '.data?.repository?.pullRequests?.pageInfo?.endCursor // empty' <<<"$resp" 2>/dev/null || echo '')"
-    { [ "$in_window" -eq 0 ] || [ "$has_next" != "true" ] || [ -z "$end_cursor" ]; } && break
+    { [ "$in_window" -eq 0 ] || [[ "$has_next" != "true" ]] || [[ -z "$end_cursor" ]]; } && break
     cursor="$end_cursor"
   done
 }
@@ -1455,7 +1455,7 @@ collect_org_reviews() {
     echo "ERROR: org repo discovery for '${ORG}' failed — verify GH_TOKEN has org read access." >&2
     return 1
   fi
-  [ -n "$repos_raw" ] || { echo "0"; return 0; }
+  [[ -n "$repos_raw" ]] || { echo "0"; return 0; }
 
   local repo_count
   repo_count="$(printf '%s\n' "$repos_raw" | awk 'NF{c++} END{print c+0}')"
@@ -1511,7 +1511,7 @@ _fetch_prev_snapshot() {
   id="$(_gh_timeout api "repos/${SNAPSHOT_REPO}/actions/artifacts?per_page=100" --paginate 2>/dev/null \
     | jq -r '[.artifacts[] | select(.name == "reviewer-report-state") | select(.expired == false)]
              | sort_by(.created_at) | last | .id // empty' 2>/dev/null)" || return 0
-  [ -n "$id" ] || { echo "WARN: no prior snapshot artifact — WoW deltas omitted (first run?)" >&2; return 0; }
+  [[ -n "$id" ]] || { echo "WARN: no prior snapshot artifact — WoW deltas omitted (first run?)" >&2; return 0; }
   local tmpzip tmpdir
   tmpzip="$(mktemp)"; tmpdir="$(mktemp -d)"
   if _gh_timeout api "repos/${SNAPSHOT_REPO}/actions/artifacts/${id}/zip" > "$tmpzip" 2>/dev/null \
@@ -1519,7 +1519,7 @@ _fetch_prev_snapshot() {
     local f
     f="$(find "$tmpdir" -type f -name '*.json' 2>/dev/null)" || true
     f="${f%%$'\n'*}"
-    [ -n "$f" ] && cp "$f" "$dest"
+    [[ -n "$f" ]] && cp "$f" "$dest"
   fi
   rm -rf "$tmpzip" "$tmpdir"
 }
@@ -1541,21 +1541,21 @@ main() {
   generated_at="$(date -u +%Y-%m-%d 2>/dev/null || echo '')"
 
   # Week-over-week: fetch the prior snapshot (best-effort) unless one is supplied.
-  if [ -z "${REVIEWER_PREV_SNAPSHOT:-}" ]; then
+  if [[ -z "${REVIEWER_PREV_SNAPSHOT:-}" ]]; then
     prev_snap="$jsonl_dir/prev_snapshot.json"
     _fetch_prev_snapshot "$prev_snap" || true
-    [ -f "$prev_snap" ] && export REVIEWER_PREV_SNAPSHOT="$prev_snap"
+    [[ -f "$prev_snap" ]] && export REVIEWER_PREV_SNAPSHOT="$prev_snap"
   fi
 
   report="$(render_reviewer_report "$jsonl_dir" "$LOOKBACK_DAYS" "$repo_count" "$generated_at")"
 
   printf '%s\n' "$report"
-  if [ -n "${REVIEWER_REPORT_OUT:-}" ]; then
+  if [[ -n "${REVIEWER_REPORT_OUT:-}" ]]; then
     printf '%s\n' "$report" > "$REVIEWER_REPORT_OUT"
   fi
 }
 
 # Only run main when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

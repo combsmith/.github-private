@@ -78,11 +78,11 @@ echo ""
 HAS_GH_TOKEN=false
 HAS_CLAUDE_TOKEN=false
 
-if [ -n "${GH_TOKEN:-}" ] || [ -n "${GH_PAT:-}" ]; then
+if [[ -n "${GH_TOKEN:-}" ]] || [[ -n "${GH_PAT:-}" ]]; then
   HAS_GH_TOKEN=true
 fi
 
-if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
   HAS_CLAUDE_TOKEN=true
 fi
 
@@ -103,20 +103,20 @@ NEEDS_CLAUDE=(
 
 mapfile -t ALL_SCENARIOS < <(find "${SCENARIOS_DIR}" -name "*.sh" | sort)
 
-if [ "${#ALL_SCENARIOS[@]}" -eq 0 ]; then
+if [[ "${#ALL_SCENARIOS[@]}" -eq 0 ]]; then
   log "ERROR: No scenario scripts found in ${SCENARIOS_DIR}"
   exit 1
 fi
 
 # Filter to single scenario if requested
-if [ -n "${SINGLE_SCENARIO}" ]; then
+if [[ -n "${SINGLE_SCENARIO}" ]]; then
   FILTERED=()
   for s in "${ALL_SCENARIOS[@]}"; do
     if [[ "$(basename "$s" .sh)" == *"${SINGLE_SCENARIO}"* ]]; then
       FILTERED+=("$s")
     fi
   done
-  if [ "${#FILTERED[@]}" -eq 0 ]; then
+  if [[ "${#FILTERED[@]}" -eq 0 ]]; then
     log "ERROR: No scenario found matching '${SINGLE_SCENARIO}'"
     log "Available scenarios:"
     for s in "${ALL_SCENARIOS[@]}"; do
@@ -141,7 +141,7 @@ for scenario_script in "${ALL_SCENARIOS[@]}"; do
   log "────────────────────────────────────────────────"
 
   # ── Dry-run mode ────────────────────────────────────────────────────────────
-  if [ "${DRY_RUN}" = "true" ]; then
+  if [[ "${DRY_RUN}" = "true" ]]; then
     log "[DRY-RUN] Would execute: bash ${scenario_script}"
     echo "${scenario_name}: dry-run (not executed)"
     SKIP_COUNT=$(( SKIP_COUNT + 1 ))
@@ -150,7 +150,7 @@ for scenario_script in "${ALL_SCENARIOS[@]}"; do
 
   # ── Note which scenarios need CLAUDE_CODE_OAUTH_TOKEN ──────────────────────
   for needs_claude_scenario in "${NEEDS_CLAUDE[@]}"; do
-    if [[ "${scenario_name}" == *"${needs_claude_scenario}"* ]] && [ "${HAS_CLAUDE_TOKEN}" = "false" ]; then
+    if [[ "${scenario_name}" == *"${needs_claude_scenario}"* ]] && [[ "${HAS_CLAUDE_TOKEN}" = "false" ]]; then
       log "  NOTE: ${scenario_name} will skip Claude response assertions (CLAUDE_CODE_OAUTH_TOKEN not set)"
     fi
   done

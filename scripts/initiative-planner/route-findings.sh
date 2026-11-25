@@ -32,8 +32,8 @@ set -euo pipefail
 PLAN_PATH="${1:?usage: route-findings.sh <plan.json> <unresolved-findings.json>}"
 FINDINGS_PATH="${2:?usage: route-findings.sh <plan.json> <unresolved-findings.json>}"
 
-[ -s "$PLAN_PATH" ] || { echo "::error::plan file '$PLAN_PATH' missing or empty" >&2; exit 1; }
-[ -s "$FINDINGS_PATH" ] || { echo "::error::findings file '$FINDINGS_PATH' missing or empty" >&2; exit 1; }
+[[ -s "$PLAN_PATH" ]] || { echo "::error::plan file '$PLAN_PATH' missing or empty" >&2; exit 1; }
+[[ -s "$FINDINGS_PATH" ]] || { echo "::error::findings file '$FINDINGS_PATH' missing or empty" >&2; exit 1; }
 jq empty "$PLAN_PATH" 2>/dev/null || { echo "::error::plan '$PLAN_PATH' is not valid JSON" >&2; exit 1; }
 jq empty "$FINDINGS_PATH" 2>/dev/null || { echo "::error::findings '$FINDINGS_PATH' is not valid JSON" >&2; exit 1; }
 
