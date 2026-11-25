@@ -122,7 +122,7 @@ main() {
 
   jq -e 'type == "object"
          and (.runs | type == "array" and length > 0)
-         and all(.runs[]; type == "object" and ((.results // []) | type == "array"))' \
+         and all(.runs[]; type == "object" and ((.results | type == "array") or (has("results") | not)))' \
     "$in" > /dev/null 2>&1 || die "'$in' is not a SARIF log (want an object with a non-empty runs array whose results are arrays)"
 
   # One line per unpinned-tag result: run index, result index, path, start line,
@@ -142,12 +142,12 @@ main() {
         (.value.message.text // "") ]
     | map(tostring | gsub("[\u001f\n\r]"; " ")) | join("\u001f")' "$in")" || die "could not read the results of '$in'"
 
-  local drops="[]" kept_tags=0 r j uri line msg ref
+  local drops=() kept_tags=0 r j uri line msg ref
   while IFS=$'\x1f' read -r r j uri line msg; do
     [[ -n "$r" ]] || continue
     ref="$(drop_reason "$uri" "$line" "$msg" "$root")"
     if [[ -n "$ref" ]]; then
-      drops="$(jq -c --argjson r "$r" --argjson j "$j" '. + [[$r, $j]]' <<< "$drops")"
+      drops+=("[$r,$j]")
       echo "dropped: $uri:$line uses $ref (org ref, exempt from SHA pinning)" >&2
     else
       kept_tags=$((kept_tags + 1))
@@ -155,12 +155,15 @@ main() {
     fi
   done <<< "$candidates"
 
-  local before after dropped tmp
+  local before after dropped tmp drops_json="[]"
   before="$(jq '[.runs[].results // [] | length] | add // 0' "$in")"
-  dropped="$(jq 'length' <<< "$drops")"
+  dropped="${#drops[@]}"
+  if [[ $dropped -gt 0 ]]; then
+    drops_json="[$(IFS=,; echo "${drops[*]}")]"
+  fi
   mkdir -p "$(dirname "$out")"
   tmp="$(mktemp "$(dirname "$out")/.codeql-filter.XXXXXX")"
-  if ! jq --argjson drops "$drops" \
+  if ! jq --argjson drops "$drops_json" \
       'delpaths([$drops[] | ["runs", .[0], "results", .[1]]])' "$in" > "$tmp"; then
     rm -f "$tmp"
     die "could not write the filtered SARIF"
