@@ -280,7 +280,7 @@ duck_engine_candidates() {
         echo "::warning::AI_DUCK_ENGINE='${AI_DUCK_ENGINE}': '$t' is not a known engine (claude, gemini, copilot, none) — skipping it" >&2 ;;
     esac
   done
-  if [ "$stop" -eq 0 ]; then
+  if [[ "$stop" -eq 0 ]]; then
     for e in ${DUCK_ENGINE:-} $(ai_engine_chain); do
       [[ " $out " == *" $e "* ]] && continue
       # The primary is a duck only when AI_DUCK_ENGINE lists it (same vendor,
@@ -521,7 +521,7 @@ check_provider_headroom() {
         | cut -d: -f2 | tr -d '[:space:]' || true)
       limit_tokens=$(printf '%s' "$_resp" | grep -i 'x-ratelimit-limit-tokens:' \
         | cut -d: -f2 | tr -d '[:space:]' || true)
-      if [[ "$remaining_tokens" =~ ^[0-9]+$ ]] && [[ "$limit_tokens" =~ ^[0-9]+$ ]] && [ "$limit_tokens" -gt 0 ]; then
+      if [[ "$remaining_tokens" =~ ^[0-9]+$ ]] && [[ "$limit_tokens" =~ ^[0-9]+$ ]] && [[ "$limit_tokens" -gt 0 ]]; then
         used_pct=$(( 100 - (remaining_tokens * 100 / limit_tokens) ))
       elif [[ -n "${ANTHROPIC_API_KEY:-}" ]] && [[ -z "${_HEADROOM_PROBE_WARNED:-}" ]]; then
         # With an API key the probe should return rate-limit headers; none means
@@ -592,13 +592,13 @@ check_provider_headroom() {
         | cut -d: -f2 | tr -d '[:space:]' || true)
       _limit=$(printf '%s' "$_resp" | grep -i 'x-ratelimit-limit-requests:' \
         | cut -d: -f2 | tr -d '[:space:]' || true)
-      if [[ "$_remaining" =~ ^[0-9]+$ ]] && [[ "$_limit" =~ ^[0-9]+$ ]] && [ "$_limit" -gt 0 ]; then
+      if [[ "$_remaining" =~ ^[0-9]+$ ]] && [[ "$_limit" =~ ^[0-9]+$ ]] && [[ "$_limit" -gt 0 ]]; then
         used_pct=$(( 100 - (_remaining * 100 / _limit) ))
       fi
       ;;
   esac
 
-  if [ "$used_pct" -ge "$threshold" ] 2>/dev/null; then
+  if [[ "$used_pct" -ge "$threshold" ]] 2>/dev/null; then
     echo "  [headroom] $engine usage ${used_pct}% >= threshold ${threshold}% — skipping" >&2
     return 1
   fi
@@ -956,14 +956,14 @@ _gemini_invoke() {
     _usage_json=1
   fi
 
-  if [ "$_usage_json" -eq 1 ]; then
+  if [[ "$_usage_json" -eq 1 ]]; then
     local _json_tmp; _json_tmp="$(mktemp 2>/dev/null || true)"
     if [[ -n "$_json_tmp" ]]; then
       local rc=0
       # stderr intentionally NOT redirected — flows to caller for rate-limit checks.
       _engine_child timeout --kill-after="$ENGINE_KILL_AFTER" "$timeout_sec" gemini --prompt "" --model "$model" "${extra_args[@]}" \
         --output-format json < "$prompt_file" > "$_json_tmp" || rc=$?
-      if [ "$rc" -eq 0 ]; then
+      if [[ "$rc" -eq 0 ]]; then
         parse_engine_usage gemini "$_json_tmp" || true
         local _txt; _txt="$(extract_engine_text gemini "$_json_tmp")"
         if [[ -n "$_txt" ]]; then printf '%s\n' "$_txt"; else cat "$_json_tmp"; fi
@@ -1087,7 +1087,7 @@ _gemini_chain_invoke() {
           rc=0
           _gemini_invoke "$prompt_file" "$timeout_sec" "$model" "${extra_args[@]}" \
             > "$stdout_tmp" 2> "$stderr_tmp" || rc=$?
-          if [ "$rc" -eq 0 ]; then
+          if [[ "$rc" -eq 0 ]]; then
             _gemini_note_key_index "${_key_idxs[$_key_i]}"
             break
           fi
@@ -1112,7 +1112,7 @@ _gemini_chain_invoke() {
             echo "::notice::[gemini] model $model: key index ${_key_idxs[$_key_i]} cooling down for ${_cd}s ($_cd_src)" >&2
           fi
           # By position, never the key: the log shows how far rotation got.
-          if [ "$_key_n" -lt "${#_key_names[@]}" ]; then
+          if [[ "$_key_n" -lt "${#_key_names[@]}" ]]; then
             echo "::notice::[gemini] model $model: API key $_key_n of ${#_key_names[@]} throttled — trying the next key" >&2
           fi
         done
@@ -1139,7 +1139,7 @@ _gemini_chain_invoke() {
     final_stderr="$stderr_tmp"
     final_model="$model"
 
-    if [ "$rc" -eq 0 ]; then
+    if [[ "$rc" -eq 0 ]]; then
       final_rc=0
       all_rl=0
       break
@@ -1156,12 +1156,12 @@ _gemini_chain_invoke() {
     echo "::warning::[gemini] model $model throttled (rc=$rc) — trying next in chain" >&2
   done
 
-  if [ "$attempted" -eq 0 ]; then
+  if [[ "$attempted" -eq 0 ]]; then
     echo "::error::_gemini_chain_invoke: chain '$chain_csv' had no valid model entries" >&2
     return 1
   fi
 
-  if [ "$all_rl" -eq 1 ]; then
+  if [[ "$all_rl" -eq 1 ]]; then
     parse_reset_time_files "$final_stdout" "$final_stderr"
     final_rc=2
   fi
@@ -1209,7 +1209,7 @@ _claude_hop_failure_class() {
     5[0-9][0-9]) printf 'server_error'; return 0 ;;
     [0-9]*) printf 'error'; return 0 ;;
   esac
-  if [ "$is_json" -eq 1 ]; then
+  if [[ "$is_json" -eq 1 ]]; then
     result_tmp="$(mktemp 2>/dev/null)" || result_tmp=""
     if [[ -n "$result_tmp" ]]; then
       jq -rs '[.[] | select(type == "object")] | last | (.result // empty) | tostring' \
@@ -1353,7 +1353,7 @@ _claude_chain_invoke() {
     final_stderr="$stderr_tmp"
     final_model="$model"
 
-    if [ "$rc" -eq 0 ]; then
+    if [[ "$rc" -eq 0 ]]; then
       final_rc=0
       succeeded=1
       break
@@ -1384,7 +1384,7 @@ _claude_chain_invoke() {
 
   # Empty/whitespace-only chain → configuration error, not a rate-limit. Returning
   # 2 here would trigger the cross-provider fallback as if quotas were exhausted.
-  if [ "$attempted" -eq 0 ]; then
+  if [[ "$attempted" -eq 0 ]]; then
     echo "::error::_claude_chain_invoke: chain '$chain_csv' had no valid model entries" >&2
     return 1
   fi
@@ -1394,7 +1394,7 @@ _claude_chain_invoke() {
   # decide on the cross-provider fallback by scanning the final hop's output,
   # which only carries a rate-limit signal when that hop was throttled. A chain
   # ending on a 404/400/5xx returns that hop's own code: an honest failure.
-  if [ "$succeeded" -eq 0 ] && [[ "$last_cls" = "rate_limit" ]]; then
+  if [[ "$succeeded" -eq 0 ]] && [[ "$last_cls" = "rate_limit" ]]; then
     parse_reset_time_files "$final_stdout" "$final_stderr"
     final_rc=2
   fi
@@ -1411,7 +1411,7 @@ _claude_chain_invoke() {
   # receive plain text); fall back to the raw payload if extraction is empty or
   # the call failed (preserves error/rate-limit text for downstream detection).
   if [[ -n "$final_stdout" ]]; then
-    if [ "$_usage_json" -eq 1 ] && [ "$final_rc" -eq 0 ]; then
+    if [[ "$_usage_json" -eq 1 ]] && [[ "$final_rc" -eq 0 ]]; then
       parse_engine_usage claude "$final_stdout" || true
       local _txt
       _txt="$(extract_engine_text claude "$final_stdout")"
@@ -1507,7 +1507,7 @@ _record_engine_tokens() {
     _have_usage=1
   fi
 
-  if [ "$_have_usage" -ne 1 ]; then
+  if [[ "$_have_usage" -ne 1 ]]; then
     # Fallback: estimate from byte counts (engine reported no usage, e.g. copilot
     # or text-mode). Cache figures are unknown → 0.
     input_tokens=$(estimate_tokens_from_file "$prompt_file")
@@ -1666,7 +1666,7 @@ run_triage() {
     esac
     _t_end="$(_now_ms)"
     _dur="$(_elapsed_ms "$_t_start" "$_t_end")"
-    if [ "$rc" -eq 0 ]; then
+    if [[ "$rc" -eq 0 ]]; then
       # Success: hand the buffered output to the caller now (claude redirect path).
       [ "$_tok_emit_pending" -eq 1 ] && cat "$_tok_tmp"
       local _triage_used
@@ -1697,10 +1697,10 @@ run_triage() {
     # early 137 (e.g. an OOM kill well under budget) keeps is_transient_failure's
     # retry. Collapse only the at-budget case to 124 so it takes the NON-retryable
     # timeout path, using the latency run_triage already measured (#1952 cubic P1).
-    if [ "$rc" -eq 137 ] && [[ -n "$_dur" ]] && [ "$_dur" -ge "$(( TRIAGE_TIMEOUT_SEC * 1000 ))" ]; then
+    if [[ "$rc" -eq 137 ]] && [[ -n "$_dur" ]] && [[ "$_dur" -ge "$(( TRIAGE_TIMEOUT_SEC * 1000 ))" ]]; then
       rc=124
     fi
-    if [ "$attempt" -lt "$RETRY_MAX_ATTEMPTS" ] && is_transient_failure "$rc"; then
+    if [[ "$attempt" -lt "$RETRY_MAX_ATTEMPTS" ]] && is_transient_failure "$rc"; then
       # Retrying: the deferred stdout of this failed attempt is intentionally
       # DROPPED (the loop top truncates $_tok_tmp) so only the retry's output
       # reaches the caller's capture (#1952, cubic P2).
@@ -1867,7 +1867,7 @@ _run_agentic_direct() {
   esac
   _t_end="$(_now_ms)"
   _dur="$(_elapsed_ms "$_t_start" "$_t_end")"
-  if [ "$rc" -eq 0 ]; then
+  if [[ "$rc" -eq 0 ]]; then
     local _agentic_used="$model"
     if [[ "$REVIEW_ENGINE" = "claude" ]] && [[ -n "${_CLAUDE_CHAIN_MODEL_USED:-}" ]]; then
       _agentic_used="$_CLAUDE_CHAIN_MODEL_USED"
@@ -2029,7 +2029,7 @@ run_writer() {
 
   _t_end="$(_now_ms)"
   _dur="$(_elapsed_ms "$_t_start" "$_t_end")"
-  if [ "$rc" -eq 0 ]; then
+  if [[ "$rc" -eq 0 ]]; then
     local _writer_used="$model"
     if [[ "$REVIEW_ENGINE" = "claude" ]] && [[ -n "${_CLAUDE_CHAIN_MODEL_USED:-}" ]]; then
       _writer_used="$_CLAUDE_CHAIN_MODEL_USED"
@@ -2087,7 +2087,7 @@ run_writer() {
   # marker embedding. Use the file-based helpers to avoid OOM on large captures.
   # Runs AFTER the persist/summary block above so a rate-limited session is also
   # captured to the run summary; reads the raw capture ($_tmp) left intact above.
-  if [ "$rc" -ne 0 ] && [[ -n "$_tmp" ]] && is_rate_limited_files "$_tmp"; then
+  if [[ "$rc" -ne 0 ]] && [[ -n "$_tmp" ]] && is_rate_limited_files "$_tmp"; then
     parse_reset_time_files "$_tmp"
     rm -f "$_tmp"
     return 2
@@ -2097,7 +2097,7 @@ run_writer() {
   # settings". That is not a rate-limit phrase, so without this the raw exit
   # would be classified as engine-error and abort the chain before gemini. Map it
   # to exit 2 so run_writer_with_fallback warns and continues to the next engine.
-  if [ "$rc" -ne 0 ] && [[ -n "$_tmp" ]] && is_license_denied_files "$_tmp"; then
+  if [[ "$rc" -ne 0 ]] && [[ -n "$_tmp" ]] && is_license_denied_files "$_tmp"; then
     echo "::warning::$REVIEW_ENGINE licensing/policy denial — treating as unavailable, trying next engine" >&2
     rm -f "$_tmp"
     return 2
@@ -2278,7 +2278,7 @@ run_writer_with_fallback() {
     # onto a constrained Gemini is the actuation follow-up (#2029), not this gate.
     local _headroom_rc=0
     check_provider_headroom "$engine" || _headroom_rc=$?
-    if [ "$_headroom_rc" -ne 0 ] && [ "$_headroom_rc" -ne 2 ]; then
+    if [[ "$_headroom_rc" -ne 0 ]] && [[ "$_headroom_rc" -ne 2 ]]; then
       echo "::warning::$engine at/above usage threshold — trying next engine" >&2
       any_rate_limited=1
       _mark_engine_exhausted "$engine" "rate-limited"
@@ -2300,15 +2300,15 @@ run_writer_with_fallback() {
     export REVIEW_ENGINE="$saved"
     # Restore original config for subsequent PRs in the same session
     set_engine_config
-    [ "$rc" -eq 0 ] && return 0
-    if [ "$rc" -eq 2 ] || [ "$rc" -eq 127 ]; then
+    [[ "$rc" -eq 0 ]] && return 0
+    if [[ "$rc" -eq 2 ]] || [[ "$rc" -eq 127 ]]; then
       # exit 2: rate-limited or text-only engine unavailable for writes
       # exit 127: engine binary not installed in this environment (also returned by
       #           GNU timeout when the command is not found — treated as a missing
       #           binary rather than a retryable quota error so that infra failures
       #           surface loudly instead of being masked as rate-limit retries).
       echo "::warning::$engine unavailable (exit $rc), trying next engine" >&2
-      if [ "$rc" -eq 2 ]; then
+      if [[ "$rc" -eq 2 ]]; then
         any_rate_limited=1
         _mark_engine_exhausted "$engine" "rate-limited"
       else
@@ -2327,7 +2327,7 @@ run_writer_with_fallback() {
     # distinct `timeout` reason and record the tier/budget/elapsed sidecars the
     # escalation comment surfaces, so the caller escalates to a human on the
     # FIRST occurrence instead of burning a same-budget model call.
-    if [ "$rc" -eq 124 ]; then
+    if [[ "$rc" -eq 124 ]]; then
       printf 'timeout\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
       printf 'action\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-tier"
       printf '%s\n' "${ACTION_TIMEOUT_SEC}" > "$DEV_LEAD_SIDECAR_DIR/dev-lead-timeout-budget"
@@ -2343,21 +2343,21 @@ run_writer_with_fallback() {
   # downstream handlers do not post rate-limit retry markers for what is really a
   # configuration/environment problem.  Only return 2 when every failure was a
   # genuine quota/rate-limit so callers know a later retry may succeed.
-  if [ "$any_missing" -eq 1 ]; then
+  if [[ "$any_missing" -eq 1 ]]; then
     printf 'missing-binary\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
     return 1
   fi
   # A genuine quota/rate-limit anywhere in the chain wins over a config-gap: a
   # later retry could succeed once the limit resets, so keep the retryable
   # rate-limited classification (exit 2).
-  if [ "$any_rate_limited" -eq 1 ]; then
+  if [[ "$any_rate_limited" -eq 1 ]]; then
     printf 'rate-limited\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
     return 2
   fi
   # Deterministic credential config-gap as the SOLE cause (#1591): a distinct
   # non-retryable `unconfigured` reason (exit 1). Downstream handlers escalate to
   # a human rather than posting a retryable marker — retrying cannot set a secret.
-  if [ "$any_unconfigured" -eq 1 ]; then
+  if [[ "$any_unconfigured" -eq 1 ]]; then
     printf 'unconfigured\n' > "$DEV_LEAD_SIDECAR_DIR/dev-lead-failure-reason"
     return 1
   fi
@@ -2439,7 +2439,7 @@ run_duck_chain() {
     [[ -n "$e" ]] && [[ "$e" != none ]] || continue
     n=$((n + 1))
     if [[ -n "$tried" ]]; then
-      if [ $((SECONDS - _started)) -ge "${DUCK_TIMEOUT_SEC:-300}" ]; then
+      if [[ $((SECONDS - _started)) -ge "${DUCK_TIMEOUT_SEC:-300}" ]]; then
         echo "::notice::[duck] not trying $e ($m): the duck's ${DUCK_TIMEOUT_SEC:-300}s budget is spent" >&2
         break
       fi
@@ -2459,7 +2459,7 @@ run_duck_chain() {
       printf '%s %s\n' "$e" "$m" > "${OUTPUT_FILE}.engine"
       return 0
     fi
-    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+    if [[ "$rc" -eq 124 ]] || [[ "$rc" -eq 137 ]]; then
       rm -f "$out_tmp" "$err_tmp"
       echo "::warning::[duck] $e ($m) timed out — not trying another duck engine" >&2
       printf '%s\n' "$e ($m) timed out" > "${OUTPUT_FILE}.skip"
@@ -2606,7 +2606,7 @@ _run_duck_direct() {
   esac
   _t_end="$(_now_ms)"
   _dur="$(_elapsed_ms "$_t_start" "$_t_end")"
-  if [ "$rc" -eq 0 ]; then
+  if [[ "$rc" -eq 0 ]]; then
     _record_engine_tokens "duck" "$DUCK_ENGINE" "$model" "$prompt_file" "$_tok_tmp" "$_dur"
   fi
   [[ -n "$_tok_tmp" ]] && rm -f "$_tok_tmp"
@@ -2626,7 +2626,7 @@ _emit_reset_iso() {
   local today iso
   today=$(date -u +%Y-%m-%d)
   iso=$(date -u -d "${today} ${hhmm} UTC" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
-  if [[ -n "$iso" ]] && [ "$(date -u +%s)" -gt "$(date -u -d "$iso" +%s 2>/dev/null || echo 0)" ]; then
+  if [[ -n "$iso" ]] && [[ "$(date -u +%s)" -gt "$(date -u -d "$iso" +%s 2>/dev/null || echo 0)" ]]; then
     local tomorrow
     tomorrow=$(date -u -d "tomorrow" +%Y-%m-%d)
     iso=$(date -u -d "${tomorrow} ${hhmm} UTC" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
