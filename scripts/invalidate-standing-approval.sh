@@ -33,7 +33,7 @@ _isa_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Detector + defaults. The gate (sourced by the metric lib's caller) supplies the
 # trusted-bot registry; fall back to the metric lib's built-in default set.
 # shellcheck source=scripts/lib/advisory-review-gate.sh
-[ -f "$_isa_here/lib/advisory-review-gate.sh" ] && source "$_isa_here/lib/advisory-review-gate.sh"
+[[ -f "$_isa_here/lib/advisory-review-gate.sh" ]] && source "$_isa_here/lib/advisory-review-gate.sh"
 # shellcheck source=scripts/lib/pr-review-miss-rate.sh
 source "$_isa_here/lib/pr-review-miss-rate.sh"
 # shellcheck source=scripts/lib/merge-queue-dequeue.sh
@@ -41,7 +41,7 @@ source "$_isa_here/lib/merge-queue-dequeue.sh"
 
 # isa_bots_json — the trusted advisory-bot set as a JSON array (registry or default).
 isa_bots_json() {
-  if declare -p RATE_LIMIT_NOTICE_BOTS >/dev/null 2>&1 && [ "${#RATE_LIMIT_NOTICE_BOTS[@]}" -gt 0 ]; then
+  if declare -p RATE_LIMIT_NOTICE_BOTS >/dev/null 2>&1 && [[ "${#RATE_LIMIT_NOTICE_BOTS[@]}" -gt 0 ]]; then
     jq -n '$ARGS.positional' --args "${RATE_LIMIT_NOTICE_BOTS[@]}"
   else
     printf '%s' "$PR_REVIEW_DEFAULT_BOTS"
@@ -52,7 +52,7 @@ isa_bots_json() {
 # detector expects (reviews + reviewThreads + comments). Honors PR_NODE_JSON.
 isa_fetch_pr_node() {
   local owner="$1" name="$2" number="$3"
-  if [ -n "${PR_NODE_JSON:-}" ]; then printf '%s' "$PR_NODE_JSON"; return 0; fi
+  if [[ -n "${PR_NODE_JSON:-}" ]]; then printf '%s' "$PR_NODE_JSON"; return 0; fi
   gh api graphql -F owner="$owner" -F name="$name" -F number="$number" -f query='
     query($owner:String!, $name:String!, $number:Int!) {
       repository(owner:$owner, name:$name) {
@@ -72,7 +72,7 @@ isa_fetch_pr_node() {
 # numeric ids + commit_id for dismissal). Honors REST_REVIEWS_JSON.
 isa_rest_reviews() {
   local owner="$1" name="$2" number="$3"
-  if [ -n "${REST_REVIEWS_JSON:-}" ]; then printf '%s' "$REST_REVIEWS_JSON"; return 0; fi
+  if [[ -n "${REST_REVIEWS_JSON:-}" ]]; then printf '%s' "$REST_REVIEWS_JSON"; return 0; fi
   gh api --paginate "repos/${owner}/${name}/pulls/${number}/reviews" 2>/dev/null | jq -sc 'add // .'
 }
 
@@ -80,7 +80,7 @@ isa_rest_reviews() {
 # the stale approving review(s). Returns 0 whether or not anything was invalidated.
 invalidate_standing_approval() {
   local pr_url="${1:-}"
-  [ -n "$pr_url" ] || { echo "usage: invalidate_standing_approval <pr_url>" >&2; return 2; }
+  [[ -n "$pr_url" ]] || { echo "usage: invalidate_standing_approval <pr_url>" >&2; return 2; }
 
   # Match-or-fail: a `sed s///` that does not match returns the input UNCHANGED, so
   # a malformed URL would yield three nonempty copies of the whole string that pass
@@ -101,7 +101,7 @@ invalidate_standing_approval() {
   node="$(isa_fetch_pr_node "$owner" "$name" "$number")" || { echo "ERROR: failed to fetch PR node" >&2; return 1; }
   shas="$(pr_review_invalidatable_approvals "$node" "$bots" "${PR_REVIEW_APPROVER:-donpetry-bot}")"
 
-  if [ -z "$shas" ]; then
+  if [[ -z "$shas" ]]; then
     echo "[invalidate] ${pr_url}: standing approval stands — no accepted post-approval advisory finding."
     return 0
   fi
@@ -111,7 +111,7 @@ invalidate_standing_approval() {
 
   local sha ids id dismissed=0
   while IFS= read -r sha; do
-    [ -n "$sha" ] || continue
+    [[ -n "$sha" ]] || continue
     # Approving reviews stamped with this exact head SHA in their pr-review marker.
     # Authenticate: only dismiss reviews by the pr-review bot itself.
     ids="$(jq -r --arg sha "$sha" --arg approver_login "$PR_REVIEW_APPROVER" '
@@ -121,8 +121,8 @@ invalidate_standing_approval() {
       | select((.body // "") | contains("<!-- pr-review-agent v1 sha=" + $sha))
       | .id' <<<"$reviews" 2>/dev/null || true)"
     while IFS= read -r id; do
-      [ -n "$id" ] || continue
-      if [ "$DRY_RUN" = "false" ]; then
+      [[ -n "$id" ]] || continue
+      if [[ "$DRY_RUN" = "false" ]]; then
         # Count the attempt, not the success: a call can fail after GitHub applied it.
         dismissed=$((dismissed + 1))
         echo "[invalidate] ${pr_url}: DISMISSING approval review ${id} (head ${sha:0:8}) — accepted advisory finding after approval (#1596)."
@@ -148,6 +148,6 @@ invalidate_standing_approval() {
 }
 
 # Run when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   invalidate_standing_approval "${1:-}"
 fi

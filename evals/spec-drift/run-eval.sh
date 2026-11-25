@@ -52,7 +52,7 @@ source "$SPEC_DRIFT_REPO_ROOT/scripts/spec-drift.sh"
 # expected == DRIFT) is a false NEGATIVE, not a false positive, so returns 1.
 sd_is_false_positive() {
   local actual="${1:-}" expected="${2:-}"
-  [ "$actual" = "DRIFT" ] && [ "$expected" != "DRIFT" ]
+  [[ "$actual" = "DRIFT" ]] && [[ "$expected" != "DRIFT" ]]
 }
 
 # sd_run_split <cases_file> [label]
@@ -62,7 +62,7 @@ sd_is_false_positive() {
 # false positive was scored, else 0.
 sd_run_split() {
   local cases_file="${1:-}" label="${2:-}"
-  if [ -z "$label" ]; then
+  if [[ -z "$label" ]]; then
     if [[ "$cases_file" == */* ]]; then
       local parent="${cases_file%/*}"
       label="${parent##*/}"
@@ -71,7 +71,7 @@ sd_run_split() {
     fi
   fi
 
-  if [ ! -f "$cases_file" ]; then
+  if [[ ! -f "$cases_file" ]]; then
     echo "::error::[spec-drift-eval] cases file not found: $cases_file" >&2
     return 2
   fi
@@ -85,20 +85,20 @@ sd_run_split() {
   local id expected analysis actual
 
   while IFS= read -r -d '' id && IFS= read -r -d '' expected && IFS= read -r -d '' analysis; do
-    [ -n "$id" ] || continue
+    [[ -n "$id" ]] || continue
     actual="$(classify_drift "$analysis")"
     total=$((total + 1))
 
-    if [ "$actual" = "$expected" ]; then
+    if [[ "$actual" = "$expected" ]]; then
       correct=$((correct + 1))
-      [ "${SD_QUIET:-0}" = "1" ] || printf '  PASS  %-40s %s\n' "$id" "$actual"
+      [[ "${SD_QUIET:-0}" = "1" ]] || printf '  PASS  %-40s %s\n' "$id" "$actual"
     else
       mismatches=$((mismatches + 1))
       local kind="mismatch"
       if sd_is_false_positive "$actual" "$expected"; then
         false_positives=$((false_positives + 1))
         kind="FALSE POSITIVE"
-      elif [ "$expected" = "DRIFT" ]; then
+      elif [[ "$expected" = "DRIFT" ]]; then
         false_negatives=$((false_negatives + 1))
         kind="false negative"
       fi
@@ -118,15 +118,15 @@ sd_run_split() {
 # Returns 0 if the resolved file exists, 1 otherwise.
 sd_resolve_cases() {
   local root="${1:-}" arg="${2:-}" path
-  if [ -f "$arg" ]; then
+  if [[ -f "$arg" ]]; then
     path="$arg"
-  elif [ -d "$arg" ]; then
+  elif [[ -d "$arg" ]]; then
     path="$arg/cases.jsonl"
   else
     path="$root/$arg/cases.jsonl"
   fi
   printf '%s\n' "$path"
-  [ -f "$path" ]
+  [[ -f "$path" ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ main() {
   local root="$SPEC_DRIFT_EVAL_DIR"
   local -a splits=()
 
-  while [ "$#" -gt 0 ]; do
+  while [[ "$#" -gt 0 ]]; do
     case "$1" in
       --root) root="${2:?--root needs a directory}"; shift 2 ;;
       --quiet) export SD_QUIET=1; shift ;;
@@ -149,7 +149,7 @@ main() {
   done
   splits+=("$@")
 
-  if [ "${#splits[@]}" -eq 0 ]; then
+  if [[ "${#splits[@]}" -eq 0 ]]; then
     splits=(dev holdout)
   fi
 
@@ -194,6 +194,6 @@ main() {
 }
 
 # Only run main when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

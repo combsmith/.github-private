@@ -25,20 +25,20 @@ git_history_deepen() {
   local base="$1" head_ref="${2:-}"
   local is_shallow
   is_shallow=$(git rev-parse --is-shallow-repository 2>/dev/null) || is_shallow="false"
-  [ "$is_shallow" = "true" ] || return 0
+  [[ "$is_shallow" = "true" ]] || return 0
   git fetch --quiet --unshallow origin 2>/dev/null && return 0
   # Plain ref names (no forced destination), as the pre-#2053 copies did: this
   # deepens both histories without force-moving origin/<head_ref>, which the
   # push lease (--force-with-lease, #1607) is measured against.
   local refs=()
-  [ -n "$base" ] && refs+=("$base")
-  if [ -z "$head_ref" ]; then
+  [[ -n "$base" ]] && refs+=("$base")
+  if [[ -z "$head_ref" ]]; then
     # Callers may omit head_ref: deepen the checked-out branch, or the detached
     # HEAD commit, so HEAD's own ancestry is fetched too.
     head_ref=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || git rev-parse HEAD 2>/dev/null || true)
   fi
-  [ -n "$head_ref" ] && refs+=("$head_ref")
-  [ "${#refs[@]}" -gt 0 ] || return 0
+  [[ -n "$head_ref" ]] && refs+=("$head_ref")
+  [[ "${#refs[@]}" -gt 0 ]] || return 0
   git fetch --quiet --depth=2147483647 origin "${refs[@]}" 2>/dev/null || true
   return 0
 }
@@ -81,7 +81,7 @@ git_ensure_merge_base() {
   fi
   local still_shallow
   still_shallow=$(git rev-parse --is-shallow-repository 2>/dev/null) || still_shallow="true"
-  if [ "$still_shallow" = "true" ]; then
+  if [[ "$still_shallow" = "true" ]]; then
     echo "git history could not be deepened: the checkout is still shallow after un-shallowing and a deep fetch of ${baseref}${head_ref:+ and origin/${head_ref}}, so the merge base with HEAD cannot be computed"
     return 2
   fi

@@ -551,7 +551,7 @@ _comments_page() {
 
 @test "review-one-pr: the gate hook runs the thread scan only after the bot-comment scan dispatched nothing" {
   REVIEW="$SCRIPT_DIR/scripts/review-one-pr.sh"
-  guard_line=$(grep -n 'if \[ "\${DRY_RUN:-false}" != "true" \] && \[ -n "\$_OWNER_REPO" \]' "$REVIEW" | head -1 | cut -d: -f1)
+  guard_line=$(grep -n 'if \[\[ "\${DRY_RUN:-false}" != "true" \]\] && \[\[ -n "\$_OWNER_REPO" \]\]' "$REVIEW" | head -1 | cut -d: -f1)
   bcr_line=$(grep -n '_bcr_n=$(scan_pr_for_undispositioned_bot_comments "\$_OWNER_REPO"' "$REVIEW" | head -1 | cut -d: -f1)
   btr_line=$(grep -n 'scan_pr_for_unreplied_bot_threads "\$_OWNER_REPO" "\$_bcr_pr"' "$REVIEW" | head -1 | cut -d: -f1)
   verdict_line=$(grep -n 'emit_verdict skip undispositioned-pr-comment' "$REVIEW" | head -1 | cut -d: -f1)
@@ -559,7 +559,7 @@ _comments_page() {
   [ "$guard_line" -lt "$bcr_line" ]
   [ "$bcr_line" -lt "$btr_line" ]
   [ "$btr_line" -lt "$verdict_line" ]
-  sed -n "${bcr_line},${btr_line}p" "$REVIEW" | grep -q 'if \[ "\${_bcr_n:-0}" = "0" \]'
+  sed -n "${bcr_line},${btr_line}p" "$REVIEW" | grep -q 'if \[\[ "\${_bcr_n:-0}" = "0" \]\]'
   run bash -c "source '$RETRY_SCRIPT' && declare -F scan_pr_for_unreplied_bot_threads"
   [ "$status" -eq 0 ]
 }

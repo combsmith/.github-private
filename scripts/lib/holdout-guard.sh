@@ -36,7 +36,7 @@ hg_proposer_identities() {
   local raw="${HOLDOUT_PROPOSER_IDENTITIES:-github-actions[bot]}" item
   # Replace commas with spaces (word splitting handles multiple whitespace)
   for item in ${raw//,/ }; do
-    [ -n "$item" ] && printf '%s\n' "$item"
+    [[ -n "$item" ]] && printf '%s\n' "$item"
   done
 }
 
@@ -45,7 +45,7 @@ hg_guarded_prefixes() {
   local raw="${HOLDOUT_GUARDED_PREFIXES:-evals/}" item
   # Replace commas with spaces (word splitting handles multiple whitespace)
   for item in ${raw//,/ }; do
-    [ -n "$item" ] && printf '%s\n' "$item"
+    [[ -n "$item" ]] && printf '%s\n' "$item"
   done
 }
 
@@ -53,11 +53,11 @@ hg_guarded_prefixes() {
 hg_is_proposer() {
   local login="${1:-}" want identity
   login="${login,,}"
-  [ -n "$login" ] || return 1
-  while IFS= read -r identity || [ -n "$identity" ]; do
-    [ -n "$identity" ] || continue
+  [[ -n "$login" ]] || return 1
+  while IFS= read -r identity || [[ -n "$identity" ]]; do
+    [[ -n "$identity" ]] || continue
     want="${identity,,}"
-    [ "$login" = "$want" ] && return 0
+    [[ "$login" = "$want" ]] && return 0
   done < <(hg_proposer_identities)
   return 1
 }
@@ -65,9 +65,9 @@ hg_is_proposer() {
 # hg_path_is_guarded <path> — return 0 if the path sits under a guarded prefix.
 hg_path_is_guarded() {
   local path="${1:-}" prefix
-  [ -n "$path" ] || return 1
-  while IFS= read -r prefix || [ -n "$prefix" ]; do
-    [ -n "$prefix" ] || continue
+  [[ -n "$path" ]] || return 1
+  while IFS= read -r prefix || [[ -n "$prefix" ]]; do
+    [[ -n "$prefix" ]] || continue
     case "$path" in
       "$prefix"*) return 0 ;;
     esac
@@ -80,7 +80,7 @@ hg_path_is_guarded() {
 # 2 = usage error (missing author).
 hg_evaluate() {
   local author="${1:-}"
-  if [ -z "$author" ]; then
+  if [[ -z "$author" ]]; then
     echo "[holdout-guard] ERROR: no PR author supplied" >&2
     return 2
   fi
@@ -93,14 +93,14 @@ hg_evaluate() {
   fi
 
   local path offending=()
-  while IFS= read -r path || [ -n "$path" ]; do
-    [ -n "$path" ] || continue
+  while IFS= read -r path || [[ -n "$path" ]]; do
+    [[ -n "$path" ]] || continue
     if hg_path_is_guarded "$path"; then
       offending+=("$path")
     fi
   done
 
-  if [ "${#offending[@]}" -gt 0 ]; then
+  if [[ "${#offending[@]}" -gt 0 ]]; then
     echo "[holdout-guard] FAIL: proposer '$author' changed held-out path(s):"
     local p
     for p in "${offending[@]}"; do

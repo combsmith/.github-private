@@ -22,7 +22,7 @@ ISSUE_NUMBER=""
 
 cleanup() {
   log "Cleanup: ${SCENARIO_NAME}"
-  [ -n "$ISSUE_NUMBER" ] && cleanup_issue "${ISSUE_NUMBER}" || true
+  [[ -n "$ISSUE_NUMBER" ]] && cleanup_issue "${ISSUE_NUMBER}" || true
 }
 
 trap cleanup EXIT
@@ -32,7 +32,7 @@ main() {
   log "Test: issue labeled 'dev-lead' → intent=issue → fix-issue handler runs"
 
   # ── Check for required token ───────────────────────────────────────────────
-  if [ -z "${GH_TOKEN:-}" ]; then
+  if [[ -z "${GH_TOKEN:-}" ]]; then
     err "GH_TOKEN not set — skipping live scenario ${SCENARIO_NAME}"
     record_result "${SCENARIO_NAME}" "SKIP" "GH_TOKEN not set"
     exit 0
@@ -63,7 +63,7 @@ This issue tests that the dev-lead agent correctly handles the \`issues labeled\
 Created: $(date -u)" \
     2>&1 | grep -oE '[0-9]+$' | head -1)
 
-  if [ -z "${ISSUE_NUMBER}" ]; then
+  if [[ -z "${ISSUE_NUMBER}" ]]; then
     err "Failed to create test issue"
     record_result "${SCENARIO_NAME}" "FAIL" "issue creation failed"
     exit 1
@@ -95,7 +95,7 @@ Created: $(date -u)" \
 
   if ! assert_conclusion "${conclusion}" "success" "${SCENARIO_NAME}: workflow completes successfully"; then
     # neutral is acceptable (dry-run / token not present)
-    if [ "${conclusion}" = "neutral" ]; then
+    if [[ "${conclusion}" = "neutral" ]]; then
       echo "[PASS] ${SCENARIO_NAME}: workflow conclusion=neutral (expected in dry-run mode)"
     else
       all_pass=false
@@ -110,7 +110,7 @@ Created: $(date -u)" \
   log "Comments on issue #${ISSUE_NUMBER}: ${agent_comment_count}"
 
   # ── Result ─────────────────────────────────────────────────────────────────
-  if [ "${all_pass}" = "true" ]; then
+  if [[ "${all_pass}" = "true" ]]; then
     log "[PASS] ${SCENARIO_NAME}: issue labeled dev-lead triggered workflow"
     record_result "${SCENARIO_NAME}" "PASS" "conclusion=${conclusion} comments=${agent_comment_count}"
     exit 0

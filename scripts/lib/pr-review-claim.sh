@@ -58,7 +58,7 @@ _claim_marker_match() {
 claim_marker_key() {
   local match sha meta
   match="$(_claim_marker_match "${1:-}")"
-  [ -n "$match" ] || return 0
+  [[ -n "$match" ]] || return 0
   sha="$(printf '%s' "$match" | grep -oE 'sha=[a-f0-9]+' | tail -n 1)"
   meta="$(printf '%s' "$match" | grep -oE 'meta=[a-f0-9]{16}' | tail -n 1)"
   claim_key "${sha#sha=}" "${meta#meta=}"
@@ -70,7 +70,7 @@ claim_marker_key() {
 claim_marker_run() {
   local match
   match="$(_claim_marker_match "${1:-}")"
-  [ -n "$match" ] || return 0
+  [[ -n "$match" ]] || return 0
   printf '%s' "$match" | grep -oE 'run=[^[:space:]]+' | tail -n 1 | sed 's/^run=//'
 }
 
@@ -90,13 +90,13 @@ concurrent_claim_present() {
   # read loop below stays line-oriented.
   bodies="$(printf '%s' "$comments_json" \
     | jq -r '.[]? | (.body // "") | select(test("pr-review-claim v1")) | gsub("[\r\n]+"; " ")' 2>/dev/null || true)"
-  [ -n "$bodies" ] || return 1
+  [[ -n "$bodies" ]] || return 1
   while IFS= read -r line; do
-    [ -n "$line" ] || continue
+    [[ -n "$line" ]] || continue
     k="$(claim_marker_key "$line")"
-    [ "$k" = "$want_key" ] || continue
+    [[ "$k" = "$want_key" ]] || continue
     t="$(claim_marker_run "$line")"
-    [ "$t" != "$own_token" ] || continue
+    [[ "$t" != "$own_token" ]] || continue
     return 0
   done <<< "$bodies"
   return 1

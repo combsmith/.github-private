@@ -93,7 +93,7 @@ main() {
   log "=== Scenario: ${SCENARIO_NAME} ==="
 
   for script in "$FIX_CI_SCRIPT" "$FIX_REVIEWS_SCRIPT" "$RETRY_SCRIPT"; do
-    if [ ! -f "$script" ]; then
+    if [[ ! -f "$script" ]]; then
       err "Script not found: ${script}"
       record_result "${SCENARIO_NAME}" "FAIL" "missing script: ${script}"
       exit 1
@@ -675,7 +675,7 @@ GHEOF
   fi
 
   # ── Result ─────────────────────────────────────────────────────────────────
-  if [ "${all_pass}" = "true" ]; then
+  if [[ "${all_pass}" = "true" ]]; then
     log "[PASS] ${SCENARIO_NAME}: rate-limit retry infrastructure works correctly"
     record_result "${SCENARIO_NAME}" "PASS" \
       "rate-limited-exit2 no-exhaustion-count retriable-idempotency fix-reviews-marker on-mention-ack retry-scan human-pr-normalize issue-retry-scan blocked-token-dispatch rate-limited-backcompat-dispatch"

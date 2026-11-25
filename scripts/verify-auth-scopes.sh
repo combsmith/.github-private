@@ -53,7 +53,7 @@ scopes_line="$(grep 'Token scopes:' <<< "$auth_status" || true)"
 normalized_scopes="${scopes_line//,/ }"
 normalized_scopes="${normalized_scopes//$'\''/ }"
 
-if [ -z "$normalized_scopes" ] || grep -qiE '(cannot determine|fine.grained)' <<< "$auth_status"; then
+if [[ -z "$normalized_scopes" ]] || grep -qiE '(cannot determine|fine.grained)' <<< "$auth_status"; then
   echo "::warning::Token scopes could not be determined. Skipping scope validation."
   echo "::warning::Ensure the token has: contents:read and pull_requests:write (fine-grained), or repo + read:org (classic PAT)."
   exit 0

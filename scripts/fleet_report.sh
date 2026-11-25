@@ -45,7 +45,7 @@ SCHEDULE_RELIABILITY_THRESHOLD="${SCHEDULE_RELIABILITY_THRESHOLD:-50}"
 # expression yields 0 (tolerated as unknown, never fatal).
 count_cron_ticks() {
   local cron="${1:-}" start="${2:-0}" end="${3:-0}"
-  if [ -z "$cron" ]; then printf '0'; return 0; fi
+  if [[ -z "$cron" ]]; then printf '0'; return 0; fi
   CRON="$cron" START="$start" END="$end" python3 -c '
 import os, sys
 from datetime import datetime, timezone
@@ -302,7 +302,7 @@ classify_schedule_reliability() {
 # scheduled workflows were seen).
 generate_schedule_reliability_report() {
   local f="${1:-}"
-  [ -n "$f" ] && [ -s "$f" ] || return 0
+  [[ -n "$f" ]] && [[ -s "$f" ]] || return 0
   printf '## Schedule Reliability\n\n'
   printf 'Expected cron ticks vs. actual `schedule`-triggered runs per scheduled workflow over the window. A cron that silently stopped firing shows as **STALLED** even when its last run "succeeded" — so a stalled backlog stops hiding behind a green check.\n\n'
   printf '| Repo | Workflow | Expected | Actual | Hit Rate | Missed | Status |\n'
@@ -314,7 +314,7 @@ generate_schedule_reliability_report() {
     print k, $0
   }' "$f" | sort -t$'\t' -k1,1n -k2,2 -k3,3 | cut -f2- | \
   while IFS=$'\t' read -r repo wf expected actual hr missed label; do
-    [ -n "$repo" ] || continue
+    [[ -n "$repo" ]] || continue
     icon=$(label_to_icon "$label")
     printf '| `%s` | `%s` | %s | %s | %s | %s | %s %s |\n' \
       "$repo" "$wf" "$expected" "$actual" "$hr" "$missed" "$icon" "$label"
@@ -385,7 +385,7 @@ apply_confidence_filter() {
 # but a gate's ERROR row still surfaces (a read failure is not the gate's doing).
 filter_high_failure() {
   local f="${1:-}"
-  if [ -z "$f" ] || [ ! -f "$f" ]; then
+  if [[ -z "$f" ]] || [[ ! -f "$f" ]]; then
     echo "Error: metrics file '${f}' does not exist or is not specified" >&2
     return 1
   fi
@@ -437,7 +437,7 @@ filter_high_failure() {
 # Absent/empty JSON → "0\t0\t0".
 summarize_dev_lead_timeouts() {
   local json="${1:-}"
-  [ -n "$json" ] || json='[]'
+  [[ -n "$json" ]] || json='[]'
   printf '%s' "$json" | jq -r --arg p "$DEV_LEAD_ISSUE_MARKER" '
     [ .[]? | (.body // "") | select(contains($p))
       | (try (capture("reason=(?<r>[a-z]+(?:-[a-z]+)*)").r) catch "unknown") ] as $reasons
@@ -465,7 +465,7 @@ summarize_dev_lead_timeouts() {
 # activity in the window.
 generate_dev_lead_timeout_report() {
   local f="${1:-}" fleet_runs="${2:-}"
-  [ -n "$f" ] && [ -s "$f" ] || return 0
+  [[ -n "$f" ]] && [[ -s "$f" ]] || return 0
   # Prevalence denominator = ALL dev-lead runs fleet-wide (passed in by the
   # caller from the per-workflow metrics), NOT just runs from repos that happened
   # to have a marker. Summing only marker repos drops every all-success repo from
@@ -480,7 +480,7 @@ generate_dev_lead_timeout_report() {
   printf '| Repo | Timeouts | Engine-errors | Failure markers | Total runs |\n'
   printf '|---|---|---|---|---|\n'
   while IFS=$'\t' read -r repo t e tot runs; do
-    [ -n "$repo" ] || continue
+    [[ -n "$repo" ]] || continue
     # Sanitize total_runs: empty / non-numeric (ERROR sentinel '?') → 0 → n/a.
     case "${runs:-}" in
       ''|*[!0-9]*) runs=0 ;;
@@ -568,12 +568,12 @@ generate_repo_rollup() {
     local icon issues_links
     icon=$(label_to_icon "$label")
     issues_links=" "
-    if [ -n "$issues_file" ] && [ -f "$issues_file" ] && [ -s "$issues_file" ]; then
+    if [[ -n "$issues_file" ]] && [[ -f "$issues_file" ]] && [[ -s "$issues_file" ]]; then
       issues_links=$(awk -F'\t' -v r="$repo" \
         '$1 == r { printf "[#%s](%s) ", $4, $3 }' "$issues_file")
       issues_links="${issues_links% }"
     fi
-    [ -z "$issues_links" ] && issues_links=" "
+    [[ -z "$issues_links" ]] && issues_links=" "
     printf '| `%s` %s | %s | %s | %s | %s | %s %s |\n' \
       "$repo" "$icon" "$wf_ct" "$total_runs" "$failed" "$issues_links" "$icon" "$label"
   done
@@ -614,7 +614,7 @@ generate_mermaid_bar() {
     }
   ' "$f" | sort -t$'\t' -k1,1rn | head -10)
 
-  if [ -z "$top10" ]; then
+  if [[ -z "$top10" ]]; then
     return
   fi
 
@@ -655,7 +655,7 @@ generate_report() {
   printf '\n'
 
   # --- Mermaid pie (Issues only) ---
-  if [ "$with_mermaid" = "true" ]; then
+  if [[ "$with_mermaid" = "true" ]]; then
     generate_mermaid_pie "$filtered"
     printf '\n'
   fi
@@ -663,7 +663,7 @@ generate_report() {
   # --- Systemic failures ---
   local systemic
   systemic=$(detect_systemic_failures "$filtered")
-  if [ -n "$systemic" ]; then
+  if [[ -n "$systemic" ]]; then
     printf '## ⚠️ Systemic Issues\n\n'
     printf 'These workflow files are failing across multiple repos — fix the shared definition:\n\n'
     while IFS= read -r wf; do
@@ -675,7 +675,7 @@ generate_report() {
   fi
 
   # --- Mermaid bar (Issues only) ---
-  if [ "$with_mermaid" = "true" ]; then
+  if [[ "$with_mermaid" = "true" ]]; then
     printf '## Top Failing Workflows\n\n'
     generate_mermaid_bar "$filtered"
     printf '\n'
@@ -693,17 +693,17 @@ generate_report() {
 
   while IFS=$'\t' read -r _key repo wf_file total success failed cancelled \
                               rate_display p50 p95 label rate_int; do
-    [ "$total" = "0" ] && continue
+    [[ "$total" = "0" ]] && continue
     local bar vflag icon issues_link
     bar=$(generate_ascii_bar "$rate_int")
     vflag=$(flag_duration_variance "$p50" "$p95")
     icon=$(label_to_icon "$label")
     issues_link=" "
-    if [ -n "$issues_file" ] && [ -f "$issues_file" ] && [ -s "$issues_file" ]; then
+    if [[ -n "$issues_file" ]] && [[ -f "$issues_file" ]] && [[ -s "$issues_file" ]]; then
       issues_link=$(awk -F'\t' -v r="$repo" -v w="$wf_file" \
         '$1 == r && $2 == w { printf "[#%s](%s)", $4, $3; exit }' "$issues_file")
     fi
-    [ -z "$issues_link" ] && issues_link=" "
+    [[ -z "$issues_link" ]] && issues_link=" "
     printf '| `%s` %s | `%s` | %s | %s | %s | %s | %s | %s | %s | %s | %s%s | %s %s |\n' \
       "$repo" "$icon" "$wf_file" "$issues_link" "$total" "$success" "$failed" "$cancelled" \
       "$rate_display" "$bar" \
@@ -711,7 +711,7 @@ generate_report() {
   done < "$filtered"
 
   # --- Failed runs ---
-  if [ -s "$failed_file" ]; then
+  if [[ -s "$failed_file" ]]; then
     printf '\n## Failed Runs\n'
     cat "$failed_file"
   fi
@@ -747,14 +747,14 @@ generate_report() {
 # (no crash) — the family is whatever the manifests currently declare.
 derive_persona_optout_labels() {
   local dir="${1:-}"
-  [ -n "$dir" ] && [ -d "$dir" ] || return 0
+  [[ -n "$dir" ]] && [[ -d "$dir" ]] || return 0
   local f val
   for f in "$dir"/*/persona.yml; do
-    [ -f "$f" ] || continue
+    [[ -f "$f" ]] || continue
     val=$(sed -n 's/^[[:space:]]*opt_out_label:[[:space:]]*//p' "$f")
     val="${val%%$'\n'*}"
     val="${val%\"}"; val="${val#\"}"; val="${val%\'}"; val="${val#\'}"
-    [ -n "$val" ] && printf '%s\n' "$val"
+    [[ -n "$val" ]] && printf '%s\n' "$val"
   done | sort -u
 }
 
@@ -793,7 +793,7 @@ persona_optout_row() {
 # An empty or missing file prints nothing (section omitted).
 generate_persona_optout_report() {
   local f="${1:-}" total="${2:-}"
-  [ -n "$f" ] && [ -s "$f" ] || return 0
+  [[ -n "$f" ]] && [[ -s "$f" ]] || return 0
   local complete incomplete
   complete=$(awk -F'\t' '$2 == "COMPLETE"'   "$f" | wc -l | tr -d ' ')
   incomplete=$(awk -F'\t' '$2 == "INCOMPLETE"' "$f" | wc -l | tr -d ' ')
@@ -802,7 +802,7 @@ generate_persona_optout_report() {
   printf 'Every persona advisory tells maintainers they can opt out with `<id>:hands-off`, and the mention router matches that label by **exact name** — a label that does not exist can never match, so a missing opt-out reads silently as "not opted out" (fail-open by omission, #1644). The family is **derived** from `personas/*/persona.yml`, so a new persona is covered automatically.\n\n'
   printf '✅ COMPLETE: %s  🔴 INCOMPLETE: %s' \
     "$complete" "$incomplete"
-  [ -n "$total" ] && printf '  ·  derived family size: %s' "$total"
+  [[ -n "$total" ]] && printf '  ·  derived family size: %s' "$total"
   printf '\n\n'
 
   if [ "$incomplete" -eq 0 ]; then
@@ -823,7 +823,7 @@ generate_persona_optout_report() {
 # its missing labels, so a downstream step can route/track. Empty/absent → [].
 persona_optout_alert_json() {
   local f="${1:-}"
-  if [ -z "$f" ] || [ ! -s "$f" ]; then
+  if [[ -z "$f" ]] || [[ ! -s "$f" ]]; then
     echo "[]"
     return 0
   fi
@@ -851,7 +851,7 @@ persona_optout_alert_json() {
 # (or no files) it prints a "None" line. Malformed lines are skipped.
 generate_rate_limit_samples_report() {
   local samples
-  if [ $# -eq 0 ]; then
+  if [[ $# -eq 0 ]]; then
     printf '## Unparsed rate-limit messages\n\n'
     printf '_No ledger data available._\n'
     return 0
@@ -866,10 +866,10 @@ generate_rate_limit_samples_report() {
                                 first_seen: (.[0].ts // "unknown"),
                                 sample: .[0].sample})
     | sort_by(.first_seen)' 2>/dev/null)
-  [ -n "$samples" ] || samples='[]'
+  [[ -n "$samples" ]] || samples='[]'
 
   printf '## Unparsed rate-limit messages\n\n'
-  if [ "$samples" = "[]" ]; then
+  if [[ "$samples" = "[]" ]]; then
     printf '_No unparsed rate-limit samples were found in the available ledger data._\n'
     return 0
   fi

@@ -133,21 +133,21 @@ _ai_models_scan() {
   local -a entries=() models=()
   var="$(_ai_models_var "$provider")"
   spec="${!var:-}"
-  [ -n "${spec//[[:space:];]/}" ] || return 0
+  [[ -n "${spec//[[:space:];]/}" ]] || return 0
   spec="${spec//$'\r'/;}"
   spec="${spec//$'\n'/;}"
   IFS=';' read -r -a entries <<< "$spec"
   for entry in ${entries[@]+"${entries[@]}"}; do
     entry="$(_ai_models_trim "$entry")"
-    [ -n "$entry" ] || continue
+    [[ -n "$entry" ]] || continue
     if [[ "$entry" != *=* ]]; then
-      [ "$mode" = problems ] && printf "%s: '%s' is not <key>=<models> — ignored\n" "$var" "$entry"
+      [[ "$mode" = problems ]] && printf "%s: '%s' is not <key>=<models> — ignored\n" "$var" "$entry"
       continue
     fi
     key="$(_ai_models_trim "${entry%%=*}" | tr '[:upper:]' '[:lower:]')"
     value="${entry#*=}"
     if [[ " $(_ai_models_keys "$provider") " != *" $key "* ]]; then
-      [ "$mode" = problems ] && printf "%s: unknown key '%s' (expected: %s) — ignored\n" \
+      [[ "$mode" = problems ]] && printf "%s: unknown key '%s' (expected: %s) — ignored\n" \
         "$var" "$key" "$(_ai_models_keys "$provider")"
       continue
     fi
@@ -155,28 +155,28 @@ _ai_models_scan() {
     chain=""
     for m in ${models[@]+"${models[@]}"}; do
       m="$(_ai_models_trim "$m")"
-      [ -n "$m" ] || continue
+      [[ -n "$m" ]] || continue
       if [[ ! "$m" =~ ^[A-Za-z0-9][A-Za-z0-9._:/@-]*$ ]]; then
         chain=""
-        [ "$mode" = problems ] && printf "%s: '%s' has an invalid model id '%s' — default used\n" "$var" "$key" "$m"
+        [[ "$mode" = problems ]] && printf "%s: '%s' has an invalid model id '%s' — default used\n" "$var" "$key" "$m"
         break
       fi
       [[ ",$chain," == *",$m,"* ]] || chain="${chain:+$chain,}$m"
     done
-    if [ -z "$chain" ]; then
-      [ "$mode" = problems ] && [[ "$value" =~ ^[,[:space:]]*$ ]] && printf "%s: '%s' lists no model — default used\n" "$var" "$key"
+    if [[ -z "$chain" ]]; then
+      [[ "$mode" = problems ]] && [[ "$value" =~ ^[,[:space:]]*$ ]] && printf "%s: '%s' lists no model — default used\n" "$var" "$key"
       # The last entry for a key wins even when unusable: drop an earlier one so
       # the default applies, as the warning says.
-      [ "$key" = "$want" ] && found=""
+      [[ "$key" = "$want" ]] && found=""
       continue
     fi
-    if [[ "$chain" == *,* ]] && { [ "$key" = duck ] || [ "$key" = fable ] || [ "$provider" = copilot ]; }; then
-      [ "$mode" = problems ] && printf "%s: '%s' takes one model — only '%s' is used\n" "$var" "$key" "${chain%%,*}"
+    if [[ "$chain" == *,* ]] && { [[ "$key" = duck ]] || [[ "$key" = fable ]] || [[ "$provider" = copilot ]]; }; then
+      [[ "$mode" = problems ]] && printf "%s: '%s' takes one model — only '%s' is used\n" "$var" "$key" "${chain%%,*}"
       chain="${chain%%,*}"
     fi
-    [ "$key" = "$want" ] && found="$chain"
+    [[ "$key" = "$want" ]] && found="$chain"
   done
-  [ "$mode" = get ] && printf '%s' "$found"
+  [[ "$mode" = get ]] && printf '%s' "$found"
   return 0
 }
 
@@ -190,7 +190,7 @@ ai_models_configured() {
 ai_models_chain() {
   local c
   c="$(ai_models_configured "$1" "$2")"
-  [ -n "$c" ] || c="$(ai_models_default "$1" "$2")"
+  [[ -n "$c" ]] || c="$(ai_models_default "$1" "$2")"
   printf '%s' "$c"
 }
 
@@ -202,7 +202,7 @@ ai_models_replace_first() {
   local -a others=()
   IFS=',' read -r -a others <<< "$chain"
   for m in ${others[@]+"${others[@]:1}"}; do
-    [ -n "$m" ] && [ "$m" != "$first" ] && out="$out,$m"
+    [[ -n "$m" ]] && [[ "$m" != "$first" ]] && out="$out,$m"
   done
   printf '%s' "$out"
 }
@@ -220,18 +220,18 @@ ai_models_gemini_chain() {
     deep|audit|single)  group="${GEMINI_PRO_MODEL_CHAIN:-}";   first="${GEMINI_PRO_MODEL:-}" ;;
     duck)
       c="$(ai_models_configured gemini duck)"
-      [ -n "$c" ] || { c="$(ai_models_gemini_chain triage)"; c="${c%%,*}"; }
+      [[ -n "$c" ]] || { c="$(ai_models_gemini_chain triage)"; c="${c%%,*}"; }
       printf '%s' "$c"
       return 0 ;;
     *) return 0 ;;
   esac
-  if [ -n "${group//[[:space:],]/}" ]; then
+  if [[ -n "${group//[[:space:],]/}" ]]; then
     printf '%s' "${group//[[:space:]]/}"
     return 0
   fi
   c="$(ai_models_chain gemini "$key")"
   first="${first//[[:space:]]/}"
-  [ -z "$first" ] || c="$(ai_models_replace_first "$first" "$c")"
+  [[ -z "$first" ]] || c="$(ai_models_replace_first "$first" "$c")"
   printf '%s' "$c"
 }
 
@@ -243,12 +243,12 @@ ai_models_gemini_chain() {
 # a child shell) is not mistaken for the caller's.
 ai_models_copilot_model() {
   local key="${1:-}" m=""
-  if [ -n "${COPILOT_API_MODEL:-}" ] && [ "$COPILOT_API_MODEL" != "${COPILOT_API_MODEL_DEFAULTED:-}" ]; then
+  if [[ -n "${COPILOT_API_MODEL:-}" ]] && [[ "$COPILOT_API_MODEL" != "${COPILOT_API_MODEL_DEFAULTED:-}" ]]; then
     m="$COPILOT_API_MODEL"
   else
     m="$(ai_models_configured copilot "$key")"
-    [ -n "$m" ] || [ "$key" != duck ] || key=triage
-    [ -n "$m" ] || m="$(ai_models_chain copilot "$key")"
+    [[ -n "$m" ]] || [[ "$key" != duck ]] || key=triage
+    [[ -n "$m" ]] || m="$(ai_models_chain copilot "$key")"
   fi
   m="${m%%,*}"
   printf '%s' "${m//[[:space:]]/}"
@@ -308,7 +308,7 @@ ai_models_fable_deprecation() {
     *,claude-fable-5"["*"]",*|*,claude-fable-5-$d8"["*"]",*) found=1 ;;
     *,claude-fable-5-1"["*"]",*|*,claude-fable-5-1-$d8"["*"]",*) found=1 ;;
   esac
-  [ -n "$found" ] || return 0
+  [[ -n "$found" ]] || return 0
   printf '%s' "claude-fable-5 and claude-fable-5-1 are deprecated (#1901): audit/single default to claude-opus-5-5 (chain claude-opus-5-5,claude-opus-4-8,claude-opus-4-7), and claude-fable-5-2 is the preferred Fable. The configured model is still honoured as a stop-gap — repoint it to claude-opus-5-5, or to claude-fable-5-2 where Fable is wanted."
 }
 
@@ -341,7 +341,7 @@ ai_model_for_family() {
   # Only an EMPTY per-tier var counts as absent (engine.sh's ${VAR:-…} rule). A
   # set-but-malformed value (",") must not let AI_MODELS_CLAUDE win; it fails the
   # id check below and falls back to the built-in default.
-  [ -n "$chain" ] || chain="$(ai_models_chain claude "$tier")"
+  [[ -n "$chain" ]] || chain="$(ai_models_chain claude "$tier")"
   model="$(_ai_models_trim "${chain%%,*}")"
   # Validate the resolved id. ai_models_chain paths already validate via
   # _ai_models_scan, but the per-tier CLAUDE_<TIER>_MODEL_CHAIN override is read
@@ -368,7 +368,7 @@ ai_model_label() {
       family="${m%%-*}"
       ver="${m#"$family"}"
       ver="${ver#-}"
-      if [ -n "$ver" ]; then printf '%s %s' "$family" "${ver//-/.}"; else printf '%s' "$family"; fi
+      if [[ -n "$ver" ]]; then printf '%s %s' "$family" "${ver//-/.}"; else printf '%s' "$family"; fi
       ;;
     *) printf '%s' "$m" ;;
   esac
@@ -381,7 +381,7 @@ ai_models_label_chain() {
   IFS=',' read -r -a ms <<< "$chain"
   first="$(ai_model_label "${ms[0]:-}")"
   for m in ${ms[@]+"${ms[@]:1}"}; do
-    [ -n "$m" ] && fallbacks="${fallbacks:+$fallbacks, }$(ai_model_label "$m")"
+    [[ -n "$m" ]] && fallbacks="${fallbacks:+$fallbacks, }$(ai_model_label "$m")"
   done
-  if [ -n "$fallbacks" ]; then printf '%s [%s]' "$first" "$fallbacks"; else printf '%s' "$first"; fi
+  if [[ -n "$fallbacks" ]]; then printf '%s [%s]' "$first" "$fallbacks"; else printf '%s' "$first"; fi
 }

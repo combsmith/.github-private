@@ -29,13 +29,13 @@
 #   if the file has no such pin.
 src_stub_uses_ref() {
   local file="$1" line stripped ref content
-  [ -f "$file" ] || return 1
+  [[ -f "$file" ]] || return 1
   content="$(grep -E '^[[:space:]]*uses:[[:space:]]*[^[:space:]#]+\.yml@' "$file")" || true
   line="${content%%$'\n'*}"               # first matching line, no pipe to head (avoids SIGPIPE under pipefail)
-  [ -n "$line" ] || return 1
+  [[ -n "$line" ]] || return 1
   stripped="${line%%#*}"                 # drop any inline comment
   read -r ref <<<"${stripped##*@}"       # token after the last @, whitespace-trimmed
-  [ -n "$ref" ] || return 1
+  [[ -n "$ref" ]] || return 1
   printf '%s\n' "$ref"
 }
 
@@ -50,13 +50,13 @@ src_stub_uses_ref() {
 #   review/merge logic from an unsafe channel.
 src_stub_agent_ref() {
   local file="$1" line stripped ref content
-  [ -f "$file" ] || return 1
+  [[ -f "$file" ]] || return 1
   content="$(grep -E '^[[:space:]]*agent_ref:[[:space:]]*[^[:space:]#]' "$file")" || true
   line="${content%%$'\n'*}"               # first matching line, no pipe to head (avoids SIGPIPE under pipefail)
-  [ -n "$line" ] || return 1
+  [[ -n "$line" ]] || return 1
   stripped="${line%%#*}"                 # drop any inline comment
   read -r ref <<<"${stripped#*:}"        # value after `agent_ref:`, whitespace-trimmed
-  [ -n "$ref" ] || return 1
+  [[ -n "$ref" ]] || return 1
   printf '%s\n' "$ref"
 }
 
@@ -85,7 +85,7 @@ src_channel_tier() {
 src_is_stable_tier() {
   local ref="$1" tier
   tier="$(src_channel_tier "$ref")" || return 1
-  [ "$tier" = "stable" ]
+  [[ "$tier" = "stable" ]]
 }
 
 # src_is_promoted_tier <ref>
@@ -96,7 +96,7 @@ src_is_stable_tier() {
 src_is_promoted_tier() {
   local ref="$1" tier
   tier="$(src_channel_tier "$ref")" || return 1
-  [ "$tier" = "stable" ] || [[ "$tier" =~ ^ring[0-9]+$ ]]
+  [[ "$tier" = "stable" ]] || [[ "$tier" =~ ^ring[0-9]+$ ]]
 }
 
 # src_assert_self_review_stable <stub_file> [<label>]

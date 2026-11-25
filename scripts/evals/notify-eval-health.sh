@@ -72,7 +72,7 @@ _is_dry_run() { [[ "${DRY_RUN:-0}" == "1" || "${DRY_RUN:-0}" == "true" ]]; }
 # does the title de-dup so the expression is unambiguous (no reliance on gh's
 # embedded jq arg passing).
 find_existing() {
-  if [ "$#" -lt 2 ]; then
+  if [[ "$#" -lt 2 ]]; then
     echo "::error::find_existing requires title and label" >&2
     exit 1
   fi
@@ -89,7 +89,7 @@ find_existing() {
 
 # Render the tracking-issue body for a regression/error outcome to stdout.
 render_body() {
-  if [ "$OUTCOME" = "error" ]; then
+  if [[ "$OUTCOME" = "error" ]]; then
     echo "## ${TITLE_INFRA}"
     echo ""
     echo "**Outcome:** \`error\` — the eval could not score the skill (infrastructure failure: e.g. every model in the fallback chain throttled, or bad usage / missing tooling)."
@@ -113,7 +113,7 @@ render_body() {
     echo "| skill | score | passed | failed | total |"
     echo "|-------|-------|--------|--------|-------|"
     echo "| \`${SKILL}\` | ${score} | ${passed} | ${failed} | ${total} |"
-    if [ "${failed}" != "0" ]; then
+    if [[ "${failed}" != "0" ]]; then
       echo ""
       echo "### Regressed cases"
       jq -r --arg def "unknown" '(.cases | select(type == "array") // []) | .[] | select(.pass | not) | "- `\(.id // $def)` — expected \(.expected|tojson), got \(.actual|tojson)"' "$REPORT_PATH"
@@ -123,7 +123,7 @@ render_body() {
   fi
 
   echo ""
-  if [ -n "$RUN_URL" ]; then
+  if [[ -n "$RUN_URL" ]]; then
     echo "[View the workflow run](${RUN_URL})"
   fi
   echo ""
@@ -132,7 +132,7 @@ render_body() {
 
 # _recover <issue_number> — comment a recovery note on the issue and close it.
 _recover() {
-  if [ "$#" -lt 1 ]; then
+  if [[ "$#" -lt 1 ]]; then
     echo "::error::_recover requires an issue number" >&2
     exit 1
   fi
@@ -141,7 +141,7 @@ _recover() {
   {
     echo "✅ **Recovered** — the \`${SKILL}\` holdout eval passed; all held-out cases are green again."
     echo ""
-    [ -n "$RUN_URL" ] && echo "[View the workflow run](${RUN_URL})"
+    [[ -n "$RUN_URL" ]] && echo "[View the workflow run](${RUN_URL})"
   } >"$comment"
   if _is_dry_run; then
     echo "[dry-run] would comment on and close issue #${num}"
@@ -157,7 +157,7 @@ _recover() {
 # _open_or_update <title> <label> <label_description> <label_color> — open the
 # tracker (de-duped by title+label) or rewrite it in place if already open.
 _open_or_update() {
-  if [ "$#" -lt 4 ]; then
+  if [[ "$#" -lt 4 ]]; then
     echo "::error::_open_or_update requires title, label, description, and color" >&2
     exit 1
   fi
@@ -166,11 +166,11 @@ _open_or_update() {
   body="$(mktemp)" || { echo "::error::Failed to create temp file" >&2; exit 1; }
   render_body >"$body"
   if _is_dry_run; then
-    echo "[dry-run] would $( [ -n "$existing" ] && echo "update #${existing}" || echo "create" ) issue '${title}' (${label})"
+    echo "[dry-run] would $( [[ -n "$existing" ]] && echo "update #${existing}" || echo "create" ) issue '${title}' (${label})"
     rm -f "$body"
     return 0
   fi
-  if [ -n "$existing" ]; then
+  if [[ -n "$existing" ]]; then
     gh issue edit "$existing" --repo "$REPO" --body-file "$body" >/dev/null
     echo "updated tracking issue #${existing} (${label})"
   else
@@ -187,12 +187,12 @@ case "$OUTCOME" in
     # A green run clears either condition — close whichever tracker(s) are open.
     reg="$(find_existing "$TITLE_REGRESSION" "$EVAL_HEALTH_LABEL")"
     inf="$(find_existing "$TITLE_INFRA" "$EVAL_INFRA_LABEL")"
-    if [ -z "$reg" ] && [ -z "$inf" ]; then
+    if [[ -z "$reg" ]] && [[ -z "$inf" ]]; then
       echo "eval health pass: no open tracking issue — nothing to do."
       exit 0
     fi
-    if [ -n "$reg" ]; then _recover "$reg"; fi
-    if [ -n "$inf" ]; then _recover "$inf"; fi
+    if [[ -n "$reg" ]]; then _recover "$reg"; fi
+    if [[ -n "$inf" ]]; then _recover "$inf"; fi
     ;;
 
   regression)

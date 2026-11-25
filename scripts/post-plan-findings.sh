@@ -43,7 +43,7 @@ CONTENT_REF="${1:?usage: post-plan-findings.sh <plan-path> <findings-json> <dry-
 FINDINGS_JSON="${2:?usage: post-plan-findings.sh <plan-path> <findings-json> <dry-run>}"
 DRY_RUN="${3:-false}"
 
-if [ ! -s "$FINDINGS_JSON" ]; then
+if [[ ! -s "$FINDINGS_JSON" ]]; then
   echo "ERROR: plan findings JSON not found or empty at $FINDINGS_JSON" >&2
   exit 1
 fi
@@ -68,9 +68,9 @@ SUMMARY="$(jq -r '.summary // ""' "$FINDINGS_JSON")"
 # Deliver the machine-readable findings to the planner's consumption path. This
 # is a local artifact write (never an external mutation), so DRY_RUN does not
 # gate it — a planner reviewing in dry-run still needs the findings to decide.
-if [ -n "${PLAN_FINDINGS_OUTPUT:-}" ]; then
+if [[ -n "${PLAN_FINDINGS_OUTPUT:-}" ]]; then
   mkdir -p "$(dirname "$PLAN_FINDINGS_OUTPUT")"
-  if [ "$FINDINGS_JSON" -ef "$PLAN_FINDINGS_OUTPUT" ]; then
+  if [[ "$FINDINGS_JSON" -ef "$PLAN_FINDINGS_OUTPUT" ]]; then
     echo "plan findings already at $PLAN_FINDINGS_OUTPUT"
   else
     jq '.' "$FINDINGS_JSON" > "$PLAN_FINDINGS_OUTPUT"
@@ -82,14 +82,14 @@ echo "=== plan review findings${DRY_RUN:+ (dry_run=$DRY_RUN)} ==="
 echo "content_ref: $CONTENT_REF"
 echo "verdict: $VERDICT"
 echo "findings: $FINDING_COUNT"
-[ -n "$SUMMARY" ] && echo "summary: $SUMMARY"
+[[ -n "$SUMMARY" ]] && echo "summary: $SUMMARY"
 
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
     echo "## Plan review — verdict: ${VERDICT}"
     echo "- Reviewed: \`${CONTENT_REF}\`"
     echo "- Findings: ${FINDING_COUNT}"
-    [ -n "$SUMMARY" ] && echo "- ${SUMMARY}"
+    [[ -n "$SUMMARY" ]] && echo "- ${SUMMARY}"
   } >>"$GITHUB_STEP_SUMMARY"
 fi
 

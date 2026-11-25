@@ -48,19 +48,19 @@ audit_one() {
   # skipped, which is still strictly better than never seeing the discard.
   local branch
   branch=$(gh api "repos/${repo}/pulls/${pr}" --jq '.head.ref' 2>/dev/null || true)
-  if [ -n "$branch" ]; then
+  if [[ -n "$branch" ]]; then
     local before line
     while IFS= read -r before; do
-      [ -n "$before" ] || continue
+      [[ -n "$before" ]] || continue
       line=$(gh api "repos/${repo}/commits/${before}" \
         --jq '.sha + " " + ((.parents // []) | map(.sha) | join(" "))' 2>/dev/null || true)
-      [ -n "$line" ] && graph+=$'\n'"$line"
+      [[ -n "$line" ]] && graph+=$'\n'"$line"
     done < <(gh api --paginate \
       "repos/${repo}/activity?ref=refs/heads/${branch}&activity_type=force_push&per_page=100" \
       --jq '.[].before' 2>/dev/null || true)
   fi
 
-  if [ -z "$graph" ]; then
+  if [[ -z "$graph" ]]; then
     echo "  [audit] ${repo}#${pr}: no commits returned — skipping"
     return 0
   fi
@@ -78,7 +78,7 @@ main() {
   local repo="${1:-${REPO:-}}" pr="${2:-${PR_NUMBER:-}}"
   local fail=0
 
-  if [ -n "$repo" ] && [ -n "$pr" ]; then
+  if [[ -n "$repo" ]] && [[ -n "$pr" ]]; then
     audit_one "$repo" "$pr" || fail=1
     return "$fail"
   fi
@@ -98,11 +98,11 @@ main() {
   fi
   local url slug num
   while IFS= read -r url; do
-    [ -n "$url" ] || continue
+    [[ -n "$url" ]] || continue
     # url form: https://github.com/<owner>/<repo>/pull/<n>
     slug=$(printf '%s' "$url" | sed -E 's#https://github.com/([^/]+/[^/]+)/pull/[0-9]+#\1#')
     num=$(printf '%s' "$url" | sed -E 's#.*/pull/([0-9]+)$#\1#')
-    [ -n "$slug" ] && [ -n "$num" ] || continue
+    [[ -n "$slug" ]] && [[ -n "$num" ]] || continue
     audit_one "$slug" "$num" || fail=1
   done <<< "$pr_urls"
 
