@@ -430,6 +430,23 @@ _mixed_sarif() {
   [ "$status" -ne 0 ]
 }
 
+@test "codeql.yml guard: fails when a lost result is swapped for a copy of a kept one, or results are reordered" {
+  local org third
+  org="$(_result actions/unpinned-tag .github/workflows/ci.yml 3 "$ORG_MSG")"
+  third="$(_result actions/unpinned-tag .github/workflows/ci.yml 7 "$THIRD_MSG")"
+  jq -n --argjson a "$org" --argjson b "$third" '{version: "2.1.0", runs: [
+    {tool: {driver: {name: "CodeQL"}}, results: [$a, $b, $b]}]}' > "$IN"
+  jq '.runs[0].results = [.runs[0].results[0], .runs[0].results[0], .runs[0].results[1]]' "$IN" > "$SANDBOX/t.sarif"
+  _guard "$SANDBOX/t.sarif"
+  [ "$status" -ne 0 ]
+  jq '.runs[0].results |= reverse' "$IN" > "$SANDBOX/t.sarif"
+  _guard "$SANDBOX/t.sarif"
+  [ "$status" -ne 0 ]
+  jq '.runs[0].results |= .[1:]' "$IN" > "$SANDBOX/t.sarif"
+  _guard "$SANDBOX/t.sarif"
+  [ "$status" -eq 0 ]
+}
+
 @test "codeql.yml guard: fails on an output that is not JSON" {
   _mixed_sarif
   printf 'x\n' > "$SANDBOX/t.sarif"

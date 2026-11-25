@@ -102,7 +102,7 @@ drop_reason() {
   local real_root real_file
   real_root="$(cd "$root" && pwd -P)" || return 0
   real_file="$(cd "$root" && realpath -- "$uri" 2>/dev/null)" || return 0
-  [[ "$real_file" == "$real_root"/* ]] || return 0
+  [[ "$real_root" == / || "$real_file" == "$real_root"/* ]] || return 0
   # A lone CR (a CR not ending its line), NEL, LS or PS: keep the result.
   if LC_ALL=C grep -q -e $'\r.' -e $'\xc2\x85' -e $'\xe2\x80\xa8' -e $'\xe2\x80\xa9' "$root/$uri"; then
     return 0

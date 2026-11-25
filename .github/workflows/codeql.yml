@@ -109,10 +109,9 @@ jobs:
             cp "$SARIF_IN" "$SARIF_OUT"
           fi
       # A check on the script's output, kept in the workflow so a faulty script
-      # cannot hide a result: everything outside the results is unchanged, no
-      # result is added, every result of another rule is unchanged, and each
-      # unpinned-tag result that went missing names a `combsmith/` ref, run by
-      # run (a run is a category).
+      # cannot hide a result: everything outside the results is unchanged, and
+      # each run's results are its input's minus deletions only, in order, where
+      # every deleted result is an unpinned-tag result naming a `combsmith/` ref.
       - name: Check that only org-ref unpinned-tag results were dropped
         env:
           SARIF_IN: ${{ runner.temp }}/codeql-sarif/${{ matrix.language }}.sarif
@@ -120,19 +119,19 @@ jobs:
         run: |
           jq -e --slurpfile out "$SARIF_OUT" '
             def rule: .ruleId // .rule.id // "";
-            def tag: "actions/unpinned-tag";
-            def others: [.runs[] | [(.results // [])[] | select(rule != tag)]];
-            def tags: [.runs[] | [(.results // [])[] | select(rule == tag)]];
             def org_ref: (.message.text // "")
               | test("(\\]\\([0-9]+\\) uses|\u0027 uses reusable workflow) \u0027combsmith/[^\u0027\\s]+\u0027 with ref \u0027[^\u0027]*\u0027, not a pinned commit hash$"; "i");
+            # The results this run lost, when the output keeps the rest in
+            # order (deletions only); null when it does not.
+            def removed($now): reduce .[] as $x ({i: 0, rm: []};
+                if .i < ($now | length) and $now[.i] == $x then .i += 1 else .rm += [$x] end)
+              | if .i == ($now | length) then .rm else null end;
             $out[0] as $o
             | (del(.runs[].results) == ($o | del(.runs[].results)))
-              and (others == ($o | others))
-              and ([tags, ($o | tags)] | transpose | all(
-                    .[0] as $was | .[1] as $now
-                    | ($now - $was == [])
-                      and (($was - $now) | length) == (($was | length) - ($now | length))
-                      and (($was - $now) | all(org_ref))))' "$SARIF_IN" > /dev/null
+              and ([.runs, $o.runs] | transpose | all(
+                    .[1] as $now
+                    | (.[0].results // []) | removed($now.results // [])
+                    | . != null and all(rule == "actions/unpinned-tag" and org_ref)))' "$SARIF_IN" > /dev/null
       - name: Upload CodeQL results
         uses: github/codeql-action/upload-sarif@977e6ceaea7361825998245d787fa3b4d6b9e5df # codeql-bundle-v2.27.0
         with:
