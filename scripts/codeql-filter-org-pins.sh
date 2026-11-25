@@ -29,9 +29,9 @@ set -euo pipefail
 # Fails closed: when IN is missing or is not a SARIF log (no `runs` array, a run
 # whose `results` is not an array, no run at all), it exits 2 and writes nothing,
 # so the upload step that follows never runs and the CodeQL check goes red.
-# codeql.yml then checks, in the workflow itself, that only org-ref
-# unpinned-tag results went missing, so an edit to this script alone cannot
-# hide any other result.
+# codeql.yml runs the base branch's copy of this script, so a pull request's
+# edit to it counts only after merge, and then checks in the workflow itself
+# that only org-ref unpinned-tag results went missing.
 #
 # Twin: combsmith/.github and combsmith/.github-private each carry this script
 # at scripts/codeql-filter-org-pins.sh; keep the two the same apart from this

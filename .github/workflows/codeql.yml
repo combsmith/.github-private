@@ -75,6 +75,18 @@ jobs:
           # run's debugging data, as GitHub advises when post-processing SARIF.
           upload: failure-only
           output: ${{ runner.temp }}/codeql-sarif
+      # The filter runs from the base branch's copy of the script, never the pull
+      # request's, so an edit to it counts only after merge (bats tests the
+      # edit before then). No pull request code runs in this job: analyze
+      # extracts without building.
+      - name: Check out the base branch's filter script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
+          path: .codeql-filter-base
+          sparse-checkout: scripts/codeql-filter-org-pins.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       # The org pins its own reusable workflows to moving channel tags on purpose
       # (combsmith/.github ci-standards.md, "Exception: Internal Reusable Workflow
       # References"). Drop `actions/unpinned-tag` results on `combsmith/` refs
@@ -86,11 +98,20 @@ jobs:
           ORG: combsmith
           SARIF_IN: ${{ runner.temp }}/codeql-sarif/${{ matrix.language }}.sarif
           SARIF_OUT: ${{ runner.temp }}/codeql-sarif-filtered/${{ matrix.language }}.sarif
-        run: bash scripts/codeql-filter-org-pins.sh "$SARIF_IN" "$SARIF_OUT" "$GITHUB_WORKSPACE"
-      # Checked here, in the workflow, so that an edit to the script alone cannot
-      # hide a result: everything outside the results is unchanged, no result is
-      # added, every result of another rule is unchanged, and each unpinned-tag
-      # result that went missing names a `combsmith/` ref in its closing clause.
+          FILTER: .codeql-filter-base/scripts/codeql-filter-org-pins.sh
+        run: |
+          mkdir -p "$(dirname "$SARIF_OUT")"
+          if [[ -f "$FILTER" ]]; then
+            bash "$FILTER" "$SARIF_IN" "$SARIF_OUT" "$GITHUB_WORKSPACE"
+          else
+            # The base branch has no filter yet: upload every result.
+            echo "::notice::no filter script on the base branch; uploading unfiltered results"
+            cp "$SARIF_IN" "$SARIF_OUT"
+          fi
+      # A check on the script's output, kept in the workflow so a faulty script
+      # cannot hide a result: everything outside the results is unchanged, no
+      # result is added, every result of another rule is unchanged, and each
+      # unpinned-tag result that went missing names a `combsmith/` ref.
       - name: Check that only org-ref unpinned-tag results were dropped
         env:
           SARIF_IN: ${{ runner.temp }}/codeql-sarif/${{ matrix.language }}.sarif

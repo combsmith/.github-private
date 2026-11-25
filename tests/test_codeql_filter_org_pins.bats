@@ -301,7 +301,7 @@ _out_messages() {
   grep -Eq '^[[:space:]]+uses:[[:space:]]*github/codeql-action/upload-sarif@' "$WORKFLOW"
   local analyze filter upload
   analyze="$(grep -n 'github/codeql-action/analyze@' "$WORKFLOW" | cut -d: -f1)"
-  filter="$(grep -n 'scripts/codeql-filter-org-pins.sh' "$WORKFLOW" | head -1 | cut -d: -f1)"
+  filter="$(grep -n 'name: Drop unpinned-tag results on org refs' "$WORKFLOW" | cut -d: -f1)"
   upload="$(grep -n 'github/codeql-action/upload-sarif@' "$WORKFLOW" | cut -d: -f1)"
   local guard
   guard="$(grep -n 'name: Check that only org-ref unpinned-tag results were dropped' "$WORKFLOW" | cut -d: -f1)"
@@ -322,20 +322,35 @@ _out_messages() {
   grep -Eq '^[[:space:]]+name:[[:space:]]*CodeQL[[:space:]]*$' "$WORKFLOW"
 }
 
-# _guard — the workflow's own check that only org-ref unpinned-tag results went
-# missing, cut from codeql.yml so the test runs exactly what CI runs.
-_guard() {
-  local script
-  script="$(awk '
-    /name: Check that only org-ref unpinned-tag results were dropped/ { f = 1; next }
+# _step_script NAME — the `run: |` block of the codeql.yml step called NAME, so
+# the tests run exactly what CI runs.
+_step_script() {
+  NAME="$1" awk '
+    index($0, "name: " ENVIRON["NAME"]) { f = 1; next }
     f && /^[[:space:]]+run: \|/ { r = 1; match($0, /^[[:space:]]+/); ind = RLENGTH; next }
     r {
       if ($0 ~ /^[[:space:]]*$/) { print ""; next }
       match($0, /^[[:space:]]+/); if (RLENGTH <= ind) exit
       print substr($0, ind + 3)
-    }' "$WORKFLOW")"
+    }' "$WORKFLOW"
+}
+
+# _guard OUT — the workflow's own check that only org-ref unpinned-tag results
+# went missing between $IN and OUT.
+_guard() {
+  local script
+  script="$(_step_script 'Check that only org-ref unpinned-tag results were dropped')"
   [ -n "$script" ] || { echo "guard step not found in codeql.yml"; return 1; }
   SARIF_IN="$IN" SARIF_OUT="$1" run bash -c "$script"
+}
+
+# _filter_step FILTER — the workflow's filter step, run from $SRC with the
+# given filter script path.
+_filter_step() {
+  local script
+  script="$(_step_script 'Drop unpinned-tag results on org refs')"
+  [ -n "$script" ] || { echo "filter step not found in codeql.yml"; return 1; }
+  ORG=combsmith SARIF_IN="$IN" SARIF_OUT="$OUT" FILTER="$1" GITHUB_WORKSPACE="$SRC" run bash -c "$script"
 }
 
 _mixed_sarif() {
@@ -394,4 +409,44 @@ _mixed_sarif() {
   grep -Fq 'sarif_file: ${{ runner.temp }}/codeql-sarif-filtered/${{ matrix.language }}.sarif' "$WORKFLOW"
   [ "$(grep -E '^[[:space:]]+SARIF_IN:' "$WORKFLOW" | sort -u | sed 's/^[[:space:]]*//')" = 'SARIF_IN: ${{ runner.temp }}/codeql-sarif/${{ matrix.language }}.sarif' ]
   [ "$(grep -E '^[[:space:]]+SARIF_OUT:' "$WORKFLOW" | sort -u | sed 's/^[[:space:]]*//')" = 'SARIF_OUT: ${{ runner.temp }}/codeql-sarif-filtered/${{ matrix.language }}.sarif' ]
+}
+
+@test "codeql.yml: the filter is the base branch's copy, checked out apart without credentials" {
+  local step
+  step="$(awk '/name: Check out the base branch.s filter script/ { f = 1 } f && /^[[:space:]]+- name:/ && !/filter script/ { exit } f' "$WORKFLOW")"
+  [ -n "$step" ]
+  [[ "$step" == *'ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}'* ]]
+  [[ "$step" == *'path: .codeql-filter-base'* ]]
+  [[ "$step" == *'sparse-checkout: scripts/codeql-filter-org-pins.sh'* ]]
+  [[ "$step" == *'persist-credentials: false'* ]]
+  grep -Fq 'FILTER: .codeql-filter-base/scripts/codeql-filter-org-pins.sh' "$WORKFLOW"
+  # Never the pull request's own copy at the workspace root.
+  run grep -En 'bash +"?(\./)?scripts/codeql-filter-org-pins.sh' "$WORKFLOW"
+  [ "$status" -eq 1 ]
+}
+
+@test "codeql.yml filter step: runs the given filter script" {
+  _sarif "$(_result actions/unpinned-tag .github/workflows/ci.yml 3 "$ORG_MSG")" \
+    "$(_result actions/unpinned-tag .github/workflows/ci.yml 7 "$THIRD_MSG")"
+  _filter_step "$FILTER"
+  [ "$status" -eq 0 ]
+  [ "$(_out_messages)" = "$THIRD_MSG" ]
+}
+
+@test "codeql.yml filter step: with no filter on the base branch, uploads every result" {
+  _sarif "$(_result actions/unpinned-tag .github/workflows/ci.yml 3 "$ORG_MSG")"
+  _filter_step "$SANDBOX/none/codeql-filter-org-pins.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"uploading unfiltered results"* ]]
+  cmp "$IN" "$OUT"
+}
+
+@test "codeql.yml filter step: fails when the filter fails or the SARIF is missing" {
+  printf 'not json\n' > "$IN"
+  _filter_step "$FILTER"
+  [ "$status" -ne 0 ]
+  rm -f "$IN"
+  _filter_step "$SANDBOX/none/codeql-filter-org-pins.sh"
+  [ "$status" -ne 0 ]
+  [ ! -e "$OUT" ]
 }
