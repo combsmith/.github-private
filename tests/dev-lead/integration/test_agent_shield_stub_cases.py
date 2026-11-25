@@ -10,17 +10,14 @@ Standalone runner (repo convention: `python3 <file>`, exit 0 = pass). No pytest.
 """
 from __future__ import annotations
 
-import importlib.util
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-VALIDATOR = HERE / "test_agent_shield_stub.py"
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
 
-_spec = importlib.util.spec_from_file_location("agent_shield_stub", VALIDATOR)
-assert _spec and _spec.loader
-mod = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(mod)  # type: ignore[union-attr]
+import test_agent_shield_stub as mod  # noqa: E402
 
 REUSABLE = "combsmith/.github/.github/workflows/agent-shield-reusable.yml"
 

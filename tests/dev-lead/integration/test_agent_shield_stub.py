@@ -54,6 +54,8 @@ def check_workflow(doc) -> str | None:
         on = {on: None}
     elif isinstance(on, list):
         on = {item: None for item in on}
+    if not isinstance(on, dict):
+        return "has an invalid 'on' trigger configuration"
     missing_triggers = REQUIRED_TRIGGERS - set(on.keys())
     if missing_triggers:
         return f"is missing required triggers: {sorted(missing_triggers)}"
