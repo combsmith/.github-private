@@ -43,6 +43,10 @@ source "$POST_PR_SCRIPT_DIR/lib/merge-queue-dequeue.sh"
 # review-one-pr.sh and the tier-4 note/marker builder.
 # shellcheck source=lib/adjudicate.sh
 source "$POST_PR_SCRIPT_DIR/lib/adjudicate.sh"
+# A delegated fix request is a COMMENT review whose inline comments are the
+# line-cited findings (#2614).
+# shellcheck source=lib/fix-request-review.sh
+source "$POST_PR_SCRIPT_DIR/lib/fix-request-review.sh"
 
 # The account this run acts as and the secret holding its PAT — named in the
 # #1874 loud-failure diagnostic so a stranded approval points straight at the
@@ -290,11 +294,14 @@ upsert_escalation_comment() {
 
 # mark_prior_agent_items_obsolete <pr_url>
 # After successfully posting a new review/comment, dismiss prior agent reviews
-# (state != DISMISSED) and collapse prior agent comments. Identifies agent
-# items by the body marker `<!-- pr-review-agent v1 sha=<HEX> -->`. The newest
-# agent item by timestamp (which is the just-posted one) is preserved.
-# Idempotent: prior comments already wrapped in a `<!-- pr-review-agent
-# superseded -->` sentinel are skipped to avoid recursive nesting.
+# (APPROVED / CHANGES_REQUESTED) and collapse prior agent comments and COMMENTED
+# reviews. GitHub cannot dismiss a COMMENTED review, and a fix request is one
+# (#2614), so its body is wrapped in the superseded sentinel instead, as a
+# comment's is. Identifies agent items by the body marker
+# `<!-- pr-review-agent v1 sha=<HEX> -->`. The newest agent item by timestamp
+# (which is the just-posted one) is preserved. Idempotent: prior items already
+# wrapped in a `<!-- pr-review-agent superseded -->` sentinel are skipped to
+# avoid recursive nesting.
 #
 # API failures here do NOT abort the workflow — the new post has already
 # landed. They DO emit ::warning:: annotations so silent stack-up of
@@ -348,11 +355,12 @@ mark_prior_agent_items_obsolete() {
     map(select(.body != null and (.body | test("<!-- pr-review-agent v1 sha=[a-f0-9]+"))))
     | map(select(.submitted_at != $keep))
     | .[]
-    | select(.state == "APPROVED" or .state == "COMMENTED" or .state == "CHANGES_REQUESTED")
+    | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED"
+             or (.state == "COMMENTED" and (.body | test("<!-- pr-review-agent superseded -->") | not)))
     | .id
   ' "$reviews_file" 2>/dev/null || true)
 
-  local dismiss_err current_state
+  local dismiss_err edit_err current_state review_body wrapped_body
   if [ -n "$stale_review_ids" ]; then
     while IFS= read -r review_id; do
       [ -z "$review_id" ] && continue
@@ -361,7 +369,23 @@ mark_prior_agent_items_obsolete() {
       current_state=$(gh api "repos/$owner_repo/pulls/$pr_num/reviews/$review_id" \
         --jq '.state' 2>/dev/null || echo "UNKNOWN")
       case "$current_state" in
-        APPROVED|COMMENTED|CHANGES_REQUESTED)
+        COMMENTED)
+          # Not dismissable: collapse the body instead (#2614). The markers stay
+          # inside the <details> block, so the cycle cap still counts the review.
+          review_body=$(gh api "repos/$owner_repo/pulls/$pr_num/reviews/$review_id" --jq '.body' 2>/dev/null) || {
+            echo "::warning::cleanup: failed to fetch prior agent review $review_id on $pr_url — skipping collapse"
+            continue
+          }
+          case "$review_body" in *"<!-- pr-review-agent superseded -->"*) continue ;; esac
+          echo "  collapsing prior agent review $review_id (superseded by $PR_HEAD_SHA)"
+          wrapped_body=$(printf '<!-- pr-review-agent superseded -->\n<details><summary><em>Superseded by automated re-review at <code>%s</code> — click to expand prior review.</em></summary>\n\n%s\n\n</details>' \
+            "$PR_HEAD_SHA" "$review_body")
+          edit_err=$(jq -n --arg b "$wrapped_body" '{body: $b}' \
+            | gh api -X PUT "repos/$owner_repo/pulls/$pr_num/reviews/$review_id" --input - 2>&1 >/dev/null) || {
+            echo "::warning::cleanup: failed to collapse prior agent review $review_id on $pr_url — stale review will persist. API said: $(echo "$edit_err" | head -3 | tr '\n' ' ')"
+          }
+          ;;
+        APPROVED|CHANGES_REQUESTED)
           echo "  dismissing prior agent review $review_id (superseded by $PR_HEAD_SHA)"
           dismiss_err=$(gh api -X PUT "repos/$owner_repo/pulls/$pr_num/reviews/$review_id/dismissals" \
             -f message="Superseded by automated re-review at $PR_HEAD_SHA." \
@@ -390,7 +414,7 @@ mark_prior_agent_items_obsolete() {
     | .id
   ' "$comments_file" 2>/dev/null || true)
 
-  local edit_err old_body new_body
+  local old_body new_body
   if [ -n "$stale_comment_ids" ]; then
     while IFS= read -r cid; do
       [ -z "$cid" ] && continue
@@ -409,6 +433,60 @@ mark_prior_agent_items_obsolete() {
   fi
 
   rm -f "$reviews_file" "$comments_file"
+}
+
+# resolve_superseded_finding_threads <pr_url> <keep_review_id>
+# Resolve the open review threads that pr-review opened for its fix-request
+# findings (#2614), except those of review <keep_review_id> (the one just posted;
+# empty resolves them all, as after an approval). A finding thread is one whose
+# first comment is authored by BOT_USER and starts with
+# `<!-- pr-review-agent finding sha=`. A newer review re-raises every finding
+# still present, so an older thread left open would only duplicate it, and an
+# open thread blocks merge under required_review_thread_resolution.
+# Best-effort, like mark_prior_agent_items_obsolete: failures emit ::warning::.
+resolve_superseded_finding_threads() {
+  local pr_url="$1" keep="${2:-}" owner_repo pr_num cursor="" page ids has_next tid resp
+  owner_repo=$(echo "$pr_url" | sed -E 's|.*/([^/]+)/([^/]+)/pull/.*|\1/\2|')
+  pr_num=$(echo "$pr_url" | sed -E 's|.*/([0-9]+)$|\1|')
+  # shellcheck disable=SC2016  # $owner/$repo/$pr/$cursor are GraphQL variables
+  local query='query($owner:String!,$repo:String!,$pr:Int!,$cursor:String){
+    repository(owner:$owner,name:$repo){ pullRequest(number:$pr){
+      reviewThreads(first:100,after:$cursor){
+        pageInfo{hasNextPage endCursor}
+        nodes{id isResolved comments(first:1){nodes{author{login} body pullRequestReview{databaseId}}}}
+      } } } }'
+  ids=""
+  while :; do
+    local cursor_args=()
+    [ -n "$cursor" ] && cursor_args=(-f "cursor=$cursor")
+    page=$(gh api graphql -f query="$query" -F owner="${owner_repo%%/*}" -F repo="${owner_repo##*/}" \
+      -F pr="$pr_num" "${cursor_args[@]}" 2>/dev/null) || page=""
+    if ! jq -e '.data.repository.pullRequest.reviewThreads.nodes | type == "array"' <<<"$page" >/dev/null 2>&1; then
+      echo "::warning::cleanup: could not list review threads on $pr_url — superseded pr-review finding threads stay open until a later run"
+      return 0
+    fi
+    ids+=$(jq -r --arg bot "$BOT_USER" --arg keep "$keep" '
+      .data.repository.pullRequest.reviewThreads.nodes[]
+      | select(.isResolved == false)
+      | .comments.nodes[0] as $c
+      | select(($c.author.login // "") == $bot)
+      | select(($c.body // "") | startswith("<!-- pr-review-agent finding sha="))
+      | select($keep == "" or (($c.pullRequestReview.databaseId // "") | tostring) != $keep)
+      | .id' <<<"$page" 2>/dev/null || true)$'\n'
+    has_next=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage // false' <<<"$page" 2>/dev/null || echo false)
+    cursor=$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor // ""' <<<"$page" 2>/dev/null || echo "")
+    { [ "$has_next" = "true" ] && [ -n "$cursor" ]; } || break
+  done
+  while IFS= read -r tid; do
+    [ -z "$tid" ] && continue
+    echo "  resolving superseded pr-review finding thread $tid"
+    resp=$(gh api graphql -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' \
+      -f id="$tid" 2>/dev/null) || resp=""
+    if [ "$(jq -r '.data.resolveReviewThread.thread.isResolved // false' <<<"$resp" 2>/dev/null)" != "true" ]; then
+      echo "::warning::cleanup: failed to resolve superseded pr-review finding thread $tid on $pr_url — it stays open until a later run"
+    fi
+  done <<<"$ids"
+  return 0
 }
 
 # ── needs-human-review label state helpers (#1754) ──────────────────────────
@@ -670,6 +748,8 @@ if [ "$DECISION" = "approve" ]; then
   # Dismiss prior agent reviews / collapse prior agent comments now that the
   # newest review has landed. Best-effort: failures here don't break the run.
   mark_prior_agent_items_obsolete "$PR_URL"
+  # The approval settles every earlier fix-request finding thread (#2614).
+  resolve_superseded_finding_threads "$PR_URL" ""
 
   # The cleanup above dismissed the prior approval. The new one normally stands,
   # so this is a no-op; it dequeues only if no approval stands for the head on the
@@ -743,8 +823,11 @@ elif [ "$DECISION" = "escalate" ]; then
   # review-one-pr.sh), or when tier 4 adjudicated this verdict to request_changes
   # (#2495). Everything else escalates to a human.
   if [[ "$ADJ_DECISION" == "request_changes" ]] || ! adjudicate_escalates_to_human "$DECISION" "$RISK"; then
-    # Post fix-request comment
-    COMMENT_FILE="/tmp/pr-comment-$$.txt"
+    # Post the fix request as a COMMENT review (#2614): each finding that cites a
+    # line is an inline comment, so dev-lead's fix pass meets it as an ordinary
+    # review thread; findings without a line stay in the review body with the
+    # marker pair. Never REQUEST_CHANGES — that state survives new pushes (#2570).
+    REVIEW_BODY_FILE="$(mktemp)"
     NEXT_CYCLE=$(( ${REVIEW_CYCLE:-0} + 1 ))
     # Strip any embedded marker from BODY before inserting — the cascade-action body
     # already carries its own marker, and a second copy would cause review-one-pr.sh
@@ -775,7 +858,30 @@ elif [ "$DECISION" = "escalate" ]; then
         echo "::warning::metadata snapshot fetch failed for $PR_URL — stamping a commit-only marker (no meta=)"
       fi
     fi
-    cat > "$COMMENT_FILE" <<COMMENT_END
+    # Split the verdict's structured findings. A verdict without them (an older
+    # cascade body, or an unparseable list) keeps the full body as before and
+    # posts no inline comments.
+    INLINE_COMMENTS='[]'
+    FINDINGS_MD="$BODY_FOR_COMMENT"
+    REVIEW_SUMMARY=""
+    if frr_has_findings "$VERDICT_JSON"; then
+      INLINE_COMMENTS=$(frr_located_findings "$VERDICT_JSON" "$PR_HEAD_SHA" 2>/dev/null) || INLINE_COMMENTS='[]'
+      [ -n "$INLINE_COMMENTS" ] || INLINE_COMMENTS='[]'
+      LINELESS_MD=$(frr_unlocated_findings_md "$VERDICT_JSON" 2>/dev/null) || LINELESS_MD=""
+      REVIEW_SUMMARY=$(jq -r '.summary // "" | strings' "$VERDICT_JSON" 2>/dev/null || true)
+      FINDINGS_MD="${LINELESS_MD:-_None without a line._}"
+    fi
+    INLINE_COUNT=$(jq 'length' <<<"$INLINE_COMMENTS" 2>/dev/null || echo 0)
+
+    # compose_fix_request_body <findings-markdown> <inline|body>: write the review
+    # body; `inline` adds the note that line-cited findings are inline comments.
+    # The marker pair is the first line, exactly as every marker reader expects.
+    compose_fix_request_body() {
+      local findings="$1" inline_note=""
+      if [ "$INLINE_COUNT" -gt 0 ] && [ "$2" = "inline" ]; then
+        inline_note=$'\n\n'"_${INLINE_COUNT} finding(s) that cite a line are inline comments on this review. Address each one in its thread._"
+      fi
+      cat > "$REVIEW_BODY_FILE" <<COMMENT_END
 <!-- pr-review-agent v1 sha=$PR_HEAD_SHA --> <!-- decision=fix-requested risk=$RISK$META_ATTR -->
 
 ## Review — fix requested (cycle $NEXT_CYCLE/${MAX_REVIEW_CYCLES:-3})
@@ -783,9 +889,12 @@ elif [ "$DECISION" = "escalate" ]; then
 The automated review identified the following issues. Please address each one:
 
 ### Findings to fix
-$BODY_FOR_COMMENT
+$findings$inline_note
 
-### Additional tasks
+${REVIEW_SUMMARY:+### Summary
+$REVIEW_SUMMARY
+
+}### Additional tasks
 1. Resolve all unresolved review thread comments from other reviewers
 2. Ensure all CI checks pass after your changes
 3. Rebase on the target branch if behind
@@ -793,23 +902,59 @@ $BODY_FOR_COMMENT
 
 $REARM_FOOTER
 COMMENT_END
-    if [[ -n "$ADJ_NOTE" ]]; then
-      printf '\n%s\n' "$ADJ_NOTE" >> "$COMMENT_FILE"
-    fi
+      if [[ -n "$ADJ_NOTE" ]]; then
+        printf '\n%s\n' "$ADJ_NOTE" >> "$REVIEW_BODY_FILE"
+      fi
+    }
 
-    echo "Posting fix-request comment..."
+    OWNER_REPO=$(echo "$PR_URL" | sed -E 's|.*/([^/]+)/([^/]+)/pull/.*|\1/\2|')
+    PR_NUM=$(echo "$PR_URL" | sed -E 's|.*/([0-9]+)$|\1|')
+    REVIEW_RESPONSE_FILE="$(mktemp)"
+    echo "Posting fix-request review (${INLINE_COUNT} inline comment(s))..."
+    compose_fix_request_body "$FINDINGS_MD" inline
+    POSTED=false
+    if frr_review_payload "$PR_HEAD_SHA" "$REVIEW_BODY_FILE" "$INLINE_COMMENTS" \
+         | gh api -X POST "repos/$OWNER_REPO/pulls/$PR_NUM/reviews" --input - >"$REVIEW_RESPONSE_FILE"; then
+      POSTED=true
+    elif [ "$INLINE_COUNT" -gt 0 ] && grep -qE '"status": ?"?422|Unprocessable' "$REVIEW_RESPONSE_FILE" 2>/dev/null; then
+      # GitHub refuses the whole review when one inline comment names a line
+      # outside the diff (422). Post it once more with those findings in the
+      # body, so the fix request still lands. Only a 422 retries: after any other
+      # failure the first review may have landed, and a second would post the
+      # fix request twice and count the cycle twice.
+      echo "::warning::fix-request: the review with ${INLINE_COUNT} inline comment(s) was refused on $PR_URL ($(head -c 300 "$REVIEW_RESPONSE_FILE" | tr '\n' ' ')) — posting it with every finding in the body instead"
+      FALLBACK_MD="$(frr_located_as_md "$INLINE_COMMENTS")"
+      if [ "$FINDINGS_MD" != "_None without a line._" ]; then
+        FALLBACK_MD="$FALLBACK_MD"$'\n'"$FINDINGS_MD"
+      fi
+      compose_fix_request_body "$FALLBACK_MD" body
+      INLINE_COMMENTS='[]'
+      if frr_review_payload "$PR_HEAD_SHA" "$REVIEW_BODY_FILE" '[]' \
+           | gh api -X POST "repos/$OWNER_REPO/pulls/$PR_NUM/reviews" --input - >"$REVIEW_RESPONSE_FILE"; then
+        POSTED=true
+      fi
+    fi
     # The hold is cleared only after the fix request is CONFIRMED posted: a failed
-    # comment must not re-enable a held PR with no fix request on it.
-    if ! gh pr comment "$PR_URL" --body "$(cat "$COMMENT_FILE")"; then
-      rm -f "$COMMENT_FILE"
-      echo "::error::fix-request: failed to post the fix-request comment on $PR_URL — leaving needs-human-review untouched and failing so the run is retried (#1754)"
+    # review must not re-enable a held PR with no fix request on it.
+    if [ "$POSTED" != "true" ]; then
+      echo "::error::fix-request: failed to post the fix-request review on $PR_URL ($(head -c 300 "$REVIEW_RESPONSE_FILE" 2>/dev/null | tr '\n' ' ')) — leaving needs-human-review untouched and failing so the run is retried (#1754)"
+      rm -f "$REVIEW_BODY_FILE" "$REVIEW_RESPONSE_FILE"
       exit 1
     fi
-    rm -f "$COMMENT_FILE"
+    POSTED_REVIEW_ID=$(jq -r '.id // empty' "$REVIEW_RESPONSE_FILE" 2>/dev/null || true)
+    rm -f "$REVIEW_BODY_FILE" "$REVIEW_RESPONSE_FILE"
 
     # Supersede prior agent reviews/comments now that the newest fix-request
     # has landed. A new fix-request also invalidates any prior approval.
     mark_prior_agent_items_obsolete "$PR_URL"
+    # Resolve the finding threads of earlier fix requests; this review re-raises
+    # every finding still present (#2614). Without the new review's id every
+    # thread would match, so skip the step rather than resolve the new ones.
+    if [ -n "$POSTED_REVIEW_ID" ]; then
+      resolve_superseded_finding_threads "$PR_URL" "$POSTED_REVIEW_ID"
+    else
+      echo "::warning::fix-request: the reviews API returned no id for the new review on $PR_URL — leaving earlier finding threads open"
+    fi
 
     # GitHub checks reviews only when a PR joins the merge queue. If the dismissal
     # above withdrew the last approval of a queued PR, remove it from the queue

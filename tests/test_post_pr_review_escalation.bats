@@ -82,6 +82,14 @@ if [ "$sub1" = "api" ]; then
     */pulls/*/reviews)
       if [ "$method" = "POST" ]; then
         input="$(cat)"
+        # A fix request is a COMMENT review since #2614: record its body where the
+        # fix-request tests read the posted request, and honour COMMENT_FAILS.
+        if [ "$(printf '%s' "$input" | jq -r '.event')" = "COMMENT" ]; then
+          [ -n "${COMMENT_FAILS:-}" ] && exit 1
+          printf '%s' "$input" | jq -j '.body' > "${COMMENT_OUT:-/dev/null}"
+          printf '{"id":2,"state":"COMMENTED","commit_id":"%s"}' "$SHA"
+          exit 0
+        fi
         printf '%s' "$input" | jq -j '.body' > "${REVIEW_OUT:-/dev/null}"
         printf '[{"id":1,"state":"APPROVED","user":{"login":"%s"},"commit_id":"%s","submitted_at":"2026-09-21T03:25:39Z","body":""}]' "${BOT_USER:-donpetry-bot}" "$SHA" > "${POSTED_REVIEWS_FILE:-/dev/null}"
         printf '%s' "$input" | jq -c '{id: 1, state: "APPROVED", commit_id: .commit_id}'

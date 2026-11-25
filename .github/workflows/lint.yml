@@ -250,6 +250,9 @@ jobs:
             tests/test_post_pr_review_meta_stamp.bats \
             tests/test_post_pr_review_approval_verification.bats \
             tests/test_post_pr_review_escalation.bats \
+            tests/test_post_pr_review_fix_request_review.bats \
+            tests/test_fix_request_review.bats \
+            tests/test_review_one_pr_fix_request_review.bats \
             tests/test_adjudicate.bats \
             tests/test_review_one_pr_adjudicate.bats \
             tests/test_merge_queue_dequeue.bats \

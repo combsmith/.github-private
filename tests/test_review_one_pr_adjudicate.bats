@@ -191,10 +191,12 @@ EOF
 @test "Fable request_changes at the cap posts a fix-request, not an escalation" {
   export PR_REVIEW_ADJUDICATE=true CLAUDE_MODE=request_changes
   run bash "$REVIEW_SCRIPT" "$PR_URL"
-  echo "$output" >&2; cat "$POSTED_COMMENTS" >&2
+  echo "$output" >&2; cat "$POSTED_REVIEW" >&2
   [ "$status" -eq 0 ]
-  grep -q 'decision=fix-requested' "$POSTED_COMMENTS"
-  grep -q 'decision=request_changes overrode=true' "$POSTED_COMMENTS"
+  # The fix request is a COMMENT review since #2614.
+  [ "$(jq -r .event "$POSTED_REVIEW")" = "COMMENT" ]
+  jq -r .body "$POSTED_REVIEW" | grep -q 'decision=fix-requested'
+  jq -r .body "$POSTED_REVIEW" | grep -q 'decision=request_changes overrode=true'
   ! grep -q -- '--add-label needs-human-review' "$GH_LOG" || false
 }
 

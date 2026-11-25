@@ -279,3 +279,49 @@ items() {  # items <item-json>...
   run has_escalation_marker 'garbage'
   [ "$status" -ne 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# #2614: fix requests posted as COMMENT reviews
+# ---------------------------------------------------------------------------
+# post-pr-review.sh now posts the fix-requested marker pair as the body of a
+# COMMENTED review by pr-review's login. A superseded one has its body wrapped in
+# the superseded sentinel (a COMMENTED review cannot be dismissed); an older one
+# may also be DISMISSED. Each still counts once toward the cycle.
+fix_request_review() {  # fix_request_review <when> <sha> [state] [superseded]
+  local item
+  item=$(fix_request "$1" "$2" | jq -c --arg st "${3:-COMMENTED}" '. + {author: "donpetry-bot", state: $st}')
+  if [ "${4:-}" = "superseded" ]; then
+    item=$(jq -c '.body = ("<!-- pr-review-agent superseded -->\n<details><summary><em>Superseded</em></summary>\n\n" + .body + "\n\n</details>")' <<<"$item")
+  fi
+  printf '%s' "$item"
+}
+
+@test "#2614: fix-request reviews count one cycle each" {
+  run compute_review_cycle "$(items \
+    "$(fix_request_review 2026-11-23T01:00:00Z aaa)" \
+    "$(fix_request_review 2026-11-24T01:00:00Z bbb)")"
+  [ "$output" = "2" ]
+}
+
+@test "#2614: superseded and dismissed fix-request reviews still count" {
+  run compute_review_cycle "$(items \
+    "$(fix_request_review 2026-11-22T01:00:00Z aaa DISMISSED superseded)" \
+    "$(fix_request_review 2026-11-23T01:00:00Z bbb COMMENTED superseded)" \
+    "$(fix_request_review 2026-11-24T01:00:00Z ccc)")"
+  [ "$output" = "3" ]
+}
+
+@test "#2614: reviews and legacy fix-request comments count together across the switch" {
+  run compute_review_cycle "$(items \
+    "$(fix_request 2026-11-22T01:00:00Z aaa)" \
+    "$(fix_request_review 2026-11-24T01:00:00Z bbb)")"
+  [ "$output" = "2" ]
+}
+
+@test "#2614: a pr-review COMMENTED fix-request review is not a human approval and never resets the cap" {
+  run compute_review_cycle "$(items \
+    "$(fix_request_review 2026-11-23T01:00:00Z aaa)" \
+    "$(human_approval 2026-11-24T01:00:00Z)" \
+    "$(fix_request_review 2026-11-25T01:00:00Z bbb)")"
+  [ "$output" = "1" ]
+}

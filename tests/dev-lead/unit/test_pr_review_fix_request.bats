@@ -151,13 +151,18 @@ $(_body "$HEAD40" fix-requested)
 
 # ── the fix-reviews arm: export_pr_review_fix_request + prompt ────────────────
 
-# _export_env <comments-json|FAIL> <live-head|FAIL>: run export_pr_review_fix_request
-# against a gh stub and print PR_REVIEW_FIX_REQUEST.
+# _export_env <comments-json|FAIL> <live-head|FAIL> [reviews-json|FAIL]: run
+# export_pr_review_fix_request against a gh stub and print PR_REVIEW_FIX_REQUEST.
+# The reviews are pr-review's GraphQL review nodes (#2614); default none.
 _export_env() {
-  export PRFR_COMMENTS="$1" PRFR_HEAD="$2"
+  export PRFR_COMMENTS="$1" PRFR_HEAD="$2" PRFR_REVIEWS="${3:-[]}"
   cat > "$STUB_BIN_DIR/gh" <<'GHEOF'
 #!/usr/bin/env bash
 case "$*" in
+  *graphql*reviews\(*)
+    [ "$PRFR_REVIEWS" = "FAIL" ] && exit 1
+    jq -nc --argjson n "$PRFR_REVIEWS" \
+      '{data:{repository:{pullRequest:{reviews:{pageInfo:{hasNextPage:false,endCursor:null},nodes:$n}}}}}' ;;
   *graphql*)
     [ "$PRFR_COMMENTS" = "FAIL" ] && exit 1
     jq -nc --argjson n "$PRFR_COMMENTS" \
@@ -332,4 +337,73 @@ $FINDING"
     [ "$status" -eq 0 ]
     [ "$output" = "IC_prod" ]
   done
+}
+
+# ── #2614: the fix request is now a COMMENT review ──────────────────────────────
+# pr-review posts the fix request as a COMMENT review: line-cited findings are its
+# inline comments (ordinary open review threads), and the review body carries the
+# marker pair plus the findings without a line. The selector reads that body.
+
+# _review <id> <login> <body> [state] [submittedAt] [lastEditedAt|null]: a GraphQL
+# review node.
+_review() {
+  jq -nc --arg id "$1" --arg l "$2" --arg b "$3" --arg st "${4:-COMMENTED}" \
+    --arg s "${5:-2026-11-25T10:00:00Z}" --arg e "${6:-null}" '
+    {id:$id, author:{login:$l}, body:$b, state:$st, submittedAt:$s,
+     lastEditedAt:(if $e == "null" then null else $e end)}'
+}
+
+@test "prfr(#2614): only COMMENTED reviews become selector nodes, with submittedAt as createdAt" {
+  run bash -c "source '$LIB'; prfr_review_nodes \"\$1\"" _ \
+    "[$(_review R1 donpetry-bot b COMMENTED 2026-11-25T10:00:00Z),$(_review R2 donpetry-bot b APPROVED),$(_review R3 donpetry-bot b DISMISSED)]"
+  [ "$status" -eq 0 ]
+  [ "$(jq 'length' <<< "$output")" -eq 1 ]
+  [ "$(jq -r '.[0].id' <<< "$output")" = "R1" ]
+  [ "$(jq -r '.[0].createdAt' <<< "$output")" = "2026-11-25T10:00:00Z" ]
+  [ "$(jq -r '.[0].isMinimized' <<< "$output")" = "false" ]
+  [ "$(jq -r '.[0].kind' <<< "$output")" = "review" ]
+}
+
+@test "prfr(#2614): malformed review input makes prfr_review_nodes fail" {
+  run bash -c "source '$LIB'; prfr_review_nodes 'not json'"
+  [ "$status" -ne 0 ]
+}
+
+@test "fix-reviews(#2614): pr-review's fix-request review at the live head is selected" {
+  _export_env "[]" "$HEAD40" "[$(_review PRR_sel donpetry-bot "$(_body "$HEAD40" fix-requested)")]"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$FINDING"* ]]
+  [[ "$output" == *"review \`PRR_sel\`"* ]]
+}
+
+@test "fix-reviews(#2614): a review by another login, edited, at a stale head, or not COMMENTED is not selected" {
+  local b; b="$(_body "$HEAD40" fix-requested)"
+  _export_env "[]" "$HEAD40" "[$(_review R don-petry "$b")]"
+  [[ "$output" == "None."* ]]
+  _export_env "[]" "$HEAD40" "[$(_review R donpetry-bot "$b" COMMENTED 2026-11-25T10:00:00Z 2026-11-25T11:00:00Z)]"
+  [[ "$output" == "None."* ]]
+  _export_env "[]" "$HEAD40" "[$(_review R donpetry-bot "$(_body "$OLD40" fix-requested)")]"
+  [[ "$output" == "None."* ]]
+  _export_env "[]" "$HEAD40" "[$(_review R donpetry-bot "$b" DISMISSED)]"
+  [[ "$output" == "None."* ]]
+}
+
+@test "fix-reviews(#2614): the newest of a legacy comment and a review is selected" {
+  local c r
+  c=$(_node IC_old donpetry-bot "$(_body "$HEAD40" fix-requested "OLD_COMMENT_FINDING")" 2026-11-24T10:00:00Z)
+  r=$(_review PRR_new donpetry-bot "$(_body "$HEAD40" fix-requested)" COMMENTED 2026-11-25T10:00:00Z)
+  _export_env "[$c]" "$HEAD40" "[$r]"
+  [[ "$output" == *"$FINDING"* ]]
+  [[ "$output" != *"OLD_COMMENT_FINDING"* ]]
+}
+
+@test "fix-reviews(#2614): unreadable reviews give could-not-be-determined, never None" {
+  _export_env "[]" "$HEAD40" FAIL
+  [ "$status" -eq 0 ]
+  [[ "$output" == "Could not be determined"* ]]
+}
+
+@test "fix-reviews(#2614): the prompt routes line-cited findings through the thread list" {
+  grep -q 'inline comment' "$PROMPT"
+  grep -q 'pr-review-agent finding sha=' "$PROMPT"
 }

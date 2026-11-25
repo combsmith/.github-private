@@ -61,7 +61,7 @@ and **Copilot**.
 
    - `approve` posts an approval built by the script with the usual
      `decision=approved` marker.
-   - `request_changes` posts a fix-request comment, even where AI delegation is off.
+   - `request_changes` posts a fix request, even where AI delegation is off.
    - `escalate` proceeds to today's human escalation.
 
    Guardrails:
@@ -82,7 +82,7 @@ and **Copilot**.
 
    Observability: the run log prints
    `[tier4] adjudicate ran: model=<id> trigger=… outcome=… decision=… overrode=…`.
-   The posted approval, fix-request or escalation comment carries the marker and a
+   The posted approval, fix request or escalation comment carries the marker and a
    **Tier 4 (adjudicate)** line naming the resolved model, the decision, and whether
    it overrode the escalation. A verdict tier 4 decided records
    `FINAL_TIER=adjudicate`. Token records go to `TOKEN_LOG_FILE` under tier
@@ -128,10 +128,19 @@ and **Copilot**.
    - **If approved:** removes the `needs-human-review` label if present, and
      rebases the branch if it's behind base. The PR remains open for manual merge
      by the author or maintainers.
-   - **If escalated + AI delegation enabled:** posts a follow-up comment
-     with specific fix instructions. An AI agent watches for these comments,
-     pushes fixes → next cron tick detects new SHA → cascade re-reviews →
-     approve when clean. This creates an autonomous fix loop.
+   - **If escalated + AI delegation enabled:** posts a fix request as a review
+     with event `COMMENT` (never `REQUEST_CHANGES`, which survives new pushes,
+     #2570). Each finding that cites a file and line is an inline comment on
+     that review, beginning with `<!-- pr-review-agent finding sha=<SHA> -->`, so
+     dev-lead's fix pass meets it as an ordinary review thread. Findings with no
+     line go in the review body, below the `decision=fix-requested` marker pair.
+     If GitHub refuses an inline comment (a line outside the diff), the review is
+     posted again with every finding in the body. Each new fix request or
+     approval collapses older `COMMENTED` agent reviews (they cannot be
+     dismissed), and resolves the finding threads that earlier fix requests
+     opened (#2614). dev-lead pushes fixes → next cron tick detects new SHA →
+     cascade re-reviews → approve when clean. This creates an autonomous fix
+     loop.
    - **If escalated + no delegation (or max cycles reached):** labels
      `needs-human-review` and re-requests don-petry as reviewer.
    - **Cycle guard:** before running the cascade, `scripts/review-one-pr.sh`

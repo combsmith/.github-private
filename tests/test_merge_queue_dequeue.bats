@@ -131,8 +131,10 @@ if [ "$1" = "api" ]; then
     "POST "*/pulls/*/reviews)
       input=$(cat)
       ts=$(_tick)
+      # A fix request is a COMMENT review since #2614; record the state the
+      # event produces.
       jq --arg u "$BOT_USER" --argjson in "$input" --arg ts "$ts" \
-        '. + [{id: (1000 + length), user: {login: $u}, state: "APPROVED", commit_id: $in.commit_id, body: $in.body, submitted_at: $ts}]' \
+        '. + [{id: (1000 + length), user: {login: $u}, state: (if $in.event == "COMMENT" then "COMMENTED" else "APPROVED" end), commit_id: $in.commit_id, body: $in.body, submitted_at: $ts}]' \
         "$REVIEWS_FILE" > "$REVIEWS_FILE.tmp" && mv "$REVIEWS_FILE.tmp" "$REVIEWS_FILE"
       jq -c 'last | {id, state, commit_id}' "$REVIEWS_FILE"
       exit 0 ;;
@@ -414,7 +416,7 @@ fix_request_verdict() {
   [ "$(cat "$QUEUED_FILE")" = "false" ]
   # The dequeue happens only after the new verdict was posted.
   local fix_line dq_line
-  fix_line=$(grep -n '^pr comment' "$CALLS" | head -1 | cut -d: -f1)
+  fix_line=$(grep -n '^api -X POST repos/.*/pulls/[0-9]*/reviews' "$CALLS" | head -1 | cut -d: -f1)
   dq_line=$(grep -n 'dequeuePullRequest' "$CALLS" | head -1 | cut -d: -f1)
   [ "$fix_line" -lt "$dq_line" ]
 }

@@ -20,10 +20,16 @@ setup() {
   export COMMENT_OUT="$TEST_DIR/posted_comment.txt"
   : > "$COMMENT_OUT"
 
-  # gh stub: capture the fix-request comment body; answer the metadata fetch used
-  # to compute the digest; no-op everything else.
+  # gh stub: capture the fix-request body (posted as a COMMENT review since
+  # #2614, so read from the reviews POST); answer the metadata fetch used to
+  # compute the digest; no-op everything else.
   cat > "$TEST_DIR/bin/gh" <<'GHEOF'
 #!/bin/bash
+if [ "$1" = "api" ]; then
+  case "$*" in
+    *"-X POST repos/"*"/reviews"*) jq -j '.body' > "$COMMENT_OUT"; echo '{"id":1}'; exit 0 ;;
+  esac
+fi
 if [ "$1" = "pr" ] && [ "$2" = "comment" ]; then
   prev=""
   for a in "$@"; do
