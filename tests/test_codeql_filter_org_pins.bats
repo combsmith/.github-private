@@ -205,10 +205,56 @@ _out_messages() {
     for ref in combsmith/a@v1 combsmith/a/.github/workflows/b.yml@b/v1-next COMBSMITH/a@x; do
       is_org_ref "$ref" || { echo "rejected $ref"; exit 1; }
     done
-    for ref in combsmith/@v1 combsmith//a@v1 combsmith/a combsmith/a@ combsmith@v1 /combsmith/a@v1 combsmithx/a@v1 x/combsmith/a@v1; do
+    for ref in combsmith/@v1 combsmith//a@v1 combsmith/a combsmith/a@ combsmith@v1 /combsmith/a@v1 combsmithx/a@v1 x/combsmith/a@v1 combsmith/../x@v1 combsmith/.@v1 "combsmith/a b@v1"; do
       if is_org_ref "$ref"; then echo "accepted $ref"; exit 1; fi
     done' _ "$FILTER"
   [ "$status" -eq 0 ]
+}
+
+@test "several drops in one run and across two runs leave the right results" {
+  local r1 r2
+  r1="$(_result actions/unpinned-tag .github/workflows/ci.yml 3 "$ORG_MSG")"
+  r2="$(_result actions/unpinned-tag .github/workflows/ci.yml 7 "$THIRD_MSG")"
+  jq -n --argjson a "$r1" --argjson b "$r2" '{version: "2.1.0", runs: [
+    {tool: {driver: {name: "CodeQL"}}, results: [$a, $b, $a, $b, $a]},
+    {tool: {driver: {name: "CodeQL"}}, results: [$a, $b]}]}' > "$IN"
+  _filter
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '[.runs[].results | length]' "$OUT")" = "[2,1]" ]
+  [ "$(jq -r '[.runs[].results[].message.text] | unique | .[]' "$OUT")" = "$THIRD_MSG" ]
+}
+
+@test "a workflow with CRLF line ends is read" {
+  sed 's/$/\r/' "$SRC/.github/workflows/ci.yml" > "$SRC/.github/workflows/crlf.yml"
+  _sarif "$(_result actions/unpinned-tag .github/workflows/crlf.yml 3 "$ORG_MSG")" \
+    "$(_result actions/unpinned-tag .github/workflows/crlf.yml 7 "$THIRD_MSG")"
+  _filter
+  [ "$status" -eq 0 ]
+  [ "$(_out_messages)" = "$THIRD_MSG" ]
+}
+
+@test "a file with a line break sed does not count (lone CR, NEL, LS, PS) keeps its results" {
+  local brk n=0
+  for brk in $'\r' $'\xc2\x85' $'\xe2\x80\xa8' $'\xe2\x80\xa9'; do
+    n=$((n + 1))
+    { printf '# a%sb\n' "$brk"; cat "$SRC/.github/workflows/ci.yml"; } > "$SRC/.github/workflows/brk$n.yml"
+  done
+  _sarif \
+    "$(_result actions/unpinned-tag .github/workflows/brk1.yml 4 "$ORG_MSG")" \
+    "$(_result actions/unpinned-tag .github/workflows/brk2.yml 4 "$ORG_MSG")" \
+    "$(_result actions/unpinned-tag .github/workflows/brk3.yml 4 "$ORG_MSG")" \
+    "$(_result actions/unpinned-tag .github/workflows/brk4.yml 4 "$ORG_MSG")"
+  _filter
+  [ "$status" -eq 0 ]
+  [ "$(jq '.runs[0].results | length' "$OUT")" -eq 4 ]
+}
+
+@test "an action path that quotes an org ref in the message is kept" {
+  # The query copies the path into the message: uses 'someone/evil/d uses 'combsmith/a' with ref 'v1', ...
+  _sarif "$(_result actions/unpinned-tag .github/workflows/ci.yml 3 "Unpinned 3rd party Action 'CI' step [Uses Step](1) uses 'someone/evil/d uses 'combsmith/a' with ref 'v1', not a pinned commit hash")"
+  _filter
+  [ "$status" -eq 0 ]
+  [ "$(jq '.runs[0].results | length' "$OUT")" -eq 1 ]
 }
 
 # ── fails closed ────────────────────────────────────────────────────────────
@@ -257,8 +303,11 @@ _out_messages() {
   analyze="$(grep -n 'github/codeql-action/analyze@' "$WORKFLOW" | cut -d: -f1)"
   filter="$(grep -n 'scripts/codeql-filter-org-pins.sh' "$WORKFLOW" | head -1 | cut -d: -f1)"
   upload="$(grep -n 'github/codeql-action/upload-sarif@' "$WORKFLOW" | cut -d: -f1)"
+  local guard
+  guard="$(grep -n 'name: Check that only org-ref unpinned-tag results were dropped' "$WORKFLOW" | cut -d: -f1)"
   [ "$analyze" -lt "$filter" ]
-  [ "$filter" -lt "$upload" ]
+  [ "$filter" -lt "$guard" ]
+  [ "$guard" -lt "$upload" ]
 }
 
 @test "codeql.yml: init, analyze and upload-sarif share one pinned commit" {
@@ -271,4 +320,78 @@ _out_messages() {
 @test "codeql.yml: the upload keeps the per-language category and the CodeQL job" {
   [ "$(grep -Ec '^[[:space:]]+category:[[:space:]]*/language:\$\{\{ matrix.language \}\}[[:space:]]*$' "$WORKFLOW")" -eq 2 ]
   grep -Eq '^[[:space:]]+name:[[:space:]]*CodeQL[[:space:]]*$' "$WORKFLOW"
+}
+
+# _guard — the workflow's own check that only org-ref unpinned-tag results went
+# missing, cut from codeql.yml so the test runs exactly what CI runs.
+_guard() {
+  local script
+  script="$(awk '
+    /name: Check that only org-ref unpinned-tag results were dropped/ { f = 1; next }
+    f && /^[[:space:]]+run: \|/ { r = 1; match($0, /^[[:space:]]+/); ind = RLENGTH; next }
+    r {
+      if ($0 ~ /^[[:space:]]*$/) { print ""; next }
+      match($0, /^[[:space:]]+/); if (RLENGTH <= ind) exit
+      print substr($0, ind + 3)
+    }' "$WORKFLOW")"
+  [ -n "$script" ] || { echo "guard step not found in codeql.yml"; return 1; }
+  SARIF_IN="$IN" SARIF_OUT="$1" run bash -c "$script"
+}
+
+_mixed_sarif() {
+  _sarif \
+    "$(_result actions/unpinned-tag .github/workflows/ci.yml 3 "$ORG_MSG")" \
+    "$(_result actions/unpinned-tag .github/workflows/ci.yml 7 "$THIRD_MSG")" \
+    "$(_result actions/untrusted-checkout/medium .github/workflows/ci.yml 5 "Potential unsafe checkout")"
+}
+
+@test "codeql.yml guard: passes the filter's own output and an unfiltered copy" {
+  _mixed_sarif
+  _filter
+  [ "$status" -eq 0 ]
+  _guard "$OUT"
+  [ "$status" -eq 0 ]
+  _guard "$IN"
+  [ "$status" -eq 0 ]
+}
+
+@test "codeql.yml guard: fails when a third-party unpinned-tag result is dropped" {
+  _mixed_sarif
+  jq 'del(.runs[0].results[1])' "$IN" > "$SANDBOX/t.sarif"
+  _guard "$SANDBOX/t.sarif"
+  [ "$status" -ne 0 ]
+}
+
+@test "codeql.yml guard: fails when a result of another rule is dropped or changed" {
+  _mixed_sarif
+  jq 'del(.runs[0].results[2])' "$IN" > "$SANDBOX/t.sarif"
+  _guard "$SANDBOX/t.sarif"
+  [ "$status" -ne 0 ]
+  jq '.runs[0].results[2].level = "note"' "$IN" > "$SANDBOX/t.sarif"
+  _guard "$SANDBOX/t.sarif"
+  [ "$status" -ne 0 ]
+}
+
+@test "codeql.yml guard: fails when a result is added or the run metadata changes" {
+  _mixed_sarif
+  jq '.runs[0].results += [.runs[0].results[1]]' "$IN" > "$SANDBOX/t.sarif"
+  _guard "$SANDBOX/t.sarif"
+  [ "$status" -ne 0 ]
+  jq '.runs[0].automationDetails.id = "/language:other/"' "$IN" > "$SANDBOX/t.sarif"
+  _guard "$SANDBOX/t.sarif"
+  [ "$status" -ne 0 ]
+}
+
+@test "codeql.yml guard: fails on an output that is not JSON" {
+  _mixed_sarif
+  printf 'x\n' > "$SANDBOX/t.sarif"
+  _guard "$SANDBOX/t.sarif"
+  [ "$status" -ne 0 ]
+}
+
+@test "codeql.yml: the filter reads analyze's output and upload-sarif sends the filter's output" {
+  grep -Fq 'output: ${{ runner.temp }}/codeql-sarif' "$WORKFLOW"
+  grep -Fq 'sarif_file: ${{ runner.temp }}/codeql-sarif-filtered/${{ matrix.language }}.sarif' "$WORKFLOW"
+  [ "$(grep -E '^[[:space:]]+SARIF_IN:' "$WORKFLOW" | sort -u | sed 's/^[[:space:]]*//')" = 'SARIF_IN: ${{ runner.temp }}/codeql-sarif/${{ matrix.language }}.sarif' ]
+  [ "$(grep -E '^[[:space:]]+SARIF_OUT:' "$WORKFLOW" | sort -u | sed 's/^[[:space:]]*//')" = 'SARIF_OUT: ${{ runner.temp }}/codeql-sarif-filtered/${{ matrix.language }}.sarif' ]
 }
