@@ -281,13 +281,26 @@ _out_messages() {
 
 @test "fails closed: no runs array, an empty runs array, or a results field that is present but not an array" {
   local bad
-  for bad in '{"version":"2.1.0"}' '{"runs":[]}' '{"runs":{}}' '{"runs":[{"results":{}}]}' '[]' '{"runs":["x"]}' \
-    '{"runs":[{"results":null}]}' '{"runs":[{"results":false}]}'; do
+  for bad in '{"version":"2.1.0"}' '{"runs":[]}' '{"runs":{}}' '{"runs":[{"results":{}}]}' '[]' '{"runs":["x"]}'; do
     printf '%s\n' "$bad" > "$IN"
     _filter
     [ "$status" -eq 2 ] || { echo "accepted: $bad"; return 1; }
     [ ! -e "$OUT" ] || { echo "wrote output for: $bad"; return 1; }
   done
+}
+
+@test "fails closed: results field set to null is rejected" {
+  printf '%s\n' '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"CodeQL"}},"results":null}]}' > "$IN"
+  _filter
+  [ "$status" -eq 2 ]
+  [ ! -e "$OUT" ]
+}
+
+@test "fails closed: results field set to false is rejected" {
+  printf '%s\n' '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"CodeQL"}},"results":false}]}' > "$IN"
+  _filter
+  [ "$status" -eq 2 ]
+  [ ! -e "$OUT" ]
 }
 
 @test "fails closed: a missing input file exits 2" {

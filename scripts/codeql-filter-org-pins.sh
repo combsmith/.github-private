@@ -125,7 +125,13 @@ main() {
 
   jq -e 'type == "object"
          and (.runs | type == "array" and length > 0)
-         and all(.runs[]; type == "object" and ((.results | type == "array") or (has("results") | not)))' \
+         and all(.runs[];
+           type == "object" and
+           (
+             (has("results") | not) or
+             ((.results | type) == "array")
+           )
+         )' \
     "$in" > /dev/null 2>&1 || die "'$in' is not a SARIF log (want an object with a non-empty runs array whose results are arrays)"
 
   # One line per unpinned-tag result: run index, result index, path, start line,
@@ -134,7 +140,7 @@ main() {
   local candidates
   candidates="$(jq -r --arg rule "$RULE_ID" '
     .runs | to_entries[] | .key as $r | .value as $run
-    | ($run.results // []) | to_entries[]
+    | (if $run | has("results") then $run.results else [] end) | to_entries[]
     | select((.value.ruleId // .value.rule.id // "") == $rule)
     | (.value.locations[0].physicalLocation // {}) as $loc
     | ($loc.artifactLocation // {}) as $art
