@@ -513,3 +513,43 @@ _mixed_sarif() {
   [ "$status" -ne 0 ]
   [ ! -e "$OUT" ]
 }
+
+# ── real CodeQL output ──────────────────────────────────────────────────────
+# tests/fixtures/codeql-filter/actions-cb2660c2.sarif: three results trimmed
+# from this repo's actions analysis of main at cb2660c2 (CodeQL 2.27.5), with
+# CodeQL's own message wording. If that wording drifts, these tests fail
+# before alerts quietly come back.
+
+_real_sources() {
+  local f
+  for f in agent-shield.yml:34 add-to-project.yml:50; do
+    { awk -v n=$(( ${f##*:} - 1 )) 'BEGIN { for (i = 0; i < n; i++) print "" }'; \
+      printf '    uses: combsmith/.github/.github/workflows/%s@%s  # NOSONAR(githubactions:S7637) first-party channel ref\n' \
+        "$(basename "${f%%:*}" .yml)-reusable.yml" "$(basename "${f%%:*}" .yml)/v$([ "${f%%:*}" = agent-shield.yml ] && echo 2 || echo 1)-stable"; } \
+      > "$SRC/.github/workflows/${f%%:*}"
+  done
+  { awk 'BEGIN { for (i = 0; i < 286; i++) print "" }'; printf '      - name: Checkout dev-lead scripts\n'; } > "$SRC/.github/workflows/dev-lead-reusable.yml"
+}
+
+@test "real CodeQL output: the two org channel pins are dropped and the other result is kept" {
+  cp "$REPO_ROOT/tests/fixtures/codeql-filter/actions-cb2660c2.sarif" "$IN"
+  _real_sources
+  _filter
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"3 results in, 2 org-ref actions/unpinned-tag dropped, 0 other actions/unpinned-tag kept, 1 out"* ]]
+  [ "$(jq -r '.runs[0].results[].ruleId' "$OUT")" = "actions/untrusted-checkout/medium" ]
+  _guard "$OUT"
+  [ "$status" -eq 0 ]
+}
+
+@test "codeql.yml guard: rejects a dropped result whose message only quotes an org ref (workflow name or action path)" {
+  local name_spoof path_spoof
+  name_spoof="Unpinned 3rd party Action 'x' uses reusable workflow 'combsmith/a/b.yml' with ref 'v1', not a pinned commit hash' step [Uses Step](1) uses 'someone/setup-thing' with ref 'v2', not a pinned commit hash"
+  path_spoof="Unpinned 3rd party Action 'CI' step [Uses Step](1) uses 'someone/evil/d uses 'combsmith/a' with ref 'v1', not a pinned commit hash"
+  for msg in "$name_spoof" "$path_spoof"; do
+    _sarif "$(_result actions/unpinned-tag .github/workflows/ci.yml 7 "$msg")"
+    jq '.runs[0].results = []' "$IN" > "$SANDBOX/t.sarif"
+    _guard "$SANDBOX/t.sarif"
+    [ "$status" -ne 0 ] || { echo "guard accepted: $msg"; return 1; }
+  done
+}
