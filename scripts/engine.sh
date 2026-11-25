@@ -598,7 +598,7 @@ check_provider_headroom() {
       ;;
   esac
 
-  if [[ "$used_pct" -ge "$threshold" ]] 2>/dev/null; then
+  if [[ "$used_pct" =~ ^[0-9]+$ && "$threshold" =~ ^[0-9]+$ ]] && [[ "$used_pct" -ge "$threshold" ]]; then
     echo "  [headroom] $engine usage ${used_pct}% >= threshold ${threshold}% — skipping" >&2
     return 1
   fi
