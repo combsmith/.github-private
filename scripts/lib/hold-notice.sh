@@ -88,7 +88,7 @@ hold_notice_should_post() {
 hold_notice_label_from_body() {
   local body="${1:-}" rest
   rest="${body#*<!-- dev-lead-hold-notice label=}"
-  [ "$rest" = "$body" ] && return 1
+  [[ "$rest" = "$body" ]] && return 1
   printf '%s' "${rest%% -->*}"
 }
 
@@ -130,7 +130,7 @@ hold_notice_supersede_body() {
   # longer reads as still-held and no longer suppresses a future notice.
   stripped="${body//"$active"/}"
   printf '%s\n' "$(hold_notice_superseded_marker "$label")"
-  if [ -n "$replacing" ] && [ "$replacing" != "$label" ]; then
+  if [[ -n "$replacing" ]] && [[ "$replacing" != "$label" ]]; then
     printf '<details><summary><em>Superseded — dev-lead is now withholding action under the `%s` label. Click to expand the prior `%s` hold notice.</em></summary>\n\n' "$replacing" "$label"
   else
     printf '<details><summary><em>Resolved — the `%s` hold was lifted; dev-lead has picked this item up. Click to expand the prior hold notice.</em></summary>\n\n' "$label"

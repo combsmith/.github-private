@@ -42,7 +42,7 @@
 # workflow provides one) so a steering incorporation/escalation is auditable in
 # the run's Summary tab, not just the raw log.
 _push_guard_summary() {
-  [ -n "${GITHUB_STEP_SUMMARY:-}" ] && printf '%s\n' "$1" >> "$GITHUB_STEP_SUMMARY"
+  [[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && printf '%s\n' "$1" >> "$GITHUB_STEP_SUMMARY"
   return 0
 }
 
@@ -84,10 +84,10 @@ _PUSH_GUARD_LEDGER_REF="refs/notes/dev-lead-pushed"
 # Pure apart from `git hash-object --stdin` (no repository, network or gh).
 _push_guard_ownership_verdict() {
   local sha="${1:-}" tree="${2:-}" parent_list="${3:-}" message="${4:-}" pushed="${5:-}" recorded="${6:-false}"
-  if [ -n "$sha" ] && grep -qxF -- "$sha" <<<"$pushed"; then
+  if [[ -n "$sha" ]] && grep -qxF -- "$sha" <<<"$pushed"; then
     echo own-pushed; return 0
   fi
-  if [ -n "$sha" ] && [ "$recorded" = true ]; then
+  if [[ -n "$sha" ]] && [[ "$recorded" = true ]]; then
     echo own-ledger; return 0
   fi
   if dev_lead_stamp_matches "$tree" "$parent_list" "$message"; then
@@ -128,12 +128,12 @@ _push_guard_ledger_fetch() {
 # in this run's _PUSH_GUARD_PUSHED, and a later run treats them as foreign.
 _push_guard_ledger_publish() {
   local remote="${1:-origin}" shas="${2:-}" sha _attempt
-  [ -n "$shas" ] || return 0
+  [[ -n "$shas" ]] || return 0
   local note="dev-lead pushed this commit (run ${GITHUB_RUN_ID:-local}, #2313)"
   for _attempt in 1 2 3; do
     _push_guard_ledger_fetch "$remote"
     while IFS= read -r sha; do
-      [ -z "$sha" ] && continue
+      [[ -z "$sha" ]] && continue
       git notes --ref="$_PUSH_GUARD_LEDGER_REF" add -f -m "$note" "$sha" >/dev/null 2>&1 || continue 2
     done <<<"$shas"
     if git push --quiet "$remote" "${_PUSH_GUARD_LEDGER_REF}:${_PUSH_GUARD_LEDGER_REF}" >/dev/null 2>&1; then
@@ -150,7 +150,7 @@ _push_guard_ledger_publish() {
 # beyond every remote-tracking ref. Run it BEFORE the push: a successful push
 # moves the remote-tracking ref to HEAD.
 _push_guard_publishing() {
-  if [ -n "$_PUSH_GUARD_REMOTE_SHA" ]; then
+  if [[ -n "$_PUSH_GUARD_REMOTE_SHA" ]]; then
     git rev-list "${_PUSH_GUARD_REMOTE_SHA}..HEAD" 2>/dev/null || true
   else
     git rev-list HEAD --not --remotes="${1:-origin}" 2>/dev/null || true
@@ -162,15 +162,15 @@ _push_guard_publishing() {
 _push_guard_record_pushed() {
   local shas="${1:-}" remote="${2:-}" sha
   while IFS= read -r sha; do
-    [ -z "$sha" ] && continue
+    [[ -z "$sha" ]] && continue
     grep -qxF -- "$sha" <<<"$_PUSH_GUARD_PUSHED" && continue
-    if [ -n "$_PUSH_GUARD_PUSHED" ]; then
+    if [[ -n "$_PUSH_GUARD_PUSHED" ]]; then
       _PUSH_GUARD_PUSHED+=$'\n'"${sha}"
     else
       _PUSH_GUARD_PUSHED="$sha"
     fi
   done <<<"$shas"
-  [ -n "$remote" ] && _push_guard_ledger_publish "$remote" "$shas"
+  [[ -n "$remote" ]] && _push_guard_ledger_publish "$remote" "$shas"
   return 0
 }
 
@@ -178,13 +178,13 @@ _push_guard_record_pushed() {
 # target. Uses explicit args when given; otherwise derives them from the current
 # branch's upstream (@{u}). Echoes nothing when neither is available.
 _resolve_remote_branch() {
-  if [ "$#" -ge 2 ] && [ -n "$1" ] && [ -n "$2" ]; then
+  if [[ "$#" -ge 2 ]] && [[ -n "$1" ]] && [[ -n "$2" ]]; then
     printf '%s %s\n' "$1" "$2"
     return 0
   fi
   local up
   up=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
-  [ -z "$up" ] && return 1
+  [[ -z "$up" ]] && return 1
   printf '%s %s\n' "${up%%/*}" "${up#*/}"
 }
 
@@ -224,9 +224,9 @@ _PUSH_GUARD_REWRITES="${_PUSH_GUARD_REWRITES:-}"
 _push_guard_commit_keys() {
   local sha key
   git rev-list "$1" 2>/dev/null | while IFS= read -r sha; do
-    [ -z "$sha" ] && continue
+    [[ -z "$sha" ]] && continue
     key=$(git show -s --format='%an%x00%ae%x00%at%x00%B' "$sha" 2>/dev/null | git hash-object --stdin 2>/dev/null) || continue
-    [ -n "$key" ] && printf '%s\t%s\n' "$sha" "$key"
+    [[ -n "$key" ]] && printf '%s\t%s\n' "$sha" "$key"
   done
   return 0
 }
@@ -259,7 +259,7 @@ incorporate_remote_head() {
   local remote_sha
   remote_sha=$(git rev-parse --verify --quiet "refs/remotes/${remote}/${branch}" 2>/dev/null \
     || git rev-parse --verify --quiet FETCH_HEAD 2>/dev/null || true)
-  [ -z "$remote_sha" ] && return 0   # branch does not exist remotely yet
+  [[ -z "$remote_sha" ]] && return 0   # branch does not exist remotely yet
   _PUSH_GUARD_REMOTE_SHA="$remote_sha"
   _PUSH_GUARD_BRANCH="$branch"
 
@@ -271,20 +271,20 @@ incorporate_remote_head() {
   # The remote has commits HEAD does not contain. Classify them.
   local unincorporated foreign=""
   unincorporated=$(git rev-list --reverse "HEAD..${remote_sha}" 2>/dev/null || true)
-  [ -z "$unincorporated" ] && return 0
+  [[ -z "$unincorporated" ]] && return 0
 
   # The cross-run ledger vouches for commits earlier runs pushed (#2313).
   _push_guard_ledger_fetch "$remote"
 
   local sha
   while IFS= read -r sha; do
-    [ -z "$sha" ] && continue
+    [[ -z "$sha" ]] && continue
     if ! _commit_is_dev_lead "$sha"; then
       foreign+="${sha}"$'\n'
     fi
   done <<< "$unincorporated"
 
-  if [ -z "$foreign" ]; then
+  if [[ -z "$foreign" ]]; then
     # Every remote commit HEAD lacks is dev-lead's own by its records — a
     # legitimate history rewrite (e.g. amend/rebase of our prior push). The caller publishes it
     # with --force-with-lease --force-if-includes and logs the discarded SHAs.
@@ -295,7 +295,7 @@ incorporate_remote_head() {
   # incorporate them by rebasing HEAD onto the fetched remote head.
   local foreign_oneline
   foreign_oneline=$(while IFS= read -r sha; do
-    [ -n "$sha" ] && git log -1 --format='%h %an: %s' "$sha" 2>/dev/null
+    [[ -n "$sha" ]] && git log -1 --format='%h %an: %s' "$sha" 2>/dev/null
   done <<< "$foreign")
   echo "::warning::steering detected on ${remote}/${branch} — commit(s) dev-lead has no record of writing are on the remote and HEAD did not incorporate them; rebasing onto them so they are never discarded (#1607):" >&2
   printf '%s\n' "$foreign_oneline" >&2
@@ -308,9 +308,9 @@ incorporate_remote_head() {
   if git rebase --quiet "$remote_sha" 2>/dev/null; then
     local rewrites
     rewrites=$(_push_guard_rewrite_map "$pre_rebase_keys" "$(_push_guard_commit_keys "${remote_sha}..HEAD")")
-    if [ -n "$rewrites" ] && [ -n "$_PUSH_GUARD_REWRITES" ]; then
+    if [[ -n "$rewrites" ]] && [[ -n "$_PUSH_GUARD_REWRITES" ]]; then
       _PUSH_GUARD_REWRITES+=$'\n'"${rewrites}"
-    elif [ -n "$rewrites" ]; then
+    elif [[ -n "$rewrites" ]]; then
       _PUSH_GUARD_REWRITES="$rewrites"
     fi
     _push_guard_summary "### dev-lead: maintainer steering incorporated (#1607)"
@@ -340,7 +340,7 @@ incorporate_remote_head() {
 # --force-with-lease --force-if-includes. Either way the force ABORTS if the
 # remote moved to a commit dev-lead did not incorporate.
 _pinned_force_push() {
-  if [ -n "$_PUSH_GUARD_REMOTE_SHA" ] && [ -n "$_PUSH_GUARD_BRANCH" ]; then
+  if [[ -n "$_PUSH_GUARD_REMOTE_SHA" ]] && [[ -n "$_PUSH_GUARD_BRANCH" ]]; then
     git push --force-with-lease="${_PUSH_GUARD_BRANCH}:${_PUSH_GUARD_REMOTE_SHA}" "$@"
   else
     git push --force-with-lease --force-if-includes "$@"
@@ -372,7 +372,7 @@ push_no_clobber() {
   # we fetched — so a fetch that refreshed the lease can no longer let us discard
   # an unincorporated commit (#1607).
   if grep -qiE 'non-fast-forward|\[rejected\]|fetch first' "$errf" \
-     && [ -n "$upstream" ] \
+     && [[ -n "$upstream" ]] \
      && ! git merge-base --is-ancestor "$upstream" HEAD 2>/dev/null; then
     local discarded
     discarded=$(git rev-list "HEAD..${upstream}" 2>/dev/null | tr '\n' ' ')

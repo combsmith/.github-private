@@ -42,7 +42,7 @@ set -euo pipefail
 # lives under evals/<skill>/holdout/.
 fewshot_source_is_holdout() {
   local path="${1:-}"
-  [ -n "$path" ] || return 1
+  [[ -n "$path" ]] || return 1
   # Normalise a leading "./" so "./evals/..." is treated the same as "evals/...".
   path="${path#./}"
   # Must contain a holdout directory segment (or terminate in one)...
@@ -74,7 +74,7 @@ fewshot_source_is_holdout() {
 # POSIX ERE boundaries (captured and re-emitted) instead of the GNU-only `\b`, so
 # the scrub behaves identically on BSD/macOS sed.
 fewshot_scrub() {
-  { if [ "$#" -gt 0 ]; then printf '%s' "$1"; else cat; fi; } | sed -E \
+  { if [[ "$#" -gt 0 ]]; then printf '%s' "$1"; else cat; fi; } | sed -E \
     -e 's/gh[pousr]_[A-Za-z0-9]{16,}/[REDACTED]/g' \
     -e 's/github_pat_[A-Za-z0-9_]{20,}/[REDACTED]/g' \
     -e 's/AKIA[0-9A-Z]{16}/[REDACTED]/g' \
@@ -128,7 +128,7 @@ assemble_fewshot() {
   # held-out set. resolved_source falls back to the literal path when the file does
   # not exist or no canonicaliser is available (nothing to follow in that case).
   local resolved_source="$source_file"
-  if [ -e "$source_file" ]; then
+  if [[ -e "$source_file" ]]; then
     resolved_source="$(readlink -f -- "$source_file" 2>/dev/null \
       || realpath -- "$source_file" 2>/dev/null \
       || printf '%s' "$source_file")"
@@ -141,7 +141,7 @@ assemble_fewshot() {
   fi
 
   # Missing/empty source -> inert "(none)".
-  if [ -z "$source_file" ] || [ ! -f "$source_file" ] || [ ! -s "$source_file" ]; then
+  if [[ -z "$source_file" ]] || [[ ! -f "$source_file" ]] || [[ ! -s "$source_file" ]]; then
     printf '%s' "(none)" > "$out_file"
     export FEWSHOT_FILE="$out_file"
     return 0
@@ -163,7 +163,7 @@ assemble_fewshot() {
     ' "$source_file" 2>/dev/null)" || block_content=""
 
   # No usable examples parsed -> inert "(none)".
-  if [ -z "$block_content" ]; then
+  if [[ -z "$block_content" ]]; then
     printf '%s' "(none)" > "$out_file"
     export FEWSHOT_FILE="$out_file"
     return 0

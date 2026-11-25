@@ -47,13 +47,13 @@ SHADOW_CHANNEL="${SHADOW_CHANNEL:-next}"
 
 read_output_file() {
   local path="${1:-}"
-  [ -n "$path" ] && [ -f "$path" ] || { printf '%s' ""; return 0; }
+  [[ -n "$path" ]] && [[ -f "$path" ]] || { printf '%s' ""; return 0; }
   cat "$path"
 }
 
 run_url() {
   local run_id="${1:-}"
-  [ -n "$run_id" ] || { printf '%s' ""; return 0; }
+  [[ -n "$run_id" ]] || { printf '%s' ""; return 0; }
   printf '%s/%s/actions/runs/%s' "${GITHUB_SERVER_URL:-https://github.com}" "$REPO" "$run_id"
 }
 
@@ -70,7 +70,7 @@ main() {
   signal="$(sc_signal_json "$status" "$REUSABLE" "$SHADOW_CHANNEL" \
     "${STABLE_RUN_ID:-}" "${SHADOW_RUN_ID:-}")"
 
-  if [ -n "${SHADOW_SIGNAL_OUT:-}" ]; then
+  if [[ -n "${SHADOW_SIGNAL_OUT:-}" ]]; then
     printf '%s\n' "$signal" > "$SHADOW_SIGNAL_OUT"
   fi
 
@@ -78,11 +78,11 @@ main() {
   report="$(sc_report "$status" "$REUSABLE" "$SHADOW_CHANNEL" \
     "$(run_url "${STABLE_RUN_ID:-}")" "$(run_url "${SHADOW_RUN_ID:-}")")"
   printf '%s\n' "$report"
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     printf '%s\n' "$report" >> "$GITHUB_STEP_SUMMARY"
   fi
 
-  if [ -n "${GITHUB_ENV:-}" ]; then
+  if [[ -n "${GITHUB_ENV:-}" ]]; then
     {
       printf 'SHADOW_STATUS=%s\n' "$status"
       if sc_is_blocking "$status"; then
@@ -103,6 +103,6 @@ main() {
 }
 
 # Only run main when executed directly (not when sourced by tests).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi

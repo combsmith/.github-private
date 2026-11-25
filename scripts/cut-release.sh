@@ -92,7 +92,7 @@ cross_repo_agent() {
 # Prefers GITHUB_REPOSITORY (always set on a runner); falls back to the `origin`
 # remote for local use. Both git@ and https:// remote URL forms are normalized.
 this_repo() {
-  if [ -n "${GITHUB_REPOSITORY:-}" ]; then
+  if [[ -n "${GITHUB_REPOSITORY:-}" ]]; then
     printf '%s\n' "$GITHUB_REPOSITORY"; return 0
   fi
   local url
@@ -168,9 +168,9 @@ gh_create_annotated_tag() {
 gh_release_commit() {
   local ref_info obj type
   ref_info=$(gh api "repos/$1/git/ref/tags/$2" --jq '.object?.sha + " " + .object?.type' 2>/dev/null) || return 1
-  [ -z "$ref_info" ] && return 1
+  [[ -z "$ref_info" ]] && return 1
   read -r obj type <<< "$ref_info"
-  if [ "$type" = "tag" ]; then
+  if [[ "$type" = "tag" ]]; then
     gh api "repos/$1/git/tags/$obj" --jq '.object?.sha' 2>/dev/null
   else
     printf '%s\n' "$obj"
@@ -192,20 +192,20 @@ gh_move_tag() {
 main() {
   local agent="" version="" ref="origin/main" channel="" do_push=false dry=false promote=false
 
-  if [ "$#" -lt 2 ]; then
+  if [[ "$#" -lt 2 ]]; then
     echo "::error::usage: cut-release.sh <agent> <version> [--ref <ref>] [--channel <name>] [--push] [--dry-run]" >&2
     return 2
   fi
   agent="$1"
   version="$2"
   shift 2
-  while [ "$#" -gt 0 ]; do
+  while [[ "$#" -gt 0 ]]; do
     case "$1" in
       --ref)
-        [ "$#" -lt 2 ] && { echo "::error::--ref requires an argument" >&2; return 2; }
+        [[ "$#" -lt 2 ]] && { echo "::error::--ref requires an argument" >&2; return 2; }
         ref="$2"; shift 2 ;;
       --channel)
-        [ "$#" -lt 2 ] && { echo "::error::--channel requires an argument" >&2; return 2; }
+        [[ "$#" -lt 2 ]] && { echo "::error::--channel requires an argument" >&2; return 2; }
         channel="$2"; shift 2 ;;
       --push) do_push=true; shift ;;
       --promote) promote=true; shift ;;
@@ -236,23 +236,23 @@ main() {
   local rel chan sha pushrefs
   rel="$(release_ref "$agent" "$version")"
   pushrefs=("$rel")
-  if [ -n "$channel" ]; then chan="$(channel_ref "$agent" "$version" "$channel")"; pushrefs+=("$chan"); fi
+  if [[ -n "$channel" ]]; then chan="$(channel_ref "$agent" "$version" "$channel")"; pushrefs+=("$chan"); fi
 
   # ── --promote: move an existing release's channel; never cut a new tag ──
   # A ring-to-ring promotion (e.g. ring0 → ring1 of an already-cut vX.Y.Z). The
   # release commit is read from the existing tag, so --ref is irrelevant and the
   # immutable release tag is left untouched (and MUST exist).
-  if [ "$promote" = true ]; then
-    [ -z "$channel" ] && { echo "::error::--promote requires --channel <name> (the ring to advance to the existing release)" >&2; return 2; }
+  if [[ "$promote" = true ]]; then
+    [[ -z "$channel" ]] && { echo "::error::--promote requires --channel <name> (the ring to advance to the existing release)" >&2; return 2; }
     gh_tag_exists "$host" "$rel" || { echo "::error::cannot promote: release tag '$rel' does not exist on $host — cut it first." >&2; return 1; }
     local pcommit
-    if ! pcommit="$(gh_release_commit "$host" "$rel")" || [ -z "$pcommit" ]; then
+    if ! pcommit="$(gh_release_commit "$host" "$rel")" || [[ -z "$pcommit" ]]; then
       echo "::error::failed to resolve commit for release tag '$rel' on $host" >&2
       return 1
     fi
     echo "promote $chan -> $rel ($pcommit) on $host"
-    [ "$dry" = true ] && { echo "(dry-run) channel not moved."; return 0; }
-    [ "$do_push" != true ] && { echo "print only — re-run with --push to move $chan on $host"; return 0; }
+    [[ "$dry" = true ]] && { echo "(dry-run) channel not moved."; return 0; }
+    [[ "$do_push" != true ]] && { echo "print only — re-run with --push to move $chan on $host"; return 0; }
     gh_move_tag "$host" "$chan" "$pcommit"
     echo "moved $chan -> $pcommit on $host"
     return 0
@@ -260,16 +260,16 @@ main() {
 
   # Resolve the target SHA against the host repo via the API (`origin/` stripped).
   local rref; rref="$(strip_origin "$ref")"
-  if ! sha="$(gh_resolve_sha "$host" "$rref")" || [ -z "$sha" ]; then
+  if ! sha="$(gh_resolve_sha "$host" "$rref")" || [[ -z "$sha" ]]; then
     echo "::error::ref '$rref' could not be resolved on $host (check the ref exists and GH_TOKEN has access)" >&2
     return 1
   fi
 
   echo "agent=$agent version=$version ref=$ref ($sha) target=$host"
   echo "release tag: $rel"
-  [ -n "$channel" ] && echo "channel tag: $chan -> $rel"
+  [[ -n "$channel" ]] && echo "channel tag: $chan -> $rel"
 
-  if [ "$dry" = true ]; then
+  if [[ "$dry" = true ]]; then
     echo "(dry-run) no tags created or pushed."
     return 0
   fi
@@ -279,13 +279,13 @@ main() {
     echo "::error::release tag '$rel' already exists on $host — immutable tags are never overwritten." >&2
     return 1
   fi
-  if [ "$do_push" != true ]; then
+  if [[ "$do_push" != true ]]; then
     echo "print only — re-run with --push to publish to $host: ${pushrefs[*]}"
     return 0
   fi
   gh_create_annotated_tag "$host" "$rel" "$sha" "$agent release v$version"
   echo "created $rel on $host"
-  if [ -n "$channel" ]; then
+  if [[ -n "$channel" ]]; then
     gh_move_tag "$host" "$chan" "$sha"
     echo "moved $chan -> $sha on $host"
   fi
@@ -294,6 +294,6 @@ main() {
 }
 
 # Run main only when executed directly, so tests can source the helpers.
-if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+if [[ "${BASH_SOURCE[0]:-$0}" = "$0" ]]; then
   main "$@"
 fi

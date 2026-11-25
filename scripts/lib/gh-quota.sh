@@ -27,7 +27,7 @@ GH_QUOTA_EXHAUSTED_RC=75
 #   Exit 1 for anything else, including empty text.
 gh_quota_refused() {
   local text="${1:-}"
-  [ -n "$text" ] || return 1
+  [[ -n "$text" ]] || return 1
   grep -qiE 'API rate limit (already )?exceeded|secondary rate limit|HTTP 429([^0-9]|$)' <<< "$text"
 }
 

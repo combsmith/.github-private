@@ -35,7 +35,7 @@ source "$REPO_ROOT/scripts/engine.sh"
 source "$REPO_ROOT/scripts/lib/review-registry.sh"
 
 PLAN_PATH="${1:?usage: review-plan.sh <plan.json>}"
-[ -s "$PLAN_PATH" ] || { echo "::error::plan file '$PLAN_PATH' missing or empty" >&2; exit 1; }
+[[ -s "$PLAN_PATH" ]] || { echo "::error::plan file '$PLAN_PATH' missing or empty" >&2; exit 1; }
 # Resolve to an absolute path so the rubric prompt can read it regardless of the
 # engine's working directory.
 PLAN_PATH="$(cd "$(dirname "$PLAN_PATH")" && pwd)/$(basename "$PLAN_PATH")"
@@ -100,7 +100,7 @@ fi
 # Default the planner-consumption path to a stable temp file OUTSIDE WORK_DIR
 # when the caller didn't pin one — WORK_DIR is removed by the EXIT trap, so any
 # path within it would be deleted before the caller can consume the findings.
-if [ -z "${PLAN_FINDINGS_OUTPUT:-}" ]; then
+if [[ -z "${PLAN_FINDINGS_OUTPUT:-}" ]]; then
   PLAN_FINDINGS_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/plan-findings.XXXXXX.json")"
 fi
 export PLAN_FINDINGS_OUTPUT
