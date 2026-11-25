@@ -121,10 +121,10 @@ vpt_check_team() {
   if ! notif="$(jq -er '.notification_setting?' <<< "$json")"; then
     vpt_fail "$manifest: team '${VPT_ORG}/${slug}' API response has no 'notification_setting' field (or is not JSON) — failing closed." || return 1
   fi
-  if [ "$privacy" != "closed" ]; then
+  if [[ "$privacy" != "closed" ]]; then
     vpt_fail "$manifest: team '${VPT_ORG}/${slug}' has privacy '${privacy}', expected 'closed' — a secret team is unmentionable, so every mention silently no-ops." || return 1
   fi
-  if [ "$notif" != "notifications_disabled" ]; then
+  if [[ "$notif" != "notifications_disabled" ]]; then
     vpt_fail "$manifest: team '${VPT_ORG}/${slug}' has notification_setting '${notif}', expected 'notifications_disabled' — the handle routes a webhook, it must not page the team's members." || return 1
   fi
   echo "verify-persona-teams: OK — ${manifest} → ${VPT_ORG}/${slug} (exists, closed, notifications disabled)."
@@ -136,7 +136,7 @@ vpt_run() {
   command -v jq  >/dev/null 2>&1 || vpt_fail "jq is required but not installed"
   command -v python3 >/dev/null 2>&1 || vpt_fail "python3 is required but not installed"
 
-  if [ ! -d "$root" ]; then
+  if [[ ! -d "$root" ]]; then
     echo "verify-persona-teams: no personas root at '${root}' — nothing to verify."
     return 0
   fi
@@ -147,7 +147,7 @@ vpt_run() {
     return 1
   fi
 
-  if [ -z "$lines" ]; then
+  if [[ -z "$lines" ]]; then
     echo "verify-persona-teams: no personas declare an address block — nothing to verify."
     return 0
   fi
@@ -171,7 +171,7 @@ vpt_run() {
 
   local count=0 slug manifest
   while IFS=$'\t' read -r slug manifest; do
-    [ -n "$slug" ] || continue
+    [[ -n "$slug" ]] || continue
     vpt_check_team "$manifest" "$slug" || return 1
     count=$((count + 1))
   done <<< "$lines"
@@ -181,6 +181,6 @@ vpt_run() {
 
 # Only run main when executed directly, so the hermetic tests can source the
 # functions and stub `gh`.
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   vpt_run "$@"
 fi

@@ -76,17 +76,17 @@ die() {
 
 command -v jq        >/dev/null 2>&1 || die "jq is required but not installed"
 command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required but not installed"
-[ -f "$SCORER" ] || die "scorer not found (expected $SCORER)"
+[[ -f "$SCORER" ]] || die "scorer not found (expected $SCORER)"
 
 CANDIDATE="${1:-}"
 INCUMBENT="${2:-}"
-if [ -z "$CANDIDATE" ] || [ -z "$INCUMBENT" ]; then
+if [[ -z "$CANDIDATE" ]] || [[ -z "$INCUMBENT" ]]; then
   die "usage: model-ab.sh <candidate_model> <incumbent_model> [skill ...]"
 fi
 shift 2 || true
 
 # Default matrix: both held-out sets named in the story.
-if [ "$#" -gt 0 ]; then
+if [[ "$#" -gt 0 ]]; then
   SKILLS=("$@")
 else
   SKILLS=(triage deep-review)
@@ -98,10 +98,10 @@ fi
 _snapshot() {
   local skill f
   for skill in "${SKILLS[@]}"; do
-    f="$EVALS_DIR/$skill/holdout/cases.jsonl"; [ -f "$f" ] && sha256sum "$f"
-    f="$EVALS_DIR/$skill/scorer.json";         [ -f "$f" ] && sha256sum "$f"
+    f="$EVALS_DIR/$skill/holdout/cases.jsonl"; [[ -f "$f" ]] && sha256sum "$f"
+    f="$EVALS_DIR/$skill/scorer.json";         [[ -f "$f" ]] && sha256sum "$f"
   done
-  [ -f "$EVALS_DIR/judge.md" ] && sha256sum "$EVALS_DIR/judge.md"
+  [[ -f "$EVALS_DIR/judge.md" ]] && sha256sum "$EVALS_DIR/judge.md"
   return 0
 }
 
@@ -164,19 +164,19 @@ for skill in "${SKILLS[@]}"; do
   i_scored=false; if _is_scored "$i_rc"; then i_scored=true; fi
 
   c_score=null; i_score=null
-  if [ "$c_scored" = true ]; then
+  if [[ "$c_scored" = true ]]; then
     c_score="$(jq -r '.score // empty' <<<"$c_out" 2>/dev/null || true)"; c_score="${c_score:-null}"
   fi
-  if [ "$i_scored" = true ]; then
+  if [[ "$i_scored" = true ]]; then
     i_score="$(jq -r '.score // empty' <<<"$i_out" 2>/dev/null || true)"; i_score="${i_score:-null}"
   fi
 
   non_regression=null
-  if [ "$c_scored" = true ] && [ "$i_scored" = true ] \
-     && [ "$c_score" != null ] && [ "$i_score" != null ]; then
+  if [[ "$c_scored" = true ]] && [[ "$i_scored" = true ]] \
+     && [[ "$c_score" != null ]] && [[ "$i_score" != null ]]; then
     # Non-regression bar: candidate must MATCH OR BEAT the incumbent ('>=').
     non_regression="$(jq -n --argjson c "$c_score" --argjson i "$i_score" '$c >= $i')"
-    if [ "$non_regression" = true ]; then
+    if [[ "$non_regression" = true ]]; then
       outcome="pass"
     else
       outcome="regression"
@@ -204,20 +204,20 @@ done
 # byte unchanged. run-eval.sh never writes cases; a diff here means something
 # tampered with the held-out set mid-run — a hard error, never a silent pass.
 after="$(_snapshot)"
-if [ "$before" != "$after" ]; then
+if [[ "$before" != "$after" ]]; then
   die "held-out artifacts changed during the run (immutability violation)"
 fi
 
 # Verdict precedence: a definite regression on a fully-scored set is BLOCKING and
 # outranks an un-scored (infra) set; an infra-only run is re-run (never accept).
-if [ "$saw_regression" = true ]; then
+if [[ "$saw_regression" = true ]]; then
   verdict="regression"
-elif [ "$saw_infra" = true ]; then
+elif [[ "$saw_infra" = true ]]; then
   verdict="infra"
 else
   verdict="accept"
 fi
-accepted=false; [ "$verdict" = accept ] && accepted=true
+accepted=false; [[ "$verdict" = accept ]] && accepted=true
 
 jq -n \
   --arg candidate_model "$CANDIDATE" \

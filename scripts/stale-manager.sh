@@ -86,7 +86,7 @@ generate_comment() {
         repo="$6" days="$7" action="$8"
 
   local prompt_template="$PROMPTS_DIR/aw/stale-manager.md"
-  if [ ! -f "$prompt_template" ]; then
+  if [[ ! -f "$prompt_template" ]]; then
     echo "This ${item_type} has been inactive for ${days} days and will be closed in ${GRACE_DAYS} days if there is no activity. <!-- stale-manager: warned -->"
     return
   fi
@@ -120,7 +120,7 @@ generate_comment() {
         < "$tmp_prompt" 2>/dev/null) || comment=""
       ;;
     *)
-      if [ "$action" = "close" ]; then
+      if [[ "$action" = "close" ]]; then
         comment="Closing this ${item_type} due to inactivity after the grace period. Feel free to re-open if it is still relevant. <!-- stale-manager: closed -->"
       else
         comment="This ${item_type} has been inactive for ${days} days and will be closed in ${GRACE_DAYS} days if there is no activity. <!-- stale-manager: warned -->"
@@ -130,9 +130,9 @@ generate_comment() {
 
   rm -f "$tmp_prompt"
 
-  if [ -z "$comment" ]; then
+  if [[ -z "$comment" ]]; then
     # Fallback if Claude fails
-    if [ "$action" = "warn" ]; then
+    if [[ "$action" = "warn" ]]; then
       echo "This ${item_type} has been inactive for ${days} days and will be closed in ${GRACE_DAYS} days if there is no activity. <!-- stale-manager: warned -->"
     else
       echo "Closing this ${item_type} due to inactivity after the grace period. Feel free to re-open if it is still relevant. <!-- stale-manager: closed -->"
@@ -152,7 +152,7 @@ apply_action() {
 
   SUMMARY_ROWS+=("| $repo | $item_type #$number | $days days | $action |")
 
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     log "DRY-RUN: $action $item_type #$number in $repo (inactive $days days)"
     ACTIONS_SKIPPED=$((ACTIONS_SKIPPED + 1))
     return
@@ -210,7 +210,7 @@ process_item() {
   )
 
   local stale_threshold
-  if [ "$item_type" = "PR" ]; then
+  if [[ "$item_type" = "PR" ]]; then
     stale_threshold="$STALE_DAYS_PR"
   else
     stale_threshold="$STALE_DAYS_ISSUE"
@@ -231,11 +231,11 @@ process_item() {
   local days_inactive
   days_inactive=$(days_since "$last_updated")
 
-  if [ "$has_stale_label" = "true" ]; then
+  if [[ "$has_stale_label" = "true" ]]; then
     local stale_ts
     stale_ts=$(get_stale_label_ts "$repo" "$number")
 
-    if [ -n "$stale_ts" ]; then
+    if [[ -n "$stale_ts" ]]; then
       local last_updated_ts stale_label_ts days_stale
       last_updated_ts=$(iso_to_ts "$last_updated")
       stale_label_ts=$(iso_to_ts "$stale_ts")
@@ -284,7 +284,7 @@ process_repo() {
     --jq '.[] | select(.pull_request == null)' 2>/dev/null || echo "")
 
   while IFS= read -r issue; do
-    [ -z "$issue" ] && continue
+    [[ -z "$issue" ]] && continue
     process_item "$repo" "$issue" "issue"
   done < <(echo "$issues" | jq -c '.')
 
@@ -298,20 +298,20 @@ process_repo() {
     --jq '.[]' 2>/dev/null || echo "")
 
   while IFS= read -r pr; do
-    [ -z "$pr" ] && continue
+    [[ -z "$pr" ]] && continue
     process_item "$repo" "$pr" "PR"
   done < <(echo "$prs" | jq -c '.')
 }
 
 # print_summary — write GitHub Actions step summary
 print_summary() {
-  if [ -z "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [[ -z "${GITHUB_STEP_SUMMARY:-}" ]]; then
     return
   fi
   {
     echo "## Stale Manager Run Summary"
     echo ""
-    if [ "$DRY_RUN" = "true" ]; then
+    if [[ "$DRY_RUN" = "true" ]]; then
       echo "> **DRY-RUN mode** — no changes were made to GitHub"
       echo ""
     fi
@@ -337,13 +337,13 @@ repos=$(gh api "orgs/$TARGET_ORG/repos" \
   --paginate \
   --jq '.[] | select(.archived == false) | .full_name' 2>/dev/null || echo "")
 
-if [ -z "$repos" ]; then
+if [[ -z "$repos" ]]; then
   warn "No repos found in org $TARGET_ORG — check GH_TOKEN scope"
   exit 0
 fi
 
 while IFS= read -r repo; do
-  [ -z "$repo" ] && continue
+  [[ -z "$repo" ]] && continue
   process_repo "$repo" || warn "Error processing $repo — continuing"
 done < <(echo "$repos")
 

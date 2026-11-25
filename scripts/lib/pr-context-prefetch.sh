@@ -46,7 +46,7 @@ PR_CONTEXT_METADATA_FIELDS="number,title,body,author,isDraft,baseRefName,headRef
 #   >300-file 406 case is already handled upstream (the reused diff is the REST
 #   assembly), so it never reaches this helper.
 prefetch_pr_context() {
-  [ "${PREFETCH_CONTEXT_ENABLED:-false}" = "true" ] || return 0
+  [[ "${PREFETCH_CONTEXT_ENABLED:-false}" = "true" ]] || return 0
 
   local pr_url="${1:?prefetch_pr_context: pr_url required}"
   local sha="${2:?prefetch_pr_context: pr_head_sha required}"
@@ -87,13 +87,13 @@ prefetch_pr_context() {
   # --- Full diff: reuse the already-fetched untruncated copy (no extra fetch) ---
   {
     printf '# PR_HEAD_SHA: %s\n' "$sha"
-    if [ -n "$full_diff_file" ] && [ -f "$full_diff_file" ]; then
+    if [[ -n "$full_diff_file" ]] && [[ -f "$full_diff_file" ]]; then
       cat "$full_diff_file"
     fi
   } > "$diff_file"
 
   export PR_CONTEXT_DIFF_FILE="$diff_file"
-  [ "$meta_stamped" = true ] && export PR_CONTEXT_METADATA_FILE="$meta_file"
+  [[ "$meta_stamped" = true ]] && export PR_CONTEXT_METADATA_FILE="$meta_file"
   return 0
 }
 
@@ -119,10 +119,10 @@ prefetch_review_extras() {
     printf '# Pre-fed review context for %s at %s\n\n## Linked issues\n\n' "$pr_url" "$sha"
     if issues=$(gh pr view "$number" -R "$owner_repo" --json closingIssuesReferences \
         --jq '.closingIssuesReferences[]? | "\(.repository.owner.login)/\(.repository.name) \(.number)"' 2>/dev/null); then
-      [ -n "$issues" ] || printf 'None linked.\n'
+      [[ -n "$issues" ]] || printf 'None linked.\n'
       local repo issue
       while read -r repo issue; do
-        [ -n "$issue" ] || continue
+        [[ -n "$issue" ]] || continue
         printf '### %s#%s\n\n' "$repo" "$issue"
         gh issue view "$issue" -R "$repo" --json title,state,body \
           --jq '"**\(.title)** (\(.state))\n\n\(.body)\n"' 2>/dev/null \
@@ -131,7 +131,7 @@ prefetch_review_extras() {
     else
       printf 'Could not be fetched.\n'
     fi
-    if [ -n "$prior_sha" ]; then
+    if [[ -n "$prior_sha" ]]; then
       printf '\n## Since the prior review (%s)\n\n' "$prior_sha"
       gh api "repos/$owner_repo/compare/$prior_sha...$sha" \
         --jq '.commits[].commit.message, .files[].filename' 2>/dev/null \
@@ -169,7 +169,7 @@ prefetch_review_extras() {
 #   belt-and-suspenders safeguard, so a transient gh blip must not force a
 #   skip/retry storm.
 assert_prefetch_context_fresh() {
-  [ "${PREFETCH_CONTEXT_ENABLED:-false}" = "true" ] || return 0
+  [[ "${PREFETCH_CONTEXT_ENABLED:-false}" = "true" ]] || return 0
 
   local pr_url="${1:?assert_prefetch_context_fresh: pr_url required}"
   local out_dir="${2:-/tmp/cascade}"
@@ -181,23 +181,23 @@ assert_prefetch_context_fresh() {
   # top-level .pr_head_sha, fall back to the diff header. Neither present => no
   # pre-fed context to validate, so no-op (no gh call).
   local stamped_sha=""
-  if [ -f "$meta_file" ]; then
+  if [[ -f "$meta_file" ]]; then
     stamped_sha=$(jq -r '.pr_head_sha // empty' "$meta_file" 2>/dev/null || true)
   fi
-  if [ -z "$stamped_sha" ] && [ -f "$diff_file" ]; then
+  if [[ -z "$stamped_sha" ]] && [[ -f "$diff_file" ]]; then
     stamped_sha=$(sed -n '/^# PR_HEAD_SHA: /{s/^# PR_HEAD_SHA: //p;q;}' "$diff_file" 2>/dev/null || true)
   fi
-  [ -n "$stamped_sha" ] || return 0
+  [[ -n "$stamped_sha" ]] || return 0
 
   # The single bounded freshness call (AC #4). An inconclusive fetch degrades to
   # proceed on the existing stamp rather than crashing.
   local snapshot current_sha
   snapshot=$(gh pr view "$pr_url" --json headRefOid 2>/dev/null) || return 0
   current_sha=$(printf '%s' "$snapshot" | jq -r '.headRefOid // empty' 2>/dev/null || true)
-  [ -n "$current_sha" ] || return 0
+  [[ -n "$current_sha" ]] || return 0
 
   # Matched (AC #2): pre-fed context is fresh — use as-is.
-  [ "$current_sha" = "$stamped_sha" ] && return 0
+  [[ "$current_sha" = "$stamped_sha" ]] && return 0
 
   # Moved (AC #3): discard the stale pre-fed context so no tier can consume it,
   # and signal the caller to take the exit-100 skip path.

@@ -74,10 +74,10 @@ slint_minute_is_zero() {
 # minute-0 schedule.cron in the file. Returns 1 if any were found.
 slint_scan_file() {
   local file="$1" lineno=0 line cron found=0
-  while IFS= read -r line || [ -n "$line" ]; do
+  while IFS= read -r line || [[ -n "$line" ]]; do
     lineno=$((lineno + 1))
     cron="$(slint_extract_cron "$line")"
-    [ -n "$cron" ] || continue
+    [[ -n "$cron" ]] || continue
     if slint_minute_is_zero "$cron"; then
       printf '%s:%s: %s\n' "$file" "$lineno" "$cron"
       found=1
@@ -91,11 +91,11 @@ slint_scan_file() {
 slint_scan_root() {
   local root="$1" file offenders=0
   while IFS= read -r file; do
-    [ -n "$file" ] || continue
+    [[ -n "$file" ]] || continue
     slint_scan_file "$file" || offenders=1
   done < <(
-    { [ -d "$root/.github/workflows" ] && find "$root/.github/workflows" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.md' \) 2>/dev/null
-      [ -d "$root/docs/aw" ] && find "$root/docs/aw" -maxdepth 1 -type f -name '*.md' 2>/dev/null
+    { [[ -d "$root/.github/workflows" ]] && find "$root/.github/workflows" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.md' \) 2>/dev/null
+      [[ -d "$root/docs/aw" ]] && find "$root/docs/aw" -maxdepth 1 -type f -name '*.md' 2>/dev/null
     } | sort 2>/dev/null
   )
   return $offenders
@@ -103,7 +103,7 @@ slint_scan_root() {
 
 main() {
   local root="${SCHEDULE_LINT_ROOT:-}"
-  if [ -z "$root" ]; then
+  if [[ -z "$root" ]]; then
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   fi
 
@@ -119,6 +119,6 @@ main() {
 }
 
 # Only run main when executed directly, so tests can source the functions.
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   main "$@"
 fi
