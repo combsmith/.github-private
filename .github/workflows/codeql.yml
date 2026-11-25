@@ -16,7 +16,7 @@
 # disable default setup). Otherwise default and advanced setup both run.
 #
 # The required-check context produced here is `CodeQL` (the code-scanning
-# results check the analyze step uploads) — do NOT rename it; the branch/merge-
+# results check the upload-sarif step uploads) — do NOT rename it; the branch/merge-
 # queue ruleset matches the required check by context name.
 # ─────────────────────────────────────────────────────────────────────────────
 name: CodeQL
@@ -70,6 +70,27 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@977e6ceaea7361825998245d787fa3b4d6b9e5df # codeql-bundle-v2.27.0
         with:
+          category: /language:${{ matrix.language }}
+          # Upload after the filter below. `failure-only` still sends a failed
+          # run's debugging data, as GitHub advises when post-processing SARIF.
+          upload: failure-only
+          output: ${{ runner.temp }}/codeql-sarif
+      # The org pins its own reusable workflows to moving channel tags on purpose
+      # (combsmith/.github ci-standards.md, "Exception: Internal Reusable Workflow
+      # References"). Drop `actions/unpinned-tag` results on `combsmith/` refs
+      # only; third-party tag pins and every other result are kept (Maintainer,
+      # 2026-11-24). A SARIF the script cannot read fails this step, so nothing
+      # is uploaded and the CodeQL check goes red.
+      - name: Drop unpinned-tag results on org refs
+        env:
+          ORG: ${{ github.repository_owner }}
+          SARIF_IN: ${{ runner.temp }}/codeql-sarif/${{ matrix.language }}.sarif
+          SARIF_OUT: ${{ runner.temp }}/codeql-sarif-filtered/${{ matrix.language }}.sarif
+        run: bash scripts/codeql-filter-org-pins.sh "$SARIF_IN" "$SARIF_OUT" "$GITHUB_WORKSPACE"
+      - name: Upload CodeQL results
+        uses: github/codeql-action/upload-sarif@977e6ceaea7361825998245d787fa3b4d6b9e5df # codeql-bundle-v2.27.0
+        with:
+          sarif_file: ${{ runner.temp }}/codeql-sarif-filtered/${{ matrix.language }}.sarif
           category: /language:${{ matrix.language }}
 
   CodeQL:
