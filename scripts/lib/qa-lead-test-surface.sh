@@ -73,7 +73,7 @@ qa_lead_test_surface() {
   local has_test=0 has_source=0
 
   while IFS= read -r path; do
-    [ -z "$path" ] && continue
+    [[ -z "$path" ]] && continue
     kind="$(qa_lead_classify_path "$path")"
     case "$kind" in
       TEST)   has_test=1 ;;

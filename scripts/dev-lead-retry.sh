@@ -121,7 +121,7 @@ source "$SCRIPT_DIR/lib/pr-automation-budget.sh"
 # Stale-disposition detector (#2008): maintainer_gate_stale_dispositions. Sourced
 # only if not already loaded: its marker regex is readonly, and a caller (e.g.
 # review-one-pr.sh via the advisory gate) may have sourced it before this script.
-if [ -z "${_MAINTAINER_GATE_AGENT_MARKERS:-}" ]; then
+if [[ -z "${_MAINTAINER_GATE_AGENT_MARKERS:-}" ]]; then
   # shellcheck source=lib/maintainer-comment-gate.sh
   source "$SCRIPT_DIR/lib/maintainer-comment-gate.sh"
 fi
@@ -186,7 +186,7 @@ RETRYABLE_REVIEW_INTENTS="fix-reviews review-changes human-pr rebase"
 
 # get_now_epoch: current UTC time as unix epoch (overridable for tests)
 get_now_epoch() {
-  if [ -n "${NOW_ISO:-}" ]; then
+  if [[ -n "${NOW_ISO:-}" ]]; then
     date -u -d "$NOW_ISO" +%s 2>/dev/null || date -u +%s
   else
     date -u +%s
@@ -196,7 +196,7 @@ get_now_epoch() {
 # is_reset_in_future <reset_iso>: returns 0 if reset time is still in the future
 is_reset_in_future() {
   local reset_iso="$1"
-  [ -z "$reset_iso" ] && return 1  # unknown reset = don't skip
+  [[ -z "$reset_iso" ]] && return 1  # unknown reset = don't skip
   local reset_epoch
   reset_epoch=$(date -u -d "$reset_iso" +%s 2>/dev/null || echo 0)
   [ "$(get_now_epoch)" -lt "$reset_epoch" ]
@@ -232,8 +232,8 @@ budget_hold_from_record() {
                   | map(gsub("[|\n]"; " ")) | join("|")' <<< "$record" 2>/dev/null || true)
   IFS='|' read -r s_pct s_reset w_pct w_reset <<< "$fields"
   for w in session weekly_all; do
-    if [ "$w" = "session" ]; then pct="$s_pct" reset="$s_reset"; else pct="$w_pct" reset="$w_reset"; fi
-    if [ -z "$pct" ]; then
+    if [[ "$w" = "session" ]]; then pct="$s_pct" reset="$s_reset"; else pct="$w_pct" reset="$w_reset"; fi
+    if [[ -z "$pct" ]]; then
       missing="${missing:-$w}"
       continue
     fi
@@ -247,9 +247,9 @@ budget_hold_from_record() {
     label="${label:+${label}+}${w%_all}"
     [ "$epoch" -gt "$until" ] && until="$epoch"
   done
-  if [ -n "$label" ]; then
+  if [[ -n "$label" ]]; then
     printf 'hold %s %s\n' "$label" "$(date -u -d "@$until" +%Y-%m-%dT%H:%M:%SZ)"
-  elif [ -n "$missing" ]; then
+  elif [[ -n "$missing" ]]; then
     printf 'missing %s\n' "$missing"
   else
     printf 'none\n'
@@ -277,19 +277,19 @@ budget_hold_init() {
   else
     record=$(bp_last_ok "$log")
     state=$(bp_staleness "$log" "$now")
-    if [ -z "$record" ]; then
+    if [[ -z "$record" ]]; then
       reason="no poll==ok record"
-    elif [ "$state" = "never" ]; then
+    elif [[ "$state" = "never" ]]; then
       reason="unparseable record"
     else
       age_text=$(bp_age_text "${state#* }")
-      if [ "${state%% *}" = "stale" ]; then
+      if [[ "${state%% *}" = "stale" ]]; then
         reason="stale record, poll ${age_text} old > $(bp_stale_hours)h"
       fi
     fi
   fi
   rm -f "$log"
-  if [ -n "$reason" ]; then
+  if [[ -n "$reason" ]]; then
     echo "retry-cron: budget hold fail-open (${reason}), retrying as usual"
     return 0
   fi
@@ -348,7 +348,7 @@ has_dispatch_guard() {
 # so tests stay clean; best-effort (failure is non-fatal).
 post_dispatch_guard() {
   local repo="$1" pr_number="$2" sha="$3" now_iso
-  [ "${DRY_RUN:-false}" = "true" ] && return 0
+  [[ "${DRY_RUN:-false}" = "true" ]] && return 0
   now_iso="${NOW_ISO:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
   local body="${DISPATCH_GUARD_PREFIX}${sha} at=${now_iso} -->"
   gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
@@ -417,7 +417,7 @@ gh_api_list() {
 dispatch_ci_retry() {
   local repo="$1" pr_number="$2" head_sha="$3" check_name="${4:-CI failure}"
   echo "  -> dispatch ci-retry: repo=${repo} pr=${pr_number} sha=${head_sha:0:8} check=${check_name}" >&2
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     echo "  [dry-run] would dispatch dev-lead-ci-failure for PR ${pr_number} in ${repo}" >&2
     return 0
   fi
@@ -436,7 +436,7 @@ dispatch_ci_retry() {
     --arg repo "$repo" \
     --arg name "$check_name" \
     --arg details_url "$details_url" \
-    --argjson check_run_id "$([ -n "$check_run_id" ] && echo "$check_run_id" || echo 'null')" \
+    --argjson check_run_id "$([[ -n "$check_run_id" ]] && echo "$check_run_id" || echo 'null')" \
     '{
       event_type: "dev-lead-ci-failure",
       client_payload: {
@@ -460,7 +460,7 @@ dispatch_ci_retry() {
 dispatch_reviews_retry() {
   local repo="$1" pr_number="$2" head_sha="$3" intent_type="$4"
   echo "  -> dispatch reviews-retry: repo=${repo} pr=${pr_number} sha=${head_sha:0:8} intent=${intent_type}" >&2
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     echo "  [dry-run] would dispatch dev-lead-reviews-retry for PR ${pr_number} in ${repo} intent=${intent_type}" >&2
     return 0
   fi
@@ -495,7 +495,7 @@ dispatch_reviews_retry() {
 dispatch_issue_retry() {
   local repo="$1" issue_number="$2" attempt="$3"
   echo "  -> dispatch issue-retry: repo=${repo} issue=${issue_number} attempt=${attempt}" >&2
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     echo "  [dry-run] would dispatch dev-lead-issue-retry for issue ${issue_number} in ${repo} attempt=${attempt}" >&2
     return 0
   fi
@@ -529,17 +529,17 @@ fetch_pr_comment_nodes() {
   local -a cursor_args=()
   # shellcheck disable=SC2016  # GraphQL variables, not shell
   local q='query($owner:String!,$repo:String!,$pr:Int!,$cursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$pr){comments(first:100,after:$cursor){pageInfo{hasNextPage endCursor} nodes{id author{login __typename} authorAssociation body createdAt isMinimized minimizedReason lastEditedAt}}}}}'
-  while [ "$has_next" = "true" ]; do
+  while [[ "$has_next" = "true" ]]; do
     pages=$((pages + 1))
     [ "$pages" -le 50 ] || return 0
     page=$(gh api graphql -f query="$q" -F owner="${repo%%/*}" -F repo="${repo##*/}" \
       -F pr="$pr_number" "${cursor_args[@]}" 2>/dev/null) || return 0
     nodes=$(jq -c '.data.repository.pullRequest.comments.nodes // empty' <<< "$page" 2>/dev/null) || return 0
-    [ -n "$nodes" ] || return 0
+    [[ -n "$nodes" ]] || return 0
     all=$(jq -cn --argjson a "$all" --argjson b "$nodes" '$a + $b' 2>/dev/null) || return 0
     has_next=$(jq -r '.data.repository.pullRequest.comments.pageInfo.hasNextPage // false' <<< "$page" 2>/dev/null || echo false)
     cursor=$(jq -r '.data.repository.pullRequest.comments.pageInfo.endCursor // ""' <<< "$page" 2>/dev/null || echo "")
-    [ -n "$cursor" ] || has_next="false"
+    [[ -n "$cursor" ]] || has_next="false"
     cursor_args=(-f "cursor=${cursor}")
   done
   printf '%s' "$all"
@@ -573,7 +573,7 @@ stale_disposition_needs_dispatch() {
   [[ "$pr_number" =~ ^[0-9]+$ ]] || return 1
   stale=$(maintainer_gate_stale_dispositions "$nodes" "${BOT_USER:-donpetry-bot}") || return 1
   latest_edit=$(jq -r 'map(.lastEditedAt) | max // ""' <<< "$stale" 2>/dev/null) || return 1
-  [ -n "$latest_edit" ] || return 1
+  [[ -n "$latest_edit" ]] || return 1
   later_runs=$(jq -r --arg e "$latest_edit" \
     --arg re "<!-- dev-lead-fix-reviews pr=${pr_number} [^>]*intent=fix-reviews status=" '
       [ .[] | objects
@@ -600,7 +600,7 @@ scan_pr_for_rate_limits() {
 
   local head_sha
   head_sha=$(jq -r '.head?.sha // empty' <<< "$pr_obj" 2>/dev/null || true)
-  if [ -z "$head_sha" ]; then
+  if [[ -z "$head_sha" ]]; then
     echo "  [warn] could not resolve HEAD SHA for PR ${pr_number} in ${repo} — skipping" >&2
     echo "0"
     return 0
@@ -611,7 +611,7 @@ scan_pr_for_rate_limits() {
   # still eligible — we must not re-dispatch work for a non-open PR.
   local pr_state
   pr_state=$(jq -r '.state // empty' <<< "$pr_obj" 2>/dev/null || true)
-  if [ "$pr_state" != "open" ]; then
+  if [[ "$pr_state" != "open" ]]; then
     echo "  [skip] PR ${pr_number} in ${repo} is ${pr_state:-unknown} — not re-dispatching closed/merged PR" >&2
     echo "0"
     return 0
@@ -725,7 +725,7 @@ scan_pr_for_rate_limits() {
       hold_status=$(jq -r --arg pat "$reviews_pattern" \
         '[.[] | select(test($pat))] | last | capture("status=(?<s>[a-z-]+)") | .s // ""' \
         <<< "$comments_json" 2>/dev/null || true)
-      if [ "$hold_status" = "rate-limited" ] && budget_hold_active; then
+      if [[ "$hold_status" = "rate-limited" ]] && budget_hold_active; then
         echo "  [skip] ${intent_type} rate-limit for PR ${pr_number} held by the budget poller until ${BUDGET_HOLD_UNTIL}" >&2
         held=1
         continue
@@ -751,7 +751,7 @@ scan_pr_for_rate_limits() {
       # Without normalization here the terminal check never matches and the same
       # SHA is re-dispatched on every cron cycle indefinitely.
       local dispatch_intent="${intent_type}"
-      [ "$dispatch_intent" = "human-pr" ] && dispatch_intent="review-changes"
+      [[ "$dispatch_intent" = "human-pr" ]] && dispatch_intent="review-changes"
 
       # Skip if a terminal marker was already posted (prior retry ran to completion)
       # Check this BEFORE the partial count so a newer terminal marker prevents
@@ -814,7 +814,7 @@ scan_pr_for_rate_limits() {
     local comment_nodes
     comment_nodes=$(fetch_pr_comment_nodes "$repo" "$pr_number")
     local stale_rc=1
-    if [ -n "$comment_nodes" ]; then
+    if [[ -n "$comment_nodes" ]]; then
       if stale_disposition_needs_dispatch "$comment_nodes" "$pr_number"; then
         stale_rc=0
       else
@@ -835,7 +835,7 @@ scan_pr_for_rate_limits() {
       local max_passes="${STALE_DISPOSITION_MAX_PASSES:-2}"
       local hold_marker="<!-- dev-lead-stale-disposition-hold pr=${pr_number} sha=${head_sha} max_passes=${max_passes} -->"
       if ! echo "$comments_json" | jq -e --arg pat "dev-lead-stale-disposition-hold pr=${pr_number}" '.[] | select(test($pat))' >/dev/null 2>&1; then
-        if [ "$DRY_RUN" != "true" ]; then
+        if [[ "$DRY_RUN" != "true" ]]; then
           gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
             -f body="**dev-lead: stale bot comment disposition needs human action**
 
@@ -864,7 +864,7 @@ $hold_marker" >/dev/null 2>&1 || true
 # BOT_COMMENT_RETRY_PENDING_SEC window, so a failed delete surfaces as a warning.
 withdraw_bot_comment_retry_marker() {
   local repo="$1" marker_id="$2"
-  [ -n "$marker_id" ] || return 0
+  [[ -n "$marker_id" ]] || return 0
   if ! gh api -X DELETE "repos/${repo}/issues/comments/${marker_id}" >/dev/null 2>&1; then
     echo "  ::warning::bot-comment retry: could not withdraw retry marker ${marker_id} in ${repo} — it holds the comment as retry-pending until BOT_COMMENT_RETRY_PENDING_SEC passes" >&2
   fi
@@ -884,7 +884,7 @@ BOT_COMMENT_RETRY_FIELDS=(pr_number head_sha repo intent_type comment_node_id)
 dispatch_bot_comment_retry() {
   local repo="$1" pr_number="$2" head_sha="$3" comment_node_id="$4"
   echo "  -> dispatch bot-comment-retry: repo=${repo} pr=${pr_number} comment=${comment_node_id}" >&2
-  if [ "$DRY_RUN" = "true" ]; then
+  if [[ "$DRY_RUN" = "true" ]]; then
     echo "  [dry-run] would dispatch dev-lead-reviews-retry for PR ${pr_number} in ${repo} intent=fix-bot-comment comment=${comment_node_id}" >&2
     return 0
   fi
@@ -962,13 +962,13 @@ record_bot_comment_retry_run() {
       candidate=$(jq -r '.id // empty' <<< "$pick" 2>/dev/null || true)
     fi
     # The same single candidate on two looks in a row is the run to record.
-    if [ -n "$candidate" ] && [ "$candidate" = "$seen" ]; then
+    if [[ -n "$candidate" ]] && [[ "$candidate" = "$seen" ]]; then
       run_id="$candidate"
       break
     fi
     seen="$candidate"
   done
-  if [[ ! "$run_id" =~ ^[0-9]+$ ]] && [ -n "$seen" ]; then
+  if [[ ! "$run_id" =~ ^[0-9]+$ ]] && [[ -n "$seen" ]]; then
     echo "  [warn] bot-comment retry: ${BCR_RETRY_EVENT_TYPE} run ${seen} in ${repo} was the only candidate for PR ${pr_number} on the last of ${BOT_COMMENT_RETRY_RUN_LOOKUP_TRIES} look(s) and could not be confirmed by a second — the retry marker records none" >&2
     return 0
   fi
@@ -1027,7 +1027,7 @@ fetch_bot_comment_retry_run_states() {
 # DEV_LEAD_USER overrides; don-petry is the same fail-safe default the dev-lead
 # workflow uses.
 dev_lead_identity() {
-  if [ -z "${DEV_LEAD_USER:-}" ]; then
+  if [[ -z "${DEV_LEAD_USER:-}" ]]; then
     DEV_LEAD_USER=$(bash "$SCRIPT_DIR/lib/resolve-persona-identity.sh" dev-lead \
       "$SCRIPT_DIR/../personas" account 2>/dev/null || true)
     DEV_LEAD_USER="${DEV_LEAD_USER:-don-petry}"
@@ -1039,7 +1039,7 @@ dev_lead_identity() {
 # when its gate verdict runs the scan, #2017). PR_REVIEW_USER overrides;
 # donpetry-bot is the pr-review workflow's own fallback.
 pr_review_identity() {
-  if [ -z "${PR_REVIEW_USER:-}" ]; then
+  if [[ -z "${PR_REVIEW_USER:-}" ]]; then
     PR_REVIEW_USER=$(bash "$SCRIPT_DIR/lib/resolve-persona-identity.sh" pr-review \
       "$SCRIPT_DIR/../personas" account 2>/dev/null || true)
     PR_REVIEW_USER="${PR_REVIEW_USER:-donpetry-bot}"
@@ -1092,7 +1092,7 @@ scan_pr_for_undispositioned_bot_comments() {
   head_sha=$(jq -r '.head?.sha // empty' <<< "$pr_obj" 2>/dev/null || true)
   head_repo=$(jq -r '.head?.repo?.full_name // empty' <<< "$pr_obj" 2>/dev/null || true)
   pr_author=$(jq -r '.user?.login // empty' <<< "$pr_obj" 2>/dev/null || true)
-  if [ "$pr_state" != "open" ]; then
+  if [[ "$pr_state" != "open" ]]; then
     echo "  [skip] bot-comment retry: PR ${pr_number} in ${repo} is ${pr_state:-unknown}" >&2
     echo "0"; return 0
   fi
@@ -1101,8 +1101,8 @@ scan_pr_for_undispositioned_bot_comments() {
   # Ownership is the PR's AUTHOR plus a same-repository head — never the branch
   # name, which any contributor can choose (a fork's `dev-lead/issue-*` branch
   # must not buy write-capable automation).
-  if [ -z "$pr_author" ] || [ "$pr_author" != "$(dev_lead_identity)" ] \
-     || [ "$head_repo" != "$repo" ]; then
+  if [[ -z "$pr_author" ]] || [[ "$pr_author" != "$(dev_lead_identity)" ]] \
+     || [[ "$head_repo" != "$repo" ]]; then
     echo "0"; return 0
   fi
   local labels_json
@@ -1129,13 +1129,13 @@ scan_pr_for_undispositioned_bot_comments() {
   fi
 
   local trusted="${TRUSTED_BOTS:-}"
-  if [ -z "$trusted" ]; then
+  if [[ -z "$trusted" ]]; then
     trusted=$( (
       # shellcheck source=lib/reviewer-sources.sh
       source "$SCRIPT_DIR/lib/reviewer-sources.sh" && reviewer_sources_trusted_bots_csv
     ) 2>/dev/null || true)
   fi
-  if [ -z "$trusted" ]; then
+  if [[ -z "$trusted" ]]; then
     echo "  [warn] bot-comment retry: no trusted reviewer bots resolved — skipping" >&2
     echo "0"; return 0
   fi
@@ -1169,7 +1169,7 @@ scan_pr_for_undispositioned_bot_comments() {
 
   local pick cid version attempt now_iso
   pick=$(jq -c 'first(.[] | select(.decision == "dispatch")) // empty' <<< "$decisions")
-  if [ -z "$pick" ]; then
+  if [[ -z "$pick" ]]; then
     echo "0"; return 0
   fi
   cid=$(jq -r '.id' <<< "$pick")
@@ -1194,7 +1194,7 @@ scan_pr_for_undispositioned_bot_comments() {
   # Record the attempt BEFORE dispatching so a concurrent caller (the cron and
   # pr-review's gate verdict) sees it as pending and does not duplicate it.
   local marker_id=""
-  if [ "$DRY_RUN" != "true" ]; then
+  if [[ "$DRY_RUN" != "true" ]]; then
     if ! marker_id=$(gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
          -f body="$(bcr_retry_marker "$cid" "$version" "$attempt" "$now_iso")" \
          --jq '.id // empty' 2>/dev/null); then
@@ -1237,7 +1237,7 @@ scan_pr_for_undispositioned_bot_comments() {
       echo "0"; return 0
     fi
     first_marker=$(printf '%s\n' "$marker_ids" | grep -E '^[0-9]+$' | sort -n | head -n1 || true)
-    if [ -z "$first_marker" ]; then
+    if [[ -z "$first_marker" ]]; then
       # Our own marker is not among the trusted ones: this scan posts under an
       # identity (or association) bcr_retry_decisions does not count, so its
       # markers could never hold a retry pending or count an attempt — every scan
@@ -1269,7 +1269,7 @@ scan_pr_for_undispositioned_bot_comments() {
       withdraw_bot_comment_retry_marker "$repo" "$marker_id"
       echo "0"; return 0
     fi
-    if [ "$first_marker" != "$marker_id" ]; then
+    if [[ "$first_marker" != "$marker_id" ]]; then
       echo "  [skip] bot-comment ${cid} on PR ${pr_number}: a concurrent scan already recorded a retry" >&2
       withdraw_bot_comment_retry_marker "$repo" "$marker_id"
       echo "0"; return 0
@@ -1286,8 +1286,8 @@ scan_pr_for_undispositioned_bot_comments() {
     withdraw_bot_comment_retry_marker "$repo" "$marker_id"
     echo "0"; return 0
   fi
-  if [ "$DRY_RUN" != "true" ]; then
-    if [ -n "$dispatch_since" ]; then
+  if [[ "$DRY_RUN" != "true" ]]; then
+    if [[ -n "$dispatch_since" ]]; then
       record_bot_comment_retry_run "$repo" "$pr_number" "$marker_id" "$cid" "$version" \
         "$attempt" "$now_iso" "$dispatch_since" || true
     else
@@ -1306,13 +1306,13 @@ scan_pr_for_undispositioned_bot_comments() {
 post_bot_thread_exhausted_notice() {
   local repo="$1" pr_number="$2" decisions="$3" ids list body
   ids=$(jq -r '.exhausted_unnoticed | join(",")' <<< "$decisions" 2>/dev/null || true)
-  [ -n "$ids" ] || return 0
+  [[ -n "$ids" ]] || return 0
   if [[ ! "$ids" =~ ^[-A-Za-z0-9_+/=,]+$ ]]; then
     echo "  [warn] bot-thread retry: unexpected thread ids on PR ${pr_number} — not posting the exhaustion notice" >&2
     return 0
   fi
   echo "  [exhausted] bot-thread retry on PR ${pr_number}: retries exhausted for ${ids} — posting notice" >&2
-  [ "$DRY_RUN" = "true" ] && return 0
+  [[ "$DRY_RUN" = "true" ]] && return 0
   list=$(jq -r '.exhausted_unnoticed as $n | .threads[] | select(.id as $i | $n | index($i) != null)
       | "- `\(.path // "?"):\(.line // "?")` (\(.login))"' <<< "$decisions" 2>/dev/null || true)
   body="**dev-lead: bot review threads still unprocessed after automatic retries**
@@ -1349,18 +1349,18 @@ scan_pr_for_unreplied_bot_threads() {
   head_sha=$(jq -r '.head?.sha // empty' <<< "$pr_obj" 2>/dev/null || true)
   head_repo=$(jq -r '.head?.repo?.full_name // empty' <<< "$pr_obj" 2>/dev/null || true)
   pr_author=$(jq -r '.user?.login // empty' <<< "$pr_obj" 2>/dev/null || true)
-  if [ "$pr_state" != "open" ]; then
+  if [[ "$pr_state" != "open" ]]; then
     echo "  [skip] bot-thread retry: PR ${pr_number} in ${repo} is ${pr_state:-unknown}" >&2
     echo "0"; return 0
   fi
-  if [ -z "$head_sha" ]; then
+  if [[ -z "$head_sha" ]]; then
     echo "  [warn] bot-thread retry: could not resolve HEAD SHA for PR ${pr_number} in ${repo} — skipping" >&2
     echo "0"; return 0
   fi
   # Authorship gate (#1311), as in the bot-comment retry: fix-reviews only pushes
   # to PRs dev-lead authored, with a same-repository head.
-  if [ -z "$pr_author" ] || [ "$pr_author" != "$(dev_lead_identity)" ] \
-     || [ "$head_repo" != "$repo" ]; then
+  if [[ -z "$pr_author" ]] || [[ "$pr_author" != "$(dev_lead_identity)" ]] \
+     || [[ "$head_repo" != "$repo" ]]; then
     echo "0"; return 0
   fi
   local labels_json
@@ -1391,13 +1391,13 @@ scan_pr_for_unreplied_bot_threads() {
   fi
 
   local trusted="${TRUSTED_BOTS:-}"
-  if [ -z "$trusted" ]; then
+  if [[ -z "$trusted" ]]; then
     trusted=$( (
       # shellcheck source=lib/reviewer-sources.sh
       source "$SCRIPT_DIR/lib/reviewer-sources.sh" && reviewer_sources_trusted_bots_csv
     ) 2>/dev/null || true)
   fi
-  if [ -z "$trusted" ]; then
+  if [[ -z "$trusted" ]]; then
     echo "  [warn] bot-thread retry: no trusted reviewer bots resolved — skipping" >&2
     echo "0"; return 0
   fi
@@ -1418,7 +1418,7 @@ scan_pr_for_unreplied_bot_threads() {
 
   local ids attempt now_iso
   ids=$(jq -r '.dispatch | join(",")' <<< "$decisions")
-  if [ -z "$ids" ]; then
+  if [[ -z "$ids" ]]; then
     # Only when nothing is dispatched: a fix-reviews pass covers EVERY unresolved
     # thread, the exhausted ones included, so a notice posted alongside a dispatch
     # could go stale while its marker blocks a corrected one.
@@ -1438,7 +1438,7 @@ scan_pr_for_unreplied_bot_threads() {
   # Record the attempt BEFORE dispatching, so a concurrent caller (this cron or
   # pr-review's gate hook) sees it as pending and does not dispatch again.
   local marker_id=""
-  if [ "$DRY_RUN" != "true" ]; then
+  if [[ "$DRY_RUN" != "true" ]]; then
     if ! marker_id=$(gh api --method POST "repos/${repo}/issues/${pr_number}/comments" \
          -f body="$(btr_retry_marker "$ids" "$attempt" "$now_iso")" \
          --jq '.id // empty' 2>/dev/null); then
@@ -1481,13 +1481,13 @@ scan_pr_for_unreplied_bot_threads() {
         [ .[] | objects | select((.id | type) == "number")
           | select($now - ((.created_at // "") | (try fromdateiso8601 catch 0)) < $pending) | .id ]
         | min // empty' 2>/dev/null || true)
-    if [ -z "$first_marker" ]; then
+    if [[ -z "$first_marker" ]]; then
       echo "  ::warning::bot-thread retry: the retry marker on PR ${pr_number} was posted by an identity the retry dedup does not trust (expected one of: ${automation}) — withdrawing and not dispatching" >&2
       withdraw_bot_comment_retry_marker "$repo" "$marker_id"
       post_bot_thread_exhausted_notice "$repo" "$pr_number" "$decisions"  # nothing was dispatched
       echo "0"; return 0
     fi
-    if [ "$first_marker" != "$marker_id" ]; then
+    if [[ "$first_marker" != "$marker_id" ]]; then
       echo "  [skip] bot-thread retry on PR ${pr_number}: a concurrent scan already recorded a retry" >&2
       withdraw_bot_comment_retry_marker "$repo" "$marker_id"
       echo "0"; return 0
@@ -1574,7 +1574,7 @@ scan_issue_for_retry() {
   marker=$(echo "$comments_json" | jq -r --arg p "$prefix" \
     '[ .[] | strings | select(contains($p)) ] | last // ""' 2>/dev/null || echo "")
 
-  if [ -z "$marker" ]; then
+  if [[ -z "$marker" ]]; then
     # No failure marker → nothing failed (or it succeeded). Nothing to retry.
     echo "0"
     return 0
@@ -1597,18 +1597,18 @@ scan_issue_for_retry() {
   esac
 
   # Honour the rate-limit reset window for rate-limited markers.
-  if [ "$status" = "rate-limited" ] && is_reset_in_future "$reset"; then
+  if [[ "$status" = "rate-limited" ]] && is_reset_in_future "$reset"; then
     echo "  [skip] issue #${issue_number} rate-limit not yet cleared (resets ${reset})" >&2
     echo "0"; return 0
   fi
-  if [ "$status" = "rate-limited" ] && budget_hold_active; then
+  if [[ "$status" = "rate-limited" ]] && budget_hold_active; then
     echo "  [skip] issue #${issue_number} rate-limit held by the budget poller until ${BUDGET_HOLD_UNTIL}" >&2
     echo "0"; return 0
   fi
 
   # Enforce the attempt ceiling. attempt>=MAX means fix-issue.sh already escalated
   # to a human on its last failure; do not re-dispatch.
-  if [ -z "$attempt" ] || [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+  if [[ -z "$attempt" ]] || [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
     echo "  [skip] issue #${issue_number}: attempts exhausted (attempt=${attempt:-?}/${MAX_ATTEMPTS})" >&2
     echo "0"; return 0
   fi
@@ -1686,9 +1686,9 @@ list_repos_for_org() {
                         and (.nameWithOwner | test($ghsa))
                         and ((.nameWithOwner | sub($ghsa; "")) as $p | any($names[]; . == $p))) | not)
               | .nameWithOwner ]' 2>/dev/null || echo "[]")
-  if [ "$result" = "[]" ] || [ -z "$result" ]; then
+  if [[ "$result" = "[]" ]] || [[ -z "$result" ]]; then
     echo "::warning::No repos found for org '${org}' — check GH_TOKEN has repo read scope" >&2
-    if [ "${DRY_RUN:-false}" != "true" ]; then
+    if [[ "${DRY_RUN:-false}" != "true" ]]; then
       echo "::error::Aborting: scanning 0 repos would silently miss all rate-limited PRs" >&2
       exit 1
     fi
@@ -1709,7 +1709,7 @@ main() {
   done < <(list_repos_for_org "$TARGET_ORG" | jq -r '.[]')
 
   # Collect repos from DELEGATION_ORGS
-  if [ -n "$DELEGATION_ORGS" ]; then
+  if [[ -n "$DELEGATION_ORGS" ]]; then
     for org in $DELEGATION_ORGS; do
       while IFS= read -r repo; do
         all_repos+=("$repo")
@@ -1723,7 +1723,7 @@ main() {
   # Hold each retry payload back from a target whose pinned parser does not
   # read all its fields (#2086). Off unless the workflow passes SWEEP_AGENT_REF.
   dcg_init || exit 1
-  if [ -n "$DCG_SWEEP_REF" ]; then
+  if [[ -n "$DCG_SWEEP_REF" ]]; then
     echo "[retry] sweep channel: ${DCG_SWEEP_REF} (a payload goes only to repos whose pinned parser reads all its fields)"
   else
     echo "[retry] SWEEP_AGENT_REF unset: per-target payload-field gate off (#2086)"
@@ -1751,16 +1751,16 @@ main() {
 # after the guard has read the marker file, then apply the guard.
 hold_label_exit_guard_then_cleanup() {
   local rc="$1"
-  if [ -n "${HOLD_LABEL_FAILED_FILE:-}" ] && [ -e "$HOLD_LABEL_FAILED_FILE" ]; then
+  if [[ -n "${HOLD_LABEL_FAILED_FILE:-}" ]] && [[ -e "$HOLD_LABEL_FAILED_FILE" ]]; then
     export HOLD_LABEL_FAILED=1
   fi
-  [ -z "${HOLD_LABEL_FAILED_DIR:-}" ] || rm -rf "$HOLD_LABEL_FAILED_DIR"
+  [[ -z "${HOLD_LABEL_FAILED_DIR:-}" ]] || rm -rf "$HOLD_LABEL_FAILED_DIR"
   hold_label_exit_guard "$rc"
 }
 
 # Run main only when executed directly (bash dev-lead-retry.sh), not when sourced
 # by unit tests that exercise individual functions (scan_issue_for_retry, etc.).
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
   # A failed hold (#2142) must fail the scan even though escalation is `|| true`.
   # Escalations run inside command substitutions, so a failed hold is also
   # recorded in a file that survives the subshell; the guard reads it.

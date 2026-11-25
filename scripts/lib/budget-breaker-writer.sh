@@ -174,7 +174,7 @@ bbw_take_credentials() {
   _BBW_REDACT=()
   local c
   for c in "$_BBW_WRITE_CRED" "$_BBW_READ_CRED" "$_BBW_NOTIFY_CRED"; do
-    if [ -n "$c" ]; then
+    if [[ -n "$c" ]]; then
       _BBW_REDACT+=("$c")
     fi
   done
@@ -187,8 +187,8 @@ bbw_drop_write_credentials() {
   _BBW_NOTIFY_CRED=""
 }
 
-bbw_has_write_credential() { [ -n "$_BBW_WRITE_CRED" ]; }
-bbw_has_read_credential() { [ -n "$_BBW_READ_CRED" ]; }
+bbw_has_write_credential() { [[ -n "$_BBW_WRITE_CRED" ]]; }
+bbw_has_read_credential() { [[ -n "$_BBW_READ_CRED" ]]; }
 
 # ---------------------------------------------------------------------------
 # bbw_redact <text> — the text with every credential value replaced by `***`.
@@ -230,7 +230,7 @@ _bbw_gh() {
   local cred="${1:-}" errf rc=0
   shift
   BBW_OUT="" BBW_ERR="" BBW_HTTP=""
-  if [ -z "$cred" ]; then
+  if [[ -z "$cred" ]]; then
     BBW_ERR="no credential for this call"
     return 1
   fi
@@ -275,7 +275,7 @@ bbw_collect_recent() {
 # ---------------------------------------------------------------------------
 bbw_untrusted_count() {
   local file="${1:-}" n total=0
-  if [ -r "$file" ]; then
+  if [[ -r "$file" ]]; then
     while IFS= read -r n; do
       total=$(( total + 10#$n ))
     done < <(sed -nE 's/.*ignored ([0-9]{1,9}) quota marker\(s\).*/\1/p' "$file")
@@ -506,12 +506,12 @@ _bbw_rollback() {
   BBW_ROLLBACK_FAILED=""
   BBW_ROLLBACK_OWN_SOURCE="false"
 
-  if [ -n "$_BBW_WROTE_SOURCE" ]; then
+  if [[ -n "$_BBW_WROTE_SOURCE" ]]; then
     cur="$_BBW_WROTE_SOURCE"
-    if [ -n "$vars" ]; then
+    if [[ -n "$vars" ]]; then
       cur="$(bbw_var_value "$vars" "$BBW_VAR_SOURCE")"
     fi
-    if [ "$cur" = "$_BBW_WROTE_SOURCE" ]; then
+    if [[ "$cur" = "$_BBW_WROTE_SOURCE" ]]; then
       if ! _bbw_delete_var "$org" "$BBW_VAR_SOURCE"; then
         BBW_ROLLBACK_FAILED="delete ${BBW_VAR_SOURCE}"
         BBW_ROLLBACK_OWN_SOURCE="true"
@@ -521,20 +521,20 @@ _bbw_rollback() {
     else
       BBW_ROLLBACK_KEPT+=("${BBW_VAR_SOURCE} (it no longer holds the value this run wrote)")
     fi
-  elif [ -z "$vars" ] || [ "$(bbw_var_value "$vars" "$BBW_VAR_SOURCE")" = "$BUDGET_BREAKER_PAUSE_SOURCE" ]; then
+  elif [[ -z "$vars" ]] || [[ "$(bbw_var_value "$vars" "$BBW_VAR_SOURCE")" = "$BUDGET_BREAKER_PAUSE_SOURCE" ]]; then
     # Not written by this call: a trip skips the source only when it already
     # held the breaker's value, so an earlier run left it.
     BBW_ROLLBACK_OWN_SOURCE="true"
   fi
 
-  if [ -n "$_BBW_WROTE_UNTIL" ]; then
+  if [[ -n "$_BBW_WROTE_UNTIL" ]]; then
     cur="$_BBW_WROTE_UNTIL"
-    if [ -n "$vars" ]; then
+    if [[ -n "$vars" ]]; then
       cur="$(bbw_var_value "$vars" "$BBW_VAR_UNTIL")"
     fi
-    if [ "$cur" != "$_BBW_WROTE_UNTIL" ]; then
+    if [[ "$cur" != "$_BBW_WROTE_UNTIL" ]]; then
       BBW_ROLLBACK_KEPT+=("${BBW_VAR_UNTIL} (it no longer holds the value this run wrote)")
-    elif [ "$BBW_ROLLBACK_OWN_SOURCE" = "true" ]; then
+    elif [[ "$BBW_ROLLBACK_OWN_SOURCE" = "true" ]]; then
       BBW_ROLLBACK_KEPT+=("${BBW_VAR_UNTIL}=${_BBW_WROTE_UNTIL} (${BBW_VAR_SOURCE}=${BUDGET_BREAKER_PAUSE_SOURCE} from an earlier run is still set, and a pause carrying that source with no end time would be lifted at once)")
     else
       if ! _bbw_delete_var "$org" "$BBW_VAR_UNTIL"; then
@@ -572,11 +572,11 @@ _bbw_pause_guard() {
     else error("no state to compare against") end' <<< "$before" 2>/dev/null) || expected=""
   now_key="$(bbw_state_key "$BBW_VARS")"
   BBW_GUARD_STATE="$now_key"
-  if [ -n "$expected" ] && [ "$now_key" = "$expected" ]; then
+  if [[ -n "$expected" ]] && [[ "$now_key" = "$expected" ]]; then
     return 0
   fi
   paused_now="$(bbw_var_value "$BBW_VARS" "$BBW_VAR_PAUSED")"
-  if [ "${paused_now,,}" = "true" ]; then
+  if [[ "${paused_now,,}" = "true" ]]; then
     BBW_GUARD="paused"
   else
     BBW_GUARD="changed"
@@ -632,10 +632,10 @@ bbw_apply() {
     exists=$(jq -r --arg n "$name" 'has($n)' <<< "$BBW_VARS" 2>/dev/null) || exists="false"
     case "$op" in
       set)
-        if [ "$exists" = "true" ]; then
+        if [[ "$exists" = "true" ]]; then
           kinds+=("update")
         else
-          if [ -z "$vis" ]; then
+          if [[ -z "$vis" ]]; then
             BBW_HTTP=""
             if ! bbw_create_visibility; then
               BBW_FAILED_STEP="create ${name}"
@@ -660,8 +660,8 @@ bbw_apply() {
   for (( i = 0; i < n; i++ )); do
     name="${names[$i]}"
     value="${values[$i]}"
-    if [ "${kinds[$i]}" != "delete" ] && [ "$name" = "$BBW_VAR_PAUSED" ] && [ "$value" = "true" ] \
-        && [ -n "${_BBW_WROTE_SOURCE}${_BBW_WROTE_UNTIL}" ]; then
+    if [[ "${kinds[$i]}" != "delete" ]] && [[ "$name" = "$BBW_VAR_PAUSED" ]] && [[ "$value" = "true" ]] \
+        && [[ -n "${_BBW_WROTE_SOURCE}${_BBW_WROTE_UNTIL}" ]]; then
       if ! _bbw_pause_guard "$org" "$before"; then
         BBW_FAILED_KIND="guard"
         BBW_FAILED_STEP="set ${name}=${value}"
@@ -691,7 +691,7 @@ bbw_apply() {
         fi
         BBW_DONE+=("deleted ${name}") ;;
     esac
-    if [ "${kinds[$i]}" != "delete" ]; then
+    if [[ "${kinds[$i]}" != "delete" ]]; then
       case "$name" in
         "$BBW_VAR_SOURCE") _BBW_WROTE_SOURCE="$value" ;;
         "$BBW_VAR_UNTIL")  _BBW_WROTE_UNTIL="$value" ;;
@@ -871,7 +871,7 @@ bbw_pause_notice_posted() {
     return 2
   fi
   bbw_find_tracking_issue "$repo" || return 2
-  [ -n "$BBW_TRACKING_NUMBER" ] || return 1
+  [[ -n "$BBW_TRACKING_NUMBER" ]] || return 1
   # The marker is digits, letters, `-`, `:`, `=`, `<`, `!` and `>` only (the end
   # time was just checked), so it is safe inside the filter's string literal.
   # With --paginate the filter runs once per page: one count per page.

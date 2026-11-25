@@ -27,9 +27,9 @@
 # Classifies one repo's stub against the canonical template SHA.
 classify_stub_drift() {
   local canonical="${1:-}" repo_sha="${2:-}"
-  if [ -z "$repo_sha" ] || [ "$repo_sha" = "null" ]; then
+  if [[ -z "$repo_sha" ]] || [[ "$repo_sha" = "null" ]]; then
     echo "MISSING"
-  elif [ "$repo_sha" = "$canonical" ]; then
+  elif [[ "$repo_sha" = "$canonical" ]]; then
     echo "ALIGNED"
   else
     echo "DRIFTED"
@@ -62,7 +62,7 @@ stub_drift_row() {
 # output ⇒ the job is absent. Deterministic, so equal blocks ⇒ byte-identical.
 extract_job_block() {
   local job="${1:-}"
-  [ -n "$job" ] || return 0
+  [[ -n "$job" ]] || return 0
   awk -v job="$job" '
     function indent(s) { match(s, /^ */); return RLENGTH }
     BEGIN { injob = 0 }
@@ -84,7 +84,7 @@ extract_job_block() {
 job_block_sha() {
   local job="${1:-}" block
   block="$(extract_job_block "$job")"
-  [ -n "$block" ] || return 0
+  [[ -n "$block" ]] || return 0
   printf '%s' "$block" | git hash-object --stdin
 }
 
@@ -100,7 +100,7 @@ job_block_sha() {
 # every other line is emitted verbatim so siblings are byte-preserved.
 patch_job_block() {
   local job="${1:-}" repl="${2:-}"
-  [ -n "$job" ] && [ -n "$repl" ] || return 2
+  [[ -n "$job" ]] && [[ -n "$repl" ]] || return 2
   awk -v job="$job" -v repl="$repl" '
     function indent(s) { match(s, /^ */); return RLENGTH }
     BEGIN { injob = 0; found = 0 }
@@ -137,9 +137,9 @@ patch_job_block() {
 classify_role_drift() {
   local ingress_present="${1:-}" canon_block="${2:-}" ingress_block="${3:-}"
   local legacy_canon="${4:-}" legacy_repo="${5:-}"
-  if [ "$ingress_present" = "yes" ]; then
+  if [[ "$ingress_present" = "yes" ]]; then
     classify_stub_drift "$canon_block" "$ingress_block"
-  elif [ -z "$legacy_canon" ]; then
+  elif [[ -z "$legacy_canon" ]]; then
     echo "MISSING"
   else
     classify_stub_drift "$legacy_canon" "$legacy_repo"
@@ -163,7 +163,7 @@ stub_drift_row_role() {
   local status
   status="$(classify_role_drift "$ingress_present" "$canon_block" \
     "$ingress_block" "$legacy_canon" "$legacy_repo")"
-  if [ "$ingress_present" = "yes" ]; then
+  if [[ "$ingress_present" = "yes" ]]; then
     printf '%s\t%s\t%s\t%s\n' "$repo" "$status" "$ingress_block" "$canon_block"
   else
     printf '%s\t%s\t%s\t%s\tlegacy\n' "$repo" "$status" "$legacy_repo" "$legacy_canon"
@@ -174,7 +174,7 @@ stub_drift_row_role() {
 # Counts rows whose status column (field 2) equals <status>. 0 if file absent.
 count_stub_drift() {
   local f="${1:-}" want="${2:-}"
-  [ -n "$f" ] && [ -f "$f" ] || { echo 0; return 0; }
+  [[ -n "$f" ]] && [[ -f "$f" ]] || { echo 0; return 0; }
   awk -F'\t' -v w="$want" '$2 == w { n++ } END { print n + 0 }' "$f"
 }
 
@@ -193,7 +193,7 @@ count_stub_drift() {
 # compliance audit's stub-surface checks govern legacy per-role stubs.
 stub_drift_alert_json() {
   local f="${1:-}" stub_label="${2:-}" stub_file="${3:-}" role="${4:-}"
-  if [ -z "$f" ] || [ ! -s "$f" ]; then
+  if [[ -z "$f" ]] || [[ ! -s "$f" ]]; then
     echo "[]"
     return 0
   fi

@@ -75,7 +75,7 @@ _ic_filter_human() {
                    created_at: (.created_at // ""),
                    body: (.body // "") } | @base64)
       end
-  ' 2>/dev/null | while IFS=$'\t' read -r tag a b || [ -n "$tag" ]; do
+  ' 2>/dev/null | while IFS=$'\t' read -r tag a b || [[ -n "$tag" ]]; do
     case "$tag" in
       K) printf '%s\n' "$a" ;;
       D) printf 'issue-comments: dropped comment by @%s: %s\n' "$a" "$b" >&2 ;;
@@ -91,8 +91,8 @@ _ic_filter_human() {
 render_issue_comments() {
   local -a rows=()
   local line
-  while IFS= read -r line || [ -n "$line" ]; do
-    [ -n "$line" ] && rows+=( "$line" )
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -n "$line" ]] && rows+=( "$line" )
   done < <(_ic_filter_human)
 
   local total=${#rows[@]}
@@ -120,7 +120,7 @@ render_issue_comments() {
     obj=$(printf '%s' "${rows[$i]}" | base64 -d 2>/dev/null) || continue
     body=$(printf '%s' "$obj" | jq -r '.body' 2>/dev/null) || continue
     blen=${#body}
-    if [ "${#keep_idx[@]}" -eq 0 ]; then
+    if [[ "${#keep_idx[@]}" -eq 0 ]]; then
       # Newest comment always survives, but is truncated to the budget if it
       # alone is oversized — otherwise the budget would not be a hard bound.
       if [ "$blen" -gt "$ISSUE_COMMENTS_CHAR_BUDGET" ]; then

@@ -46,14 +46,14 @@ main() {
   GITHUB_ENV_FILE=$(mktemp)
   GITHUB_OUTPUT_FILE=$(mktemp)
 
-  if [ ! -f "${INTENT_SCRIPT}" ]; then
+  if [[ ! -f "${INTENT_SCRIPT}" ]]; then
     err "dev-lead-intent.sh not found at: ${INTENT_SCRIPT}"
     record_result "${SCENARIO_NAME}" "FAIL" "intent script not found"
     exit 1
   fi
 
   local fixture="${FIXTURE_DIR}/pr_sync_dev_lead_commit.json"
-  if [ ! -f "${fixture}" ]; then
+  if [[ ! -f "${fixture}" ]]; then
     err "Fixture not found: ${fixture}"
     record_result "${SCENARIO_NAME}" "FAIL" "fixture missing"
     exit 1
@@ -167,7 +167,7 @@ main() {
     all_pass=false
   fi
   # Negative assertion: human reason must NOT be dev-lead-own-commit
-  if [ "${intent_reason_b}" = "dev-lead-own-commit" ]; then
+  if [[ "${intent_reason_b}" = "dev-lead-own-commit" ]]; then
     echo "[FAIL] ${SCENARIO_NAME}(B): human sync incorrectly got reason=dev-lead-own-commit"
     all_pass=false
   else
@@ -183,7 +183,7 @@ main() {
   fi
 
   # ── Result ─────────────────────────────────────────────────────────────────
-  if [ "${all_pass}" = "true" ]; then
+  if [[ "${all_pass}" = "true" ]]; then
     log "[PASS] ${SCENARIO_NAME}: anti-loop guard fires for BOT_USER, human PR left untouched"
     record_result "${SCENARIO_NAME}" "PASS" "bot→skip(dev-lead-own-commit) human→skip(not-dev-lead-authored)"
     exit 0

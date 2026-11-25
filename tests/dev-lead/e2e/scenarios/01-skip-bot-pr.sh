@@ -42,14 +42,14 @@ main() {
   GITHUB_ENV_FILE=$(mktemp)
   GITHUB_OUTPUT_FILE=$(mktemp)
 
-  if [ ! -f "${INTENT_SCRIPT}" ]; then
+  if [[ ! -f "${INTENT_SCRIPT}" ]]; then
     err "dev-lead-intent.sh not found at: ${INTENT_SCRIPT}"
     record_result "${SCENARIO_NAME}" "FAIL" "intent script not found"
     exit 1
   fi
 
   local fixture="${FIXTURE_DIR}/pr_opened_dependabot.json"
-  if [ ! -f "${fixture}" ]; then
+  if [[ ! -f "${fixture}" ]]; then
     err "Fixture not found: ${fixture}"
     record_result "${SCENARIO_NAME}" "FAIL" "fixture missing"
     exit 1
@@ -97,7 +97,7 @@ main() {
   fi
 
   # ── Result ─────────────────────────────────────────────────────────────────
-  if [ "${all_pass}" = "true" ]; then
+  if [[ "${all_pass}" = "true" ]]; then
     log "[PASS] ${SCENARIO_NAME}: dependabot PR correctly routed to skip(bot-pr)"
     record_result "${SCENARIO_NAME}" "PASS" "intent=skip reason=bot-pr"
     exit 0

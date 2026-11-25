@@ -36,7 +36,7 @@ fi
 # _reviewer_sources_manifest_or_die <caller>
 #   Guards manifest existence; prints a diagnostic naming the caller.
 _reviewer_sources_manifest_or_die() {
-  if [ -f "$REVIEWER_SOURCES_MANIFEST" ]; then
+  if [[ -f "$REVIEWER_SOURCES_MANIFEST" ]]; then
     return 0
   fi
   echo "$1: manifest file not found at $REVIEWER_SOURCES_MANIFEST" >&2
@@ -51,7 +51,7 @@ reviewer_sources_version() {
   local v
   v=$(awk '/^#[[:space:]]*schema_version:/ { gsub(/[^0-9]/, "", $0); print; exit }' \
         "$REVIEWER_SOURCES_MANIFEST") || true
-  [ -n "$v" ] || { echo "reviewer_sources_version: no schema_version in $REVIEWER_SOURCES_MANIFEST" >&2; return 1; }
+  [[ -n "$v" ]] || { echo "reviewer_sources_version: no schema_version in $REVIEWER_SOURCES_MANIFEST" >&2; return 1; }
   printf '%s\n' "$v"
 }
 
@@ -242,7 +242,7 @@ reviewer_sources_trusted_bots_csv() {
   local login csv="" logins
   logins="$(reviewer_sources_trusted_logins)" || return 1
   while IFS= read -r login; do
-    [ -n "$login" ] || continue
+    [[ -n "$login" ]] || continue
     csv="${csv:+$csv,}${login}[bot]"
   done <<< "$logins"
   printf '%s\n' "$csv"
@@ -264,7 +264,7 @@ reviewer_sources_invariant_violations() {
 reviewer_sources_assert_invariant() {
   local violations
   violations="$(reviewer_sources_invariant_violations)" || return 1
-  if [ -z "$violations" ]; then
+  if [[ -z "$violations" ]]; then
     return 0
   fi
   echo "reviewer_sources: #1425 invariant violated — thread-creating sources that are not dev-lead-trusted:" >&2
