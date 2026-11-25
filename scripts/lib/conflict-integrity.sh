@@ -23,7 +23,7 @@
 # declared N times appears N times.
 extract_top_level_symbols() {
   local file="$1"
-  [ -f "$file" ] || return 0
+  [[ -f "$file" ]] || return 0
   awk '
     # NAME() {   (POSIX + ksh, brace same line), column 0 only.
     /^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(\)[[:space:]]*\{/ {
@@ -117,7 +117,7 @@ new_duplicate_symbols() {
 # fix-reviews.md shipped whole Phase blocks (heading + body) twice (#1779).
 extract_markdown_headings() {
   local file="$1"
-  [ -f "$file" ] || return 0
+  [[ -f "$file" ]] || return 0
   awk '
     BEGIN { infence = 0; infence_char = ""; infence_count = 0 }
     # Track in/out of fenced code blocks. Store the opening delimiter character
@@ -179,7 +179,7 @@ extract_markdown_headings() {
 # ({a: 1, b: 2}) are treated as a scalar value, not descended into.
 extract_yaml_mapping_keys() {
   local file="$1"
-  [ -f "$file" ] || return 0
+  [[ -f "$file" ]] || return 0
   awk '
     function indent_of(s,   i) {
       i = 0
@@ -274,10 +274,10 @@ extract_yaml_mapping_keys() {
 # nothing when there are no findings.
 format_integrity_findings() {
   local file="$1" findings="$2"
-  [ -n "$findings" ] || return 0
+  [[ -n "$findings" ]] || return 0
   printf -- '- `%s` — duplicated top-level declarations after resolution:\n' "$file"
   printf '%s\n' "$findings" | while IFS="$(printf '\t')" read -r sym count; do
-    [ -n "$sym" ] || continue
+    [[ -n "$sym" ]] || continue
     printf -- '  - `%s` (declared %s times)\n' "$sym" "$count"
   done
 }

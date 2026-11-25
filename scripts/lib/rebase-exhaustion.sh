@@ -88,11 +88,11 @@ rebase_should_exhaust() {
 #                     as "resolved".
 rebase_conflict_state() {
   local mergeable="${1:-}" state="${2:-}"
-  if [ "$mergeable" = "CONFLICTING" ] || [ "$state" = "DIRTY" ]; then
+  if [[ "$mergeable" = "CONFLICTING" ]] || [[ "$state" = "DIRTY" ]]; then
     printf 'conflicting'
     return 0
   fi
-  if [ "$mergeable" = "MERGEABLE" ]; then
+  if [[ "$mergeable" = "MERGEABLE" ]]; then
     printf 'resolved'
     return 0
   fi

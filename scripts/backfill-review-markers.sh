@@ -27,7 +27,7 @@ set -euo pipefail
 BOT_USER="${BOT_USER:-donpetry-bot}"
 DRY_RUN="${DRY_RUN:-false}"
 
-if [ "$#" -eq 0 ]; then
+if [[ "$#" -eq 0 ]]; then
   echo "Usage: $0 <pr-url> [<pr-url> ...]" >&2
   exit 1
 fi
@@ -46,7 +46,7 @@ for PR_URL in "$@"; do
   # Current head SHA — used as the backfill value for all unmarked comments on
   # this PR (they were all posted against the same unmoving head).
   HEAD_SHA=$(gh pr view "$PR_URL" --json headRefOid --jq '.headRefOid' 2>/dev/null)
-  if [ -z "$HEAD_SHA" ]; then
+  if [[ -z "$HEAD_SHA" ]]; then
     echo "  error: could not resolve head SHA for $PR_URL — skipping" >&2
     continue
   fi
@@ -68,7 +68,7 @@ for PR_URL in "$@"; do
     | .id
   ' "$COMMENTS_FILE")
 
-  if [ -z "$CANDIDATES" ]; then
+  if [[ -z "$CANDIDATES" ]]; then
     echo "  no unmarked fix-request comments by $BOT_USER — nothing to do"
     already_ok=$((already_ok + 1))
     rm -f "$COMMENTS_FILE"
@@ -78,7 +78,7 @@ for PR_URL in "$@"; do
   echo "  found $(echo "$CANDIDATES" | wc -l | tr -d ' ') candidate comment(s)"
 
   while IFS= read -r CID; do
-    [ -z "$CID" ] && continue
+    [[ -z "$CID" ]] && continue
 
     # Extract the existing body for this comment.
     OLD_BODY=$(jq -r --argjson id "$CID" '.[] | select(.id == $id) | .body' "$COMMENTS_FILE")
@@ -93,7 +93,7 @@ for PR_URL in "$@"; do
 
     echo "  comment $CID: prepending marker (risk=$RISK)"
 
-    if [ "$DRY_RUN" = "true" ]; then
+    if [[ "$DRY_RUN" = "true" ]]; then
       echo "  [DRY RUN] would PATCH comment $CID with:"
       echo "    $MARKER"
       skipped=$((skipped + 1))

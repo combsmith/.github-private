@@ -37,12 +37,12 @@ pr_author=$(echo "$pr_json" | jq -r '.author')
 echo "  Author:     ${pr_author}"
 
 # Skip bot PRs if configured
-if [ "$SKIP_BOT_PRS" = "true" ]; then
+if [[ "$SKIP_BOT_PRS" = "true" ]]; then
   IFS=',' read -ra _bot_list <<< "$BOT_AUTHORS"
   for bot in "${_bot_list[@]}"; do
     bot="${bot#"${bot%%[![:space:]]*}"}"
     bot="${bot%"${bot##*[![:space:]]}"}"
-    if [ "$pr_author" = "$bot" ]; then
+    if [[ "$pr_author" = "$bot" ]]; then
       echo "::notice::Skipping bot PR by ${pr_author} (SKIP_BOT_PRS=true)"
       exit 0
     fi
@@ -76,7 +76,7 @@ dep_diff=$(awk '
 ' "$_diff_tmp")
 rm -f "$_diff_tmp"
 
-if [ -z "$dep_diff" ]; then
+if [[ -z "$dep_diff" ]]; then
   echo "::notice::No dependency file changes found in diff — skipping advisory."
   exit 0
 fi
@@ -116,7 +116,7 @@ _advisory_error_is_transient() {
 
 # Skip Claude invocation when fork PR secrets are unavailable (GitHub does not
 # pass repository secrets to fork PRs, so CLAUDE_CODE_OAUTH_TOKEN will be unset).
-if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+if [[ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
   echo "::notice::CLAUDE_CODE_OAUTH_TOKEN not available (fork PR) — skipping dependency advisory."
   echo "=== Dependency advisory complete (skipped — no Claude token) ==="
   exit 0
@@ -203,7 +203,7 @@ if ! gh api "repos/${REPO}" --jq '(.permissions.triage // false) or (.permission
   exit 0
 fi
 
-if [ -n "$existing_comment_id" ]; then
+if [[ -n "$existing_comment_id" ]]; then
   echo "Updating existing advisory comment #${existing_comment_id}..."
   gh api "repos/${REPO}/issues/comments/${existing_comment_id}" \
     --method PATCH \

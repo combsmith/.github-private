@@ -21,12 +21,12 @@ OWNER_REPO=$(echo "$PR_URL" | sed -E 's|.*/([^/]+)/([^/]+)/pull/.*|\1/\2|')
 CODEOWNERS=""
 for path in .github/CODEOWNERS CODEOWNERS docs/CODEOWNERS; do
   encoded=$(gh api "repos/$OWNER_REPO/contents/$path" --jq '.content' 2>/dev/null) || continue
-  [ -z "$encoded" ] && continue
+  [[ -z "$encoded" ]] && continue
   decoded=$(printf '%s' "$encoded" | base64 -d 2>/dev/null) || continue
-  [ -n "$decoded" ] && { CODEOWNERS="$decoded"; break; }
+  [[ -n "$decoded" ]] && { CODEOWNERS="$decoded"; break; }
 done
 
-if [ -z "$CODEOWNERS" ]; then
+if [[ -z "$CODEOWNERS" ]]; then
   echo "    CODEOWNERS not found in $OWNER_REPO — relying on needs-human-review label only"
   exit 0
 fi
@@ -38,13 +38,13 @@ mentions=$(printf '%s\n' "$CODEOWNERS" \
   | sed 's|^@||' \
   | sort -u)
 
-if [ -z "$mentions" ]; then
+if [[ -z "$mentions" ]]; then
   echo "    CODEOWNERS in $OWNER_REPO has no @mentions"
   exit 0
 fi
 
 while IFS= read -r entry; do
-  [ -z "$entry" ] && continue
+  [[ -z "$entry" ]] && continue
   if gh pr edit "$PR_URL" --add-reviewer "$entry" 2>/dev/null; then
     echo "    requested review from @$entry"
   else
