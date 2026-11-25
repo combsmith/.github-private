@@ -1,0 +1,158 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL",
+          "semanticVersion": "2.27.5"
+        }
+      },
+      "automationDetails": {
+        "id": "/language:actions/"
+      },
+      "results": [
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "index": 2,
+                  "uri": ".github/workflows/agent-shield.yml"
+                },
+                "region": {
+                  "endColumn": 95,
+                  "endLine": 34,
+                  "startColumn": 11,
+                  "startLine": 34
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Job [Job: agent-shield](1) in 'AgentShield' uses reusable workflow 'combsmith/.github/.github/workflows/agent-shield-reusable.yml' with ref 'agent-shield/v2-stable', not a pinned commit hash"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "9330591d5ea3ff58:1"
+          },
+          "relatedLocations": [
+            {
+              "id": 1,
+              "message": {
+                "text": "Job: agent-shield"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "index": 0,
+                  "uri": ".github/workflows/agent-shield.yml"
+                },
+                "region": {
+                  "endColumn": 152,
+                  "endLine": 34,
+                  "startColumn": 5,
+                  "startLine": 34
+                }
+              }
+            }
+          ],
+          "rule": {
+            "id": "actions/unpinned-tag",
+            "toolComponent": {
+              "index": 0
+            },
+            "index": 16
+          },
+          "ruleId": "actions/unpinned-tag"
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "index": 3,
+                  "uri": ".github/workflows/add-to-project.yml"
+                },
+                "region": {
+                  "endColumn": 99,
+                  "endLine": 50,
+                  "startColumn": 11,
+                  "startLine": 50
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Job [Job: add-to-project](1) in 'Auto-add to Initiatives project' uses reusable workflow 'combsmith/.github/.github/workflows/add-to-project-reusable.yml' with ref 'add-to-project/v1-stable', not a pinned commit hash"
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "797756bb1fef1891:1"
+          },
+          "relatedLocations": [
+            {
+              "id": 1,
+              "message": {
+                "text": "Job: add-to-project"
+              },
+              "physicalLocation": {
+                "artifactLocation": {
+                  "index": 0,
+                  "uri": ".github/workflows/add-to-project.yml"
+                },
+                "region": {
+                  "endColumn": 79,
+                  "endLine": 59,
+                  "startColumn": 5,
+                  "startLine": 48
+                }
+              }
+            }
+          ],
+          "rule": {
+            "id": "actions/unpinned-tag",
+            "toolComponent": {
+              "index": 0
+            },
+            "index": 16
+          },
+          "ruleId": "actions/unpinned-tag"
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "index": 0,
+                  "uri": ".github/workflows/dev-lead-reusable.yml"
+                },
+                "region": {
+                  "endColumn": 7,
+                  "endLine": 303,
+                  "startColumn": 9,
+                  "startLine": 287
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Potential unsafe checkout of untrusted pull request on non-privileged workflow."
+          },
+          "partialFingerprints": {
+            "primaryLocationLineHash": "af83974e488b2d42:1"
+          },
+          "rule": {
+            "id": "actions/untrusted-checkout/medium",
+            "toolComponent": {
+              "index": 0
+            },
+            "index": 21
+          },
+          "ruleId": "actions/untrusted-checkout/medium"
+        }
+      ]
+    }
+  ]
+}
