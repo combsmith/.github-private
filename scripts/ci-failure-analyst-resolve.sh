@@ -168,7 +168,7 @@ idempotency() {
   export HEAD_SHA PR_NUMBER
   if ! ids="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
     --paginate \
-    | jq -r '.[] | select(((.body // "") | if type == "string" then . else "" end) | startswith("<!-- ci-analyst sha=" + $ENV.HEAD_SHA + " -->")) | .id' \
+    --jq '.[] | select(((.body // "") | if type == "string" then . else "" end) | startswith("<!-- ci-analyst sha=" + $ENV.HEAD_SHA + " -->")) | .id' \
     2>/dev/null)"; then
     echo "::warning::Comment lookup failed — skipping to avoid a duplicate diagnostic"
     emit exists true
