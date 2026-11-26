@@ -968,6 +968,7 @@ fetch_pr_context() {
 export_stale_dispositions() {
   local comments facts
   STALE_LATEST_EDIT=""
+  PASS_STARTED_AT="${PASS_STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)}"
   if comments=$(bcr_fetch_pr_comments "$REPO" "$PR_NUMBER" 2>/dev/null) \
      && facts=$(maintainer_gate_stale_disposition_facts "$comments" "${BOT_USER:-donpetry-bot}"); then
     STALE_LATEST_EDIT=$(maintainer_gate_stale_dispositions "$comments" "${BOT_USER:-donpetry-bot}" \
@@ -1086,7 +1087,9 @@ ${json}${note}"
 # leave nothing to count. read_at= matches the terminal marker's, so a pass that
 # posts both counts once. The `<!-- dev-lead` prefix is a registered automation
 # marker, so the comment gate does not count it as a finding. Best effort: a failed
-# post must not stop the pass.
+# post must not stop the pass. If both the start-record post and the model pass fail
+# before a terminal marker is posted, the per-edit pass cap can undercount a pass,
+# so the cap is a best-effort advisory, not a hard boundary.
 post_stale_pass_start() {
   [[ "${STALE_LATEST_EDIT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]] || return 0
   local sha_part="" read_part=""
@@ -3217,7 +3220,12 @@ post_reviews_rate_limited() {
   # patterns match `status=(rate-limited|blocked)`, so both tokens re-dispatch.
   local status_token="rate-limited"
   { [[ "$reason" = "blocked" ]] || [[ "$reason" = "resolve-failed" ]]; } && status_token="blocked"
-  local marker="${REVIEWS_MARKER_PREFIX}${PR_NUMBER}${sha_detail} intent=${intent} status=${status_token} reason=${reason}${reset_detail} -->"
+  # read_at= gives this marker the same pass identity as the pass's start marker (#2247).
+  local read_part=""
+  if [[ "${PASS_STARTED_AT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]]; then
+    read_part=" read_at=${PASS_STARTED_AT}"
+  fi
+  local marker="${REVIEWS_MARKER_PREFIX}${PR_NUMBER}${sha_detail} intent=${intent} status=${status_token} reason=${reason}${reset_detail}${read_part} -->"
 
   # Retry message depends on the reason and on whether the intent can be
   # re-dispatched automatically.
