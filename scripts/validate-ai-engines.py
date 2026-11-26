@@ -12,8 +12,12 @@ schema cannot express. It fails when:
 
   - a task names a model missing from `models`, or marked `retired`;
   - a model appears in a chain of a provider other than its own;
-  - an enabled provider's model has no price row in effect today in
-    model-pricing.tsv. Rows are matched the way price_for
+  - no provider is enabled;
+  - an enabled provider lacks a chain for any of triage, deep, audit, action
+    or single, or for `duck` when that provider is claude;
+  - `duck` has a chain for a provider other than claude (duck is Claude-only);
+  - an enabled provider's non-retired model has no price row in effect today
+    in model-pricing.tsv (retired models are skipped). Rows are matched the way price_for
     (scripts/lib/model-pricing.sh) matches them, on the id without its vendor
     prefix, which is how engine.sh records it (openai/o4-mini -> o4-mini);
   - `duck`, `fable` or any Copilot chain lists more than one model (the lib
