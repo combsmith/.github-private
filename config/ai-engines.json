@@ -1,0 +1,117 @@
+{
+  "$schema": "./ai-engines.schema.json",
+  "version": 1,
+  "models": {
+    "claude-haiku-4-5-20251001": {
+      "provider": "claude",
+      "status": "active",
+      "notes": ["Triage primary; the dated id is the published one."]
+    },
+    "claude-sonnet-5-5": {
+      "provider": "claude",
+      "status": "active",
+      "notes": [
+        "Default sonnet across triage, deep, action and duck (#1978).",
+        "In triage and action it is followed by claude-sonnet-5 as the known-good sonnet hop; deep's tail is sonnet 5.5 alone."
+      ]
+    },
+    "claude-sonnet-5": {
+      "provider": "claude",
+      "status": "active",
+      "notes": [
+        "Known-good sonnet safety hop behind claude-sonnet-5-5 in triage and action.",
+        "The id is bare claude-sonnet-5: the claude-sonnet-5-0 spelling shipped by #1100 returns 404, so every hop to it fell through (#1957)."
+      ]
+    },
+    "claude-opus-5-5": {
+      "provider": "claude",
+      "status": "active",
+      "notes": [
+        "Deep primary (#1898), audit and single primary (#1901), action's last hop (#1900).",
+        "Its default reasoning effort is medium; engine.sh pins --effort high for deep, audit and single."
+      ]
+    },
+    "claude-opus-4-8": {
+      "provider": "claude",
+      "status": "active",
+      "notes": ["Known-good second hop behind claude-opus-5-5 in deep, audit and single (#1957). Min cacheable prefix 4096 tokens."]
+    },
+    "claude-opus-4-7": {
+      "provider": "claude",
+      "status": "active",
+      "notes": ["Last hop of audit and single."]
+    },
+    "claude-fable-5-2": {
+      "provider": "claude",
+      "status": "active",
+      "notes": [
+        "The preferred Fable: the fable family key (ai_model_for_family fable) returns it, and a chain naming it does not warn.",
+        "No engine tier defaults to Fable; it runs only where a caller asks for it."
+      ]
+    },
+    "claude-fable-5-1": {
+      "provider": "claude",
+      "status": "retired",
+      "notes": ["Deprecated (#1901). A configured chain naming it is still honoured as a stop-gap and warns once per run (ai_models_fable_deprecation). Its price row stays for historical token records."]
+    },
+    "claude-fable-5": {
+      "provider": "claude",
+      "status": "retired",
+      "notes": ["Deprecated (#1901). A configured chain naming it is still honoured as a stop-gap and warns once per run (ai_models_fable_deprecation). Its price row stays for historical token records."]
+    },
+    "gemini-3.8-flash": {
+      "provider": "gemini",
+      "status": "active",
+      "notes": ["Primary of triage and action; the known-working fallback of deep, audit and single."]
+    },
+    "gemini-3.1-pro-preview": {
+      "provider": "gemini",
+      "status": "preview",
+      "notes": ["Quality tier. Replaces gemini-2.5-pro, which is withdrawn for new keys (#1960)."]
+    },
+    "openai/o4-mini": {
+      "provider": "copilot",
+      "status": "active",
+      "notes": ["GitHub Models id. Token records and the price table key on it without the vendor prefix (o4-mini)."]
+    }
+  },
+  "providers": {
+    "fallback_order": ["claude", "gemini", "copilot"],
+    "claude": { "enabled": true },
+    "gemini": { "enabled": true },
+    "copilot": { "enabled": true }
+  },
+  "tasks": {
+    "triage": {
+      "claude": ["claude-haiku-4-5-20251001", "claude-sonnet-5-5", "claude-sonnet-5"],
+      "gemini": ["gemini-3.8-flash", "gemini-3.1-pro-preview"],
+      "copilot": ["openai/o4-mini"]
+    },
+    "deep": {
+      "claude": ["claude-opus-5-5", "claude-opus-4-8", "claude-sonnet-5-5"],
+      "gemini": ["gemini-3.1-pro-preview", "gemini-3.8-flash"],
+      "copilot": ["openai/o4-mini"]
+    },
+    "audit": {
+      "claude": ["claude-opus-5-5", "claude-opus-4-8", "claude-opus-4-7"],
+      "gemini": ["gemini-3.1-pro-preview", "gemini-3.8-flash"],
+      "copilot": ["openai/o4-mini"]
+    },
+    "action": {
+      "claude": ["claude-sonnet-5-5", "claude-sonnet-5", "claude-opus-5-5"],
+      "gemini": ["gemini-3.8-flash", "gemini-3.1-pro-preview"],
+      "copilot": ["openai/o4-mini"]
+    },
+    "single": {
+      "claude": ["claude-opus-5-5", "claude-opus-4-8", "claude-opus-4-7"],
+      "gemini": ["gemini-3.1-pro-preview", "gemini-3.8-flash"],
+      "copilot": ["openai/o4-mini"]
+    },
+    "duck": {
+      "claude": ["claude-sonnet-5-5"]
+    },
+    "fable": {
+      "claude": ["claude-fable-5-2"]
+    }
+  }
+}
