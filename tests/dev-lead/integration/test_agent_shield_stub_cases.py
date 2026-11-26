@@ -46,6 +46,8 @@ def expect(doc: dict, ok: bool, label: str) -> None:
 def main() -> int:
     expect(fixture(f"{REUSABLE}@agent-shield/v2-stable"), True, "v2-stable")
     expect(fixture(f"{REUSABLE}@agent-shield/v2-next"), True, "v2-next")
+    expect(fixture(f"{REUSABLE}@agent-shield/v3-stable"), True, "alternate major v3-stable")
+    expect(fixture(f"{REUSABLE}@agent-shield/v2-ring0"), True, "ring tier v2-ring0")
     expect(fixture(f"{REUSABLE}@agent-shield/stable"), False, "bare @agent-shield/stable")
     expect(fixture(f"{REUSABLE}@{'a' * 40}"), False, "SHA ref")
     expect(fixture(f"{REUSABLE}@main"), False, "@main ref")
