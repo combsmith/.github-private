@@ -140,6 +140,7 @@
   ],
   "surface_sources": {
     ".github/workflows/dev-lead-reusable.yml": [
+      "config/ai-engines.json",
       "prompts/dev-lead/fix-bot-comment.md",
       "prompts/dev-lead/fix-ci.md",
       "prompts/dev-lead/fix-issue.md",
@@ -159,6 +160,7 @@
       "scripts/lib/reviewer-sources.tsv"
     ],
     ".github/workflows/pr-review.yml": [
+      "config/ai-engines.json",
       "prompts/cascade-action.md",
       "prompts/deep-review.md",
       "prompts/rubber-duck.md",
