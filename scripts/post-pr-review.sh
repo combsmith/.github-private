@@ -289,17 +289,18 @@ upsert_escalation_comment() {
 }
 
 # mark_prior_agent_items_obsolete <pr_url>
-# After successfully posting a new review/comment, dismiss prior agent reviews
-# (state != DISMISSED) and collapse prior agent comments. Identifies agent
-# items by the body marker `<!-- pr-review-agent v1 sha=<HEX> -->`. The newest
-# agent item by timestamp (which is the just-posted one) is preserved.
-# Idempotent: prior comments already wrapped in a `<!-- pr-review-agent
-# superseded -->` sentinel are skipped to avoid recursive nesting.
+#   Dismiss stale prior agent reviews and collapse prior agent comments,
+#   keeping only the globally newest agent review/comment by timestamp.
+#   Preserves human reviews unchanged. After successfully posting a new review/comment,
+#   identify agent items by the body marker `<!-- pr-review-agent v1 sha=<HEX> -->`.
+#   The newest agent item by timestamp (which is the just-posted one) is preserved.
+#   Idempotent: prior comments already wrapped in a `<!-- pr-review-agent
+#   superseded -->` sentinel are skipped to avoid recursive nesting.
 #
-# API failures here do NOT abort the workflow — the new post has already
-# landed. They DO emit ::warning:: annotations so silent stack-up of
-# duplicates becomes visible in the Actions UI rather than degrading
-# unnoticed (e.g., a permissions change on the dismissal endpoint).
+#   API failures here do NOT abort the workflow — the new post has already
+#   landed. They DO emit ::warning:: annotations so silent stack-up of
+#   duplicates becomes visible in the Actions UI rather than degrading
+#   unnoticed (e.g., a permissions change on the dismissal endpoint).
 mark_prior_agent_items_obsolete() {
   local pr_url="$1"
   local owner_repo pr_num
@@ -507,6 +508,43 @@ clear_automated_hold_label() {
   ensure_hold_label_absent "$pr_url"
 }
 
+# Mechanical enforcement of decision gate 4 (#1766). Gate 4 — "No unresolved
+# review threads requesting changes" (prompts/shared.md) — was prompt-advisory
+# only, and the cascade posted APPROVED on PR #1742 over 15 unresolved threads.
+# Here an APPROVE verdict is IMPOSSIBLE while any review thread is unresolved, or
+# while the thread set cannot be enumerated (API failure / pagination /
+# permissions) — an unknown count must never read as zero. In either case the
+# decision is rewritten to escalate BEFORE any approval is posted. This runs at
+# the single point both the tier-2 and tier-3 cascade paths funnel through, and
+# ahead of the DRY_RUN branch so the downgrade is visible in dry runs too. It is
+# the ONE thread check, run immediately before the approve/escalate dispatch (and
+# so before the APPROVE review is submitted); there is no second recheck, since
+# one placed right after it would narrow no race.
+GATE4_DOWNGRADED="false"
+if [ "$DECISION" = "approve" ]; then
+  # shellcheck source=lib/unresolved-review-thread-gate.sh
+  source "$POST_PR_SCRIPT_DIR/lib/unresolved-review-thread-gate.sh"
+  URT_SNAPSHOT=$(urtg_fetch_review_threads "$PR_URL")
+  URT_RC=0
+  check_unresolved_review_threads "$URT_SNAPSHOT" || URT_RC=$?
+  if [ "$URT_RC" -eq 1 ]; then
+    URT_COUNT=$(printf '%s' "$URT_SNAPSHOT" | jq -r '[ (.reviewThreads // [])[] | select(.isResolved != true) ] | length' 2>/dev/null || echo "One or more")
+    echo "    gate4: $URT_COUNT unresolved review thread(s) — downgrading approve → escalate (#1766)"
+    DECISION="escalate"
+    GATE4_DOWNGRADED="true"
+    # Prepend the gate blocker to the original review body so the escalation
+    # carries the full review summary and findings, not just the gate note.
+    BODY=$(printf -- '- **blocker (decision gate 4)**: %s unresolved review thread(s) request changes and must be resolved before this PR can be approved. Resolve each open thread (or push a commit that addresses it and mark the thread resolved). Resolving threads does not by itself trigger a re-review at the same commit: push a new commit, or mention the review bot by its login (donpetry-bot) to force a re-review. (External contributors: ask a maintainer to mention the bot for you.)\n\n---\n\n%s' "$URT_COUNT" "$BODY")
+  elif [ "$URT_RC" -ne 0 ]; then
+    echo "    gate4: review threads could not be enumerated (rc=$URT_RC) — failing closed, downgrading approve → escalate (#1766)"
+    DECISION="escalate"
+    GATE4_DOWNGRADED="true"
+    # Prepend the gate blocker to the original review body so the escalation
+    # carries the full review summary and findings, not just the gate note.
+    BODY=$(printf -- '- **blocker (decision gate 4)**: the PR review-thread state could not be enumerated (API failure, pagination beyond one page, or permissions), so approval is withheld (fail-closed). An unknown thread count must not be treated as zero. Once the thread set is readable, push a new commit or mention the review bot by its login (donpetry-bot) to force a re-review. (External contributors: ask a maintainer to mention the bot for you.) (The same-commit verdict is otherwise a no-op.)\n\n---\n\n%s' "$BODY")
+  fi
+fi
+
 if [[ "$DRY_RUN" = "true" ]]; then
   echo "=== DRY RUN: Would post review ==="
   echo "Decision: $DECISION"
@@ -581,6 +619,7 @@ if [[ "$DECISION" = "approve" ]]; then
     echo "::warning::$PR_URL head moved from $PR_HEAD_SHA to $LIVE_HEAD during the review — not approving; the new head gets its own review (exit 100)"
     exit 100
   fi
+
 
   # Tier 4 (#2495): record that adjudication produced this approval. Appended
   # after the marker checks above, so it cannot affect them.
@@ -831,6 +870,35 @@ COMMENT_END
     # Escalate to human via CODEOWNERS — avoid hard-coding a single reviewer.
     echo "Escalating to human review..."
 
+    # Post the gate blocker message if present (e.g., gate 4 downgrade reason) so
+    # the author knows why approval was withheld. Keyed on the flag the gate-4
+    # block sets when it downgrades, never on text in the (model-written) body.
+    if [[ "$GATE4_DOWNGRADED" = "true" ]]; then
+      # Re-stamp as an escalation verdict instead of posting markerless: the
+      # same-SHA idempotency no-op in review-one-pr.sh keys on a bot marker at
+      # head (decision=(approved|escalated)), and a markerless comment lets the
+      # next trigger re-run the cascade and post a duplicate blocker at the
+      # same SHA. decision=escalated does not match standing-approval/
+      # carry-forward/miss-rate scans, which all require decision=approved.
+      BODY_WITHOUT_OLD_MARKER=$(printf '%s' "$BODY" | sed 's/<!-- pr-review-agent v1 sha=[a-f0-9][^>]*-->//g')
+      BODY_FOR_COMMENT="<!-- pr-review-agent v1 sha=$PR_HEAD_SHA decision=escalated risk=$RISK -->
+$BODY_WITHOUT_OLD_MARKER"
+      # Fail rather than escalate without the blocker comment: without the newest
+      # marker, a prior standing APPROVED review would stay active on a PR that is
+      # being held for a human. The run is retried.
+      if ! gh pr comment "$PR_URL" --body "$BODY_FOR_COMMENT"; then
+        echo "::error::escalation: failed to post the gate blocker comment on $PR_URL — failing so the run is retried and a prior approval is not left standing"
+        exit 1
+      fi
+      # A gate downgrade invalidates any prior agent approval at an earlier SHA.
+      # The just-posted escalation carries the newest marker so it is preserved;
+      # everything older (notably a stale APPROVED review) is superseded, closing
+      # the window where standing-approval/carry-forward could act on it.
+      mark_prior_agent_items_obsolete "$PR_URL"
+      # If the dismissal withdrew the last approval of a queued PR, remove it from
+      # the merge queue (#2174). Never fails the run.
+      mq_dequeue_if_unapproved "$PR_URL" || true
+    fi
     # AC3 (#1754): add the hold label only when it is absent, and CONFIRM it is
     # present before returning 101. Re-escalating an already-held PR must not
     # unlabel-then-relabel (four toggles in one day on an unchanged PR was the
