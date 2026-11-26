@@ -516,7 +516,11 @@ clear_automated_hold_label() {
 # permissions) — an unknown count must never read as zero. In either case the
 # decision is rewritten to escalate BEFORE any approval is posted. This runs at
 # the single point both the tier-2 and tier-3 cascade paths funnel through, and
-# ahead of the DRY_RUN branch so the downgrade is visible in dry runs too.
+# ahead of the DRY_RUN branch so the downgrade is visible in dry runs too. It is
+# the ONE thread check, run immediately before the approve/escalate dispatch (and
+# so before the APPROVE review is submitted); there is no second recheck, since
+# one placed right after it would narrow no race.
+GATE4_DOWNGRADED="false"
 if [ "$DECISION" = "approve" ]; then
   # shellcheck source=lib/unresolved-review-thread-gate.sh
   source "$POST_PR_SCRIPT_DIR/lib/unresolved-review-thread-gate.sh"
@@ -527,37 +531,17 @@ if [ "$DECISION" = "approve" ]; then
     URT_COUNT=$(printf '%s' "$URT_SNAPSHOT" | jq -r '[ (.reviewThreads // [])[] | select(.isResolved != true) ] | length' 2>/dev/null || echo "One or more")
     echo "    gate4: $URT_COUNT unresolved review thread(s) — downgrading approve → escalate (#1766)"
     DECISION="escalate"
+    GATE4_DOWNGRADED="true"
     # Prepend the gate blocker to the original review body so the escalation
     # carries the full review summary and findings, not just the gate note.
     BODY=$(printf -- '- **blocker (decision gate 4)**: %s unresolved review thread(s) request changes and must be resolved before this PR can be approved. Resolve each open thread (or push a commit that addresses it and mark the thread resolved). Resolving threads does not by itself trigger a re-review at the same commit: push a new commit, or mention `@donpetry-bot` to force a re-review. (External contributors: ask a maintainer to mention the bot for you.)\n\n---\n\n%s' "$URT_COUNT" "$BODY")
   elif [ "$URT_RC" -ne 0 ]; then
     echo "    gate4: review threads could not be enumerated (rc=$URT_RC) — failing closed, downgrading approve → escalate (#1766)"
     DECISION="escalate"
+    GATE4_DOWNGRADED="true"
     # Prepend the gate blocker to the original review body so the escalation
     # carries the full review summary and findings, not just the gate note.
     BODY=$(printf -- '- **blocker (decision gate 4)**: the PR review-thread state could not be enumerated (API failure, pagination beyond one page, or permissions), so approval is withheld (fail-closed). An unknown thread count must not be treated as zero. Once the thread set is readable, push a new commit or mention `@donpetry-bot` to force a re-review. (External contributors: ask a maintainer to mention the bot for you.) (The same-commit verdict is otherwise a no-op.)\n\n---\n\n%s' "$BODY")
-  fi
-fi
-
-# Pre-approval recheck: immediately before posting approval (or in dry-run), verify
-# the thread state has not changed (issue #1766 race condition). A thread opened
-# between the initial gate check and this re-check must block approval. This is not
-# a full re-review — only the gate 4 check is re-run; if threads are now unresolved,
-# approval is downgraded to escalation. Run this for dry-run too so dry-run output
-# reflects the same final decision as the real path.
-if [[ "$DECISION" = "approve" ]]; then
-  URT_RECHECK_SNAPSHOT=$(urtg_fetch_review_threads "$PR_URL")
-  URT_RECHECK_RC=0
-  check_unresolved_review_threads "$URT_RECHECK_SNAPSHOT" || URT_RECHECK_RC=$?
-  if [[ "$URT_RECHECK_RC" -eq 1 ]]; then
-    URT_RECHECK_COUNT=$(printf '%s' "$URT_RECHECK_SNAPSHOT" | jq -r '[ (.reviewThreads // [])[] | select(.isResolved != true) ] | length' 2>/dev/null || echo "One or more")
-    echo "    gate4 (recheck): $URT_RECHECK_COUNT unresolved review thread(s) detected after initial check — downgrading approve → escalate (#1766)"
-    DECISION="escalate"
-    BODY=$(printf -- '- **blocker (decision gate 4)**: %s unresolved review thread(s) request changes and must be resolved before this PR can be approved (a thread was opened after initial review). Resolve each open thread (or push a commit that addresses it and mark the thread resolved). Resolving threads does not by itself trigger a re-review at the same commit: push a new commit, or mention `@donpetry-bot` to force a re-review. (External contributors: ask a maintainer to mention the bot for you.)\n\n---\n\n%s' "$URT_RECHECK_COUNT" "$BODY")
-  elif [[ "$URT_RECHECK_RC" -ne 0 ]]; then
-    echo "    gate4 (recheck): review threads could not be re-enumerated (rc=$URT_RECHECK_RC) — failing closed, downgrading approve → escalate (#1766)"
-    DECISION="escalate"
-    BODY=$(printf -- '- **blocker (decision gate 4)**: the PR review-thread state could not be re-enumerated immediately before approval (API failure, pagination beyond one page, or permissions), so approval is withheld (fail-closed). An unknown thread count must not be treated as zero. Once the thread set is readable, push a new commit or mention `@donpetry-bot` to force a re-review. (External contributors: ask a maintainer to mention the bot for you.) (The same-commit verdict is otherwise a no-op.)\n\n---\n\n%s' "$BODY")
   fi
 fi
 
@@ -887,10 +871,9 @@ COMMENT_END
     echo "Escalating to human review..."
 
     # Post the gate blocker message if present (e.g., gate 4 downgrade reason) so
-    # the author knows why approval was withheld. Match the exact deterministic
-    # prefix the gate-4 block above prepends rather than substring matching
-    # natural-language text; "blocker" is common in review language.
-    if [[ "$BODY" == *"- **blocker (decision gate"* ]]; then
+    # the author knows why approval was withheld. Keyed on the flag the gate-4
+    # block sets when it downgrades, never on text in the (model-written) body.
+    if [[ "$GATE4_DOWNGRADED" = "true" ]]; then
       # Re-stamp as an escalation verdict instead of posting markerless: the
       # same-SHA idempotency no-op in review-one-pr.sh keys on a bot marker at
       # head (decision=(approved|escalated)), and a markerless comment lets the

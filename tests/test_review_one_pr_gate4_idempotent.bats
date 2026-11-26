@@ -52,7 +52,7 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
     prev="$a"
   done
   case "$*" in
-    *reviewThreads*) resp='{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+    *reviewThreads*) resp='{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}' ;;
     *pushedDate*)    resp='{"data":{"resource":{"commits":{"nodes":[{"commit":{"pushedDate":"2020-01-01T00:00:00Z","committer":{"date":"2020-01-01T00:00:00Z"}}}]}}}}' ;;
     *committer*)     resp='{"data":{"resource":{"commits":{"nodes":[{"commit":{"committer":{"date":"2020-01-01T00:00:00Z"}}}]}}}}' ;;
     *)               resp='{"data":{}}' ;;

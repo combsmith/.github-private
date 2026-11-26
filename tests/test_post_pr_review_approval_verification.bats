@@ -71,7 +71,7 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
     if [ -n "${REVIEW_THREADS_GRAPHQL:-}" ]; then
       printf '%s' "$REVIEW_THREADS_GRAPHQL"
     else
-      printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+      printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'
     fi
   else
     echo "Unmapped graphql query: $args" >&2

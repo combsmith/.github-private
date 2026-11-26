@@ -37,6 +37,10 @@
 # sourced, and setting shell options would leak into the calling script. It is
 # enabled only in the standalone execution block below.
 
+_URTG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=open-review-threads.sh
+source "$_URTG_DIR/open-review-threads.sh"
+
 # log_unresolved_gate_info <message...>
 #   Echo an info-level message to stderr with [unresolved-review-gate] prefix.
 #   Used for operational diagnostics (e.g., gate check results) that should appear
@@ -55,50 +59,32 @@ log_unresolved_gate_warn() {
 
 # urtg_fetch_review_threads <pr_url>
 #   Echo a JSON object {"complete": <bool>, "reviewThreads": [ {isResolved}, … ]}.
-#   `complete` is true ONLY when the GraphQL call succeeded and the PR's review
-#   threads fit in a single page (pageInfo.hasNextPage == false). On any API
-#   failure, an unparseable response, or a second page of threads, `complete` is
-#   false so the pure check fails closed rather than under-counting. Always emits
-#   a valid JSON object (never empty) so the caller can consume it with jq.
+#   Delegates to ort_fetch_open_threads (lib/open-review-threads.sh), which pages
+#   through EVERY review thread (so a PR with more than 100 threads can still
+#   clear the gate) and fails closed. `reviewThreads` holds the unresolved
+#   threads; `complete` is true only when every page was fetched and validated.
+#   On any failure (unparseable URL, API error, malformed page, missing cursor)
+#   `complete` is false so the pure check fails closed rather than under-counting.
+#   Always emits a valid JSON object (never empty) so the caller can consume it
+#   with jq.
 urtg_fetch_review_threads() {
   local pr_url="${1:-}"
   local _fail='{"complete": false, "reviewThreads": []}'
-  if [[ -z "$pr_url" ]]; then
+  local _re='^https://github\.com/([^/]+/[^/]+)/pull/([0-9]+)/?$'
+  if [[ ! "$pr_url" =~ $_re ]]; then
+    log_unresolved_gate_warn "cannot parse PR URL '$pr_url' — failing closed"
     printf '%s' "$_fail"
     return 0
   fi
-  # shellcheck disable=SC2016  # $url is a GraphQL variable placeholder, not shell
-  local _gql='query($url:URI!){resource(url:$url){...on PullRequest{reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}}}}}'
-  local _raw
-  if ! _raw=$(gh api graphql -f query="$_gql" -f url="$pr_url"); then
-    log_unresolved_gate_warn "review-threads GraphQL query failed — failing closed"
+  local _repo="${BASH_REMATCH[1]}" _pr="${BASH_REMATCH[2]}"
+  local _open
+  if ! _open=$(ort_fetch_open_threads "$_repo" "$_pr"); then
+    log_unresolved_gate_warn "review-threads enumeration failed — failing closed"
     printf '%s' "$_fail"
     return 0
   fi
-  if [[ -z "$_raw" ]]; then
-    log_unresolved_gate_warn "review-threads GraphQL query returned no data — failing closed"
-    printf '%s' "$_fail"
-    return 0
-  fi
-  # A well-formed reviewThreads connection MUST carry both pageInfo.hasNextPage
-  # and nodes. A response missing either is malformed/partial — treat it as an
-  # incomplete enumeration (complete:false → the pure check fails closed) rather
-  # than coalescing the gaps into a complete empty set that could allow approval.
-  # Reject any response with a top-level errors field (GraphQL error).
-  printf '%s' "$_raw" | jq -c '
-    if (.errors != null and (.errors | length) > 0) then {complete: false, reviewThreads: []}
-    else
-      (.data.resource.reviewThreads?) as $rt
-      | if ($rt == null
-            or ($rt.pageInfo.hasNextPage? == null)
-            or ($rt.nodes | type) != "array")
-        then {complete: false, reviewThreads: []}
-        else {
-          complete: ($rt.pageInfo.hasNextPage | not),
-          reviewThreads: $rt.nodes
-        } end
-    end
-  ' 2>/dev/null || printf '%s' "$_fail"
+  jq -cn --argjson t "$_open" '{complete: true, reviewThreads: $t}' 2>/dev/null \
+    || printf '%s' "$_fail"
 }
 
 # check_unresolved_review_threads <threads_json>

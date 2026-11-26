@@ -60,7 +60,7 @@ _labels_init() {
 # Gate 4 (#1766): clean review-thread enumeration so approve verdicts reach the
 # AC4 body checks instead of failing closed on an unreadable thread set.
 if [ "$sub1" = "api" ] && [ "$sub2" = "graphql" ]; then
-  printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}'
+  printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'
   exit 0
 fi
 

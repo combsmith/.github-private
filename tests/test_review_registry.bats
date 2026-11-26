@@ -27,7 +27,7 @@ setup() {
 #!/bin/bash
 if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   case "$*" in
-    *reviewThreads*) printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+    *reviewThreads*) printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}' ;;
     *)               echo "Unmapped graphql query: $*" >&2; exit 1 ;;
   esac
   exit 0

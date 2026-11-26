@@ -37,21 +37,13 @@ printf '%s\n' "$*" >> "$GH_LOG"
 
 # GraphQL: the unresolved-review-thread enumeration.
 if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
-  # Changing-snapshot mode: the first enumeration (initial gate) is clean, every
-  # later one (pre-POST recheck) uses $URT_GQL_RECHECK_MODE.
-  if [ -n "${URT_GQL_RECHECK_MODE:-}" ] && [[ "$args" == *reviewThreads* ]]; then
-    n=$(cat "$GQL_COUNT" 2>/dev/null || echo 0)
-    n=$((n + 1))
-    echo "$n" > "$GQL_COUNT"
-    if [ "$n" -ge 2 ]; then URT_GQL_MODE="$URT_GQL_RECHECK_MODE"; else URT_GQL_MODE="clean"; fi
-  fi
   case "$*" in
     *reviewThreads*)
       case "${URT_GQL_MODE:-clean}" in
-        clean)      printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
-        unresolved) printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false}]}}}}' ;;
-        paginated)  printf '%s' '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":true},"nodes":[{"isResolved":true}]}}}}' ;;
-        malformed)  printf '%s' '{"data":{"resource":{"reviewThreads":{"nodes":[{"isResolved":true}]}}}}' ;;
+        clean)      printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}' ;;
+        unresolved) printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false}]}}}}}' ;;
+        paginated)  printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":true},"nodes":[{"isResolved":true}]}}}}}' ;;
+        malformed)  printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":true}]}}}}}' ;;
         apifail)    exit 1 ;;
       esac
       exit 0
@@ -94,6 +86,18 @@ fi
 
 # api --paginate for prior-item cleanup → empty arrays, except /reviews readback.
 if [ "$1" = "api" ]; then
+  # read_live_head_sha: the live head equals the reviewed head.
+  if [[ "$args" == *"/pulls/"* ]] && [[ "$args" == *"--jq"* ]] && [[ "$args" != *"/reviews"* ]]; then
+    printf '%s\n' "$SHA"
+    exit 0
+  fi
+  # commit-bound approval POST: record it, drain stdin, return the review object.
+  if [[ "$args" == *"-X POST"* ]] && [[ "$args" == *"/reviews"* ]]; then
+    cat > /dev/null
+    printf 'APPROVE %s\n' "$*" >> "$APPROVE_LOG"
+    printf '%s' '{"id":1,"state":"APPROVED","commit_id":"'"$SHA"'"}'
+    exit 0
+  fi
   if [[ "$args" == *"/reviews"* ]]; then
     # verify_approval_landed reads back with `--paginate --slurp | jq 'add'`, so a
     # slurp request must return an array-of-pages that `jq 'add'` flattens into the
@@ -122,9 +126,6 @@ GHEOF
   export AI_DELEGATION_ENABLED="true"
   export REVIEW_CYCLE="0"
   export MAX_REVIEW_CYCLES="3"
-  # Disable merge-queue retries for fast, deterministic tests (unrelated to gate 4)
-  export MERGE_QUEUE_RETRY_ATTEMPTS="1"
-  export MERGE_QUEUE_RETRY_DELAY="0"
 }
 
 # No teardown needed: TEST_DIR is $BATS_TEST_TMPDIR, which BATS creates per-test
@@ -205,45 +206,6 @@ write_verdict() {
   grep -q 'APPROVE' "$APPROVE_LOG"
   # No fix-request comment.
   [ ! -s "$COMMENT_OUT" ]
-}
-
-# ── Pre-POST recheck: clean at the initial gate, blocked at the recheck ──────
-
-@test "recheck: clean initial snapshot then unresolved thread → NOT approved, routed to AI-delegation fix-request (#1766)" {
-  export URT_GQL_RECHECK_MODE="unresolved"
-  export HOLD_LABEL_PRESENT=1
-  local vf; vf=$(write_verdict approve LOW)
-  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
-  echo "$output" >&2
-  [ "$status" -eq 0 ]
-  [ ! -s "$APPROVE_LOG" ]
-  [[ "$output" == *"gate4 (recheck)"* ]]
-  grep -qi 'unresolved review thread' "$COMMENT_OUT"
-  grep -qi 'fix requested' "$COMMENT_OUT"
-}
-
-@test "recheck: clean initial snapshot then incomplete (paginated) → NOT approved, fail-closed fix-request (#1766)" {
-  export URT_GQL_RECHECK_MODE="paginated"
-  export HOLD_LABEL_PRESENT=1
-  local vf; vf=$(write_verdict approve LOW)
-  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
-  echo "$output" >&2
-  [ "$status" -eq 0 ]
-  [ ! -s "$APPROVE_LOG" ]
-  [[ "$output" == *"could not be re-enumerated"* ]]
-  grep -qi 'could not be re-enumerated' "$COMMENT_OUT"
-  grep -qi 'fix requested' "$COMMENT_OUT"
-}
-
-@test "recheck: unresolved thread with AI delegation disabled → human escalation (exit 101)" {
-  export URT_GQL_RECHECK_MODE="unresolved"
-  export HOLD_LABEL_PRESENT=1
-  export AI_DELEGATION_ENABLED="false"
-  local vf; vf=$(write_verdict approve LOW)
-  run bash "$POST_SCRIPT" "$PR_URL" "$vf" "false"
-  echo "$output" >&2
-  [ "$status" -eq 101 ]
-  [ ! -s "$APPROVE_LOG" ]
 }
 
 # ── The gate only governs approvals: an escalate verdict is untouched ────────

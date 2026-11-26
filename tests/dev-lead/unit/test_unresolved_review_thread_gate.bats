@@ -169,31 +169,31 @@ _mock_gh() {
 _run_fetch() {
   # _run_fetch <raw_json> — stub gh to emit <raw_json>, run urtg_fetch_review_threads.
   _mock_gh "$1"
-  run bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
+  run --separate-stderr bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
 }
 
-@test "fetch: well-formed single-page response → complete:true, threads passed through" {
-  _run_fetch '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":true}]}}}}'
+@test "fetch: well-formed single-page response → complete:true, open threads kept" {
+  _run_fetch '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false}]}}}}}'
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.complete == true'
-  echo "$output" | jq -e '.reviewThreads == [{"isResolved":true}]'
+  echo "$output" | jq -e '.reviewThreads == [{"isResolved":false}]'
 }
 
 @test "fetch: response missing pageInfo → complete:false (fail closed)" {
-  _run_fetch '{"data":{"resource":{"reviewThreads":{"nodes":[{"isResolved":false}]}}}}'
+  _run_fetch '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":false}]}}}}}'
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.complete == false'
   echo "$output" | jq -e '.reviewThreads == []'
 }
 
 @test "fetch: response missing hasNextPage → complete:false (fail closed)" {
-  _run_fetch '{"data":{"resource":{"reviewThreads":{"pageInfo":{},"nodes":[]}}}}'
+  _run_fetch '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{},"nodes":[]}}}}}'
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.complete == false'
 }
 
 @test "fetch: response missing nodes → complete:false (fail closed)" {
-  _run_fetch '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":false}}}}}'
+  _run_fetch '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false}}}}}}'
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.complete == false'
 }
@@ -205,13 +205,29 @@ _run_fetch() {
 }
 
 @test "fetch: hasNextPage true (second page) → complete:false (fail closed)" {
-  _run_fetch '{"data":{"resource":{"reviewThreads":{"pageInfo":{"hasNextPage":true},"nodes":[{"isResolved":true}]}}}}'
+  _run_fetch '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":true},"nodes":[{"isResolved":true}]}}}}}'
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.complete == false'
 }
 
+@test "fetch: more than one page of threads is paginated → complete:true, open threads from every page" {
+  MOCK_BIN="$BATS_TEST_TMPDIR/bin"; mkdir -p "$MOCK_BIN"
+  cat > "$MOCK_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"cursor=c1"* ]]; then
+  printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":"c2"},"nodes":[{"id":"b","isResolved":false}]}}}}}'
+else
+  printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[{"id":"a","isResolved":true}]}}}}}'
+fi
+GHEOF
+  chmod +x "$MOCK_BIN/gh"
+  run bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.complete == true and (.reviewThreads | length) == 1 and .reviewThreads[0].id == "b"'
+}
+
 @test "fetch→check: missing pageInfo normalizes to complete:false and the check fails closed (rc 2)" {
-  _mock_gh '{"data":{"resource":{"reviewThreads":{"nodes":[]}}}}'
+  _mock_gh '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'
   run bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; s=\$(urtg_fetch_review_threads 'https://github.com/o/r/pull/1'); check_unresolved_review_threads \"\$s\""
   [ "$status" -eq 2 ]
 }
