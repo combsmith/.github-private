@@ -30,9 +30,10 @@ jobs:
     if: vars.AGENTS_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Secrets are scoped per step: GH_TOKEN only on steps that call gh, and
+    # CLAUDE_CODE_OAUTH_TOKEN only on the model step. The model step has no tools
+    # and no GH_TOKEN, so injected text in a job/step name cannot act.
     env:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-      GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
 
     steps:
@@ -46,6 +47,7 @@ jobs:
       # a checkout step here trips CodeQL's untrusted-checkout heuristic.
       - name: Fetch analyst tooling
         env:
+          GH_TOKEN: ${{ github.token }}
           TOOLING_REF: ${{ job.workflow_sha }}
         run: |
           set -euo pipefail
@@ -61,12 +63,15 @@ jobs:
       # GitHub Actions runs). Anything else ends in a "skipping" notice, exit 0.
       - name: Resolve non-fork PR
         id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: bash .ci-analyst-tooling/scripts/ci-failure-analyst-resolve.sh resolve
 
       - name: Check idempotency
         if: steps.pr.outputs.skip == 'false'
         id: idem
         env:
+          GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
         run: bash .ci-analyst-tooling/scripts/ci-failure-analyst-resolve.sh idempotency
@@ -81,9 +86,12 @@ jobs:
           echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
           npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
-      - name: Analyze failure and post comment
+      # Model step: no tools, no GH_TOKEN. It only prints the comment body.
+      - name: Analyze failure
+        id: analyze
         if: steps.pr.outputs.skip == 'false' && steps.idem.outputs.exists == 'false'
         env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           WORKFLOW_NAME: ${{ steps.pr.outputs.check_name }}
@@ -147,11 +155,10 @@ jobs:
 
           If the workflow_or_check_name metadata contains lint, shellcheck, markdownlint, yamllint, or similar -> must classify as Lint/style.
 
-          ### 3. Post a comment on PR #$PR_NUMBER using bash:
-          # Extract the workflow name from the metadata JSON for the comment title.
-          # Use printf with proper escaping to safely include it in the gh command.
-          gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
-            -f body='<!-- ci-analyst sha=$HEAD_SHA -->
+          ### 3. Print the comment body
+          Print ONLY the comment body below, as markdown, to stdout. Do not run any command and do not
+          print a marker line or anything before or after the body:
+
           ## CI Failure: $WORKFLOW_NAME
 
           **Step:** FAILING_STEP_NAME
@@ -161,28 +168,48 @@ jobs:
 
           **Suggested fix:** ONE_CONCRETE_ACTION
 
-          [View run logs]($DETAILS_URL)'
+          [View run logs]($DETAILS_URL)
 
           Rules:
-          - The <!-- ci-analyst sha=$HEAD_SHA --> marker MUST be the very first line of the comment body
           - Root cause must be one of the six categories above
           - Suggested fix must be one specific, actionable step (not "fix the tests")
           - Keep the entire comment under 300 words
           TMPL
 
           PROMPT=$(envsubst < /tmp/prompt-template.txt)
-          _analyst_out=$(mktemp)
+          _analyst_out="$RUNNER_TEMP/ci-analyst-body.md"
+          _analyst_err=$(mktemp)
           _analyst_rc=0
           claude --print \
-            --permission-mode bypassPermissions \
-            --allowedTools Bash \
+            --tools "" \
             --fallback-model opus \
-            -p "$PROMPT" 2>&1 | tee "$_analyst_out" || _analyst_rc=${PIPESTATUS[0]}
+            -p "$PROMPT" > "$_analyst_out" 2> "$_analyst_err" || _analyst_rc=$?
+          cat "$_analyst_err" >&2
           if [ "$_analyst_rc" -ne 0 ] && \
-             grep -qiE "hit your.*(session )?limit|rate.?limit|session limit|usage limit|quota exceeded|too many requests" "$_analyst_out"; then
+             cat "$_analyst_out" "$_analyst_err" | grep -qiE "hit your.*(session )?limit|rate.?limit|session limit|usage limit|quota exceeded|too many requests"; then
             echo "::notice::Claude rate-limited — skipping CI analysis for PR #${PR_NUMBER} (will retry on next CI failure)"
-            rm -f "$_analyst_out"
+            echo "rate_limited=true" >> "$GITHUB_OUTPUT"
+            rm -f "$_analyst_out" "$_analyst_err"
             exit 0
           fi
-          rm -f "$_analyst_out"
+          rm -f "$_analyst_err"
+          echo "rate_limited=false" >> "$GITHUB_OUTPUT"
           exit "$_analyst_rc"
+
+      # Posting is done here, not by the model: the marker is written by this step.
+      - name: Post comment
+        if: steps.pr.outputs.skip == 'false' && steps.idem.outputs.exists == 'false' && steps.analyze.outputs.rate_limited == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          body_file="$RUNNER_TEMP/ci-analyst-body.md"
+          if [ ! -s "$body_file" ] || ! grep -q '[^[:space:]]' "$body_file"; then
+            echo "::error::Model produced no output - nothing to post"
+            exit 1
+          fi
+          full="$RUNNER_TEMP/ci-analyst-comment.md"
+          { printf '<!-- ci-analyst sha=%s -->\n' "$HEAD_SHA"; cat "$body_file"; } > "$full"
+          gh api "repos/$REPO/issues/$PR_NUMBER/comments" -F body=@"$full"

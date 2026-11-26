@@ -379,3 +379,20 @@ failed_jobs_fixture() {
   run bash "$SCRIPT" bogus
   [ "$status" -eq 2 ]
 }
+
+@test "model step has no Bash and no GH_TOKEN (job or step env)" {
+  run python3 - "$REPO_ROOT/.github/workflows/ci-failure-analyst-reusable.yml" <<'PY'
+import sys, yaml
+wf = yaml.safe_load(open(sys.argv[1]))
+job = wf["jobs"]["analyze"]
+assert "GH_TOKEN" not in job.get("env", {}), "GH_TOKEN in job env"
+assert "CLAUDE_CODE_OAUTH_TOKEN" not in job.get("env", {}), "OAuth token in job env"
+model = [s for s in job["steps"] if "claude --print" in s.get("run", "")]
+assert len(model) == 1, "expected exactly one model step"
+m = model[0]
+assert "GH_TOKEN" not in m.get("env", {}), "GH_TOKEN reaches model step"
+assert "Bash" not in m["run"], "model step allows Bash"
+assert "bypassPermissions" not in m["run"], "model step bypasses permissions"
+PY
+  [ "$status" -eq 0 ]
+}

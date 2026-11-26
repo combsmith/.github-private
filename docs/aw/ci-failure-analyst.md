@@ -29,7 +29,7 @@ repo-x (check_run: failure)
           └─ runs analysis → posts comment
 ```
 
-**Why reusable workflow (not dispatch)?** CI Failure Analyst is read-only — it only posts a comment using the caller's own `GITHUB_TOKEN`. No `GH_PAT_WORKFLOWS` is needed. The reusable pattern is simpler: one file, `secrets: inherit`, and GitHub automatically scopes the token to the caller's repo.
+**Why reusable workflow (not dispatch)?** CI Failure Analyst is read-only — it only posts a comment using the caller's own `GITHUB_TOKEN`. The model runs with no tools and no token and only prints the comment body; a separate workflow step writes the `ci-analyst` marker and posts it. No `GH_PAT_WORKFLOWS` is needed. The reusable pattern is simpler: one file, `secrets: inherit`, and GitHub automatically scopes the token to the caller's repo.
 
 ### Interaction contract
 
