@@ -351,13 +351,13 @@ ssg_rebase_record() {
     || return 2
   if [[ -n "$base_rev" ]] && git cat-file -e "${base_rev}^{commit}" 2>/dev/null; then
     base_paths=$(git -c core.quotePath=false grep -l -I -e 'SOURCE OF TRUTH:' "$base_rev" -- 2>/dev/null | while IFS= read -r path; do
-      printf '%s\n' "${path#${base_rev}:}"
+      printf '%s\n' "${path#*:}"
     done || true)
   fi
   candidates=$(
     {
       git -c core.quotePath=false grep -l -I -e 'SOURCE OF TRUTH:' "$pre" -- 2>/dev/null | while IFS= read -r path; do
-        printf '%s\n' "${path#${pre}:}"
+        printf '%s\n' "${path#*:}"
       done || true
       printf '%s\n' "$pr_paths"
       printf '%s\n' "$base_paths"
