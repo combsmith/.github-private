@@ -179,7 +179,7 @@ jobs:
 
           PROMPT=$(envsubst < "$_prompt_template")
           _analyst_out="$RUNNER_TEMP/ci-analyst-body.md"
-          _analyst_err=$(mktemp)
+          _analyst_err="$RUNNER_TEMP/ci-analyst-err.txt"
           _analyst_rc=0
           claude --print \
             --tools "" \
