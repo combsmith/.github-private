@@ -280,3 +280,18 @@ make_fixture() {
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq 'length')" -eq 150 ]
 }
+
+@test "ort_fetch_open_threads: a node with missing or non-boolean isResolved → non-zero, no stdout" {
+  make_fixture 10 5
+  export GH_PAGE_OVERRIDE=1
+  export GH_PAGE_BODY='{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{}]}}}}}'
+  run --separate-stderr ort_fetch_open_threads "combsmith/.github-private" 7
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+
+  : > "$GH_CALLS_FILE"
+  export GH_PAGE_BODY='{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"isResolved":"false"}]}}}}}'
+  run --separate-stderr ort_fetch_open_threads "combsmith/.github-private" 7
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+}
