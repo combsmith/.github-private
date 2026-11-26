@@ -980,4 +980,8 @@ _scan_with_markers() {
   # Counted once: below the default cap of 2, so a dispatch is still wanted.
   run stale_disposition_needs_dispatch "$nodes" 2000
   [ "$status" -eq 0 ]
+  # Pin the count to exactly 1: a cap of 1 is reached (count >= 1), so a
+  # zero count would not return 3 here.
+  STALE_DISPOSITION_MAX_PASSES=1 run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 3 ]
 }
