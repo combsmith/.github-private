@@ -99,6 +99,11 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
     echo '{"data":{"dequeuePullRequest":{"mergeQueueEntry":{"id":"MQE_1"}}}}'
     exit 0
   fi
+  # Gate-4 thread read (scripts/lib/open-review-threads.sh): no open threads.
+  if [[ "$*" == *endCursor* ]]; then
+    echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}'
+    exit 0
+  fi
   [ "${GRAPHQL_READ_RC:-0}" = "0" ] || { echo 'HTTP 502' >&2; exit "$GRAPHQL_READ_RC"; }
   if [ "${GRAPHQL_READ_FAIL_TIMES:-0}" != "0" ]; then
     n=$(cat "$READ_FAILS_FILE")
