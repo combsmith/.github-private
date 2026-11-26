@@ -335,6 +335,7 @@ PIN="sed -i 's/@v1\$/@0123456789abcdef0123456789abcdef01234567/' '$STUB'"
   _e2e_stubs "$SYNC_PR_JSON"
   _engine "$PIN"
   _run_rebase
+  [[ "$status" -eq 0 ]]
   # The engine pushed its rebase; the harness pushed one follow-up commit on top.
   [[ "$(git --git-dir="$REMOTE" rev-parse refs/heads/feat~1)" == "$(cat "$ENGINE_PUSHED")" ]]
   [[ "$(_remote_blob "$STUB")" == "$(_blob "${PRE}:${STUB}")" ]]
@@ -354,6 +355,7 @@ PIN="sed -i 's/@v1\$/@0123456789abcdef0123456789abcdef01234567/' '$STUB'"
   _e2e_stubs "$SYNC_PR_JSON"
   _engine "printf '# SOURCE OF TRUTH: combsmith/.github/standards/workflows/persona-mention.yml\\nname: hand-merged\\n' > '$STUB'"
   _run_rebase
+  [[ "$status" -eq 0 ]]
   [[ "$(_remote_blob "$STUB")" == "$(_blob "origin/main:${STUB}")" ]]
   grep -q 'dev-lead-sync-stub-restore' "$REC"
 }
@@ -364,6 +366,7 @@ PIN="sed -i 's/@v1\$/@0123456789abcdef0123456789abcdef01234567/' '$STUB'"
   _e2e_stubs "$SYNC_PR_JSON"
   _engine ":"
   _run_rebase
+  [[ "$status" -eq 0 ]]
   [[ "$(_remote_feat)" == "$(cat "$ENGINE_PUSHED")" ]]
   run grep -q 'dev-lead-sync-stub' "$REC"
   [[ "$status" -eq 1 ]]
@@ -466,4 +469,68 @@ HOOK
   run ssg_rebase_record "$PRE" "$MB" origin/main
   [[ "$status" -eq 0 ]]
   grep -qxF ".github/workflows/new.yml"$'\t-\t-\tstandards/workflows/new.yml' <<<"$output"
+}
+
+# ---------------------------------------------------------------------------
+# #2232 review follow-ups: content re-check after the push, net-zero after restore
+# ---------------------------------------------------------------------------
+
+@test "ssg_rebase_verify_restored: names a restored path whose blob differs from the intended one" {
+  _mk_pr
+  local rec; rec=$(ssg_rebase_record "$PRE" "$MB")
+  _main_moves
+  _rebased "sed -i 's/@v1\$/@deadbeef/' '$STUB'"
+  local rows; rows=$(ssg_rebase_restore "$rec" "$PRE" origin/main)
+  # Intended content is committed: nothing is reported.
+  git commit -q -m restore
+  run ssg_rebase_verify_restored "$rows" "$rec" "$PRE" origin/main HEAD
+  [[ "$status" -eq 0 ]]
+  [[ -z "$output" ]]
+  # The head then drifts from it (a foreign change folded in): reported.
+  echo "extra" >> "$STUB"
+  git add -A; git commit -q -m drift
+  run ssg_rebase_verify_restored "$rows" "$rec" "$PRE" origin/main HEAD
+  [[ "$output" == "${STUB}"$'\t'"${TPL}" ]]
+}
+
+@test "e2e rebase: a restore that leaves the PR empty holds it and says the branch was already pushed" {
+  _mk_pr
+  _main_moves main
+  _e2e_stubs "$SYNC_PR_JSON"
+  # The PR's only surviving change is the stub; the base changed it too, so base
+  # content wins and the PR nets to zero.
+  _engine "git rm -q -f '$HL' docs/sync.md; printf '# SOURCE OF TRUTH: combsmith/.github/standards/workflows/persona-mention.yml\\nname: hand-merged\\n' > '$STUB'"
+  _run_rebase
+  grep -q 'dev-lead-noop-guard pr=42 intent=rebase' "$REC"
+  grep -q 'already pushed' "$REC"
+  grep -q '^LABEL .*needs-human-review' "$REC"
+  run grep -q 'status=applied' "$REC"
+  [[ "$status" -eq 1 ]]
+}
+
+@test "e2e rebase: a foreign commit folded into a restored stub flags the PR instead of reporting it restored" {
+  _mk_pr
+  _main_moves
+  _e2e_stubs "$SYNC_PR_JSON"
+  _engine "$PIN"
+  # Right after the harness commits the restore, a foreign commit changing the
+  # same stub lands on the remote; push_no_clobber rebases onto it.
+  cat > "$REPO_DIR/.git/hooks/post-commit" <<HOOK
+#!/usr/bin/env bash
+git log -1 --format=%s | grep -q 'restore synced' || exit 0
+(
+  unset \$(git rev-parse --local-env-vars)
+  t=\$(mktemp -d); git clone -q "file://$REMOTE" "\$t" && cd "\$t" \
+    && git checkout -q feat && sed -i '2s/\$/ (edited)/' '$STUB' \
+    && git -c user.name=H -c user.email=h@h commit -q -am "human edit" && git push -q origin feat
+)
+exit 0
+HOOK
+  chmod +x "$REPO_DIR/.git/hooks/post-commit"
+  _run_rebase
+  grep -q 'dev-lead-sync-stub-drift pr=42 intent=rebase' "$REC"
+  grep -q "\`${STUB}\`" "$REC"
+  run grep -q 'dev-lead-sync-stub-restore' "$REC"
+  [[ "$status" -eq 1 ]]
+  grep -q '^LABEL .*needs-human-review' "$REC"
 }

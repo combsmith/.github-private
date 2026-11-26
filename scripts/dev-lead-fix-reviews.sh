@@ -3400,7 +3400,9 @@ pr_nets_to_zero() {
 # EXIT-trap auto-merge restore so a self-cancelling PR is never silently made
 # mergeable again. Mirrors pr_automation_escalate's escalation shape.
 flag_noop_pr() {
-  local intent="$1"
+  local intent="$1" pushed_note="no commit was pushed"
+  # [2] "already pushed": the rebased branch and the sync-stub restore commit are on the remote.
+  [[ "${2:-}" == "already pushed" ]] && pushed_note="the rebased branch and the restore commit were already pushed"
   # A self-cancelling PR must stay unmergeable until a human looks: prevent
   # restore_auto_merge (EXIT trap) from re-enabling what we are about to disable.
   _AM_NEEDS_RESTORE=0
@@ -3421,7 +3423,7 @@ flag_noop_pr() {
 
 The \`${intent}\` pass reverted this PR's own changes, so its net diff against \`${BASE_REF:-main}\` is now **empty** (zero changed files). Merging a PR that nets to zero would auto-close its \`Closes #N\` compliance issue while the underlying finding remains unfixed (#1340), and the idempotent audit would immediately re-open it.
 
-Auto-merge has been disabled and no commit was pushed. A human should restore the correct fix or close this PR.${HOLD_LABEL_NOTE}" \
+Auto-merge has been disabled and ${pushed_note}. A human should restore the correct fix or close this PR.${HOLD_LABEL_NOTE}" \
       || echo "::warning::could not post no-op flag comment on PR #${PR_NUMBER}"
   fi
   disable_auto_merge_for_hold "$REPO" "$PR_NUMBER" || true
@@ -4213,7 +4215,7 @@ rebase_record_synced_stubs() {
 # and returns 1 so the caller stops instead of reporting the pass applied.
 rebase_restore_synced_stubs() {
   [ "${SSG_REBASE_ACTIVE:-0}" = "1" ] || return 0
-  local out="" rc=0 restored failed before
+  local out="" rc=0 restored failed before mismatched
   # A failed base fetch leaves origin/<base> possibly stale: treat as unverified.
   if ! git fetch -q origin "+refs/heads/${SSG_REBASE_BASE}:refs/remotes/origin/${SSG_REBASE_BASE}" >/dev/null 2>&1; then
     SSG_REBASE_UNKNOWN=1
@@ -4235,10 +4237,25 @@ rebase_restore_synced_stubs() {
     before="$(git rev-parse HEAD)"
     if git commit -q -m "chore: restore synced stubs after rebase [skip ci-relay]" -m "$(dev_lead_stamp_trailer)" \
        && push_no_clobber && verify_push_landed; then
-      echo "::notice::Sync-stub guard: restored $(printf '%s\n' "$restored" | grep -c .) synced path(s) on PR #${PR_NUMBER} after the rebase (#2232)"
-      gh pr comment "$PR_NUMBER" --repo "$REPO" --body "<!-- dev-lead-sync-stub-restore pr=${PR_NUMBER} -->
+      # verify_push_landed checks ancestry only, and push_no_clobber may have
+      # rebased the restore commit onto a foreign commit: re-check the content.
+      mismatched=$(ssg_rebase_verify_restored "$restored" "$SSG_REBASE_RECORD" "$SSG_REBASE_PRE" "origin/${SSG_REBASE_BASE}" HEAD)
+      if [ -n "$mismatched" ]; then
+        echo "::error::Sync-stub guard: restored path(s) on PR #${PR_NUMBER} differ from their intended content after the push (#2232)"
+        failed+="${failed:+$'\n'}${mismatched}"
+      else
+        echo "::notice::Sync-stub guard: restored $(printf '%s\n' "$restored" | grep -c .) synced path(s) on PR #${PR_NUMBER} after the rebase (#2232)"
+        gh pr comment "$PR_NUMBER" --repo "$REPO" --body "<!-- dev-lead-sync-stub-restore pr=${PR_NUMBER} -->
 $(ssg_rebase_restored_body "$restored")" \
-        || echo "::warning::could not post sync-stub restore comment on PR #${PR_NUMBER}"
+          || echo "::warning::could not post sync-stub restore comment on PR #${PR_NUMBER}"
+        # The restore may have emptied the PR (base content won every path it
+        # changed); the direct push bypassed commit_and_push's no-op guard (#1786).
+        if pr_nets_to_zero "$BASE_REF"; then
+          echo "::error::No-op guard: PR #${PR_NUMBER} nets to zero against ${BASE_REF} after the sync-stub restore — flagging for human (#1786)"
+          flag_noop_pr "rebase" "already pushed"
+          return 1
+        fi
+      fi
     else
       echo "::error::Sync-stub guard: the restore commit for PR #${PR_NUMBER} could not be pushed (#2232)"
       # Back to the pushed rebase, so the checks below see what the PR carries.

@@ -414,3 +414,28 @@ ssg_rebase_restore() {
   done <<<"$record"
   return 0
 }
+
+# ssg_rebase_verify_restored <restored_rows> <record> <pre_pass_sha> <base_rev> [head]
+#   After the restore commit has been pushed (push_no_clobber may have rebased it
+#   onto a commit that landed meanwhile), compares each restored path's blob at
+#   [head] with the blob it was restored to: the base's for a `base` row, the
+#   recorded pre-pass blob for a `pre` row. Echoes `path\ttemplate` for every
+#   path that differs. Echoes nothing when all match. Reads git only.
+ssg_rebase_verify_restored() {
+  local rows="${1:-}" record="${2:-}" pre="${3:-}" base_rev="${4:-}" head="${5:-HEAD}"
+  local verdict path src tpl want rpath pre_blob _mb _tpl
+  : "$pre"
+  while IFS=$'\t' read -r verdict path src tpl; do
+    [[ "${verdict:-}" == "restored" && -n "${path:-}" ]] || continue
+    if [[ "$src" == "base" ]]; then
+      want=$(_ssg_blob "$base_rev" "$path")
+    else
+      want="-"
+      while IFS=$'\t' read -r rpath pre_blob _mb _tpl; do
+        [[ "$rpath" == "$path" ]] && { want="$pre_blob"; break; }
+      done <<<"$record"
+    fi
+    [[ "$(_ssg_blob "$head" "$path")" == "$want" ]] || printf '%s\t%s\n' "$path" "${tpl:-}"
+  done <<<"$rows"
+  return 0
+}
