@@ -1262,14 +1262,26 @@ PRIOR_REVIEW_FILE="/tmp/cascade/prior-review-body.txt"
 mkdir -p /tmp/cascade
 if [[ -n "${EXISTING_MARKER_SHA:-}" ]]; then
   PRIOR_REVIEW_SHA="$EXISTING_MARKER_SHA"
+  # Bind the lookup to items authored by OUR bot AND carrying the exact marker
+  # for this SHA. A bare `sha=<sha>` substring match would also select any
+  # non-bot comment/review that merely quotes the string (e.g. an external
+  # reviewer or an attacker pasting a fabricated marker), feeding that body into
+  # the engine prompt — a prompt-injection surface. Pipe to real jq so we can
+  # pass the bot login and SHA as data (--arg) instead of interpolating them.
   PRIOR_REVIEW_BODY=$(
-    gh pr view "$PR_URL" --json reviews,comments \
-      --jq "((.reviews // []) + (.comments // [])) | .[].body | select(. != null) | select(test(\"sha=$PRIOR_REVIEW_SHA\"))" 2>/dev/null \
-    | tail -n 1 || true
+    gh pr view "$PR_URL" --json reviews,comments 2>/dev/null \
+      | jq -r --arg bot "${BOT_USER:-donpetry-bot}" --arg sha "$PRIOR_REVIEW_SHA" '
+          [ ((.reviews // []) + (.comments // []))[]
+            | select((.author.login? // "") == $bot)
+            | select((.body // empty) | test("<!-- pr-review-agent v1 sha=" + $sha + "( [^>]*)? -->"))
+            | {ts: (.submittedAt // .createdAt // ""), body: (.body // empty)}
+          ] | sort_by(.ts) | reverse | .[0].body // empty
+        ' 2>/dev/null || true
   )
   # Validate that the matched body actually contains our marker to reduce
   # prompt-injection surface area.
-  if [[ -n "$PRIOR_REVIEW_BODY" ]] && ! [[ "$PRIOR_REVIEW_BODY" =~ pr-review-agent\ v1\ sha=[a-f0-9]+\ --\> ]]; then
+  PRIOR_MARKER_RE='<!-- pr-review-agent v1 sha=[a-f0-9]+( [^>]*)? -->'
+  if [[ -n "$PRIOR_REVIEW_BODY" ]] && ! [[ "$PRIOR_REVIEW_BODY" =~ $PRIOR_MARKER_RE ]]; then
     echo "    prior review body missing valid marker, discarding"
     PRIOR_REVIEW_BODY=""
   fi
