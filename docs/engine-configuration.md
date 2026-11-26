@@ -103,6 +103,43 @@ that tier keeps its default. Each problem is logged once per run as a
 `::warning::`. The run log's `engine:` line shows the chains in use, for
 example `deep: opus 5.5 [opus 4.8, sonnet 5.5]`.
 
+## The engine configuration file (config/ai-engines.json)
+
+[`config/ai-engines.json`](../config/ai-engines.json) holds the providers, the
+model catalog and each task's default chains in one versioned file (#1973).
+**Nothing reads it yet.** The defaults above still come from
+`ai_models_default` in `engine-models.sh`. Part 2 (#2630) switches the lib over
+to the file and defines how the variables override it. Until then, a bats
+suite keeps the file and the lib identical, so a default change has to be made
+in both.
+
+The file has three sections:
+
+| Section | Holds |
+|---|---|
+| `models` | One entry per model id: `provider` (`claude`, `gemini` or `copilot`), `status` (`active`, `preview` or `retired`), and optional `notes`. |
+| `providers` | `enabled` for each of `claude`, `gemini` and `copilot`, plus `fallback_order`, the default order across providers (today's `AI_ENGINES` default). |
+| `tasks` | `triage`, `deep`, `audit`, `action`, `single` and `duck`, plus Claude's `fable` family key. Each gives an ordered chain per provider, primary first. A provider left out has no default for that task. For `duck`, a provider left out uses its first `triage` model. |
+
+A task may also carry `prefer`, a list of providers. The schema accepts it so
+that per-task provider preference can be added later, but nothing reads it.
+
+[`config/ai-engines.schema.json`](../config/ai-engines.schema.json) (JSON
+Schema draft 2020-12) defines the shape. The `validate-ai-engines` job in
+`lint.yml` runs `scripts/validate-ai-engines.py`, which checks the file against
+the schema. It also fails when:
+
+- a task names a model that is missing from `models` or marked `retired`;
+- a model appears in another provider's chain;
+- a model of an enabled provider has no price row in effect in
+  [`scripts/lib/model-pricing.tsv`](../scripts/lib/model-pricing.tsv). Rows are
+  matched on the id without its vendor prefix, the way token records store it
+  (`openai/o4-mini` is priced by the `o4-mini*` row);
+- `duck`, `fable` or any Copilot chain lists more than one model.
+
+To check a change locally, run `python3 scripts/validate-ai-engines.py` (it
+needs `jsonschema`) and `bats tests/test_ai_engines_parity.bats`.
+
 ## Model selection — name a family, never pin a version
 
 The org standard (#1979, companion
