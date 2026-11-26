@@ -302,6 +302,12 @@ fails, diff it against `main` before calling it a regression, and treat CI as au
   equivalent. It runs `scripts/check-bats-negation.sh` (tests: `tests/test_check_bats_negation.bats`), which
   fails on a negated command in a `.bats` file that can never fail its test. Template syncs must not remove
   it. If the org template gains an equivalent, remove this exception and defer to the template instead.
+- **Exception:** The `validate-ai-engines` job in `lint.yml` (#2631, part 1 of #1973) is a repo-specific
+  gate with no org template equivalent. It validates `config/ai-engines.json` with
+  `scripts/validate-ai-engines.py` (tests: `tests/test_validate_ai_engines.bats`;
+  `tests/test_ai_engines_parity.bats` keeps the file equal to `ai_models_default`). For the same reason the
+  `pull_request`/`push` `paths:` filters include `config/**`. Template syncs must not remove the job or the
+  path. If the org template gains an equivalent, remove this exception and defer to the template instead.
 - **Exception:** `holdout-guard.yml` (#692, epic #581) is a documented repo-specific workflow with no
   corresponding org template in `standards/workflows/`. It is the hard CI enforcement behind the advisory
   `.github/CODEOWNERS` rule over `evals/`: it fails any PR authored by the automated skill-proposer identity

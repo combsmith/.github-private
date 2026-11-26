@@ -12,7 +12,7 @@ set -euo pipefail
 #   - a surface_sources KEY that is not an existing reusable-workflow path in
 #     this repo (a file under .github/workflows/ that declares `workflow_call`)
 #   - a surface_sources VALUE that is not an existing scripts/lib/*.sh,
-#     scripts/lib/*.tsv, or prompts/* path in this repo
+#     scripts/lib/*.tsv, prompts/* or config/*.json path in this repo
 #
 # Existence is always checked against --repo-root (the .github-private working
 # tree), independent of where the manifest file itself lives, so a fixture in a
@@ -93,13 +93,14 @@ if [[ "$schema_ok" != "true" ]]; then
 fi
 
 # 3. surface_sources keys must be existing reusable-workflow paths in this repo;
-#    their values must be existing scripts/lib/*.sh, scripts/lib/*.tsv, or prompts/*
-#    paths in this repo.
+#    their values must be existing scripts/lib/*.sh, scripts/lib/*.tsv, prompts/*
+#    or config/*.json paths in this repo.
 #    Paths are resolved via realpath to prevent traversal sequences from escaping
 #    their intended root directories.
 wf_root=$(realpath -m "$REPO_ROOT/.github/workflows")
 lib_root=$(realpath -m "$REPO_ROOT/scripts/lib")
 prompts_root=$(realpath -m "$REPO_ROOT/prompts")
+config_root=$(realpath -m "$REPO_ROOT/config")
 
 while IFS= read -r key; do
   [[ -n "$key" ]] || continue
@@ -123,14 +124,18 @@ done < <(jq -r '.surface_sources | keys[]' "$MANIFEST")
 
 while IFS= read -r value; do
   [[ -n "$value" ]] || continue
+  # Each kind must resolve inside its own root: config/ai-engines.json (#2631)
+  # stays under config/, a lib file under scripts/lib/, a prompt under prompts/.
   case "$value" in
-    scripts/lib/*.sh|scripts/lib/*.tsv|prompts/*) : ;;
+    scripts/lib/*.sh|scripts/lib/*.tsv) value_root="$lib_root" ;;
+    prompts/*)                          value_root="$prompts_root" ;;
+    config/*.json)                      value_root="$config_root" ;;
     *)
-      err "surface_sources value is not a scripts/lib/*.sh, scripts/lib/*.tsv, or prompts/* path: $value"
+      err "surface_sources value is not a scripts/lib/*.sh, scripts/lib/*.tsv, prompts/* or config/*.json path: $value"
       continue ;;
   esac
   resolved=$(realpath -m "$REPO_ROOT/$value")
-  if [[ "${resolved#"${lib_root}/"}" = "$resolved" ]] && [[ "${resolved#"${prompts_root}/"}" = "$resolved" ]]; then
+  if [[ "${resolved#"${value_root}/"}" = "$resolved" ]]; then
     err "surface_sources value contains path traversal: $value"
     continue
   fi
