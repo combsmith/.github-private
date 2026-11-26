@@ -165,8 +165,7 @@ idempotency() {
   # diagnostic gets posted for a commit that already has one.
   if ! ids="$(gh api "repos/$REPO/issues/${PR_NUMBER:?PR_NUMBER is required}/comments" \
     --paginate \
-    --arg marker_sha "${HEAD_SHA:?HEAD_SHA is required}" \
-    --jq ".[] | select(((.body // \"\") | if type == \"string\" then . else \"\" end) | startswith(\"<!-- ci-analyst sha=\\($marker_sha) -->\")) | .id" \
+    --jq ".[] | select(((.body // \"\") | if type == \"string\" then . else \"\" end) | startswith(\"<!-- ci-analyst sha=${HEAD_SHA:?HEAD_SHA is required} -->\")) | .id" \
     2>/dev/null)"; then
     echo "::warning::Comment lookup failed — skipping to avoid a duplicate diagnostic"
     emit exists true
