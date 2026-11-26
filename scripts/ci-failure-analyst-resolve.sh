@@ -164,7 +164,9 @@ idempotency() {
   # Fail closed: a failed lookup must not read as "no marker yet", or a second
   # diagnostic gets posted for a commit that already has one.
   # shellcheck disable=SC2016  # $ENV.HEAD_SHA is jq built-in syntax, not a shell variable
-  if ! ids="$(HEAD_SHA="${HEAD_SHA:?HEAD_SHA is required}" gh api "repos/$REPO/issues/${PR_NUMBER:?PR_NUMBER is required}/comments" \
+  : "${HEAD_SHA:?HEAD_SHA is required}" "${PR_NUMBER:?PR_NUMBER is required}"
+  export HEAD_SHA PR_NUMBER
+  if ! ids="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
     --paginate \
     --jq '.[] | select(((.body // "") | if type == "string" then . else "" end) | startswith("<!-- ci-analyst sha=" + $ENV.HEAD_SHA + " -->")) | .id' \
     2>/dev/null)"; then
