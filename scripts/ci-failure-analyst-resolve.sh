@@ -163,9 +163,10 @@ idempotency() {
   local existing ids
   # Fail closed: a failed lookup must not read as "no marker yet", or a second
   # diagnostic gets posted for a commit that already has one.
-  if ! ids="$(gh api "repos/$REPO/issues/${PR_NUMBER:?PR_NUMBER is required}/comments" \
+  # shellcheck disable=SC2016  # $ENV.HEAD_SHA is jq built-in syntax, not a shell variable
+  if ! ids="$(HEAD_SHA="${HEAD_SHA:?HEAD_SHA is required}" gh api "repos/$REPO/issues/${PR_NUMBER:?PR_NUMBER is required}/comments" \
     --paginate \
-    --jq ".[] | select(((.body // \"\") | if type == \"string\" then . else \"\" end) | startswith(\"<!-- ci-analyst sha=${HEAD_SHA:?HEAD_SHA is required} -->\")) | .id" \
+    --jq '.[] | select(((.body // "") | if type == "string" then . else "" end) | startswith("<!-- ci-analyst sha=" + $ENV.HEAD_SHA + " -->")) | .id' \
     2>/dev/null)"; then
     echo "::warning::Comment lookup failed — skipping to avoid a duplicate diagnostic"
     emit exists true
