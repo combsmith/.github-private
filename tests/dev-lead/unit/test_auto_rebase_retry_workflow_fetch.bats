@@ -28,11 +28,13 @@ setup() {
   # Extract the retry step's `run: |` block body (dedented) from the workflow.
   STEP_BODY="$WORK_DIR/step.sh"
   awk '
-    /^[[:space:]]+run: \|[[:space:]]*$/ { inblk=1; match($0, /^[[:space:]]+/); ind=RLENGTH + 2; next }
+    done { next }
+    /^[[:space:]]+FALLBACK_GH_TOKEN:/ && !inblk { ready=1 }
+    ready && !inblk && /^[[:space:]]+run: \|[[:space:]]*$/ { inblk=1; match($0, /^[[:space:]]+/); ind=RLENGTH + 2; next }
     inblk {
       if ($0 ~ /^[[:space:]]*$/) { print ""; next }
       match($0, /^[[:space:]]*/)
-      if (RLENGTH < ind) { inblk=0; next }
+      if (RLENGTH < ind) { inblk=0; done=1; next }
       print substr($0, ind + 1)
     }
   ' "$WORKFLOW" > "$STEP_BODY"
@@ -114,5 +116,5 @@ _run_step() { run bash -e "$STEP_BODY"; }
 }
 
 @test "fetch-step: workflow wires FALLBACK_GH_TOKEN to the job's github.token" {
-  grep -Eq '^[[:space:]]+FALLBACK_GH_TOKEN: \$\{\{ github\.token \}\}' "$WORKFLOW"
+  grep -Eq '^[[:space:]]+FALLBACK_GH_TOKEN:[[:space:]]*['\''"]?\$\{\{[[:space:]]*github\.token[[:space:]]*\}\}['\''"]?' "$WORKFLOW"
 }
