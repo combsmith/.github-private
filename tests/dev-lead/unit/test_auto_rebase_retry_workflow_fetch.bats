@@ -116,5 +116,5 @@ _run_step() { run bash -e "$STEP_BODY"; }
 }
 
 @test "fetch-step: workflow wires FALLBACK_GH_TOKEN to the job's github.token" {
-  grep -Eq '^[[:space:]]+FALLBACK_GH_TOKEN:[[:space:]]*['\''"]?\$\{\{[[:space:]]*github\.token[[:space:]]*\}\}['\''"]?' "$WORKFLOW"
+  grep -Eq '^[[:space:]]+FALLBACK_GH_TOKEN:[[:space:]]*['\''"]?\$\{\{[[:space:]]*github\.token[[:space:]]*\}\}['\''"]?[[:space:]]*$' "$WORKFLOW"
 }
