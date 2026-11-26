@@ -843,3 +843,12 @@ PLANTED
   [ "$status" -eq 0 ]
   [ "$(jq -r '.action' <<< "$output")" = "none" ]
 }
+
+@test "fix-reviews(#2247): post_reviews_rate_limited stamps read_at= from a valid PASS_STARTED_AT, and omits it otherwise" {
+  install_gh_recorder
+  PASS_STARTED_AT=2026-10-10T13:20:00.123Z post_fix_reviews 54 fix-reviews blocked ""
+  grep -qF "read_at=2026-10-10T13:20:00.123Z -->" "$BB_TEST_POSTED"
+  : > "$BB_TEST_POSTED"
+  PASS_STARTED_AT=garbage post_fix_reviews 54 fix-reviews blocked ""
+  ! grep -q 'read_at=' "$BB_TEST_POSTED"
+}

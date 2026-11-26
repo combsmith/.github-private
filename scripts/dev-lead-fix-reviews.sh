@@ -131,7 +131,11 @@ REVIEWS_MARKER_PREFIX="<!-- dev-lead-fix-reviews pr="
 # When this pass started, i.e. a lower bound on when it read the PR's comments.
 # Stamped on terminal markers as read_at= so the #2008 stale-edit dedup can tell a
 # pass that read an edited body from one that merely FINISHED after the edit.
-PASS_STARTED_AT="${PASS_STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)}"
+if [ -z "${PASS_STARTED_AT:-}" ]; then
+  PASS_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+  # BSD/macOS date does not support %N and prints a literal ".3NZ"; fall back to whole seconds.
+  [[ "$PASS_STARTED_AT" =~ \.[0-9]{3}Z$ ]] || PASS_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+fi
 INTEGRITY_MARKER_PREFIX="<!-- dev-lead-conflict-integrity pr="
 NONCONVERGE_MARKER_PREFIX="<!-- dev-lead-review-nonconverge pr="
 # Consecutive not-applied passes against the same review before escalating to a
@@ -968,7 +972,6 @@ fetch_pr_context() {
 export_stale_dispositions() {
   local comments facts
   STALE_LATEST_EDIT=""
-  PASS_STARTED_AT="${PASS_STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)}"
   if comments=$(bcr_fetch_pr_comments "$REPO" "$PR_NUMBER" 2>/dev/null) \
      && facts=$(maintainer_gate_stale_disposition_facts "$comments" "${BOT_USER:-donpetry-bot}"); then
     STALE_LATEST_EDIT=$(maintainer_gate_stale_dispositions "$comments" "${BOT_USER:-donpetry-bot}" \
@@ -1089,8 +1092,14 @@ ${json}${note}"
 # marker, so the comment gate does not count it as a finding. Best effort: a failed
 # post must not stop the pass. If both the start-record post and the model pass fail
 # before a terminal marker is posted, the per-edit pass cap can undercount a pass,
-# so the cap is a best-effort advisory, not a hard boundary.
+# so the cap is a best-effort advisory, not a hard boundary. The cap can undercount a
+# pass in two cases: (1) the start post fails and the pass then dies before its
+# terminal marker; (2) an edit lands between PASS_STARTED_AT (script start) and the
+# comment fetch in export_stale_dispositions, so the pass read the edited body but its
+# read_at is older than the edit and the sweep does not count it.
+# The push phase (#2143) never posts one: the model already ran in the work phase.
 post_stale_pass_start() {
+  [ "${DEV_LEAD_PHASE:-}" != "push" ] || return 0
   [[ "${STALE_LATEST_EDIT:-}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z$ ]] || return 0
   local sha_part="" read_part=""
   [[ "${HEAD_SHA:-}" =~ ^[0-9a-f]+$ ]] && sha_part=" sha=${HEAD_SHA}"

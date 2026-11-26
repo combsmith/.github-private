@@ -966,3 +966,18 @@ _scan_with_markers() {
   [[ "$output" != *"CALLED"* ]]
   [ "${lines[-1]}" = "{}" ]
 }
+
+@test "sweep(#2247): a start marker and a blocked marker of the same pass (same read_at) count once" {
+  local nodes
+  nodes=$(jq -c '. + [
+    {id:"IC_s", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+     body:"<!-- dev-lead-fix-reviews-start pr=2000 sha=abc intent=fix-reviews edit=2026-10-01T20:35:00Z read_at=2026-10-01T20:36:00.100Z -->",
+     createdAt:"2026-10-01T20:36:01Z", isMinimized:false, minimizedReason:null, lastEditedAt:null},
+    {id:"IC_b", author:{login:"don-petry", __typename:"User"}, authorAssociation:"OWNER",
+     body:"<!-- dev-lead-fix-reviews pr=2000 sha=abc intent=fix-reviews status=blocked reason=blocked read_at=2026-10-01T20:36:00.100Z -->",
+     createdAt:"2026-10-01T20:40:00Z", isMinimized:false, minimizedReason:null, lastEditedAt:null}]' \
+    <<< "$(_sweep_nodes 2026-10-01T20:35:00Z 2026-10-01T19:23:54Z)")
+  # Counted once: below the default cap of 2, so a dispatch is still wanted.
+  run stale_disposition_needs_dispatch "$nodes" 2000
+  [ "$status" -eq 0 ]
+}

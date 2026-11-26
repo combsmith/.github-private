@@ -8379,3 +8379,29 @@ GHEOF
   block="$(sed -n '/^  fix-reviews)$/,/build_and_run "fix-reviews"/p' "$FIX_REVIEWS_SCRIPT")"
   [[ "$block" == *"export_stale_dispositions"*"post_stale_pass_start"*"build_and_run"* ]]
 }
+
+@test "fix-reviews(#2247): PASS_STARTED_AT falls back to whole seconds when date lacks %N (BSD/macOS)" {
+  cat > "$STUB_BIN_DIR/date" <<'DEOF'
+#!/usr/bin/env bash
+case "$*" in
+  *%3N*) echo "2026-10-23T02:25:09.3NZ" ;;
+  *) exec /bin/date "$@" ;;
+esac
+DEOF
+  chmod +x "$STUB_BIN_DIR/date"
+  run bash -c "
+    export PATH='$STUB_BIN_DIR':\"\$PATH\"
+    unset PASS_STARTED_AT
+    eval \"\$(sed -n '/^if \\[ -z \"\\\${PASS_STARTED_AT:-}\" \\]; then\$/,/^fi\$/p' '$FIX_REVIEWS_SCRIPT')\"
+    echo \"\$PASS_STARTED_AT\"
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+}
+
+@test "fix-reviews(#2247): post_stale_pass_start posts nothing in the push phase" {
+  export DEV_LEAD_PHASE=push
+  _start_post 2026-10-10T13:03:53Z
+  [ "$status" -eq 0 ]
+  [ ! -s "$POSTED" ]
+}
