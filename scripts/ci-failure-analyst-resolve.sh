@@ -61,6 +61,14 @@ failed_jobs() {
 # Emits skip=true if no open PR is found or the payload is unsupported.
 resolve() {
   local event key head_sha pr_number pr_state pulls candidates candidate name details_url jobs_summary run_id="" check_run_id=""
+
+  # Guard against empty or missing event payload
+  if [[ -z "${GITHUB_EVENT_PATH:-}" ]] || [[ ! -s "$GITHUB_EVENT_PATH" ]]; then
+    echo "::notice::No event payload available — skipping"
+    emit skip true
+    return 0
+  fi
+
   event="$(payload_field 'if (.check_run | type) == "object" then "check_run"
                           elif (.workflow_run | type) == "object" then "workflow_run"
                           else null end')"
@@ -166,8 +174,7 @@ idempotency() {
   : "${HEAD_SHA:?HEAD_SHA is required}" "${PR_NUMBER:?PR_NUMBER is required}"
   if ! ids="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
     --paginate \
-    | jq -r --arg sha "$HEAD_SHA" '.[] | select(((.body // "") | if type == "string" then . else "" end) | startswith("<!-- ci-analyst sha=" + $sha + " -->")) | .id' \
-    2>/dev/null)"; then
+    --jq '.[] | select(((.body // "") | if type == "string" then . else "" end) | startswith("<!-- ci-analyst sha=" + $ENV.HEAD_SHA + " -->")) | .id')"; then
     echo "::warning::Comment lookup failed — skipping to avoid a duplicate diagnostic"
     emit exists true
     return 0
