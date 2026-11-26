@@ -534,14 +534,14 @@ if [ "$DECISION" = "approve" ]; then
     GATE4_DOWNGRADED="true"
     # Prepend the gate blocker to the original review body so the escalation
     # carries the full review summary and findings, not just the gate note.
-    BODY=$(printf -- '- **blocker (decision gate 4)**: %s unresolved review thread(s) request changes and must be resolved before this PR can be approved. Resolve each open thread (or push a commit that addresses it and mark the thread resolved). Resolving threads does not by itself trigger a re-review at the same commit: push a new commit, or mention `@donpetry-bot` to force a re-review. (External contributors: ask a maintainer to mention the bot for you.)\n\n---\n\n%s' "$URT_COUNT" "$BODY")
+    BODY=$(printf -- '- **blocker (decision gate 4)**: %s unresolved review thread(s) request changes and must be resolved before this PR can be approved. Resolve each open thread (or push a commit that addresses it and mark the thread resolved). Resolving threads does not by itself trigger a re-review at the same commit: push a new commit, or mention the review bot by its login (donpetry-bot) to force a re-review. (External contributors: ask a maintainer to mention the bot for you.)\n\n---\n\n%s' "$URT_COUNT" "$BODY")
   elif [ "$URT_RC" -ne 0 ]; then
     echo "    gate4: review threads could not be enumerated (rc=$URT_RC) — failing closed, downgrading approve → escalate (#1766)"
     DECISION="escalate"
     GATE4_DOWNGRADED="true"
     # Prepend the gate blocker to the original review body so the escalation
     # carries the full review summary and findings, not just the gate note.
-    BODY=$(printf -- '- **blocker (decision gate 4)**: the PR review-thread state could not be enumerated (API failure, pagination beyond one page, or permissions), so approval is withheld (fail-closed). An unknown thread count must not be treated as zero. Once the thread set is readable, push a new commit or mention `@donpetry-bot` to force a re-review. (External contributors: ask a maintainer to mention the bot for you.) (The same-commit verdict is otherwise a no-op.)\n\n---\n\n%s' "$BODY")
+    BODY=$(printf -- '- **blocker (decision gate 4)**: the PR review-thread state could not be enumerated (API failure, pagination beyond one page, or permissions), so approval is withheld (fail-closed). An unknown thread count must not be treated as zero. Once the thread set is readable, push a new commit or mention the review bot by its login (donpetry-bot) to force a re-review. (External contributors: ask a maintainer to mention the bot for you.) (The same-commit verdict is otherwise a no-op.)\n\n---\n\n%s' "$BODY")
   fi
 fi
 
