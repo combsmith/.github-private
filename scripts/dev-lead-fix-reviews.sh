@@ -5016,8 +5016,6 @@ case "$INTENT_TYPE" in
       fi
       if [ "$cp_rc" -eq 4 ]; then
         echo "::warning::rebase was refused by a push guard — flagged for human, not pushed (#2220)"
-        # The engine already pushed the rebase: still restore synced stubs (#2232); the hold stays.
-        rebase_restore_synced_stubs || true
         exit "$rc"
       fi
       # Sync-stub guard (#2232): the rebase is pushed; restore any synced path it
