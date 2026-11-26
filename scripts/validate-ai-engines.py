@@ -33,6 +33,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SINGLE_MODEL_TASKS = ("duck", "fable")
 SINGLE_MODEL_PROVIDERS = ("copilot",)
 PROVIDERS = ("claude", "gemini", "copilot")
+# Tasks every enabled provider must have a chain for. `duck` is Claude-only on
+# purpose (a provider left out follows its triage chain); `fable` is Claude's.
+CHAIN_TASKS = ("triage", "deep", "audit", "action", "single")
+DUCK_PROVIDERS = ("claude",)
+_MISSING = object()
 
 
 def error(msg: str) -> None:
@@ -44,12 +49,12 @@ def load_json(path: Path, what: str):
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         error(f"could not read {what} {path}: {exc}")
-        return None
+        return _MISSING
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:
         error(f"{what} {path} is not valid JSON: {exc}")
-        return None
+        return _MISSING
 
 
 def glob_to_regex(glob: str) -> "re.Pattern[str]":
@@ -115,6 +120,19 @@ def rule_errors(config, price_rows, today: str) -> list:
     providers = config["providers"]
     out = []
 
+    enabled = [p for p in PROVIDERS if providers[p]["enabled"]]
+    if not enabled:
+        out.append("providers: no provider is enabled")
+    for provider in enabled:
+        for task in CHAIN_TASKS:
+            if provider not in config["tasks"][task]:
+                out.append(f"tasks.{task}.{provider}: missing chain for enabled provider {provider}")
+    if "claude" not in config["tasks"]["duck"] and providers["claude"]["enabled"]:
+        out.append("tasks.duck.claude: missing chain for enabled provider claude")
+    for provider in config["tasks"]["duck"]:
+        if provider in PROVIDERS and provider not in DUCK_PROVIDERS:
+            out.append(f"tasks.duck.{provider}: duck is Claude-only; {provider} follows its triage chain")
+
     for task, chains in config["tasks"].items():
         for provider, chain in chains.items():
             if provider not in PROVIDERS:
@@ -135,6 +153,8 @@ def rule_errors(config, price_rows, today: str) -> list:
     for model_id, entry in models.items():
         if not providers[entry["provider"]]["enabled"]:
             continue
+        if entry["status"] == "retired":
+            continue
         if not has_price(model_id, price_rows, today):
             out.append(
                 f"models.{model_id}: no price row in effect today in model-pricing.tsv "
@@ -152,7 +172,10 @@ def main(argv=None) -> int:
 
     config = load_json(args.config, "config")
     schema = load_json(args.schema, "schema")
-    if config is None or schema is None:
+    if config is _MISSING or schema is _MISSING:
+        return 1
+    if not isinstance(config, dict) or not isinstance(schema, dict):
+        error("config and schema must each be a JSON object")
         return 1
 
     errors = schema_errors(config, schema)

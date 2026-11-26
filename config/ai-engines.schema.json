@@ -102,7 +102,7 @@
     "task": {
       "description": "Per provider, the task's model chain. A provider left out has no default chain for the task.",
       "type": "object",
-      "minProperties": 1,
+      "anyOf": [{ "required": ["claude"] }, { "required": ["gemini"] }, { "required": ["copilot"] }],
       "additionalProperties": false,
       "properties": {
         "claude": { "$ref": "#/$defs/chain" },

@@ -208,3 +208,54 @@ _validate() {
   [[ "$output" == *"tasks.deep.gemini"* ]]
   [[ "$output" == *"tasks.duck.claude"* ]]
 }
+
+# ── Availability and required chains ─────────────────────────────────────────
+
+@test "a configuration with no enabled provider fails" {
+  _mutate '.providers.claude.enabled = false | .providers.gemini.enabled = false | .providers.copilot.enabled = false'
+  _validate
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no provider is enabled"* ]]
+}
+
+@test "an enabled provider missing a required task chain fails" {
+  _mutate 'del(.tasks.audit.gemini)'
+  _validate
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"tasks.audit.gemini: missing chain"* ]]
+}
+
+@test "a disabled provider may lack its task chains" {
+  _mutate '.providers.copilot.enabled = false | del(.tasks.audit.copilot)'
+  _validate
+  [ "$status" -eq 0 ]
+}
+
+@test "a gemini duck chain fails: duck is Claude-only" {
+  _mutate '.tasks.duck.gemini = ["gemini-3.8-flash"]'
+  _validate
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"tasks.duck.gemini"* ]]
+  [[ "$output" == *"Claude-only"* ]]
+}
+
+@test "a task holding only prefer fails the schema" {
+  _mutate '.tasks.triage = {"prefer": ["claude"]}'
+  _validate
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"schema: tasks.triage"* ]]
+}
+
+@test "a retired model needs no price row" {
+  grep -vF 'claude-fable-5*'$'\t' "$PRICING" > "$BATS_TEST_TMPDIR/pricing.tsv"
+  cp "$CONFIG" "$FIXTURE"
+  _validate --pricing "$BATS_TEST_TMPDIR/pricing.tsv"
+  [ "$status" -eq 0 ]
+}
+
+@test "a null config file reports an error" {
+  printf 'null' > "$FIXTURE"
+  _validate
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"::error::"* ]]
+}
