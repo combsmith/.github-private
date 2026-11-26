@@ -111,6 +111,37 @@ run_validator() {
   [ "$status" -ne 0 ]
 }
 
+@test "surface_sources accepts a config/*.json surface (#2631)" {
+  jq '.surface_sources = {".github/workflows/pr-review.yml": ["config/ai-engines.json"]}' \
+    "$MANIFEST" > "$FIXTURE"
+  run_validator "$FIXTURE"
+  [ "$status" -eq 0 ]
+}
+
+@test "surface_sources value pointing at a missing config file fails" {
+  jq '.surface_sources = {".github/workflows/pr-review.yml": ["config/nope-does-not-exist.json"]}' \
+    "$MANIFEST" > "$FIXTURE"
+  run_validator "$FIXTURE"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"non-existent local surface"* ]]
+}
+
+@test "surface_sources config value with path traversal fails" {
+  jq '.surface_sources = {".github/workflows/pr-review.yml": ["config/../scripts/lib/consumer-manifest.json"]}' \
+    "$MANIFEST" > "$FIXTURE"
+  run_validator "$FIXTURE"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"path traversal"* ]]
+}
+
+@test "the committed manifest lists config/ai-engines.json for pr-review and dev-lead (#2631)" {
+  run jq -e '.surface_sources as $s
+             | [".github/workflows/pr-review.yml", ".github/workflows/dev-lead-reusable.yml"]
+             | all(. as $k | $s[$k] | index("config/ai-engines.json") != null)' "$MANIFEST"
+  [ "$status" -eq 0 ]
+  [ "$output" = "true" ]
+}
+
 @test "a well-formed minimal manifest with real surfaces passes" {
   cat > "$FIXTURE" <<'JSON'
 {

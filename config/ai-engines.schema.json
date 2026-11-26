@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI engine configuration",
+  "description": "Providers, the model catalog and each task's per-provider model chain (config/ai-engines.json, #1973). scripts/validate-ai-engines.py checks this schema and the rules it cannot express: chains name only catalogued, non-retired models of their own provider; every model of an enabled provider has a price row; duck, fable and Copilot chains hold one model.",
+  "type": "object",
+  "required": ["version", "models", "providers", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": {
+      "description": "Format version. Bump it on an incompatible change to this schema.",
+      "const": 1
+    },
+    "models": {
+      "description": "The model catalog, keyed by model id as the provider's API spells it.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "$ref": "#/$defs/modelId" },
+      "additionalProperties": { "$ref": "#/$defs/model" }
+    },
+    "providers": {
+      "type": "object",
+      "required": ["fallback_order", "claude", "gemini", "copilot"],
+      "additionalProperties": false,
+      "properties": {
+        "fallback_order": {
+          "description": "The default order across providers: the first is the primary, the rest are tried in turn (the AI_ENGINES default).",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/providerName" }
+        },
+        "claude": { "$ref": "#/$defs/provider" },
+        "gemini": { "$ref": "#/$defs/provider" },
+        "copilot": { "$ref": "#/$defs/provider" }
+      }
+    },
+    "tasks": {
+      "type": "object",
+      "required": ["triage", "deep", "audit", "action", "single", "duck"],
+      "additionalProperties": false,
+      "properties": {
+        "triage": { "$ref": "#/$defs/task", "description": "Classify the PR." },
+        "deep": { "$ref": "#/$defs/task", "description": "Agentic review." },
+        "audit": { "$ref": "#/$defs/task", "description": "Security audit." },
+        "action": { "$ref": "#/$defs/task", "description": "Dev-lead writer." },
+        "single": { "$ref": "#/$defs/task", "description": "Single-reviewer mode." },
+        "duck": {
+          "$ref": "#/$defs/task",
+          "description": "The model used when a provider is the rubber duck (one model). A provider left out follows its triage chain's first model."
+        },
+        "fable": {
+          "description": "Claude's fable family key: the id ai_model_for_family fable returns (one model). No engine task runs it.",
+          "type": "object",
+          "required": ["claude"],
+          "additionalProperties": false,
+          "properties": {
+            "claude": { "$ref": "#/$defs/chain" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "providerName": { "enum": ["claude", "gemini", "copilot"] },
+    "modelId": {
+      "description": "The model id pattern engine-models.sh accepts.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]*$"
+    },
+    "model": {
+      "type": "object",
+      "required": ["provider", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "$ref": "#/$defs/providerName" },
+        "status": {
+          "description": "active and preview models may appear in a chain; retired ones may not.",
+          "enum": ["active", "preview", "retired"]
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "chain": {
+      "description": "Ordered model ids: the primary first, then the fallbacks tried on a rate limit.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/modelId" }
+    },
+    "task": {
+      "description": "Per provider, the task's model chain. A provider left out has no default chain for the task.",
+      "type": "object",
+      "anyOf": [{ "required": ["claude"] }, { "required": ["gemini"] }, { "required": ["copilot"] }],
+      "additionalProperties": false,
+      "properties": {
+        "claude": { "$ref": "#/$defs/chain" },
+        "gemini": { "$ref": "#/$defs/chain" },
+        "copilot": { "$ref": "#/$defs/chain" },
+        "prefer": {
+          "description": "Reserved for per-task provider preference (a later phase of #1973). Accepted, not read.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/providerName" }
+        }
+      }
+    }
+  }
+}
