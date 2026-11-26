@@ -83,8 +83,7 @@ urtg_fetch_review_threads() {
     printf '%s' "$_fail"
     return 0
   fi
-  jq -cn --argjson t "$_open" '{complete: true, reviewThreads: $t}' 2>/dev/null \
-    || printf '%s' "$_fail"
+  if ! printf '%s' "$_open" | jq -c '{complete: true, reviewThreads: .}' 2>/dev/null; then printf '%s' "$_fail"; fi
 }
 
 # check_unresolved_review_threads <threads_json>

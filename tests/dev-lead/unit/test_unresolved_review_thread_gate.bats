@@ -264,3 +264,19 @@ GHEOF
   echo "$output" | jq -e '.complete == false'
   echo "$output" | jq -e '.reviewThreads == []'
 }
+
+@test "fetch: a large open-thread payload (>=200KB) still yields complete:true (payload stays off argv)" {
+  MOCK_BIN="$BATS_TEST_TMPDIR/bin"; mkdir -p "$MOCK_BIN"
+  # 100 open threads with ~3KB bodies -> ~300KB, above the 128KB MAX_ARG_STRLEN.
+  jq -cn '{data:{repository:{pullRequest:{reviewThreads:{pageInfo:{hasNextPage:false,endCursor:null},
+          nodes:[range(1; 101) as $i | {id: ("PRRT_" + ($i|tostring)), isResolved: false,
+                 isOutdated: false, line: $i, path: "scripts/f.sh",
+                 comments: {nodes: [{body: ("x" * 3000), author: {login: "coderabbitai", __typename: "Bot"}}]}}]}}}}}' \
+    > "$BATS_TEST_TMPDIR/big.json"
+  [ "$(wc -c < "$BATS_TEST_TMPDIR/big.json")" -ge 204800 ]
+  printf '#!/usr/bin/env bash\ncat "%s"\n' "$BATS_TEST_TMPDIR/big.json" > "$MOCK_BIN/gh"
+  chmod +x "$MOCK_BIN/gh"
+  run --separate-stderr bash -c "export PATH=\"$MOCK_BIN:\$PATH\"; source '$GATE'; urtg_fetch_review_threads 'https://github.com/o/r/pull/1'"
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.complete == true and (.reviewThreads | length) == 100'
+}
