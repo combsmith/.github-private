@@ -54,9 +54,10 @@ ort_fetch_open_threads() {
     # payload is a failure, never an empty page.
     if ! printf '%s' "$page_response" | jq -e '
         (.errors // [] | length) == 0
-        and ((.data?.repository?.pullRequest?.reviewThreads?.nodes? | type) == "array")' \
+        and ((.data?.repository?.pullRequest?.reviewThreads?.nodes? | type) == "array")
+        and (.data.repository.pullRequest.reviewThreads.nodes | all(type == "object" and ((.isResolved | type) == "boolean")))' \
         >/dev/null 2>&1; then
-      echo "::error::ort_fetch_open_threads: review-thread page ${page_no} for ${repo}#${pr} returned an error or malformed response" >&2
+      echo "::error::ort_fetch_open_threads: review-thread page ${page_no} for ${repo}#${pr} returned an error, a malformed response, or a thread with an unreadable isResolved" >&2
       return 1
     fi
     page_open=$(printf '%s' "$page_response" | jq -c \
