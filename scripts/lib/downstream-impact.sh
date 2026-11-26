@@ -13,7 +13,7 @@
 # source-graph expansion. Two and only two match kinds:
 #   (a) a changed reusable-workflow path that a consumer ref pins exactly
 #       (after normalising the manifest's provider prefix) -> direct surface;
-#   (b) a changed scripts/lib/*.sh, scripts/lib/*.tsv, or prompts/* path listed in a reusable's
+#   (b) a changed scripts/lib/*.sh, scripts/lib/*.tsv, prompts/* or config/*.json path listed in a reusable's
 #       surface_sources -> that reusable surface -> the reusable's consumers.
 #
 # A consumer ref is provider-prefixed (e.g. ".github-private/.github/workflows/
