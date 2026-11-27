@@ -139,6 +139,7 @@ _unset_engine_overrides() {
   grep -qF -- '- `AI_MODELS_CLAUDE deep=claude-opus-4-8 (file: claude-opus-5-5,claude-opus-4-8,claude-sonnet-5-5)`' pr_review_health_report.md
   grep -qF -- '- `AI_ENGINES=gemini,claude → gemini claude (file: claude gemini copilot)`' pr_review_health_report.md
   [[ "$output" == *"::warning::engine override differs from config/ai-engines.json: AI_MODELS_CLAUDE deep="* ]]
+  [[ "$output" == *"::warning::engine override differs from config/ai-engines.json: AI_ENGINES=gemini,claude"* ]]
   run grep -c 'None: every engine' pr_review_health_report.md
   [ "$output" = "0" ]
 }
@@ -168,6 +169,7 @@ _unset_engine_overrides() {
   export AI_ENGINES_CONFIG="${WORK}/nope.json"
   make_claude 0 "### 1. Executive Summary"
   run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
   grep -q 'Could not read `config/ai-engines.json`' pr_review_health_report.md
   [[ "$output" == *"::error::engine config"* ]]
 }
