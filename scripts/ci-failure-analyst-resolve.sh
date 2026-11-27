@@ -116,9 +116,9 @@ resolve() {
     # an open PR counts, so a failure on the default branch is not reported
     # on the PR that was already merged into it. A failed lookup fails the step
     # rather than reading as "no PR".
-    # shellcheck disable=SC2016  # $ENV.REPO is jq built-in syntax, not a shell variable
     if ! pulls="$(gh api "repos/$REPO/commits/$head_sha/pulls" \
-      --jq '.[] | select(.state == "open" and .head?.repo?.full_name == $ENV.REPO) | .number')"; then
+      --paginate \
+      | jq -r --arg repo "$REPO" '.[] | select(.state == "open" and .head?.repo?.full_name == $repo) | .number')"; then
       echo "::error::Could not look up the PRs for SHA $head_sha"
       return 1
     fi
