@@ -367,3 +367,9 @@ _engine() {
   export AI_ENGINES="claude"
   [ -z "$(ai_engine_chain)" ]
 }
+
+@test "providers: a standard provider missing from providers is treated as disabled, not a jq error" {
+  _fixture 'del(.providers.copilot)'
+  [ "$(ai_engine_chain)" = "claude gemini" ]
+  [ "$(ai_engines_file_disabled)" = "copilot" ]
+}

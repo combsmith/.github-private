@@ -81,8 +81,8 @@ _AI_ENGINES_JQ='
       | if (.value | type) != "array" or any(.value[]; type != "string") then
           error("tasks.\($t).\(.key) is not a list of model ids")
         else "\(.key):\($t)=\(.value | join(","))" end ),
-    "providers=\([$p.fallback_order[] | select(type == "string") | select($p[.].enabled == true)] | join(" "))",
-    "disabled=\([("claude", "gemini", "copilot") | select($p[.].enabled != true)] | join(" "))"
+    "providers=\([$p.fallback_order[] | select(type == "string") | select($p[.] | type == "object" and .enabled == true)] | join(" "))",
+    "disabled=\([("claude", "gemini", "copilot") | select($p[.] | type != "object" or .enabled != true)] | join(" "))"
 '
 
 # _ai_engines_config_read <path> — prints the flattened table; prints an
