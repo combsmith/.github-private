@@ -109,3 +109,65 @@ make_claude() {
   grep -q 'Engine rate limit' pr_review_health_report.md
   [[ "$output" != *"::warning::"*"quota"* ]]
 }
+
+# ── Engine configuration overrides (#2630, part 2 of #1973) ──────────────────
+# The report lists each AI_MODELS_* / AI_ENGINES value that is set and differs
+# from config/ai-engines.json, so a break-glass override is folded back into
+# the file rather than living on silently.
+
+_unset_engine_overrides() {
+  unset AI_MODELS_CLAUDE AI_MODELS_GEMINI AI_MODELS_COPILOT AI_ENGINES DEV_LEAD_ENGINES AI_ENGINES_CONFIG
+}
+
+@test "overrides: none set → the section says every default comes from the file" {
+  _unset_engine_overrides
+  make_claude 0 "### 1. Executive Summary"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q '## Engine configuration overrides' pr_review_health_report.md
+  grep -q 'None: every engine and model default comes from `config/ai-engines.json`' pr_review_health_report.md
+  [[ "$output" != *"engine override differs"* ]]
+}
+
+@test "overrides: a differing AI_MODELS_* key and AI_ENGINES are listed and warned" {
+  _unset_engine_overrides
+  export AI_MODELS_CLAUDE="deep=claude-opus-4-8"
+  export AI_ENGINES="gemini,claude"
+  make_claude 0 "### 1. Executive Summary"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -qF -- '- `AI_MODELS_CLAUDE deep=claude-opus-4-8 (file: claude-opus-5-5,claude-opus-4-8,claude-sonnet-5-5)`' pr_review_health_report.md
+  grep -qF -- '- `AI_ENGINES=gemini,claude → gemini claude (file: claude gemini copilot)`' pr_review_health_report.md
+  [[ "$output" == *"::warning::engine override differs from config/ai-engines.json: AI_MODELS_CLAUDE deep="* ]]
+  run grep -c 'None: every engine' pr_review_health_report.md
+  [ "$output" = "0" ]
+}
+
+@test "overrides: an override equal to the file is not listed" {
+  _unset_engine_overrides
+  export AI_MODELS_GEMINI="deep=gemini-3.1-pro-preview,gemini-3.8-flash"
+  export AI_ENGINES="claude,gemini,copilot"
+  make_claude 0 "### 1. Executive Summary"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q 'None: every engine and model default comes from' pr_review_health_report.md
+}
+
+@test "overrides: an invalid AI_MODELS_* entry is reported as ignored" {
+  _unset_engine_overrides
+  export AI_MODELS_COPILOT="model=openai/gpt-5"
+  make_claude 0 "### 1. Executive Summary"
+  run bash "$SCRIPT"
+  [ "$status" -eq 0 ]
+  grep -q 'Invalid `AI_MODELS_\*` entries' pr_review_health_report.md
+  grep -q "AI_MODELS_COPILOT: unknown key 'model'" pr_review_health_report.md
+}
+
+@test "overrides: an unreadable config is reported, not hidden" {
+  _unset_engine_overrides
+  export AI_ENGINES_CONFIG="${WORK}/nope.json"
+  make_claude 0 "### 1. Executive Summary"
+  run bash "$SCRIPT"
+  grep -q 'Could not read `config/ai-engines.json`' pr_review_health_report.md
+  [[ "$output" == *"::error::engine config"* ]]
+}
