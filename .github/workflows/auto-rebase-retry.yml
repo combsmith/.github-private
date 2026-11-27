@@ -27,6 +27,10 @@
 # same outage — which it did, and got cancelled. So it uses zero `uses:` steps
 # and self-fetches the retry script with the pre-installed gh CLI (the REST
 # contents API is a different service than action resolution).
+#
+# The self-fetch must not fail the job either (#2640): a rate-limited PAT made
+# `gh api` 403 under `set -e` before the always-exit-0 script ran. The fetch now
+# falls back to the job's github.token and, failing that, warns and exits 0.
 # ─────────────────────────────────────────────────────────────────────────────
 name: Auto-rebase retry
 
@@ -69,6 +73,10 @@ jobs:
           # lets attempts past the first chain back into this handler toward
           # MAX_ATTEMPTS. With github.token alone, a single retry still fires.
           GH_TOKEN: ${{ secrets.GH_PAT_DON_PETRY || secrets.GH_PAT_WORKFLOWS || github.token }}
+          # Separate rate-limit bucket (#2640): the PAT's 5000/hr budget is shared
+          # fleet-wide, and an exhausted PAT made the self-fetch below 403 and fail
+          # the job. The job token is used only if the PAT fetch fails.
+          FALLBACK_GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           RUN_ID: ${{ github.event.workflow_run.id }}
@@ -88,6 +96,23 @@ jobs:
           # workflow_run handlers run from the default branch, so the default
           # branch copy of the script is exactly what a checkout would give us.
           script="${RUNNER_TEMP}/auto-rebase-retry.sh"
-          gh api "repos/${GITHUB_REPOSITORY}/contents/scripts/auto-rebase-retry.sh" \
-            -H "Accept: application/vnd.github.raw" > "$script"
+          fetch_script() {
+            gh api "repos/${GITHUB_REPOSITORY}/contents/scripts/auto-rebase-retry.sh" \
+              -H "Accept: application/vnd.github.raw" > "$script"
+          }
+          # A failed fetch (e.g. the shared PAT is rate-limited, #2640) must not
+          # fail the job: this handler exists to absorb transient API failures,
+          # and the script itself always exits 0. Retry once with the job token
+          # (a separate rate-limit bucket) and, if that works, use it for the
+          # retry too — the PAT's budget is exhausted. A job-token re-run still
+          # fires one retry; it just cannot chain further (see GH_TOKEN above).
+          if ! fetch_script; then
+            if [ -n "${FALLBACK_GH_TOKEN:-}" ] && GH_TOKEN="$FALLBACK_GH_TOKEN" fetch_script; then
+              echo "::notice::Primary token could not fetch the retry script (likely rate-limited) — continuing with the job token"
+              export GH_TOKEN="$FALLBACK_GH_TOKEN"
+            else
+              echo "::warning::Could not fetch scripts/auto-rebase-retry.sh (API error or rate limit) — skipping retry of ${WORKFLOW_NAME:-Auto-rebase} run ${RUN_ID:-unknown}; re-run it manually: ${HTML_URL:-}"
+              exit 0
+            fi
+          fi
           bash "$script"
