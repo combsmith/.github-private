@@ -95,7 +95,7 @@ resolve() {
   # the API: the run may finish after its PR merged or closed.
   # A head SHA can belong to several PRs, so every candidate is checked and the
   # first open one wins; with none open, the commits-to-pulls lookup below runs.
-  candidates="$(payload_field '(.'"$key"'.pull_requests // [])[]
+  candidates="$(payload_field '(.'"$key"'.pull_requests // empty)[]
                                | select(.head?.repo?.id != null and .base?.repo?.id != null and .head?.repo?.id == .base?.repo?.id) | .number')"
   pr_number=""
   while IFS= read -r candidate; do
