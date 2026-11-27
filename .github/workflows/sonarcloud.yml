@@ -67,7 +67,7 @@ jobs:
       - name: SonarCloud Scan
         id: sonar
         if: env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
+        uses: SonarSource/sonarqube-scan-action@70bad232163b09d998ea0707ee80c0ec80798c16 # v8.5.1
         with:
           args: >-
             -Dsonar.scanner.skipJreProvisioning=true
@@ -78,7 +78,7 @@ jobs:
         continue-on-error: true
       - name: SonarCloud Scan (retry)
         if: env.SONAR_TOKEN != '' && steps.sonar.outcome == 'failure'
-        uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8.5.0
+        uses: SonarSource/sonarqube-scan-action@70bad232163b09d998ea0707ee80c0ec80798c16 # v8.5.1
         with:
           args: >-
             -Dsonar.scanner.skipJreProvisioning=true
