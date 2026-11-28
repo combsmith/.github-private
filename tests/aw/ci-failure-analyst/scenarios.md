@@ -120,3 +120,44 @@ Written before the workflow per the TDD cycle in issue #233.
 
 - Workflow is a **no-op** — no comment is posted anywhere.
 - The analyst must not comment on issues or any other thread.
+
+---
+
+## Scenario 3: A watched GitHub Actions workflow fails on a PR (`workflow_run`, #2235)
+
+**Input event:**
+
+```json
+{
+  "action": "completed",
+  "workflow_run": {
+    "id": 3000,
+    "name": "Lint",
+    "conclusion": "failure",
+    "head_sha": "www111",
+    "html_url": "https://github.com/combsmith/example/actions/runs/3000",
+    "pull_requests": [
+      { "number": 77, "head": { "repo": { "id": 1 } }, "base": { "repo": { "id": 1 } } }
+    ]
+  }
+}
+```
+
+**Expected output:**
+
+- A comment is posted to PR #77.
+- Comment begins with `<!-- ci-analyst sha=www111 -->`.
+- The failing job and step come from run `3000`'s failed jobs and `--log-failed` logs.
+- Comment includes a link to `https://github.com/combsmith/example/actions/runs/3000`.
+- If another watched workflow (or a third-party check) also fails on `www111`, no second comment is posted.
+
+---
+
+## Edge case: `workflow_run` on the default branch, or a payload with neither event
+
+**Input event:** a `workflow_run` for a push to `main` (`pull_requests: []`, and the commit's only
+associated PR is already merged), or a payload with no `check_run` and no `workflow_run` key.
+
+**Expected output:**
+
+- Workflow is a **no-op**: a "skipping" notice and exit 0, never `jq: Cannot iterate over null`.
