@@ -930,7 +930,7 @@ The budget breaker (`.github/workflows/budget-breaker.yml`, #2153) posts one com
 
 It pauses the fleet when the fleet itself reports that the model provider is refusing work for quota, by setting the organisation Actions variables `AGENTS_PAUSED=true`, `AGENTS_PAUSE_SOURCE=rate-limit-observed` and `AGENTS_PAUSE_UNTIL`. It only ever lifts a pause that carries its own source.
 
-- To keep the fleet paused by hand: set `AGENTS_PAUSED=true` and delete `AGENTS_PAUSE_SOURCE`. The breaker never touches a pause without its own source.
+- To keep the fleet paused by hand: follow "Setting a pause by hand" in `AGENTS.md`. It sets `AGENTS_PAUSED=true` and deletes `AGENTS_PAUSE_SOURCE` in a set order and then checks, because a breaker run already under way can lift a pause between two hand-made calls. The breaker never touches a pause without its own source.
 - To end a breaker pause early: set `AGENTS_PAUSED=false` and delete `AGENTS_PAUSE_SOURCE`.
 - To switch the breaker off: set the repository variable `BUDGET_BREAKER_ARMED` to `false`, or delete it. Only the exact lowercase value `true` arms it.
 
