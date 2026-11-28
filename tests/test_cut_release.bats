@@ -138,6 +138,11 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+@test "valid_agent: pr-body-markers is accepted (combsmith/.github#1571)" {
+  run valid_agent "pr-body-markers"
+  [ "$status" -eq 0 ]
+}
+
 @test "valid_agent: unknown agent is rejected" {
   run valid_agent "totally-not-an-agent"
   [ "$status" -ne 0 ]
@@ -186,6 +191,11 @@ setup() {
 
 @test "cross_repo_agent: persona-mention is cross-repo (reusable in .github)" {
   run cross_repo_agent "persona-mention"
+  [ "$status" -eq 0 ]
+}
+
+@test "cross_repo_agent: pr-body-markers is cross-repo (reusable in .github, combsmith/.github#1571)" {
+  run cross_repo_agent "pr-body-markers"
   [ "$status" -eq 0 ]
 }
 
