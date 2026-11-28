@@ -305,7 +305,8 @@ fails, diff it against `main` before calling it a regression, and treat CI as au
 - **Exception:** The `validate-ai-engines` job in `lint.yml` (#2631, part 1 of #1973) is a repo-specific
   gate with no org template equivalent. It validates `config/ai-engines.json` with
   `scripts/validate-ai-engines.py` (tests: `tests/test_validate_ai_engines.bats`;
-  `tests/test_ai_engines_parity.bats` keeps the file equal to `ai_models_default`). For the same reason the
+  `tests/test_ai_engines_parity.bats` checks that every chain in the file is one the lib asks for). Since #2630
+  the engine libs read the file (`ai_models_default`, tests: `tests/dev-lead/unit/test_ai_engines_config.bats`). For the same reason the
   `pull_request`/`push` `paths:` filters include `config/**`. Template syncs must not remove the job or the
   path. If the org template gains an equivalent, remove this exception and defer to the template instead.
 - **Exception:** `holdout-guard.yml` (#692, epic #581) is a documented repo-specific workflow with no

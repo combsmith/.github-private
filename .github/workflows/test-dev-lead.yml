@@ -6,6 +6,7 @@ on:
       - 'scripts/auto-rebase-retry.sh'
       - 'scripts/engine.sh'
       - 'scripts/lib/**'
+      - 'config/**'  # engine defaults, read by scripts/lib/engine-models.sh (#1973)
       - '.github/workflows/dev-lead*.yml'
       - '.github/workflows/test-dev-lead.yml'
       - '.github/workflows/issue-triage-runner.yml'
@@ -28,6 +29,7 @@ on:
       - 'scripts/auto-rebase-retry.sh'
       - 'scripts/engine.sh'
       - 'scripts/lib/**'
+      - 'config/**'  # engine defaults, read by scripts/lib/engine-models.sh (#1973)
       - 'tests/dev-lead/**'
       - 'prompts/dev-lead/**'
       - '.github/review-mcp.json'

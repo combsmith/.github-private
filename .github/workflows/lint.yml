@@ -20,7 +20,8 @@ on:
       # Dependabot bump of requirements/ci/ is exercised before it merges.
       - 'requirements/**'
       # config/ai-engines.json and its schema (#2631): validate-ai-engines and
-      # the parity suite in `bats` check them.
+      # the parity suite in `bats` check them, and the engine libs read the file
+      # (#2630, test_ai_engines_config in `bats`).
       - 'config/**'
   # Post-merge coverage parity with `unit` (#1486, epic #1402): re-run the bats
   # suite against actual trunk state after every merge so shell-script behavioral
@@ -36,7 +37,7 @@ on:
       - 'prompts/**'
       - '.github/workflows/**'
       - '.github/**'  # check-model-pins scans all of .github
-      - 'config/**'  # read by test_ai_engines_parity.bats and test_validate_ai_engines.bats
+      - 'config/**'  # read by the engine libs and test_ai_engines_{parity,config}.bats, test_validate_ai_engines.bats
   workflow_dispatch:
 
 permissions:
@@ -157,6 +158,7 @@ jobs:
             tests/test_model_pin_token_log.bats \
             tests/dev-lead/unit/test_engine_chain_config.bats \
             tests/dev-lead/unit/test_engine_models.bats \
+            tests/dev-lead/unit/test_ai_engines_config.bats \
             tests/test_validate_engines.bats \
             tests/test_ai_engines_parity.bats \
             tests/test_validate_ai_engines.bats \
@@ -567,8 +569,10 @@ jobs:
     # 2020-12, the jsonschema setup validate-cases.py uses) and fails on a task
     # naming a missing or retired model, a model in another provider's chain, an
     # enabled provider's model with no price row in scripts/lib/model-pricing.tsv,
-    # or a duck, fable or Copilot chain with more than one model. That the file
-    # matches the lib's defaults is checked in `bats` (test_ai_engines_parity).
+    # or a duck, fable or Copilot chain with more than one model. The engine
+    # libs read the file (#2630); `bats` covers the reader
+    # (test_ai_engines_config) and that every chain is one the lib asks for
+    # (test_ai_engines_parity).
     # Fully HERMETIC (in-repo files only, no network).
     runs-on: ubuntu-latest
     timeout-minutes: 5
